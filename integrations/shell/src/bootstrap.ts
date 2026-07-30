@@ -12,6 +12,7 @@ import type { KeyEvent, LogLevel } from '@opencues/runtime/dist/src/adapter';
 import { buildOpenTuiModifiers } from '@opencues/runtime/dist/src/modules/mac-keyboard';
 import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common';
 import { codeUnitsToCells } from '@opencues/runtime/dist/src/util/cell-width';
+import { inlineNoteDisplayText, inlineNoteBoxColumn } from '@opencues/runtime/dist/src/render-directives';
 import {
   createBlankInvoke,
   createDefaultBlanksRegistry,
@@ -220,13 +221,139 @@ export interface TerminalBootOpts {
   cwd: string;
   /** Live tip subscriber — the footer reads from this. */
   onTipChange?: (tip: string | null) => void;
+  /** Live inline-cue-note subscriber. The note is cursor-gated (the runtime
+   *  only emits it while the caret is in the span), and renders as an
+   *  absolute-positioned overlay LINE directly under the span — the same
+   *  result Claude Code produces by splicing a continuation line. OpenTUI
+   *  can't splice into the textarea's own render, so app.tsx floats a box
+   *  at { row, col }. null clears it. */
+  onInlineNoteChange?: (note: InlineNoteAnchor | null) => void;
+}
+
+/** Where the overlay note line sits: viewport-relative visual row + cell col. */
+export interface InlineNoteAnchor {
+  text: string;
+  row: number;
+  col: number;
 }
 
 const sourceReclassifier = createSourceReclassifier();
 let bootResult: BootResult | undefined;
+/** Set from startOpenCues opts; called by triggerOpenCuesRender. */
+let _onInlineNoteChange: ((note: InlineNoteAnchor | null) => void) | undefined;
+/** Captured at boot so top-level triggerOpenCuesRender can trace note changes. */
+let _termLog: ((level: LogLevel, msg: string, data?: unknown) => void) | undefined;
+let _termLastNoteText: string | null = null;
+
+// ── Inline-cue note: mid-buffer blank-line injection ─────────────────────
+// To place the note on a REAL line directly under the target span (pushing the
+// lines below it down, like Claude Code), we insert a display-only blank line
+// into the textarea's own buffer at the end of the span's line: a `\n` followed
+// by a NON-BREAKING SPACE (INJ_MARK). It's our robust MARKER — we find the
+// injected line by searching for it (not a fixed offset), so it survives the
+// user editing the span above. getText/getCursor/the key path strip it so the
+// runtime never sees it, and submit (app.tsx finish) strips it too — nothing
+// extra reaches the shell. The note text paints as an absolute overlay in the
+// freed row.
+//
+// Why NBSP and not a zero-width space: the auto-select highlight extmark ends
+// at the span's line boundary, and OpenTUI resolves that boundary cell to the
+// next VISIBLE content. A zero-width injected line has no cell, so the boundary
+// skipped PAST it onto the following line (the "highlights the second line"
+// bug). NBSP occupies a real cell on the injected line, so the boundary lands
+// there (hidden under the note overlay) instead of spilling.
+const INJ_MARK = '\u00A0'; // NBSP — a real cell, rare in prompt text
+let _syncingInjection = false;
+let _textareaForInject: TextareaRenderable | null = null;
+
+/** Locate the injected line's ZWS in a raw buffer; -1 if none of our shape. */
+function injMarkIndex(raw: string): number {
+  const i = raw.indexOf(INJ_MARK);
+  return i > 0 && raw[i - 1] === '\n' ? i : -1;
+}
+
+/** Strip the display-only injected blank line (`\n` + ZWS) from a raw string. */
+function stripInjection(raw: string): string {
+  const i = injMarkIndex(raw);
+  return i === -1 ? raw : raw.slice(0, i - 1) + raw.slice(i + 1);
+}
+
+/** Map a raw caret offset to the clean view. The injection is the 2 chars at
+ *  [i-1, i]; a caret after it loses those 2. The note is cursor-gated to the
+ *  span ABOVE the injection, so in practice the caret is always before it. */
+function stripCursor(rawCursor: number): number {
+  const raw = _textareaForInject?.plainText ?? '';
+  const i = injMarkIndex(raw);
+  if (i === -1) return rawCursor;
+  if (rawCursor <= i - 1) return rawCursor;   // before the injection
+  if (rawCursor >= i + 1) return rawCursor - 2; // after it
+  return i - 1;                                 // inside it → clamp to line end
+}
+
+/**
+ * Reconcile the display-only injected blank line with the current note state.
+ * Rebuilt each call from the CLEAN buffer (ZWS stripped) so injections never
+ * compound. Idempotent via a whole-string compare — a no-op when the buffer is
+ * already correct, which also stops the setText→onContentChange→sync path from
+ * looping. `spanEnd` is a clean-space offset (end of the note's span).
+ */
+function syncNoteInjection(noteActive: boolean, spanEnd: number): void {
+  const ta = _textareaForInject;
+  if (!ta) return;
+  const raw = ta.plainText;
+  const clean = stripInjection(raw);
+  let desired: number | null = null;
+  if (noteActive) {
+    const s = Math.max(0, Math.min(spanEnd, clean.length));
+    const nl = clean.indexOf('\n', s);
+    desired = nl === -1 ? clean.length : nl;
+  }
+  const newRaw = desired === null
+    ? clean
+    : clean.slice(0, desired) + '\n' + INJ_MARK + clean.slice(desired);
+  if (newRaw === raw) return; // already correct — nothing to do
+  const cleanCursor = stripCursor(ta.cursorOffset);
+  _syncingInjection = true;
+  try {
+    ta.setText(newRaw);
+    // Restore the caret. It's in the span (before the injection) → unchanged;
+    // guard the general case (+2 for the `\n`+ZWS if it were after).
+    ta.cursorOffset = (desired !== null && cleanCursor > desired) ? cleanCursor + 2 : cleanCursor;
+    ownedExtmarks = new Map(); // setText cleared every extmark
+  } finally {
+    _syncingInjection = false;
+  }
+}
+
+/** Pull the display-only injection OUT of the buffer (restoring the clean text +
+ *  caret). Called before any key is handled so edits, `_`-cycle writes, and the
+ *  textarea's own insertion all operate on the REAL buffer — never colliding
+ *  with the injected `\n`+NBSP. The next render re-adds it via syncNoteInjection. */
+function removeInjection(): void {
+  const ta = _textareaForInject;
+  if (!ta) return;
+  const raw = ta.plainText;
+  const clean = stripInjection(raw);
+  if (clean === raw) return; // nothing injected
+  const cleanCursor = stripCursor(ta.cursorOffset);
+  _syncingInjection = true;
+  try {
+    ta.setText(clean);
+    ta.cursorOffset = cleanCursor;
+    ownedExtmarks = new Map();
+  } finally {
+    _syncingInjection = false;
+  }
+}
+
+/** The clean (injection-free) buffer text — for the submit/paste path. */
+export function getCleanBufferText(raw: string): string {
+  return stripInjection(raw);
+}
 
 export function startOpenCues(opts: TerminalBootOpts): BootResult {
   if (bootResult) return bootResult;
+  _onInlineNoteChange = opts.onInlineNoteChange;
 
   const log = (level: LogLevel, msg: string, data?: unknown): void => {
     try {
@@ -246,9 +373,13 @@ export function startOpenCues(opts: TerminalBootOpts): BootResult {
       require('fs').appendFile('/tmp/opencues.log', line, () => {});
     } catch { /* swallow */ }
   };
+  _termLog = log;
 
-  const getText = (): string => opts.textarea.plainText;
-  const getCursor = (): number => opts.textarea.cursorOffset;
+  _textareaForInject = opts.textarea;
+  // getText/getCursor return the CLEAN view (injected note-line stripped) so
+  // the runtime, resolver, and every read path stay oblivious to it.
+  const getText = (): string => stripInjection(opts.textarea.plainText);
+  const getCursor = (): number => stripCursor(opts.textarea.cursorOffset);
 
   bootResult = boot({
     hostVersion: '0.1.0',
@@ -256,6 +387,8 @@ export function startOpenCues(opts: TerminalBootOpts): BootResult {
     getText,
     getCursorOffset: getCursor,
     setText: (text) => {
+      // Runtime writes the CLEAN buffer; that drops any injection (no ZWS in
+      // `text`). The next render re-syncs it if a note is still shown.
       sourceReclassifier.markRuntimeWrite(text);
       opts.textarea.setText(text);
       // OpenTUI's editBuffer.setText clears every extmark — see comment
@@ -264,7 +397,10 @@ export function startOpenCues(opts: TerminalBootOpts): BootResult {
       ownedExtmarks = new Map();
     },
     setCursorOffset: (offset) => {
-      opts.textarea.cursorOffset = offset;
+      // `offset` is clean-space; if the buffer currently holds the injection
+      // and the target is at/after it, re-add the 2 injected chars.
+      const i = injMarkIndex(opts.textarea.plainText);
+      opts.textarea.cursorOffset = (i !== -1 && offset > i - 1) ? offset + 2 : offset;
     },
     pushText: (text, cursor) => {
       sourceReclassifier.markRuntimeWrite(text);
@@ -433,6 +569,9 @@ export function startOpenCues(opts: TerminalBootOpts): BootResult {
 
   // Wire OpenTUI's content-change → notify runtime + repaint extmarks.
   opts.textarea.onContentChange = () => {
+    // Our own injection/removal setText fires this — ignore it, the sync path
+    // drives the render itself; re-entering here would loop.
+    if (_syncingInjection) return;
     const text = getText();
     const cursor = getCursor();
     const actualSource = sourceReclassifier.reclassify(text, 'user');
@@ -440,6 +579,7 @@ export function startOpenCues(opts: TerminalBootOpts): BootResult {
     triggerOpenCuesRender(text, cursor);
   };
   opts.textarea.onCursorChange = () => {
+    if (_syncingInjection) return;
     bootResult!.notifyCursorChange(getText(), getCursor(), 'user');
   };
 
@@ -452,6 +592,11 @@ export function startOpenCues(opts: TerminalBootOpts): BootResult {
 
 export function dispatchOpenCuesKey(evt: any): boolean {
   if (!bootResult) return false;
+  // Pull the display-only injection OUT before handling the key, so the key
+  // (a `_`-cycle, a character insert, backspace, …) and the textarea's own
+  // edit land on the REAL buffer at the REAL caret — never colliding with the
+  // injected `\n`+NBSP. The render right after re-adds it if a note still shows.
+  removeInjection();
   const text = _textareaRef?.plainText ?? '';
   const cursor = _textareaRef?.cursorOffset ?? 0;
   const keyName = normaliseKeyName(evt);
@@ -472,9 +617,29 @@ export function dispatchOpenCuesKey(evt: any): boolean {
     cursorOffset: cursor,
   };
   const consumed = bootResult.dispatchKey(e);
-  if (consumed) triggerOpenCuesRender(_textareaRef?.plainText ?? text, _textareaRef?.cursorOffset ?? cursor);
+  if (consumed) {
+    triggerOpenCuesRender(stripInjection(_textareaRef?.plainText ?? text), stripCursor(_textareaRef?.cursorOffset ?? cursor));
+  } else if (CURSOR_MOVING_KEYS.has(keyName)) {
+    // OpenTUI's onCursorChange fires on HORIZONTAL moves (left/right) but NOT
+    // vertical (up/down) or jumps (home/end/page). Those keys fall through to
+    // the textarea unconsumed, move the caret, and nothing re-evaluates the
+    // cursor gate — so the inline-cue note + auto-select highlight linger on
+    // the line we left. The textarea processes the key AFTER this handler
+    // returns, so defer one macrotask and re-render against the settled caret.
+    setTimeout(() => {
+      try { triggerOpenCuesRender(stripInjection(_textareaRef?.plainText ?? text), stripCursor(_textareaRef?.cursorOffset ?? cursor)); }
+      catch { /* swallow */ }
+    }, 0);
+  }
   return consumed;
 }
+
+// Caret-moving keys OpenTUI doesn't surface via onCursorChange (vertical +
+// jumps). left/right are included defensively — a redundant deferred render
+// there is harmless (idempotent paint).
+const CURSOR_MOVING_KEYS = new Set<string>([
+  'up', 'down', 'left', 'right', 'home', 'end', 'pageup', 'pagedown',
+]);
 
 function normaliseKeyName(evt: any): string {
   if (evt.name) return String(evt.name).toLowerCase();
@@ -571,8 +736,32 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
     }
   };
   const desiredColored = new Map<ExtmarkKey, { hex: string; start: number; end: number }>();
+  // Inline-cue note. The runtime emits it cursor-gated (only while the caret
+  // is in the span). We can't splice a line into the textarea's own render
+  // the way Claude Code does, so App floats an absolute overlay LINE directly
+  // under the span: ROW = the caret's viewport-relative visual row + 1 (the
+  // caret is in the span, so this is the line just below it, wrap/scroll
+  // aware); COL = the span's column in cells (shared inlineNoteBoxColumn, the
+  // same alignment the terminal splice uses). Same `↳ <note>` text everywhere.
+  //
+  // The note is drawn by app.tsx's renderAfter hook as a REAL inserted line
+  // that pushes text down (no occlusion — content moves rather than being
+  // covered). ROW = caret visual row + 1 (viewport-relative, wrap/scroll
+  // aware); COL = span column in cells.
+  let noteAnchor: InlineNoteAnchor | null = null;
+  let noteSpanEnd = 0;
   const directiveSets = bootResult.collectRenderDirectives(text, cursor);
   for (const directives of directiveSets) {
+    if (noteAnchor === null && directives.inlineNote && directives.inlineNote.text) {
+      const vc: any = (textarea as any).visualCursor;
+      const visualRow = vc && typeof vc.visualRow === 'number' ? vc.visualRow : 0;
+      noteAnchor = {
+        text: inlineNoteDisplayText(directives.inlineNote.text),
+        row: visualRow + 1,
+        col: inlineNoteBoxColumn(text, directives.inlineNote.spanStart),
+      };
+      noteSpanEnd = directives.inlineNote.spanEnd;
+    }
     addRanges(directives.dimRanges, 'd');
     if (directives.highlight) {
       const h = directives.highlight;
@@ -593,6 +782,13 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
       }
     }
   }
+
+  // Add/remove the display-only blank line under the span (mid-buffer
+  // push-down). Done BEFORE the extmark diff so its setText (which nukes
+  // extmarks) doesn't wipe the marks we're about to place. Because the
+  // injection sits AFTER the span's line, the note-bearing span's own
+  // highlight/dim (offsets before it) stay correctly placed on `text`.
+  syncNoteInjection(noteAnchor !== null, noteSpanEnd);
 
   for (const [key, id] of ownedExtmarks) {
     if (desired.has(key) || desiredColored.has(key)) continue;
@@ -619,7 +815,17 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
   // Korean, fullwidth ASCII) each glyph occupies 2 cells, so a span
   // covering "日本語に翻訳" (6 code units) needs end=12 to cover the
   // 12 cells the glyphs actually paint to.
-  const toCell = (offset: number): number => codeUnitsToCells(text, offset);
+  // Extmark offsets come from the runtime in CLEAN (injection-free) space, but
+  // the extmarks are applied to the RAW buffer that holds the injected note
+  // line. Map clean→raw: everything AFTER the injection point shifts by the
+  // injection length (`\n` + NBSP = 2), so a dim/highlight on a line below the
+  // note lands on the right characters instead of 2 cells early. Cells are then
+  // measured on the RAW buffer. Ranges before the injection are unchanged.
+  const _raw = textarea.plainText;
+  const _injMark = injMarkIndex(_raw);
+  const _injAt = _injMark === -1 ? -1 : _injMark - 1;
+  const toRaw = (offset: number): number => (_injAt >= 0 && offset > _injAt) ? offset + 2 : offset;
+  const toCell = (offset: number): number => codeUnitsToCells(_raw, toRaw(offset));
   for (const [key, spec] of desired) {
     if (ownedExtmarks.has(key)) continue;
     const styleId = styleFor(spec.kind);
@@ -650,4 +856,12 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
     });
     ownedExtmarks.set(key, id);
   }
+
+  // Push the active note anchor (or clear it) to the overlay renderer.
+  const nextNoteText = noteAnchor ? noteAnchor.text : null;
+  if (nextNoteText !== _termLastNoteText) {
+    try { _termLog?.('debug', 'inlineNote', { cursor, note: nextNoteText, row: noteAnchor?.row, col: noteAnchor?.col }); } catch { /* swallow */ }
+    _termLastNoteText = nextNoteText;
+  }
+  try { _onInlineNoteChange?.(noteAnchor); } catch { /* swallow */ }
 }

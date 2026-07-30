@@ -103,6 +103,15 @@ export interface BootResult {
     lineEnd: number,
   ): { dimRanges: { start: number; end: number }[]; highlight: { start: number; end: number } | null };
   /**
+   * The active inline-cue note for the current render, or null. Cursor-gated by
+   * the runtime (only emitted while the caret is in the span). The InputPrompt
+   * patch renders this as its OWN extra visual-line item (a real +1 row that
+   * grows the input) rather than embedding it in a line — Gemini's list uses
+   * `fixedItemHeight`, so a line can't grow to 2 rows. Side-effect-free (does
+   * not touch lastSeen), safe to call during render.
+   */
+  getInlineNote(fullText: string, cursor: number): { text: string; spanStart: number } | null;
+  /**
    * Pull-model render gate, mirrors CC's pattern. Runtime modules call
    * adapter.setText / setCursorOffset / forceRender which only SET
    * pending flags — they don't write to the host buffer immediately.
@@ -670,6 +679,17 @@ export function boot(host: HostInfo): BootResult {
         }
       }
       return { dimRanges, highlight };
+    },
+    getInlineNote(fullText, cursor) {
+      if (renderEvents.size === 0) return null;
+      const ctx: RenderContext = { text: fullText, cursor, externalHighlights: [] };
+      const directiveSets = renderEvents.collect(ctx, err => log('error', 'render handler threw', err));
+      for (const d of directiveSets) {
+        if (d.inlineNote && d.inlineNote.text) {
+          return { text: d.inlineNote.text, spanStart: d.inlineNote.spanStart };
+        }
+      }
+      return null;
     },
     consumePendingRender(currentText, currentCursor) {
       return consumePendingRenderImpl(currentText, currentCursor);

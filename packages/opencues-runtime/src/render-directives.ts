@@ -9,6 +9,7 @@
 
 import type { ColoredRange, Range, RenderDirectives } from './adapter';
 import { ansiColorToOpenEscape, ANSI_FG_RESET } from './modules/blank-loading';
+import { codeUnitsToCells } from './util/cell-width';
 
 /**
  * Sort + merge overlapping or touching ranges. Empty ranges (start >= end)
@@ -65,7 +66,72 @@ interface Insertion {
   order: number;
 }
 
-export function applyDirectives(rendered: string, directives: RenderDirectives | null | undefined): string {
+// Inline cue note — dim (gray) text `⚠ - message` placed on the line DIRECTLY
+// BELOW the flagged span, indented to the span's column (not below the whole
+// buffer — that drifts far from the span in a long doc). Display-only: the
+// text + its ANSI live in the rendered string the host PAINTS, never in the
+// logical submit buffer (same channel as every other directive here).
+//
+// Connector glyph that ties the note to the span above it.
+const INLINE_NOTE_CONNECTOR = '↳';
+
+// The advisory (def.cueTip) arrives as "<icon> <message>" (e.g.
+// "⚠ the 19th is a Friday"); render it as "<icon> - <message>", led by the
+// `↳` connector at the painter.
+function formatInlineNoteText(text: string): string {
+  const trimmed = text.trim();
+  const m = trimmed.match(/^(\S+)\s+([\s\S]*)$/);
+  return m ? `${m[1]} - ${m[2]}` : trimmed;
+}
+
+/**
+ * The full inline-note display string — connector + formatted advisory, e.g.
+ * "↳ ⚠ - the 19th is a Friday". Exported so NON-terminal hosts (chrome's
+ * span-anchored overlay) paint the SAME text the terminal painter splices in,
+ * instead of re-deriving it and drifting. Terminal-side ANSI/indent is layered
+ * on separately in applyDirectives; this is the plain text only.
+ */
+export function inlineNoteDisplayText(cueTip: string): string {
+  return INLINE_NOTE_CONNECTOR + ' ' + formatInlineNoteText(cueTip);
+}
+
+/**
+ * Screen COLUMN (in terminal cells) where an inline note's `↳ ` connector
+ * should start so the MESSAGE lands under the span's column — the same
+ * alignment `applyDirectives` computes for the terminal splice, factored out
+ * so the OpenTUI hosts (OpenCode / shell), which can't splice into the
+ * textarea's own render and instead float an absolute-positioned overlay
+ * line, land the note in the SAME place. The connector hangs to the left of
+ * the span column; clamped at 0 so a span at/near column 0 sits flush left.
+ *
+ * `text` is the painted plain-text buffer; `spanStart` is the note span's
+ * start offset in that same space. Wrap-unaware by design (matches the
+ * terminal path); the overlay's ROW comes from the host's wrap-aware
+ * visual-cursor, so only the column needs deriving here.
+ */
+export function inlineNoteBoxColumn(text: string, spanStart: number): number {
+  const s = Math.min(Math.max(0, spanStart), text.length);
+  const lineStart = text.lastIndexOf('\n', Math.max(0, s - 1)) + 1;
+  const lineText = text.slice(lineStart, s);
+  const col = codeUnitsToCells(lineText, lineText.length);
+  const prefix = INLINE_NOTE_CONNECTOR + ' ';
+  const prefixCells = codeUnitsToCells(prefix, prefix.length);
+  return Math.max(0, col - prefixCells);
+}
+
+/**
+ * @param firstLineIndent Screen columns the host prepends to the buffer's
+ *   FIRST line but NOT to continuation lines (e.g. Claude Code's `❯ ` input
+ *   prompt). An inline note is always injected as a continuation line, so a
+ *   first-line span sits this many columns further right on screen than its
+ *   buffer column — added back so the note stays under the span. Hosts with a
+ *   uniform left margin pass 0 (the default).
+ */
+export function applyDirectives(
+  rendered: string,
+  directives: RenderDirectives | null | undefined,
+  firstLineIndent = 0,
+): string {
   if (!directives) return rendered;
   if (directives.textOverride !== undefined) return directives.textOverride;
 
@@ -132,6 +198,46 @@ export function applyDirectives(rendered: string, directives: RenderDirectives |
     insertions.push({ visibleAt: cr.start, ansi: open, order: 0 });
     insertions.push({ visibleAt: cr.end, ansi: ANSI_FG_RESET, order: 1 });
   }
+  // Inline cue note — insert as a new indented line right after the visible
+  // line that contains the flagged span (span coords are in the same visible
+  // space as `rendered`). Placing it here rather than appending at the very
+  // end keeps the pill next to the span even in a long buffer. NOTE: this adds
+  // visible characters mid-string, so any LATER render handler's ranges (this
+  // fn is called once per handler) computed past the insertion point would
+  // shift — in practice only DimRender emits inlineNote and it carries its own
+  // dim/highlight in the same call, where all insertions are indexed against
+  // the same original `rendered`, so its own ranges are unaffected.
+  if (directives.inlineNote && directives.inlineNote.text) {
+    const note = directives.inlineNote;
+    const visible = rendered.replace(/\x1b\[[0-9;]*m/g, '');
+    const spanEnd = Math.min(Math.max(0, note.spanEnd), visible.length);
+    const spanStart = Math.min(Math.max(0, note.spanStart), visible.length);
+    const nl = visible.indexOf('\n', spanEnd);
+    const at = nl === -1 ? visible.length : nl;
+    const lineStart = visible.lastIndexOf('\n', Math.max(0, spanStart - 1)) + 1;
+    // Column = VISUAL cells of the line's prefix, NOT code-point count. CJK /
+    // wide glyphs are double-width, so a code-point pad lands the note only
+    // halfway under a span preceded by Japanese etc. (the "spans misalign on
+    // Japanese" bug). Measure in terminal cells so the note tracks the span.
+    const lineText = visible.slice(lineStart, spanStart);
+    const col = codeUnitsToCells(lineText, lineText.length);
+    // The `↳ ` connector points up at the span; the MESSAGE aligns under the
+    // span's column, with the arrow hanging in the margin to its left.
+    const prefix = INLINE_NOTE_CONNECTOR + ' ';
+    const prefixCells = codeUnitsToCells(prefix, prefix.length);
+    // First-line span → add back the host prompt indent the note line (a
+    // continuation line) doesn't inherit. lineStart === 0 ⟺ span on line 1.
+    const promptPad = lineStart === 0 ? Math.max(0, firstLineIndent) : 0;
+    // Message target column = col + promptPad; the connector hangs prefixCells
+    // to its left. Fold both into ONE clamp so a span at (or near) column 0
+    // yields no leading indent — the arrow just sits at the left edge — instead
+    // of being pushed right by the prompt pad.
+    const pad = ' '.repeat(Math.max(0, col + promptPad - prefixCells));
+    const body = ANSI_DIM_ON + prefix + formatInlineNoteText(note.text) + ANSI_DIM_OFF;
+    // order 2 → fires after any dim/highlight close-codes at this boundary.
+    insertions.push({ visibleAt: at, ansi: '\n' + pad + body, order: 2 });
+  }
+
   if (insertions.length === 0) return rendered;
 
   insertions.sort((a, b) => a.visibleAt - b.visibleAt || a.order - b.order);

@@ -94,7 +94,15 @@ export interface SentenceSpan {
  *
  * Strategy: match sentence CONTENT non-greedily up to a real terminator.
  * A terminator is an ASCII `.!?` followed by whitespace or EOF, OR a
- * CJK/fullwidth `。！？．`, OR end-of-string.
+ * CJK/fullwidth `。！？．`, OR a HARD LINE BREAK (`\n`), OR end-of-string.
+ *
+ * A newline terminates a sentence even without punctuation: content on
+ * separate visual lines is never one sentence. Without this a buffer like
+ * "thanks a bunch guys\ndasdasda" (two lines, no `.` between them) matched
+ * as ONE span crossing the newline — so its cue highlight painted across
+ * BOTH lines and cycling replaced text spanning two lines (observed live on
+ * Gmail). It also makes the "markdown headers / list items are each their
+ * own sentence" behaviour (below) actually hold — those are `\n`-separated.
  *
  * The content run is `[\s\S]+?` (any char, non-greedy) rather than a
  * "non-terminator" character class, so a MID-TOKEN ASCII period —
@@ -124,7 +132,7 @@ export function segmentSentences(buffer: string, words: ReadonlyArray<string>): 
   const spans: SentenceSpan[] = [];
   // `[\s\S]+?` (≥1 char, non-greedy) can never produce a zero-width match,
   // so the exec loop below always advances.
-  const re = /[\s\S]+?(?:[.!?]+(?=\s|$)|[。！？．]+|$)/g;
+  const re = /[\s\S]+?(?:[.!?]+(?=\s|$)|[。！？．]+|\n+|$)/g;
   // Zero-width characters: ZWSP (U+200B) + ZWNJ (U+200C) — Claude Code's
   // render-kick toggles these onto the buffer to force a repaint (see the CC
   // ZWS-strip-at-boundaries contract). They are NOT content: a buffer ending

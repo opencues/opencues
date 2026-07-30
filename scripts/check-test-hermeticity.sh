@@ -78,7 +78,12 @@ echo ""
 # in the CI log itself.
 TEST_LOG="$(mktemp -t opencues-test-output.XXXXXX)"
 TEST_EXIT=0
-HOME="$SANDBOX_HOME" pnpm -r test > "$TEST_LOG" 2>&1 || TEST_EXIT=$?
+# Strip forced-color env alongside the HOME sandbox. Some driving shells
+# (Claude Code sets FORCE_COLOR=3) force ANSI into every child process, and
+# CLI tests that assert on plain output ("killed <pid>") then fail on the
+# escape codes — a phantom red that CI (no FORCE_COLOR) never shows. Color
+# forcing is exactly the class of ambient env this gate exists to isolate.
+env -u FORCE_COLOR -u CLICOLOR_FORCE HOME="$SANDBOX_HOME" pnpm -r test > "$TEST_LOG" 2>&1 || TEST_EXIT=$?
 if [ "$TEST_EXIT" -ne 0 ]; then
   echo "✗ pnpm -r test failed (exit $TEST_EXIT) — failure markers:"
   grep -nE -A6 'not ok|✖|✗|FAIL |failureType|Error \[|AssertionError' "$TEST_LOG" | head -60 | sed 's/^/    /'

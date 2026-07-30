@@ -220,6 +220,19 @@ export interface BridgeBindings {
    *  long-lived runtime instance that handles multiple buffer
    *  lifecycles (keep-alive hosts, off-process scripted consumers). */
   resetBufferState?(): void;
+  /** Compute the CURRENT render directives (dim/highlight/inlineNote/…) for the
+   *  live text + cursor, so the dump can expose what would be painted right now.
+   *  Optional — hosts that wire it make render-level features (e.g. the inline
+   *  cue note) observable to scenarios; hosts that don't leave `render` null. */
+  renderDirectives?(): unknown[];
+  /** The host's PAINTED output for the current buffer, ANSI-stripped, in BUFFER
+   *  space — the buffer text with render directives applied (dim/highlight ANSI
+   *  dropped by the strip; the inline cue note's spliced + aligned text
+   *  survives). Lets scenarios assert the actual painted LAYOUT — e.g. that the
+   *  note aligns under a mid-line span. The host's DISPLAY prompt indent is NOT
+   *  applied (that's a display artifact absent from the buffer), so this shows
+   *  logical alignment. Optional. */
+  renderedText?(): string | null;
   /** Runtime state classes — observed each tick for transition events,
    *  serialized into the dump on demand. */
   readonly state: BridgeState;
@@ -481,11 +494,23 @@ class CommandRunner {
         // 'runtime' source flag already signals "not user-typed".
         const prevText = adapter.getText();
         if (cmd === 'text' && countUnderscores(decoded) > countUnderscores(prevText)) {
+          // Frame the synthetic keystroke as the FINAL `_` of the typed
+          // string: text = decoded with that `_` removed, cursor = its
+          // position — exactly what a real user's last keypress looks like
+          // (they typed everything before it, then hit `_`). The previous
+          // shape (pre-change buffer + the OLD cursor) mis-framed it: after
+          // a transform substitute the old cursor sat exactly at the span's
+          // END — inside the inclusive note-gate — so Cycling's `_`-step
+          // CONSUMED the synthetic key and reverted the def instead of
+          // arming the blank gate (July 2026: chain scenarios' second
+          // transform never fired). lastIndexOf matches the blank anchor
+          // (blanks anchor on the LAST `_`).
+          const usIdx = decoded.lastIndexOf('_');
           this.bindings.dispatchKey({
             key: '_',
             modifiers: { ctrl: false, alt: false, shift: false, meta: false },
-            text: prevText,
-            cursorOffset: adapter.getCursorOffset(),
+            text: decoded.slice(0, usIdx) + decoded.slice(usIdx + 1),
+            cursorOffset: usIdx,
           });
         }
         // Two-step write: (1) synthetic textChange FIRST so the
@@ -851,6 +876,8 @@ export function startEventBridge(b: BridgeBindings): EventBridgeHandle {
         dismissedBlanks: serializeOpaque(b.state.dismissedBlanks),
         selectorSatellite: serializeOpaque(b.state.selectorSatelliteState),
         agentTask: serializeOpaque(b.state.agentTaskState),
+        render: safeCall(() => (b.renderDirectives ? b.renderDirectives() : null)),
+        renderedText: safeCall(() => (b.renderedText ? b.renderedText() : null)),
         capabilities: b.adapter.capabilities,
         pid,
         host: b.adapter.hostName,

@@ -2407,15 +2407,22 @@ export class Resolver {
         const newWords = splitWords(bufferText);
         const firstSpliceWord = newWords.find(w => w.start >= spliceStart);
         const newWordIndex = firstSpliceWord ? firstSpliceWord.index : 0;
-        // spanEnd MUST be the full bufferText length â the def's alternatives[0]
-        // IS bufferText, so the span and the stored text have to agree. Using
-        // the last WHITESPACE-word's end (the old behaviour) fell short whenever
-        // the rewrite ended in trailing whitespace/newline, leaving the def
-        // span shorter than its own text â the dim/highlight then stopped a
-        // generation-dependent char or two before the real end (the trailing
-        // ã / last chars not highlighted). Whole-buffer transform â spanStart 0,
-        // spanEnd = full length.
-        const newSpanEnd = bufferText.length;
+        // Trim TRAILING whitespace (the editor's empty tail lines) out of the
+        // span. The rewrite is the CONTENT; the blank lines after it are not.
+        // Keeping them inside the span (the old `spanEnd = bufferText.length`)
+        // meant ANY edit in that trailing region — a space, a newline, or just
+        // continuing to type after the result — broke `slice(0,spanEnd) ===
+        // alt[0]` → STALE → pruneStale DROPPED the def → re-resolve re-emitted
+        // it: the "transform span dies on a trailing edit / flickers" bug.
+        // Sentence-cues never had this because they trim to their sentence; this
+        // makes the transform def trim identically. Invariant preserved by
+        // trimming BOTH the span AND the stored alts (below) so they still agree;
+        // the trailing whitespace stays in the BUFFER, just outside the span.
+        // (Trailing whitespace has no glyph — nothing visible stops being
+        // highlighted, which was the concern that motivated full-length.)
+        const bodyText = bufferText.replace(/\s+$/, '');
+        const originalBody = originalText.replace(/\s+$/, '');
+        const newSpanEnd = bodyText.length;
 
         // Chain extension: if a prior transform-blank def's current alt
         // is still verbatim inside the pre-substitute buffer, the user
@@ -2437,7 +2444,8 @@ export class Resolver {
         if (existingChain) {
           const baseAlts = existingChain.def.alternatives
             .slice(existingChain.def.currentIndex);
-          const chainedAlts = [bufferText, originalText, ...baseAlts];
+          // Trimmed bodies (see newSpanEnd above) so alt[0] === slice(0,spanEnd).
+          const chainedAlts = [bodyText, originalBody, ...baseAlts];
           transformDef = {
             originalWord: existingChain.def.originalWord,
             alternatives: chainedAlts,
@@ -2454,9 +2462,12 @@ export class Resolver {
         } else {
           transformDef = {
             originalWord: originalText,
-            // alternatives[0] = the post-substitution buffer (current visible)
-            // alternatives[1] = original full text (cycle Up to revert)
-            alternatives: [bufferText, originalText],
+            // alternatives[0] = the rewrite body (current visible, trailing
+            // whitespace trimmed so it === slice(0,spanEnd)); alternatives[1] =
+            // original body (cycle Up to revert). Trailing whitespace lives in
+            // the buffer OUTSIDE the span, so revert lands the trimmed original
+            // back in front of the same tail lines → the original buffer.
+            alternatives: [bodyText, originalBody],
             currentIndex: 0,
             spanStart: 0,
             spanEnd: newSpanEnd,

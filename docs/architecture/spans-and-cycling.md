@@ -143,6 +143,20 @@ order. First one to return `true` wins.
 Path 4 is where multi-word static-alt spans are created and rotated.
 Path 0 is for blank-fills only (since the April 2026 refactor).
 
+**Bare `_` cycles too** (`stepUnderscore`, the primary discoverable path;
+Ctrl+Alt+arrow is the deprioritized power path). When the caret sits inside
+a **painted note** span, a plain `_` rotates that span forward and CONSUMES
+the keystroke (so it isn't inserted); caret past the span (after a space) or
+an edited-away span → `_` falls through to its normal blank meaning. The gate
+mirrors DimRender's note condition exactly, and it reaches EVERY note-bearing
+span — DynDef cues (word-cues incl. spelling, sentence/contradiction, transform/
+fluid history) via the loop, plus the two non-DynDef states handled after it:
+`SpanFillState` (filled list/script blanks) via `cycleSpanFill`, and
+`SelectorSatelliteState` (settings, cursor-aware: names on the selector, values
+on the satellite) via `cycleSelectorSatellite` — the SAME helpers the arrow
+paths use, just keyed off the caret instead of `hlState`. Full model:
+[`inline-cue-cycle.md`](inline-cue-cycle.md).
+
 ---
 
 ## Path 4 — `cycleStaticAlts` walkthrough
@@ -598,6 +612,17 @@ keystrokes, assert on observable text + state.
 | Word-cue claimed a word inside a managed span (transform/fluid/sentence-cue) → competing DynDef fought the owner on cycle; the per-site index-keyed guard missed spaceless-CJK owners at other indices | `DynDefs.set` centrally rejects (returns `false`) a non-`blankName` def whose span overlaps a managed owner's span — span-overlap test, not word index | `dyn-defs.test.ts` ownership-guard cases + `cjk-span-coordinate.scenarios.test.ts` |
 | Stale span-bound def (clearing is async) dimmed its old range over freshly-typed text → "dim catches the words I'm typing" / "blanks catch future text" | `defSpanLive` guard: only dim/highlight a stored char span while `text.slice(span) === alternatives[currentIndex]`; skip when stale | `dim-render.test.ts` stale-span cases |
 | CJK substitute (char length ≠ whitespace-word count) + host soft-wrap → dim under-covered the tail / drifted past the wrap ("N paragraphs → N-1 misaligned chars") | Compute in content coords, then `buildIndexMap` remap content→painted (`coord-map.ts`); prefer the def char span over the word-derived range when live | `coord-map.test.ts` + `cjk-span-coordinate.scenarios.test.ts` |
+| Whole-buffer transform def span covered the editor's **trailing** blank lines (`spanEnd = bufferText.length`) → a trailing edit (space / newline / continued typing) broke `slice(span)===alt[0]` → STALE → `pruneStale` dropped it → re-resolved: dim/note **flicker** | Trim trailing whitespace off BOTH the span AND the stored alts (`bodyText`/`originalBody`); tail lines stay in the buffer *outside* the span (like sentence-cues trim to their sentence) | `transform-blank.scenarios.test.ts` — "trailing whitespace is trimmed from the span, so a trailing edit does NOT drop the def" |
+| Whole-buffer rewrite silently dropped when the buffer ended in blank lines and the rewrite didn't (translation kept the source language) | `threeWayMerge` paragraph-break rule counted the **trailing** `\n\n` as a content break; now excludes trailing whitespace at end-of-buffer (gated on `atBufEnd`), keeping internal-`\n\n` preservation intact | `word-diff.test.ts` — "rewrite that drops the buffer's TRAILING blank lines still applies" + "internal … collapse is STILL dropped" |
+
+> **Diagnosing span-lifecycle flicker.** `DynDefs.setDebugLog(fn)` wires a
+> debug-gated trace (silent unless `debug-mode: on`) that logs every
+> `slideCharSpans` decision (slid / survived / STALE / out-of-range) and
+> every `pruneStale` **DROP** / **relocate**, plus a per-keystroke
+> correlator from `Navigation.onTextChange` (`defs` / `cursor` / len delta).
+> Wired from both boot sites (`boot-common.ts`, `adapters/cc/v2.1/boot.ts`)
+> via `adapter.log('debug', …)`. The two trailing-whitespace bugs above were
+> both diagnosed from these lines in `/tmp/opencues.log`.
 
 ---
 

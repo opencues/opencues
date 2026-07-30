@@ -21,8 +21,8 @@ process.on('SIGINT', () => { /* no-op — Ctrl+C must not kill the pane */ });
 import { render, useKeyboard, useRenderer } from '@opentui/solid';
 import { createSignal, onMount } from 'solid-js';
 import type { TextareaRenderable } from '@opentui/core';
-import { SyntaxStyle, TextAttributes } from '@opentui/core';
-import { startOpenCues, dispatchOpenCuesKey, resetOpenCuesBufferState } from './bootstrap';
+import { SyntaxStyle, TextAttributes, RGBA } from '@opentui/core';
+import { startOpenCues, dispatchOpenCuesKey, resetOpenCuesBufferState, getCleanBufferText } from './bootstrap';
 
 interface AppOpts {
   initialText: string;
@@ -47,6 +47,11 @@ interface AppOpts {
 function App(props: AppOpts) {
   const renderer = useRenderer();
   const [tip, setTip] = createSignal<string | null>(null);
+  // Inline-cue note — the advisory for the active note-bearing span. Rendered
+  // as an absolute overlay LINE directly under the span (like Claude Code),
+  // NOT docked at the bottom. Cursor-gated by the runtime; { row, col } come
+  // from the caret's visual row + the span's column. null when absent.
+  const [note, setNote] = createSignal<{ text: string; row: number; col: number } | null>(null);
   // Word-wrap the tip into up to 3 rows so long lines (kata coach,
   // completion recap, catalogue notices) GROW the bar instead of
   // clipping at the pane edge. Deterministic manual wrap — OpenTUI
@@ -116,6 +121,13 @@ function App(props: AppOpts) {
       // set, fall back to process.cwd() for in-repo dev runs.
       cwd: process.env.OPENCUES_USER_CWD || process.cwd(),
       onTipChange: (t) => setTip(t),
+      onInlineNoteChange: (n) => {
+        setNote(n);
+        // The note is painted in renderAfter (read outside JSX reactivity), so
+        // a note change won't schedule a frame on its own — request one so the
+        // inserted line appears/clears immediately, not on the next keystroke.
+        try { (renderer as unknown as { requestRender?: () => void }).requestRender?.(); } catch { /* swallow */ }
+      },
     });
     textarea.focus();
 
@@ -147,11 +159,11 @@ function App(props: AppOpts) {
     // (cancel) and re-open with Alt+Shift+↑. If you need a new
     // shortcut, add it AND announce it in the status bar.
     if (evt.ctrl && evt.meta && evt.name === 's') {
-      finish(textarea?.plainText ?? '', 0);
+      finish(getCleanBufferText(textarea?.plainText ?? ''), 0);
       return;
     }
     if (evt.sequence === '\x1b\x13') {  // ESC + Ctrl-S literal — Ctrl+Alt+S byte form
-      finish(textarea?.plainText ?? '', 0);
+      finish(getCleanBufferText(textarea?.plainText ?? ''), 0);
       return;
     }
     if (evt.ctrl && evt.meta && evt.name === 'q') {
@@ -184,7 +196,21 @@ function App(props: AppOpts) {
     }
     // Forward to OpenCues first; only fall through to OpenTUI's own
     // textarea key handling if the runtime didn't consume it.
-    dispatchOpenCuesKey(evt);
+    //
+    // OpenTUI dispatches keypress to global listeners (this useKeyboard) BEFORE
+    // the focused textarea's own insert handler, and SKIPS that handler when a
+    // global listener called preventDefault() (InternalKeyHandler.emitWithPriority
+    // gates the renderable handlers on `!defaultPrevented`). So a consumed key
+    // MUST preventDefault, exactly like the OpenCode band does — otherwise the
+    // textarea ALSO inserts the character the runtime just handled. For `_`-cycle
+    // that stray insert pushes the caret one past the span end, so the NEXT `_`
+    // falls outside the cue span and inserts literally ("cycled then inserted /
+    // can't cycle twice"). The bridge harness can't see this — it calls
+    // bootResult.dispatchKey directly, never through this useKeyboard seam.
+    if (dispatchOpenCuesKey(evt)) {
+      evt.preventDefault?.();
+      evt.stopPropagation?.();
+    }
   });
 
   function finish(text: string, exitCode: number): void {
@@ -258,11 +284,22 @@ function App(props: AppOpts) {
     return (
       <box style={{ flexDirection: 'column', width: '100%', height: '100%', paddingLeft: 1, paddingRight: 1 }}>
         <box style={{ flexGrow: 1, width: '100%' }}>
+          {/* Full-pane input. The inline-cue note gets a REAL blank line
+              directly under the target span via a display-only `\n` the
+              bootstrap injects into the buffer (stripped from reads + submit),
+              so the lines below move down — no occlusion, mid-buffer, and the
+              input stays full-size. The note text itself paints as the absolute
+              overlay below, landing in that freed row. */}
           <textarea
             ref={(t: TextareaRenderable) => { textarea = t; }}
             style={{ width: '100%', height: '100%' }}
             wrapMode="word"
           />
+          {note() != null && (
+            <box style={{ position: 'absolute', top: note()!.row, left: note()!.col, zIndex: 10 }}>
+              <text attributes={TextAttributes.DIM}>{note()!.text}</text>
+            </box>
+          )}
         </box>
         {tip() != null && (
           <box style={{ height: (tipParts()?.head ? 1 : 0) + tipRows().length + 1, width: '100%', flexDirection: 'column' }}>

@@ -7,9 +7,10 @@
 //
 // The host renders dim and highlight via applyDirectives in the bootstrap.
 
-import type { HostAdapter, Range, RenderContext, RenderDirectives, Unsubscribe } from '../adapter';
+import type { HostAdapter, InlineNote, Range, RenderContext, RenderDirectives, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs, WordDef } from '../state/dyn-defs';
+import { inlineNoteText } from '../state/dyn-defs';
 import type { ConfigLoader } from './config-loader';
 import type { SpanFillState } from '../state/span-fill';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
@@ -215,18 +216,13 @@ export class DimRender {
           (!cyclingOff && navigable.has(lc)) ||
           defAtIdx
         ) {
-          // Blank-keyword arm: a word that is ONLY a blank keyword
-          // (not a word-cue match, not a registered tip in cueMap)
-          // shouldn't dim until a `_` is in proximity. Without the
-          // gate, every prose mention of `volume` / `bitcoin` /
-          // `apple` / `weather` etc. paints a phantom dim that
-          // suggests "I'm interactive" \u2014 but the action only fires
-          // when `_` lands adjacent. Words that are ALSO word-cue
-          // entries (spelling or any custom word cue when host-enabled,
-          // any CUES.md ## Tips entry) keep the unconditional dim
-          // because those genuinely offer prose alternatives the
-          // user can cycle \u2014 the dim is the affordance.
-          if (this.shouldGateBlankKeywordDim(lc, w.index, words)) continue;
+          // Blank-keyword arm: a word that is ONLY a blank keyword (`volume`,
+          // `weather`, \u2026) NEVER dims \u2014 dim means "cycle me" or "select me \u2192
+          // statusline", and a bare keyword is neither (removed 2026-07; see
+          // shouldGateBlankKeywordDim). Words that are ALSO word-cue entries
+          // (CUES.md ## Tips, folder/spelling cues) keep the unconditional dim \u2014
+          // those genuinely offer cycleable prose alternatives.
+          if (this.shouldGateBlankKeywordDim(lc)) continue;
           dimRanges.push({ start: w.start, end: w.end });
         }
       }
@@ -339,7 +335,123 @@ export class DimRender {
       }
     }
 
-    if (!highlight && dimRanges.length === 0) return null;
+    // Inline cue note (Error-Lens reveal). When `inline-cues-mode: inline`
+    // and the text cursor sits inside a passive cue's span (a def carrying
+    // `cueTip` — sentence-cue / contradiction cue), surface the advisory as
+    // a display-only inline note instead of the statusline. Cursor-gated on
+    // ctx.cursor directly, so it reveals just by moving the caret into the
+    // span — no navigation/highlight activation required (that's what makes
+    // it feel ambient). Coordinates: def spans live in `text` (logical)
+    // space while ctx.cursor is in ctx.text (painted) space, so map the span
+    // forward to ctx coords before the containment test and hand the note to
+    // the painter already in painted coordinates.
+    let inlineNote: InlineNote | undefined;
+    // The passive-cue span the caret is inside, in LOGICAL coords (mapped to
+    // ctx alongside the other ranges at the end). Used to auto-select the span.
+    let cursorSpanLogical: { start: number; end: number } | null = null;
+    const inlineMode = this.configLoader?.opencuesState.inlineCuesMode ?? 'inline';
+    if (
+      inlineMode === 'inline'
+      // 'inline-note' = host can actually paint the note text (terminal ANSI).
+      // Chrome lacks it (CSS Highlight can't inject text), so the whole inline
+      // path is skipped there and the advisory degrades to the secondary
+      // display — no half-state where the span auto-selects but the note can't
+      // appear. Statusline's suppression is gated on the SAME capability.
+      && this.adapter.capabilities.includes('inline-note')
+      && typeof ctx.cursor === 'number' && ctx.cursor >= 0
+    ) {
+      const toCtx = text !== ctx.text ? buildIndexMap(text, ctx.text) : null;
+      for (const [, def] of this.dynDefs.entries()) {
+        // Note-bearing = a cueTip advisory (sentence-cue / contradiction) OR a
+        // history-bearing LLM blank (transform / fluid). Shared predicate with
+        // Cycling's `_`-step so paint + step never disagree on "has a note".
+        const noteText = inlineNoteText(def);
+        if (noteText === undefined) continue;
+        if (!defSpanLive(def, text)) continue;  // stale span — skip
+        const s = toCtx ? toCtx.start(def.spanStart) : def.spanStart;
+        const e = toCtx ? toCtx.end(def.spanEnd) : def.spanEnd;
+        if (ctx.cursor >= s && ctx.cursor <= e) {
+          inlineNote = { spanStart: s, spanEnd: e, text: noteText };
+          // Auto-select: the note-bearing span the caret is in promotes from dim
+          // to the active highlight — the "you're on this, `_` engages it" state,
+          // for cues AND transform/fluid blanks alike (consistent affordance).
+          cursorSpanLogical = { start: def.spanStart, end: def.spanEnd };
+          break;
+        }
+      }
+
+      // Filled list/script blanks (SpanFillState) + selector-satellite are NOT
+      // DynDefs, so the loop above never sees them. Extend the same note model
+      // to them so every cyclable span behaves consistently. Note text: the
+      // blank's `tip` if it has one (e.g. "system volume"), else its cycle
+      // options; for selector-satellite, the current setting name (its value is
+      // already in the buffer, so this labels WHAT the span controls). No
+      // auto-select here — these carry their own highlight/dim model.
+      const noteFromSpanText = (
+        tip: string | undefined, alts: readonly string[],
+      ): string | undefined => {
+        if (tip) return tip;
+        const sug = alts.slice(1).filter(Boolean);
+        return sug.length > 0 ? sug.slice(0, 3).join(' · ') : undefined;
+      };
+      if (!inlineNote && span) {
+        const sw = words[span.index];
+        const ew = words[span.index + spanLen - 1];
+        const noteText = noteFromSpanText(span.tip, span.alternatives);
+        if (sw && ew && noteText) {
+          const s = toCtx ? toCtx.start(sw.start) : sw.start;
+          const e = toCtx ? toCtx.end(ew.end) : ew.end;
+          if (ctx.cursor >= s && ctx.cursor <= e) inlineNote = { spanStart: s, spanEnd: e, text: noteText };
+        }
+      }
+      // Selector-satellite: the note is CURSOR-POSITION-AWARE, exactly like the
+      // statusline (statusline.ts) — the note is about the part the caret is on.
+      // On the SELECTOR (setting name) → the setting's tip; on the SATELLITE
+      // (value) → the tip for the CURRENT value (`valueTips`). Anchored to the
+      // part the caret is in, not the whole pair.
+      if (!inlineNote && ss) {
+        const def = this.configLoader?.opencuesState.definitions.get(ss.currentSetting);
+        if (def) {
+          const selStart = words[ss.selectorIndex]?.start;
+          const selEnd = words[ssSelEnd]?.end;
+          const satStart = words[ss.satelliteIndex]?.start;
+          const satEnd = words[ssSatEnd]?.end;
+          let ssTip: string | undefined;
+          let ns: number | undefined;
+          let ne: number | undefined;
+          if (selStart !== undefined && selEnd !== undefined && ctx.cursor >= selStart && ctx.cursor <= selEnd) {
+            ssTip = def.tip; ns = selStart; ne = selEnd;
+          } else if (satStart !== undefined && satEnd !== undefined && ctx.cursor >= satStart && ctx.cursor <= satEnd) {
+            ssTip = def.valueTips?.get(ss.currentValue); ns = satStart; ne = satEnd;
+          }
+          if (ssTip && ns !== undefined && ne !== undefined) {
+            inlineNote = {
+              spanStart: toCtx ? toCtx.start(ns) : ns,
+              spanEnd: toCtx ? toCtx.end(ne) : ne,
+              text: ssTip,
+            };
+          }
+        }
+      }
+    }
+
+    // Auto-select: the passive-cue span the caret sits in renders in the
+    // active/selected colour (highlight), not dim — so the flagged region
+    // reads as "you're on it" the moment the caret enters it, without an
+    // explicit navigation keystroke. Drop it from the dim layer and promote to
+    // highlight, but only when nothing else (explicit Ctrl+Alt navigation) has
+    // already claimed the single highlight slot, and only where the host can
+    // paint a highlight (else leave it dimmed — graceful degradation).
+    if (cursorSpanLogical && hasHighlightCap && !highlight) {
+      for (let i = dimRanges.length - 1; i >= 0; i--) {
+        if (dimRanges[i].start === cursorSpanLogical.start && dimRanges[i].end === cursorSpanLogical.end) {
+          dimRanges.splice(i, 1);
+        }
+      }
+      highlight = { start: cursorSpanLogical.start, end: cursorSpanLogical.end };
+    }
+
+    if (!highlight && dimRanges.length === 0 && !inlineNote) return null;
 
     // Coordinate remap: all ranges above were computed in LOGICAL coordinates
     // (`text` === logicalText when we chose it for correct word/def logic), but
@@ -355,9 +467,11 @@ export class DimRender {
       const mapRange = (r: Range): Range => ({ start: toCtx.start(r.start), end: toCtx.end(r.end) });
       const mapped: RenderDirectives = { dimRanges: dimRanges.map(mapRange) };
       if (highlight) mapped.highlight = mapRange(highlight);
+      // inlineNote is already computed in ctx (painted) coords — attach as-is.
+      if (inlineNote) mapped.inlineNote = inlineNote;
       return mapped;
     }
-    return { highlight, dimRanges };
+    return { highlight, dimRanges, ...(inlineNote ? { inlineNote } : {}) };
   }
 
   /**
@@ -370,33 +484,20 @@ export class DimRender {
    * See `docs/architecture/spans-and-cycling.md` § "Dim contract" for
    * the rationale.
    */
-  private shouldGateBlankKeywordDim(
-    lc: string,
-    wordIdx: number,
-    words: readonly { word: string }[],
-  ): boolean {
+  private shouldGateBlankKeywordDim(lc: string): boolean {
     if (!this.configLoader) return false;
-    // Word-cue entries (CUES.md ## Tips, folder cues, spelling) keep
-    // the unconditional dim — their dim IS the offer that the user
-    // can cycle them.
+    // Word-cue entries (CUES.md ## Tips, folder cues, spelling) keep the
+    // unconditional dim — their dim IS the offer that the user can cycle them.
     if (this.configLoader.cueMap.has(lc)) return false;
     const entry = this.configLoader.blanksByWord.get(lc);
     if (!entry) return false;
-    // The word resolved to a blank keyword. Suppress the keyword's dim only
-    // when no `_` is nearby. The keyword window is line-scoped now (per-blank
-    // blankProximity was retired), but this cosmetic gate has no line info in
-    // `words`, so it uses a fixed wide window — matching keyword-window.ts's
-    // `LINE_SCOPE_FALLBACK_PROXIMITY` fallback when no `lineOf` is threaded.
-    const DIM_GATE_WINDOW = 12;
-    const lower = wordIdx - DIM_GATE_WINDOW - 1;
-    const upper = wordIdx + DIM_GATE_WINDOW + 1;
-    const start = Math.max(0, lower);
-    const end = Math.min(words.length - 1, upper);
-    for (let i = start; i <= end; i++) {
-      if (i === wordIdx) continue;
-      const w = words[i]?.word;
-      if (w === '_' || w?.replace(/[​‌]/g, '') === '_') return false;
-    }
+    // A word that is ONLY a blank keyword NEVER dims. Dim carries exactly two
+    // meanings: "cycle this (Ctrl+Alt)" and "select this → info in the
+    // statusline". A bare blank keyword (`volume`, `weather`, `translate`, …) is
+    // neither — it can't be cycled and shows no statusline tip until `_` fires
+    // the blank. Dimming it (previously when a `_` was within ~12 words) was a
+    // THIRD "you could trigger a blank here" meaning that overloaded dim; removed
+    // 2026-07. The `_` still triggers the blank regardless of the dim.
     return true;
   }
 }

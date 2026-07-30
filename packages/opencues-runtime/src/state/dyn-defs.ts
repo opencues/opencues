@@ -52,6 +52,35 @@ function isSentenceCueDef(def: WordDef): boolean {
   return typeof def.blankName === 'string' && def.blankName.startsWith('sentence-cue:');
 }
 
+/**
+ * The inline-note text for a def, or `undefined` if the def has no note. A def
+ * is NOTE-BEARING when it either:
+ *   - carries a `cueTip` (sentence-cue / contradiction — an advisory), OR
+ *   - is a history-bearing LLM blank (transform / fluid) with >1 alternative —
+ *     so its walkable transform history is discoverable + `_`-steppable.
+ *
+ * Shared SINGLE SOURCE OF TRUTH for "what gets a note", used by both DimRender
+ * (paints the note) and Cycling (`_`-cycle) so the two can't drift on which
+ * spans are note-bearing. The blank labels are PLACEHOLDERS — the indicator
+ * text/style is deliberately deferred (see docs/architecture/inline-cue-cycle.md).
+ */
+export function inlineNoteText(def: WordDef): string | undefined {
+  if (def.cueTip) return def.cueTip;
+  if (def.alternatives.length <= 1) return undefined;
+  if (def.blankName === 'transform-blank') return 'transform';
+  if (def.blankName === 'fluid-blank') return 'lookup';
+  // Plain word-cue (no blankName, no cueTip) — this includes spelling. Its note
+  // IS its suggestions: the alternatives (excluding the original at index 0) the
+  // def ALREADY carries from resolve (`resolver.ts` word-cue registration). No
+  // fetch, no separate tip channel — the suggestions ARE the tip. Capped so a
+  // long list doesn't overflow the one-line note.
+  if (!def.blankName) {
+    const suggestions = def.alternatives.slice(1).filter(Boolean);
+    if (suggestions.length > 0) return suggestions.slice(0, 3).join(' · ');
+  }
+  return undefined;
+}
+
 function altWordsOf(def: WordDef): string[] {
   const cache = def as WordDef & { _altWordsCache?: { idx: number; words: string[] } };
   const idx = def.currentIndex;
@@ -71,6 +100,13 @@ function altWordsOf(def: WordDef): string[] {
 
 export class DynDefs {
   private _defs = new Map<number, WordDef>();
+
+  /** Optional debug sink for span-lifecycle tracing (slide / prune / drop /
+   *  relocate). Off unless a host wires it (debug-mode gated at the sink). Used
+   *  to diagnose the "span dies then reattaches" flicker where a def is dropped
+   *  by one keystroke and relocated by the next. */
+  private _debugLog: ((msg: string) => void) | null = null;
+  setDebugLog(fn: ((msg: string) => void) | null): void { this._debugLog = fn; }
 
   get(wordIndex: number): WordDef | undefined {
     return this._defs.get(wordIndex);
@@ -280,7 +316,12 @@ export class DynDefs {
 
     // Pass 3 — apply. Delete first (clears slots for incoming moves),
     // then re-insert moved entries.
-    for (const [idx, { decision }] of decisions) {
+    for (const [idx, { def, decision }] of decisions) {
+      if (decision.kind === 'drop') {
+        this._debugLog?.(`pruneStale: def@${idx} DROPPED (blank=${def.blankName ?? 'none'}, alt[${def.currentIndex}]="${(def.alternatives[def.currentIndex] ?? '').slice(0, 24)}" not found at index and no unique relocate)`);
+      } else if (decision.kind === 'move') {
+        this._debugLog?.(`pruneStale: def@${idx} → relocated to @${decision.to} (blank=${def.blankName ?? 'none'})`);
+      }
       if (decision.kind !== 'keep') this._defs.delete(idx);
     }
     for (const [, { def, decision }] of decisions) {
@@ -419,17 +460,26 @@ export class DynDefs {
     const oldEditEnd = oldText.length - sfx;   // edit range in OLD text: [p, oldEditEnd)
     const d = newText.length - oldText.length;
     if (d === 0 && p >= oldEditEnd) return;    // no-op change
-    for (const def of this._defs.values()) {
+    for (const [idx, def] of this._defs.entries()) {
       if (typeof def.spanStart !== 'number' || typeof def.spanEnd !== 'number') continue;
-      if (def.spanEnd <= def.spanStart || def.spanEnd > oldText.length) continue;
+      if (def.spanEnd <= def.spanStart || def.spanEnd > oldText.length) {
+        this._debugLog?.(`slideCharSpans: def@${idx} [${def.spanStart},${def.spanEnd}] out-of-range vs oldLen=${oldText.length} — NOT slid (will likely prune)`);
+        continue;
+      }
       // Only spans LIVE against the old text may slide - arithmetic must
       // never resurrect an already-stale span.
       const expected = def.alternatives[def.currentIndex];
       if (typeof expected !== 'string'
-        || oldText.slice(def.spanStart, def.spanEnd) !== expected) continue;
+        || oldText.slice(def.spanStart, def.spanEnd) !== expected) {
+        this._debugLog?.(`slideCharSpans: def@${idx} [${def.spanStart},${def.spanEnd}] STALE (buffer slice ≠ alt[${def.currentIndex}]="${(expected ?? '').slice(0, 24)}") — NOT slid`);
+        continue;
+      }
       if (oldEditEnd <= def.spanStart) {
+        this._debugLog?.(`slideCharSpans: def@${idx} [${def.spanStart},${def.spanEnd}]→[${def.spanStart + d},${def.spanEnd + d}] (edit [${p},${oldEditEnd}) before span, d=${d})`);
         def.spanStart += d;
         def.spanEnd += d;
+      } else {
+        this._debugLog?.(`slideCharSpans: def@${idx} [${def.spanStart},${def.spanEnd}] kept (edit [${p},${oldEditEnd}) not before span, d=${d}) — span survives`);
       }
     }
   }

@@ -86,9 +86,19 @@ function isRealDate(year: number, monthIdx: number, day: number): boolean {
  * Resolve which concrete date the writer means by a bare day (+ optional month).
  * Bare "the 24th" → the NEXT 24th from `now` (this month if not past, else next).
  * "August 24th" → the 24th of that August (this year, or next year if already past).
+ * An EXPLICIT year ("24 July 2026") pins the date verbatim — no future-rolling.
+ * Without this, a stated year in the recent past rolled to NEXT year and the
+ * weekday check flagged a CORRECT claim ("Friday, 24 July 2026" verified as
+ * 2027-07-24 = Saturday once `now` passed July 24 — a date-dependent false
+ * positive that only appears after the written date). Explicit year requires a
+ * month (a bare "the 24th, 2026" is too ambiguous to pin).
  * Returns null if the date isn't real (so we never flag a nonexistent date).
  */
-function resolveDate(day: number, monthIdx: number | null, now: Date): { year: number; monthIdx: number; day: number } | null {
+function resolveDate(day: number, monthIdx: number | null, now: Date, explicitYear?: number | null): { year: number; monthIdx: number; day: number } | null {
+  if (typeof explicitYear === 'number' && explicitYear >= 1900 && explicitYear <= 2200) {
+    if (monthIdx === null) return null;
+    return isRealDate(explicitYear, monthIdx, day) ? { year: explicitYear, monthIdx, day } : null;
+  }
   const ty = now.getFullYear(), tm = now.getMonth(), td = now.getDate();
   let year: number, month: number;
   if (monthIdx !== null) {
@@ -99,6 +109,13 @@ function resolveDate(day: number, monthIdx: number | null, now: Date): { year: n
     if (day < td) { month += 1; if (month > 11) { month = 0; year += 1; } }  // this month's day passed → next month
   }
   return isRealDate(year, month, day) ? { year, monthIdx: month, day } : null;
+}
+
+/** An explicit 4-digit year in a date phrase (grounded text — a verbatim quote
+ *  or the token right after the day in the word-walk). Null when absent. */
+function explicitYearIn(s: string): number | null {
+  const m = s.match(/\b(19\d{2}|20\d{2})\b/);
+  return m ? parseInt(m[1], 10) : null;
 }
 
 /** Format a resolved Y/M/D as an ISO date (`YYYY-MM-DD`) — GOV.UK's key shape. */
@@ -166,7 +183,19 @@ export const weekdayDateCheck: ContradictionCheck = (words, env) => {
       const mi = monthIndex(words[j]);
       const day = parseDay(words[j]);
       if (day !== null) {
-        const resolved = resolveDate(day, monthIdx, env.now);
+        // Day-first (UK) order: the month may FOLLOW the day ("Friday, 24 July
+        // 2026"). Without this the walk resolved "24" bare (next 24th from
+        // now) and mis-flagged the weekday for a fully-specified date.
+        let mIdx = monthIdx;
+        let k = j;
+        if (mIdx === null) {
+          const mAfter = monthIndex(words[j + 1] ?? '');
+          if (mAfter !== null) { mIdx = mAfter; k = j + 1; }
+        }
+        // An explicit 4-digit year right after the date phrase pins the
+        // resolution verbatim — no future-rolling (see resolveDate).
+        const yearAhead = explicitYearIn(words[k + 1] ?? '');
+        const resolved = resolveDate(day, mIdx, env.now, yearAhead);
         if (!resolved) break;
         const actual = weekdayOf(resolved.year, resolved.monthIdx, resolved.day);
         if (actual !== wd) {
@@ -364,7 +393,9 @@ export function verifyClaim(claim: Claim, sentence: string, now: Date, ctx?: Ver
       const wd = weekdayIndex(claim.weekday);
       if (wd === null || !(claim.day >= 1 && claim.day <= 31)) return null;
       const monthIdx = claim.month ? monthIndex(claim.month) : null;
-      const resolved = resolveDate(claim.day, monthIdx, now);
+      // Explicit year read from the GROUNDED quote (already verified as a
+      // verbatim sentence substring) — pins the date instead of future-rolling.
+      const resolved = resolveDate(claim.day, monthIdx, now, explicitYearIn(claim.quote));
       if (!resolved) return null;
       const actual = weekdayOf(resolved.year, resolved.monthIdx, resolved.day);
       if (actual === wd) return null;

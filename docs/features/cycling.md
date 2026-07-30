@@ -6,6 +6,16 @@ last_updated: 2026-07-04
 
 Word cycling replaces the focused word with an alternative. It is the **vertical** axis of the system — once a word is selected via navigation (feature 1), Up/Down changes what that word is.
 
+> **Bare `_` is the primary, discoverable way to cycle** (July 2026). When the
+> caret sits inside a gray span whose note is painted, a plain `_` rotates that
+> span forward and is consumed (not inserted) — no modifier chord to discover.
+> Ctrl+Alt+↑/↓ (below) is the deprioritized **power path**: it's how you step
+> **backward** (`_` only wraps forward) or cycle without a painted note. `_`-cycle
+> reaches every note-bearing span (word-cues incl. spelling, sentence/contradiction
+> cues, transform/fluid history, filled list/script blanks, and cursor-aware
+> selector-satellite) through the SAME priority handlers below, keyed off the caret
+> instead of `HighlightState`. Full model: [Inline-Cue Cycle](../architecture/inline-cue-cycle.md).
+
 ---
 
 ## How It Works

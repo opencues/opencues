@@ -23,10 +23,10 @@ Implemented by the `Navigation` module (`packages/opencues-runtime/src/modules/n
 
 `computeTargets()` builds the candidate list, then layers span and selector/satellite handling on top:
 
-- **cueMap match** — the word (lowercased) is a key in the config loader's `navigableWords` set (built from every loaded `CUE.md`/`BLANK.md`).
-- **DynDef entry** — `DynDefs.get(wordIndex)` returns a def for that position (LLM alternatives, blank-fill substitution, selector/satellite, span fill — anything currently tracked as cycleable).
+- **cueMap match** — the word (lowercased) is a **word-cue** key (from `CUE.md` sources). A bare **blank keyword** (`volume`, `weather`, … from `BLANK.md`) is deliberately **NOT** a target: it's a pure `_` trigger, not navigable, and shows no tip until its `_` fires and registers a DynDef. (Nav reads `cueMap`, not the wider `navigableWords` = cueMap ∪ blank-keywords — using the wide set silently made bare keywords navigable, which broke the "gray/nav/tip only for real affordances" rule.)
+- **DynDef entry** — `DynDefs.get(wordIndex)` returns a def for that position (LLM alternatives, blank-fill substitution, selector/satellite, span fill — anything currently tracked as cycleable). This is how a blank becomes navigable: only *after* it's summoned and filled.
 - If **no word matches either** and cueMap is genuinely loaded (non-empty), the result is **silence** — an empty target list, not a fallback to "every word." No cue source has an opinion, so nothing is navigable.
-- If cueMap is missing/empty **and** there are no DynDefs (fresh install, or a test scaffold with no `ConfigLoader` wired), the whole word list becomes navigable so the system isn't dead out of the box.
+- The out-of-the-box fallback (whole word list navigable) fires only when the ENTIRE config is empty — `navigableWords` (cueMap ∪ blank-keywords) has no entries **and** there are no DynDefs (fresh install, or a test scaffold with no `ConfigLoader`). Keying the fallback on cueMap alone would wrongly make every word navigable whenever a user had blanks but no word-cues.
 
 On top of that base set:
 - **Multi-word spans** — only the span's origin index is navigable; inner positions ("Bezos" in "Jeff Bezos") are dropped so a multi-word value counts as one nav stop.

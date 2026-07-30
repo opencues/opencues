@@ -28,6 +28,18 @@ a sentence to a verifier; the verifier's math is what fires (or doesn't).
 This is the same "model classifies, runtime computes" discipline the rest
 of the system uses.
 
+> **Date resolution is year-aware** (July 2026). `resolveDate` future-rolls a
+> bare day/month to its NEXT occurrence ("see you Friday the 24th" means the
+> coming 24th) — but a stated 4-digit year **pins the date verbatim**. Without
+> that, "Friday, 24 July 2026" (correct) resolved to 2027-07-24 (a Saturday)
+> once `now` passed the 24th, and the cue flagged a true statement — a
+> date-dependent false positive that only appears *after* the written date.
+> The year is read **deterministically from grounded text** (the claim's
+> verbatim quote on the LLM path; the token after the date phrase in the
+> Tier-0 word-walk — which also parses day-first UK order, "24 July 2026"),
+> never from a new model-emitted field. Pinned in `checks.test.ts` +
+> agentic scenario 117 (negative control).
+
 ## The tiers — one scalar, data-gated activation
 
 `contradiction-cues-mode: on` (off by default) enables the source. The

@@ -90,6 +90,10 @@ export const GEMINI_V041_CAPABILITIES: readonly Capability[] = [
   'render-override',
   'dim-ranges',
   'highlight-range',
+  // Ink renders each decorated line as a single <Text>, which respects an
+  // embedded `\n` — so the inline note splices in as a real extra row that
+  // pushes lines below it down (same applyDirectives path as Claude Code).
+  'inline-note',
 ];
 
 export class GeminiV041Adapter implements HostAdapter {

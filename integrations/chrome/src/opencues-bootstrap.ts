@@ -30,7 +30,7 @@ import { parseSingleCueMd, listProviders, buildCalendarContextSnapshot } from '@
 import { ChromeUserBlank } from './user-blank-loader';
 import { createBlankInvoke } from '@opencues/runtime/dist/src/blanks';
 import { wordDiff } from '@opencues/runtime/dist/src/modules/word-diff';
-import { applyDirectives, clearDirectives } from './runtime-renderer';
+import { applyDirectives, clearDirectives, clearInlineNote } from './runtime-renderer';
 import { applyStatuslinePayload } from './runtime-statusbar';
 import { WebSpeechAdapter } from './adapters/web-speech-adapter';
 import { FetchHttpAdapter } from './adapters/fetch-http-adapter';
@@ -252,10 +252,48 @@ const sourceReclassifier = createSourceReclassifier();
  *  — focusin can fire spuriously during typing in some sites and we
  *  don't want to clear state on those.
  */
+/** True between a blur (suspendTarget) and the next focus. While suspended the
+ *  buffer's per-buffer state (DynDefs = cue spans) is PRESERVED — we just hid
+ *  the paint — so refocusing the SAME element reuses the result. The guard
+ *  keeps a stray render from painting a blurred field. */
+let _suspended = false;
+
+/** Focus left the buffer but we are NOT dropping its state. Hide the paint and
+ *  mark suspended; the DynDefs survive so a refocus of the same element repaints
+ *  the already-computed spans instead of re-resolving. A focus change to a
+ *  DIFFERENT element still resets + re-resolves via publishTarget. */
+export function suspendTarget(): void {
+  _suspended = true;
+  clearDirectives();
+}
+
 export function publishTarget(el: HTMLElement | null): void {
-  if (el === currentTarget) return;
+  if (el === currentTarget) {
+    // Same buffer refocused after a suspend — its DynDefs (cue spans) were
+    // preserved, so un-suspend and repaint the existing result. No reset, no
+    // re-resolve: reuse what we already computed (no extra LLM calls).
+    if (el) { _suspended = false; runtimeRender(); }
+    return;
+  }
+  _suspended = false;
   currentTarget = el;
   if (bootResult) bootResult.resetBufferState();
+  // Genuine change to a DIFFERENT (or first) buffer. resetBufferState() wiped
+  // the DynDefs and the resolver only runs on a text change, so re-feed the
+  // buffer to re-register cues immediately (also makes a pre-existing draft
+  // show cues without a keystroke). resetBufferState() zeroed the resolver's
+  // _lastInputText, so the identical text isn't deduped by `text === prev`.
+  // The blank `_`-trigger only fires on a buffer that ENDS with `_`, so `_`-
+  // free prose (every passive cue) re-registers with no side effect. Normal
+  // inputs (no paint surface) + empty buffers skip.
+  if (el && bootResult && !isNormalInput(el)) {
+    try {
+      const text = walkPlainText(el).text;
+      if (text.trim().length > 0) {
+        notifyOpenCuesTextChange(text, readCursorOffset(), 'user');
+      }
+    } catch { /* DOM not readable this tick — next text change resolves */ }
+  }
 }
 
 /** Called by content.ts when a `beforeinput` event signals the focused
@@ -717,6 +755,7 @@ type QuillInstance = {
   setText: (text: string, source?: string) => unknown;
   setContents?: (delta: unknown, source?: string) => unknown;
   getLength?: () => number;
+  getSelection?: (focus?: boolean) => { index: number; length: number } | null;
   root?: HTMLElement;
   clipboard?: { dangerouslyPasteHTML?: (html: string, source?: string) => unknown };
 };
@@ -876,19 +915,49 @@ export function cacheValidCursor(target: HTMLElement, offset: number): void {
   if (offset >= 0) _lastValidCursor.set(target, offset);
 }
 
+// Whether the LAST readCursorOffset returned a fresh real read (true) or a
+// fabricated fallback because the caret couldn't be mapped (false). runtimeRender
+// reads this immediately after to decide whether the cursor-gated note +
+// auto-select can be trusted — on a fully-controlled editor that exposes no
+// browser-readable caret (LinkedIn Posts) every read is a fallback, so those are
+// suppressed rather than painted at the bogus offset. Default true keeps every
+// well-behaved editor unchanged.
+let _lastCursorReliable = true;
+export function lastCursorReliable(): boolean { return _lastCursorReliable; }
+
 function readCursorOffset(): number {
   const target = currentTarget;
-  if (!target) return 0;
-  if (isNormalInput(target)) return target.selectionStart ?? 0;
+  if (!target) { _lastCursorReliable = false; return 0; }
+  if (isNormalInput(target)) { _lastCursorReliable = true; return target.selectionStart ?? 0; }
   const sel = window.getSelection();
   if (sel && sel.rangeCount > 0) {
     const range = sel.getRangeAt(0);
     if (target.contains(range.startContainer)) {
       const offset = plainOffsetOfPosition(target, range.startContainer, range.startOffset);
       _lastValidCursor.set(target, offset);
+      _lastCursorReliable = true;
       return offset;
     }
+    // Selection landed OUTSIDE our target. For Quill (LinkedIn's private bundle
+    // parks window.getSelection() outside .ql-editor between events) read Quill's
+    // OWN selection model — authoritative and real-time, unlike the lagging
+    // cache. Its index counts each char incl. `\n`, matching walkPlainText's
+    // plain offset for prose. On LinkedIn Posts the instance is ALSO hidden
+    // (`no __quill`, no global `Quill`) so this fails and we fall through to the
+    // unreliable fallback, which the note-suppression gate then honours.
+    if (isQuillEditor(target)) {
+      try {
+        const qs = findQuillInstance(target)?.getSelection?.();
+        if (qs && typeof qs.index === 'number' && qs.index >= 0) {
+          _lastValidCursor.set(target, qs.index);
+          _lastCursorReliable = true;
+          return qs.index;
+        }
+      } catch { /* fall through to the fabricated fallback */ }
+    }
   }
+  // No fresh read was possible — the returned value is a fabricated fallback.
+  _lastCursorReliable = false;
   return _lastValidCursor.get(target) ?? 0;
 }
 
@@ -3208,6 +3277,9 @@ export function notifyOpenCuesCursorChange(
  * change.
  */
 function runtimeRender(): void {
+  // Suspended = focus left this buffer but we kept its state. Don't repaint a
+  // blurred field; the next focus un-suspends and repaints.
+  if (_suspended) return;
   const target = currentTarget;
   if (!target || !bootResult) return;
   // Normal `<input>` / `<textarea>` can't host CSS Custom Highlights —
@@ -3215,11 +3287,28 @@ function runtimeRender(): void {
   // not from DOM text nodes Range can address. So we skip every render
   // tick. Cues are computed by the runtime but never painted; blank
   // fills still land via writeNormalInputValue.
-  if (isNormalInput(target)) return;
+  if (isNormalInput(target)) { clearInlineNote(); return; }
   const text = walkPlainText(target).text;
   const cursor = readCursorOffset();
   const directives = bootResult.collectRenderDirectives(text, cursor);
-  applyDirectives(target, directives);
+  // If the caret couldn't be read (e.g. LinkedIn Posts / a Quill that parks the
+  // browser selection outside the editor), readCursorOffset returns a fabricated
+  // 0 — so the CURSOR-GATED inline note + auto-select highlight would fire at a
+  // bogus position (note showing regardless of caret). Strip those; the always-on
+  // dim still marks the flagged span. Better absent than wrong. Reliable editors
+  // are unaffected (their reads flip this true).
+  if (!lastCursorReliable()) {
+    for (const d of directives) {
+      (d as { inlineNote?: unknown }).inlineNote = undefined;
+      (d as { highlight?: unknown }).highlight = undefined;
+    }
+  }
+  // Push-down mode for the inline note (make room so it doesn't occlude the
+  // line below). Plain contenteditables host a real spacer NODE; managed
+  // editors (Lexical/PM/Quill) revert external nodes AND we don't own their
+  // send button, so there we nudge the containing block's bottom MARGIN via
+  // inline style instead (layout only — can't ship, no undo entry).
+  applyDirectives(target, directives, isManagedEditor(target) ? 'margin' : 'node');
 }
 
 /**

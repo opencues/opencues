@@ -183,13 +183,14 @@ describe('DimRender + render pipeline (integration)', () => {
     expect(out?.dimRanges).toEqual([]);
   });
 
-  // Blank-keyword arm gating — June 2026 UX change.
-  // A blank keyword on its own is an *action trigger* that requires `_`
-  // adjacency to fire. Without `_`, dimming the keyword is noise — it
-  // implies interactivity when nothing will happen. The gate suppresses
-  // the dim until `_` lands within `blankProximity`. Word-cue entries
-  // (concise/plain/tone/spelling, any CUES.md ## Tips) bypass the
-  // gate because their dim IS the offer of prose alternatives.
+  // Blank-keyword dim — REMOVED July 2026. Dim carries exactly two meanings:
+  // "cycle me (Ctrl+Alt)" and "select me → statusline info". A bare blank
+  // keyword (`volume`, `weather`, …) is neither — it can't be cycled and shows
+  // no statusline tip until `_` fires the blank — so dimming it (previously when
+  // a `_` was within proximity) was a third "you could trigger a blank here"
+  // meaning that overloaded dim. A blank-keyword-only word now NEVER dims, `_`
+  // adjacent or not. Word-cue entries (CUES.md ## Tips, folder/spelling cues)
+  // still dim — their dim IS the cycle offer.
   it('blank keyword without `_` adjacent does NOT dim', async () => {
     const { ConfigLoader } = await import('./config-loader');
     const VOLUME_BLANK = `---
@@ -216,7 +217,7 @@ blankScript: ./vol.sh
     expect(out?.dimRanges ?? []).toEqual([]);
   });
 
-  it('blank keyword WITH `_` within proximity DOES dim', async () => {
+  it('blank keyword WITH `_` adjacent STILL does NOT dim (source-3 dim removed)', async () => {
     const { ConfigLoader } = await import('./config-loader');
     const VOLUME_BLANK = `---
 name: volume
@@ -238,8 +239,10 @@ blankScript: ./vol.sh
     const dynDefs = new DynDefs();
     const dim = new DimRender(adapter, hlState, dynDefs, loader);
     const out = dim.compute({ text: 'volume is _', cursor: 0, externalHighlights: [] });
-    // _ is at word 2, volume is at word 0; proximity 3 covers it → dim fires.
-    expect(out?.dimRanges?.some(r => r.start === 0 && r.end === 6)).toBe(true);
+    // A bare blank keyword no longer dims even with `_` adjacent — dim is
+    // reserved for cycle/statusline affordances. The blank still fires on `_`.
+    // (No dim at all → compute returns null, hence the `?? []`.)
+    expect((out?.dimRanges ?? []).some(r => r.start === 0 && r.end === 6)).toBe(false);
   });
 
   it('dims words that are only navigable via DynDefs (LLM-resolved)', async () => {
@@ -567,5 +570,379 @@ blankScript: ./vol.sh
     const directives = adapter.fireRender();
     expect(directives.length).toBe(1);
     expect(directives[0].highlight).toEqual({ start: 8, end: 13 }); // "three"
+  });
+});
+
+describe('DimRender inline cue notes (inline-cues-mode)', () => {
+  // A passive cue (sentence-cue / contradiction cue) registers a def with a
+  // `cueTip` advisory. In `inline` mode (default) DimRender surfaces that
+  // advisory as an InlineNote whenever the caret sits inside the def's span —
+  // the Error-Lens reveal. It's display-only and cursor-gated.
+  const BUFFER = 'we meet on saturday';
+  function seedContradictionDef(dynDefs: DynDefs) {
+    // Span covers "saturday" [11,19). cueTip is the passive advisory.
+    dynDefs.set(2, {
+      originalWord: 'saturday',
+      alternatives: ['saturday'], // currentIndex 0 → passive, buffer unchanged
+      currentIndex: 0,
+      spanStart: 11,
+      spanEnd: 19,
+      blankName: 'sentence-cue:contradiction-weekday-date',
+      cueTip: "⚠ the 19th is a Friday, not Saturday",
+    });
+  }
+
+  it('emits an inline note AND auto-selects the span (highlight) when the cursor is inside it', () => {
+    const { dynDefs, dimRender } = setup(BUFFER);
+    seedContradictionDef(dynDefs);
+    // caret at offset 14 — inside "saturday" [11,19)
+    const out = dimRender.compute({ text: BUFFER, cursor: 14, externalHighlights: [] });
+    expect(out?.inlineNote).toEqual({
+      spanStart: 11,
+      spanEnd: 19,
+      text: "⚠ the 19th is a Friday, not Saturday",
+    });
+    // Auto-select: the span the caret is in renders in the selected/highlight
+    // colour, not dim.
+    expect(out?.highlight).toEqual({ start: 11, end: 19 });
+    expect(out?.dimRanges ?? []).not.toContainEqual({ start: 11, end: 19 });
+  });
+
+  it('aligns the note in VISUAL cells past double-width CJK, not code-points', () => {
+    // "日本語 formal" — the span "formal" is at code-point 4, but the three CJK
+    // glyphs are double-width (6 cells) + a space = 7 cells. The note pad must be
+    // 5 (col 7 − connector 2), NOT 2 (code-point col 4 − 2). Regression for the
+    // "spans misalign on Japanese" report.
+    const buf = '日本語 formal';
+    const { dynDefs, dimRender } = setup(buf);
+    dynDefs.set(1, {
+      originalWord: 'formal',
+      alternatives: ['formal', 'proper'],
+      currentIndex: 0,
+      spanStart: 4,
+      spanEnd: 10,
+      blankName: 'sentence-cue:more-formal',
+      cueTip: 'more-formal',
+    });
+    const directives = dimRender.compute({ text: buf, cursor: 5, externalHighlights: [] });
+    const visible = applyDirectives(buf, directives).replace(/\x1b\[[0-9;]*m/g, '');
+    expect(visible).toContain('formal\n     ↳ more-formal'); // 5 spaces (cells)
+    expect(visible).not.toContain('formal\n  ↳'); // NOT the 2-space code-point pad
+  });
+
+  it('auto-selects a transform span when the caret is inside, and CLEARS when it leaves', () => {
+    // The selection is caret-in-span auto-select, NOT a persistent nav lock —
+    // so it shows while the caret is on the transform and vanishes the moment it
+    // moves off (the "selection didn't clear when I left" fix).
+    const buf = 'ありがとう bye'; // transform span [0,5], ' bye' after
+    const { dynDefs, dimRender } = setup(buf);
+    dynDefs.set(0, {
+      originalWord: 'thanks',
+      alternatives: ['ありがとう', 'thanks'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 5,
+      blankName: 'transform-blank',
+    });
+    // caret inside [0,5] → the span auto-selects (highlight).
+    const inSpan = dimRender.compute({ text: buf, cursor: 2, externalHighlights: [] });
+    expect(inSpan?.highlight).toEqual({ start: 0, end: 5 });
+    // caret outside (in ' bye') → NO highlight (selection cleared).
+    const outSpan = dimRender.compute({ text: buf, cursor: 8, externalHighlights: [] });
+    expect(outSpan?.highlight).toBeUndefined();
+  });
+
+  it('emits an inline note for a history-bearing transform-blank def (no cueTip)', () => {
+    // A transform/fluid blank has no cueTip; its note comes from the shared
+    // inlineNoteText predicate (history-bearing LLM blank with >1 alternative).
+    const buf = '日本語です';
+    const { dynDefs, dimRender } = setup(buf);
+    dynDefs.set(0, {
+      originalWord: 'thanks',
+      alternatives: [buf, 'thanks a lot'], // result + one history step
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: buf.length,
+      blankName: 'transform-blank',
+    });
+    const out = dimRender.compute({ text: buf, cursor: 2, externalHighlights: [] });
+    expect(out?.inlineNote?.text).toBe('transform');
+    expect(out?.inlineNote?.spanStart).toBe(0);
+  });
+
+  it('emits the note at the span boundary (cursor == spanEnd, inclusive)', () => {
+    const { dynDefs, dimRender } = setup(BUFFER);
+    seedContradictionDef(dynDefs);
+    const out = dimRender.compute({ text: BUFFER, cursor: 19, externalHighlights: [] });
+    expect(out?.inlineNote?.text).toBe("⚠ the 19th is a Friday, not Saturday");
+  });
+
+  it('does NOT emit the note when the cursor is outside the span', () => {
+    const { dynDefs, dimRender } = setup(BUFFER);
+    seedContradictionDef(dynDefs);
+    // caret at offset 2 — well before the span
+    const out = dimRender.compute({ text: BUFFER, cursor: 2, externalHighlights: [] });
+    expect(out?.inlineNote).toBeUndefined();
+  });
+
+  it('emits a note for a plain word-cue = its suggestions (the alternatives it carries)', () => {
+    const { dynDefs, dimRender } = setup('the attorney filed');
+    dynDefs.set(1, {
+      originalWord: 'attorney',
+      alternatives: ['attorney', 'lawyer', 'counsel'],
+      currentIndex: 0,
+      spanStart: 4,
+      spanEnd: 12,
+    });
+    const out = dimRender.compute({ text: 'the attorney filed', cursor: 6, externalHighlights: [] });
+    // A word-cue (incl. spelling) has no cueTip, but its note IS its suggestions
+    // (alternatives excluding the original) — no separate tip channel, no fetch.
+    expect(out?.inlineNote?.text).toBe('lawyer · counsel');
+  });
+
+  it('does NOT emit a note for a single-alternative def (nothing to suggest)', () => {
+    const { dynDefs, dimRender } = setup('the attorney filed');
+    dynDefs.set(1, {
+      originalWord: 'attorney',
+      alternatives: ['attorney'], // only the original → no suggestions
+      currentIndex: 0,
+      spanStart: 4,
+      spanEnd: 12,
+    });
+    const out = dimRender.compute({ text: 'the attorney filed', cursor: 6, externalHighlights: [] });
+    expect(out?.inlineNote).toBeUndefined();
+  });
+
+  it('SpanFillState (filled list/script blank) emits a note = its tip', async () => {
+    const { SpanFillState } = await import('../state/span-fill');
+    const adapter = new MockAdapter();
+    const buf = 'set volume 40%'; // set(0) volume(1) 40%(2)[11,14)
+    adapter.pushText(buf);
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const spanFill = new SpanFillState();
+    spanFill.set({ index: 2, alternatives: ['40%', '60%', '80%'], currentAltIndex: 0, spanLength: 1, tip: 'system volume' }, buf);
+    const dim = new DimRender(adapter, hlState, dynDefs, undefined, spanFill);
+    const out = dim.compute({ text: buf, cursor: 12, externalHighlights: [] }); // inside "40%"
+    expect(out?.inlineNote?.text).toBe('system volume');
+  });
+
+  it('SpanFillState with NO tip emits a note = its cycle options', async () => {
+    const { SpanFillState } = await import('../state/span-fill');
+    const adapter = new MockAdapter();
+    const buf = 'set volume 40%';
+    adapter.pushText(buf);
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const spanFill = new SpanFillState();
+    spanFill.set({ index: 2, alternatives: ['40%', '60%', '80%'], currentAltIndex: 0, spanLength: 1 }, buf); // no tip
+    const dim = new DimRender(adapter, hlState, dynDefs, undefined, spanFill);
+    const out = dim.compute({ text: buf, cursor: 12, externalHighlights: [] });
+    expect(out?.inlineNote?.text).toBe('60% · 80%'); // alternatives[1..]
+  });
+
+  it('SelectorSatelliteState note is cursor-aware: setting tip on the selector, value tip on the satellite', async () => {
+    const { ConfigLoader } = await import('./config-loader');
+    const { SelectorSatelliteState } = await import('../state/selector-satellite');
+    // An OPENCUES.md file is required so definitions come from the registry
+    // (a bare adapter falls back to DEFAULT_OPENCUES_STATE with an empty map).
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/proj/.cues/OPENCUES.md': '---\nvoice-mode: off\n---\n' },
+    });
+    adapter.pushText('x');
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/.cues/OPENCUES.md' });
+    await loader.load();
+    // Pick any registry setting that has a tip (don't hardcode a scalar name).
+    const entry = [...loader.opencuesState.definitions.entries()].find(([, d]) => !!d.tip);
+    expect(entry).toBeDefined();
+    const [settingName, def] = entry!;
+    const value = def.valueOrder[0] ?? 'on';
+    const buf = `${settingName} ${value}`; // selector(0)[0,len) value(1)
+    adapter.pushText(buf);
+    const selEnd = settingName.length; // one-word setting name (hyphens keep it whole)
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const ss = new SelectorSatelliteState();
+    ss.set({ selectorIndex: 0, selectorLength: 1, satelliteIndex: 1, satelliteLength: 1, currentSetting: settingName, currentValue: value }, buf);
+    const dim = new DimRender(adapter, hlState, dynDefs, loader, undefined, ss);
+    // Caret on the SELECTOR (the setting name) → note = the setting's own tip,
+    // anchored to the selector part.
+    const onSel = dim.compute({ text: buf, cursor: 1, externalHighlights: [] });
+    expect(onSel?.inlineNote?.text).toBe(def.tip);
+    expect(onSel?.inlineNote?.spanStart).toBe(0);
+    expect(onSel?.inlineNote?.spanEnd).toBe(selEnd);
+    // Caret on the SATELLITE (the value) → note = the tip for THAT value (if the
+    // registry defines one), anchored to the satellite part.
+    const onSat = dim.compute({ text: buf, cursor: selEnd + 2, externalHighlights: [] });
+    const valueTip = def.valueTips.get(value);
+    if (valueTip) {
+      expect(onSat?.inlineNote?.text).toBe(valueTip);
+      expect(onSat?.inlineNote?.spanStart).toBe(selEnd + 1);
+    }
+  });
+
+  it('does NOT emit when the stored span is stale (defSpanLive guard)', () => {
+    const { dynDefs, dimRender } = setup(BUFFER);
+    seedContradictionDef(dynDefs);
+    // The buffer no longer has "saturday" at [11,19) — user edited it.
+    const edited = 'we meet on sunday!!';
+    const out = dimRender.compute({ text: edited, cursor: 14, externalHighlights: [] });
+    expect(out?.inlineNote).toBeUndefined();
+  });
+
+  it('secondary mode suppresses the inline note', async () => {
+    const { ConfigLoader } = await import('./config-loader');
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/proj/.cues/OPENCUES.md': '---\ninline-cues-mode: secondary\n---\n' },
+    });
+    adapter.pushText(BUFFER);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/.cues/OPENCUES.md' });
+    await loader.load();
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    seedContradictionDef(dynDefs);
+    const dim = new DimRender(adapter, hlState, dynDefs, loader);
+    const out = dim.compute({ text: BUFFER, cursor: 14, externalHighlights: [] });
+    expect(out?.inlineNote).toBeUndefined();
+  });
+
+  it('the terminal painter renders the note as a dim pill on the line under the span, indented to its column', () => {
+    const { dynDefs, dimRender } = setup(BUFFER);
+    seedContradictionDef(dynDefs);
+    const directives = dimRender.compute({ text: BUFFER, cursor: 14, externalHighlights: [] });
+    const painted = applyDirectives(BUFFER, directives);
+    // Display-only: the buffer text (minus the ANSI inserted into it) reads
+    // unchanged at the front; the note is a dim bracketed pill on a new line,
+    // indented to the span's column (11 = start of "saturday").
+    const visible = painted.replace(/\x1b\[[0-9;]*m/g, '');
+    expect(visible.startsWith(BUFFER)).toBe(true);
+    // Message aligns under the span (col 11); "↳ " (2 cols) hangs in the margin,
+    // so the line is padded to col-2 = 9 before the connector.
+    expect(visible).toContain('\n' + ' '.repeat(9) + '↳ ⚠ - the 19th is a Friday, not Saturday');
+    expect(painted).toContain('\x1b[2m↳ ⚠ - the 19th is a Friday, not Saturday\x1b[22m');
+  });
+
+  it('no leading indent when the span starts at column 0 (even with a first-line indent)', () => {
+    const buf0 = 'saturday is soon';
+    const { dynDefs, dimRender } = setup(buf0);
+    dynDefs.set(0, {
+      originalWord: 'saturday',
+      alternatives: ['saturday'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 8,
+      blankName: 'sentence-cue:contradiction-weekday-date',
+      cueTip: '⚠ the 19th is a Friday',
+    });
+    const directives = dimRender.compute({ text: buf0, cursor: 3, externalHighlights: [] });
+    // col 0 + promptPad 2 - "↳ "(2) = 0 → arrow sits at the left edge, no indent.
+    const visible = applyDirectives(buf0, directives, 2).replace(/\x1b\[[0-9;]*m/g, '');
+    expect(visible).toContain('\n↳ ⚠ - the 19th is a Friday');
+    expect(visible).not.toContain('\n ↳'); // no leading space before the arrow
+  });
+
+  it('adds the host first-line indent when the span is on line 1 (CC prompt)', () => {
+    const { dynDefs, dimRender } = setup(BUFFER);
+    seedContradictionDef(dynDefs);
+    const directives = dimRender.compute({ text: BUFFER, cursor: 14, externalHighlights: [] });
+    // firstLineIndent = 4 → note pad = (col-2) + 4 = 9 + 4 = 13. The span is on
+    // line 1 (lineStart 0), so the prompt offset applies.
+    const visible = applyDirectives(BUFFER, directives, 4).replace(/\x1b\[[0-9;]*m/g, '');
+    expect(visible).toContain('\n' + ' '.repeat(13) + '↳ ⚠ - the 19th is a Friday, not Saturday');
+  });
+
+  it('does NOT add the first-line indent when the span is on a later line', () => {
+    const multiline = 'first line here\nmeet saturday now';
+    const { dynDefs, dimRender } = setup(multiline);
+    // "saturday" on line 2: 'first line here\n' = 16 chars, then 'meet ' = 5 → span [21,29].
+    dynDefs.set(3, {
+      originalWord: 'saturday',
+      alternatives: ['saturday'],
+      currentIndex: 0,
+      spanStart: 21,
+      spanEnd: 29,
+      blankName: 'sentence-cue:contradiction-weekday-date',
+      cueTip: '⚠ the 19th is a Friday',
+    });
+    const directives = dimRender.compute({ text: multiline, cursor: 24, externalHighlights: [] });
+    // Even with a large firstLineIndent, a line-2 span gets NO prompt pad:
+    // col = 21 - 16 = 5 → pad = col-2 = 3, unchanged.
+    const visible = applyDirectives(multiline, directives, 8).replace(/\x1b\[[0-9;]*m/g, '');
+    expect(visible).toContain('saturday now\n   ↳ ⚠ - the 19th is a Friday');
+  });
+
+  it('places the pill under the SPAN\'s line, not below the whole buffer (long buffer)', () => {
+    // Span "saturday" is on line 1; the buffer has two more lines. The pill
+    // must land between line 1 and line 2 — right under the span — never after
+    // "even more".
+    const multiline = 'meet saturday\nmore text\neven more';
+    const { dynDefs, dimRender } = setup(multiline);
+    dynDefs.set(1, {
+      originalWord: 'saturday',
+      alternatives: ['saturday'],
+      currentIndex: 0,
+      spanStart: 5,
+      spanEnd: 13,
+      blankName: 'sentence-cue:contradiction-weekday-date',
+      cueTip: '⚠ the 19th is a Friday',
+    });
+    const directives = dimRender.compute({ text: multiline, cursor: 8, externalHighlights: [] });
+    const visible = applyDirectives(multiline, directives).replace(/\x1b\[[0-9;]*m/g, '');
+    // span at col 5 → message aligns under it, "↳ " hangs left → pad = 3.
+    expect(visible).toContain('saturday\n   ↳ ⚠ - the 19th is a Friday\nmore text');
+    // Not dangling after the last line.
+    expect(visible.endsWith('even more')).toBe(true);
+  });
+
+  // ── MID-LINE spans: text on BOTH sides of the flagged span ──────────────
+  // "meet on [saturday] at 6pm" — "saturday" starts at col 8; "at 6pm" is to
+  // its right. The note goes BELOW the whole line, indented so the message
+  // aligns under the span's column; the right-side text is untouched.
+  const MIDLINE = 'meet on saturday at 6pm'; // "saturday" = [8,16)
+  function seedMidlineDef(dynDefs: DynDefs, buffer = MIDLINE) {
+    dynDefs.set(2, {
+      originalWord: 'saturday',
+      alternatives: ['saturday'],
+      currentIndex: 0,
+      spanStart: 8,
+      spanEnd: 16,
+      blankName: 'sentence-cue:contradiction-weekday-date',
+      cueTip: '⚠ the 19th is a Friday',
+    });
+    return buffer;
+  }
+
+  it('aligns the note under a MID-LINE span (text on both sides), note below the line', () => {
+    const { dynDefs, dimRender } = setup(MIDLINE);
+    seedMidlineDef(dynDefs);
+    const directives = dimRender.compute({ text: MIDLINE, cursor: 12, externalHighlights: [] });
+    const visible = applyDirectives(MIDLINE, directives).replace(/\x1b\[[0-9;]*m/g, '');
+    // Right-side text preserved on the line; note below, message under col 8.
+    expect(visible.startsWith('meet on saturday at 6pm')).toBe(true);
+    // col 8 → pad = 8 - 2 = 6; "↳ " then message → ⚠ lands at col 8 (under 's').
+    expect(visible).toContain('at 6pm\n      ↳ ⚠ - the 19th is a Friday');
+  });
+
+  it('MID-LINE span with a following line — note inserts between, right-side text preserved', () => {
+    const buf = 'meet on saturday at 6pm\nsee you there';
+    const { dynDefs, dimRender } = setup(buf);
+    seedMidlineDef(dynDefs, buf);
+    const directives = dimRender.compute({ text: buf, cursor: 12, externalHighlights: [] });
+    const visible = applyDirectives(buf, directives).replace(/\x1b\[[0-9;]*m/g, '');
+    // Note lands between the span's line and the next; "at 6pm" stays on line 1,
+    // "see you there" stays on its own line, message aligned under col 8.
+    expect(visible).toContain('at 6pm\n      ↳ ⚠ - the 19th is a Friday\nsee you there');
+  });
+
+  it('MID-LINE span on the prompted first line — prompt indent + column both apply', () => {
+    const { dynDefs, dimRender } = setup(MIDLINE);
+    seedMidlineDef(dynDefs);
+    const directives = dimRender.compute({ text: MIDLINE, cursor: 12, externalHighlights: [] });
+    // firstLineIndent 2 (CC prompt) → pad = col 8 + 2 - "↳ "(2) = 8, so the
+    // message sits under the span's on-screen column (prompt 2 + col 8 = 10).
+    const visible = applyDirectives(MIDLINE, directives, 2).replace(/\x1b\[[0-9;]*m/g, '');
+    expect(visible).toContain('at 6pm\n        ↳ ⚠ - the 19th is a Friday');
   });
 });

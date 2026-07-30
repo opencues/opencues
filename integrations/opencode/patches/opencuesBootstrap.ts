@@ -21,6 +21,7 @@ import type { KeyEvent, LogLevel, RenderDirectives } from "@opencues/runtime/dis
 import { buildOpenTuiModifiers } from "@opencues/runtime/dist/src/modules/mac-keyboard"
 import { createSourceReclassifier } from "@opencues/runtime/dist/src/boot-common"
 import { codeUnitsToCells } from "@opencues/runtime/dist/src/util/cell-width"
+import { inlineNoteDisplayText, inlineNoteBoxColumn } from "@opencues/runtime/dist/src/render-directives"
 import { createBlankInvoke, createDefaultBlanksRegistry, type Blank } from "@opencues/runtime/dist/src/blanks"
 import { validateScriptPath, appendAuditLog } from "@opencues/runtime/dist/src/security/spawn-sandbox"
 import { wrapWithBwrap } from "@opencues/runtime/dist/src/security/sandbox-runner"
@@ -62,6 +63,20 @@ const [opencuesKata, setOpencuesKata] = createSignal<{
   offTrack: boolean
 } | null>(null)
 export { opencuesKata }
+// Inline-cue note — the advisory for the active note-bearing span. Rendered
+// as an absolute overlay LINE directly under the span (like Claude Code), NOT
+// docked at the bottom: OpenTUI can't splice a line into the textarea's own
+// render, so the patched prompt floats a box at { row, col } over the input.
+// Cursor-gated by the runtime (only emitted while the caret is in the span);
+// row = the caret's viewport-relative visual row + 1, col = the span column
+// (shared inlineNoteBoxColumn). Text via inlineNoteDisplayText — the same
+// `↳ <note>` every host paints. null when no note-bearing span is active.
+const [opencuesInlineNote, setOpencuesInlineNote] = createSignal<{
+  text: string
+  row: number
+  col: number
+} | null>(null)
+export { opencuesInlineNote }
 
 export interface PromptInputAccess {
   /** Reads the current text from the SolidJS store. */
@@ -243,6 +258,8 @@ export function startOpenCues(opts: {
 }): BootResult {
   if (bootResult) return bootResult
 
+  _ocRenderer = opts.renderer
+
   const log = (level: LogLevel, msg: string, data?: unknown): void => {
     try {
       const ts = new Date().toISOString().slice(11, 23)
@@ -272,6 +289,7 @@ export function startOpenCues(opts: {
       // Swallow — TUI swallows stderr anyway.
     }
   }
+  _ocLog = log
   // Cursor tracer — diagnostic instrumentation for the cursor-jumps
   // class of bugs. Writes one line per cursor/text touchpoint so we
   // can reconstruct the full sequence when something goes wrong.
@@ -583,9 +601,31 @@ export function dispatchOpenCuesKey(evt: any): boolean {
   }
   const consumed = bootResult.dispatchKey(e)
   // Trigger render so nav-driven highlight changes paint.
-  if (consumed) triggerOpenCuesRender(access?.read() ?? text, access?.cursor() ?? cursor)
+  if (consumed) {
+    triggerOpenCuesRender(access?.read() ?? text, access?.cursor() ?? cursor)
+  } else if (CURSOR_MOVING_KEYS.has(keyName)) {
+    // OpenTUI's EditBufferRenderable.onCursorChange fires on HORIZONTAL
+    // moves (left/right) but NOT vertical (up/down) or jumps (home/end/
+    // page). Those keys fall through to the textarea unconsumed, move the
+    // caret, and nothing re-evaluates the cursor gate — so the inline-cue
+    // note + auto-select highlight linger on the line we left. The textarea
+    // processes the key AFTER this handler returns, so defer one macrotask
+    // and re-render against the settled caret. Cheap: only nav keys, and
+    // triggerOpenCuesRender no-ops the paint when nothing changed.
+    setTimeout(() => {
+      try { triggerOpenCuesRender(access?.read() ?? text, access?.cursor() ?? cursor) }
+      catch { /* swallow */ }
+    }, 0)
+  }
   return consumed
 }
+
+// Caret-moving keys OpenTUI doesn't surface via onCursorChange (vertical +
+// jumps). left/right are included defensively — a redundant deferred render
+// there is harmless (idempotent paint).
+const CURSOR_MOVING_KEYS = new Set<string>([
+  "up", "down", "left", "right", "home", "end", "pageup", "pagedown",
+])
 
 /** Notify runtime of text changes from the prompt component. */
 export function notifyOpenCuesTextChange(text: string, cursor: number, source: "user" | "runtime" = "user"): void {
@@ -693,6 +733,13 @@ let ocLoadingColorStyleIds = new Map<string, number>()
 // guard, the diff sees a "match" by key for an extmark whose ID is dead
 // in the new textarea — and skips the create, leaving the dim invisible.
 let ocLastTextarea: unknown = null
+// Renderer + logger captured at boot so the top-level triggerOpenCuesRender
+// (which runs outside startOpenCues' scope) can force a repaint + trace.
+let _ocRenderer: CliRenderer | undefined
+let _ocLog: ((level: LogLevel, msg: string, data?: unknown) => void) | undefined
+// Last note text pushed to the overlay signal — so we only force a repaint
+// (and trace) when it actually changes, incl. the → null clear on cursor exit.
+let _ocLastNoteText: string | null = null
 
 /**
  * Called by the patched Prompt component on every onContentChange
@@ -784,8 +831,23 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
   // colour + offset so the same range can change colour from one tick
   // to the next without leaking stale extmarks.
   const desiredColored = new Map<OcExtmarkKey, { hex: string; start: number; end: number }>()
+  // Inline-cue note. Cursor-gated by the runtime (only emitted while the
+  // caret is in the span). Drawn by attachInlineNoteRenderer's renderAfter as
+  // a REAL inserted line that pushes text down (no occlusion — content moves
+  // rather than being covered). ROW = caret visual row + 1 (viewport-relative,
+  // wrap/scroll aware); COL = span column (shared inlineNoteBoxColumn).
+  let noteAnchor: { text: string; row: number; col: number } | null = null
   const directiveSets = bootResult.collectRenderDirectives(text, cursor)
   for (const directives of directiveSets) {
+    if (noteAnchor === null && directives.inlineNote && directives.inlineNote.text) {
+      const vc: any = (textarea as any).visualCursor
+      const visualRow = vc && typeof vc.visualRow === "number" ? vc.visualRow : 0
+      noteAnchor = {
+        text: inlineNoteDisplayText(directives.inlineNote.text),
+        row: visualRow + 1,
+        col: inlineNoteBoxColumn(text, directives.inlineNote.spanStart),
+      }
+    }
     addRanges(directives.dimRanges, "d")
     if (directives.highlight) {
       const h = directives.highlight
@@ -878,5 +940,27 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
       typeId: ocStyleIdsCache.typeId,
     })
     ocOwnedExtmarks.set(key, id)
+  }
+
+  // Push the active note anchor (or clear it) to the overlay renderer.
+  const nextNoteText = noteAnchor ? noteAnchor.text : null
+  setOpencuesInlineNote(noteAnchor)
+  if (nextNoteText !== _ocLastNoteText) {
+    // Trace so we can see whether the cursor-exit render actually clears
+    // the note (vs a stale-cursor render that keeps it). debug-gated caller.
+    try {
+      _ocLog?.("debug", "inlineNote", {
+        cursor,
+        note: nextNoteText,
+        row: noteAnchor?.row,
+        col: noteAnchor?.col,
+      })
+    } catch { /* swallow */ }
+    _ocLastNoteText = nextNoteText
+    // The overlay is an absolute-positioned box floated over the textarea.
+    // When it unmounts (note → null), the cells it painted must be redrawn;
+    // an explicit frame request composites the scene without the box so no
+    // ghost note lingers on the row it occupied.
+    try { _ocRenderer?.requestRender() } catch { /* swallow */ }
   }
 }

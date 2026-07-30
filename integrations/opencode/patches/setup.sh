@@ -374,6 +374,28 @@ if 'onCursorChange={' not in src:
                 setStore("prompt", "input", value)
                 notifyOpenCuesTextChange'''
     )
+# Inline-cue note — a REAL line under the input that pushes content down (like
+# Claude Code). OC's textarea is content-sized (minHeight=1/maxHeight=6), so it
+# has no spare row to draw into; a framebuffer overlay would land on a row that
+# doesn't exist or overwrite the line below. Instead we render the note as a
+# flow <text> sibling right after the textarea (before the toolbar): it reserves
+# its OWN row, growing the input by one and pushing everything below down — the
+# input-box-grows-by-one behaviour. Cursor-gated by the runtime via the
+# opencuesInlineNote signal ({text,col}; col pads the connector under the span
+# column). Own marker so it's idempotent.
+if 'opencuesInlineNoteLine' not in src:
+    src = src.replace(
+      'import { publishPromptAccess, notifyOpenCuesTextChange, notifyOpenCuesCursorChange, triggerOpenCuesRender } from "../../opencues"',
+      'import { publishPromptAccess, notifyOpenCuesTextChange, notifyOpenCuesCursorChange, triggerOpenCuesRender, opencuesInlineNote } from "../../opencues"',
+    )
+    src = src.replace(
+      '            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">',
+      '''            {/* opencuesInlineNoteLine — flow row under the input; grows it by one */}
+            <Show when={opencuesInlineNote()}>
+              <text fg={theme.textMuted}>{" ".repeat(opencuesInlineNote()!.col) + opencuesInlineNote()!.text}</text>
+            </Show>
+            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">''',
+    )
 open(p, 'w').write(src)
 PY
 }
@@ -513,9 +535,9 @@ patch_sidebar_footer_tsx() {
   #     in the same window.
   local footer="$OPENCODE_DIR/packages/opencode/src/cli/cmd/tui/feature-plugins/sidebar/footer.tsx"
   [[ -f "$footer" ]] || return 0
-  # Same marker-drift fix as patch_footer_tsx: the combined patch adds the
-  # `opencuesKata` import, so guard on it (not the older `opencuesTip`) and
-  # restore pristine first so the anchors always match.
+  # Same marker-drift fix as patch_footer_tsx: guard on the NEWEST marker
+  # (opencuesKata), not the older `opencuesTip`, and restore pristine first
+  # so the anchors always match.
   if grep -q "opencuesKata" "$footer"; then return 0; fi
   restore_pristine "$footer"
   python3 - "$footer" <<'PY'

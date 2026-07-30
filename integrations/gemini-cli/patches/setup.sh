@@ -466,10 +466,90 @@ open(p, 'w').write(src)
 PY
 }
 
+# Inline-cue note as its OWN scrollable list item — a real +1 row that grows
+# the input (like CC's terminal expanding by a line). Gemini's line list uses
+# fixedItemHeight, so we can't embed the note as a `\n` in a line (it'd clip);
+# instead we append a dedicated 'opencuesNote' item after the content, and the
+# list height (Math.min(viewportHeight, scrollableData.length)) grows to show
+# it. Separately guarded (own marker) so it lands even though patch_input_prompt
+# already ran the publishPromptAccess block.
+patch_input_prompt_note() {
+  local prompt="$GEMINI_DIR/packages/cli/src/ui/components/InputPrompt.tsx"
+  [[ -f "$prompt" ]] || return 0
+  if grep -q "getOpencuesInlineNote" "$prompt"; then return 0; fi
+  python3 - "$prompt" <<'PY'
+import sys
+p = sys.argv[1]
+src = open(p).read()
+if 'getOpencuesInlineNote' in src: sys.exit(0)
+
+# 1. Add getOpencuesInlineNote to the existing opencues import.
+src = src.replace(
+  "decorateOpenCuesLine, consumePendingOpenCues, useOpenCuesRenderTick } from '../opencues.js';",
+  "decorateOpenCuesLine, consumePendingOpenCues, useOpenCuesRenderTick, getOpencuesInlineNote } from '../opencues.js';",
+)
+
+# 2. Append an 'opencuesNote' item at the end of scrollableData when a note is
+#    active, and add buffer.text/cursor to the memo deps so it recomputes.
+src = src.replace(
+  """    additionalLines.forEach((ghostLine, index) => {
+      items.push({
+        type: 'ghostLine',
+        ghostLine,
+        index,
+      });
+    });
+
+    return items;
+  }, [buffer.allVisualLines, additionalLines]);""",
+  """    additionalLines.forEach((ghostLine, index) => {
+      items.push({
+        type: 'ghostLine',
+        ghostLine,
+        index,
+      });
+    });
+
+    // OpenCues inline-cue note — its own visual-line ITEM so it renders as a
+    // real +1 row (the list is fixed-item-height; a line can't grow to two).
+    // Cursor-gated by the runtime; appended after the content so it sits under
+    // the input, matching the terminal/CC note under the span line.
+    const __ocNote = getOpencuesInlineNote(
+      buffer.text,
+      logicalPosToOffset(buffer.lines, buffer.cursor[0], buffer.cursor[1]),
+    );
+    if (__ocNote) {
+      items.push({ type: 'opencuesNote', noteText: __ocNote.text, noteCol: __ocNote.col } as unknown as ScrollableItem);
+    }
+
+    return items;
+  }, [buffer.allVisualLines, additionalLines, buffer.text, buffer.cursor]);""",
+)
+
+# 3. renderItem case for the note item.
+src = src.replace(
+  "      if (item.type === 'ghostLine') {",
+  """      if ((item as { type: string }).type === 'opencuesNote') {
+        const __ocItem = item as unknown as { noteText: string; noteCol: number };
+        return (
+          <Box height={1}>
+            <Text color={theme.text.secondary}>
+              {' '.repeat(__ocItem.noteCol) + __ocItem.noteText}
+            </Text>
+          </Box>
+        );
+      }
+      if (item.type === 'ghostLine') {""",
+)
+open(p, 'w').write(src)
+PY
+}
+
 patch_fork() {
   copy_bootstrap
   patch_app_container
   patch_input_prompt
+  patch_input_prompt_note
   patch_footer
   patch_esbuild_config
 }

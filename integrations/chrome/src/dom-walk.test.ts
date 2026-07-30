@@ -230,4 +230,17 @@ describe('walkPlainText — emoji-as-img (Gmail / Slack / Reddit pattern)', () =
     const { text } = walkPlainText(root);
     expect(text).toBe('Tu  es');
   });
+
+  it('inline-note push-down spacer is skipped whole (no spurious \\n, offsets intact)', () => {
+    // The spacer is a block, which would normally inject a \n boundary and
+    // shift every subsequent offset. It must be invisible to the walk.
+    root.innerHTML =
+      '<div>line one</div>' +
+      '<div data-oc-note-spacer="1" contenteditable="false" aria-hidden="true"></div>' +
+      '<div>line two</div>';
+    const { text } = walkPlainText(root);
+    // Exactly one boundary between the two real lines — as if the spacer
+    // weren't there at all.
+    expect(text).toBe('line one\nline two');
+  });
 });

@@ -1465,3 +1465,227 @@ settings:
     expect(adapter.setTextCalls.at(-1)).toBe('voice-mode inactive');
   });
 });
+
+describe('_-cycle — bare `_` inside a painted cue note rotates the cue', () => {
+  // A passive cue (sentence-cue / contradiction) registers a def with a cueTip.
+  // When the note is painted (inline-cues-mode: inline + inline-note capability)
+  // and the caret is in the span, `_` rotates it forward and is CONSUMED.
+  function seedCueDef(dynDefs: DynDefs, spanEnd = 13) {
+    dynDefs.set(0, {
+      originalWord: 'thanks a lot.',
+      alternatives: ['thanks a lot.', 'Thank you very much.', 'Much appreciated.'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd,
+      blankName: 'sentence-cue:more-formal',
+      cueTip: 'more-formal',
+    });
+  }
+
+  it('bare `_` inside the span rotates forward AND consumes the key', async () => {
+    const { adapter, dynDefs } = await setup('thanks a lot.');
+    seedCueDef(dynDefs);
+    adapter.setCursorOffset(5); // inside [0,13]
+    expect(adapter.fireKey('_')).toBe(true); // consumed → not inserted
+    expect(adapter.setTextCalls.at(-1)).toBe('Thank you very much.');
+    expect(dynDefs.get(0)?.currentIndex).toBe(1);
+    // `_`-step lands the caret at the span END, tucked against the last char
+    // ('Thank you very much.' = 20 chars), ready to keep typing.
+    expect(adapter.getCursorOffset()).toBe(20);
+  });
+
+  it('successive `_` presses step forward and WRAP back to the original', async () => {
+    const { adapter, dynDefs } = await setup('thanks a lot.');
+    seedCueDef(dynDefs);
+    adapter.setCursorOffset(5);
+    adapter.fireKey('_'); // → alt1
+    adapter.fireKey('_'); // → alt2
+    expect(dynDefs.get(0)?.currentIndex).toBe(2);
+    adapter.fireKey('_'); // 3 alts → wrap to original
+    expect(dynDefs.get(0)?.currentIndex).toBe(0);
+    expect(adapter.setTextCalls.at(-1)).toBe('thanks a lot.');
+  });
+
+  it('does NOT consume `_` when the caret is OUTSIDE the span (blank path intact)', async () => {
+    const { adapter, dynDefs } = await setup('thanks a lot. bye');
+    seedCueDef(dynDefs); // span [0,13]
+    adapter.setCursorOffset(15); // past the span → in " bye"
+    expect(adapter.fireKey('_')).toBe(false); // falls through to the normal `_`
+    expect(adapter.setTextCalls).toEqual([]); // no cycle
+  });
+
+  it('does NOT consume `_` for a def without a cueTip (only note-bearing cues)', async () => {
+    const { adapter, dynDefs } = await setup('thanks a lot.');
+    dynDefs.set(0, {
+      originalWord: 'thanks a lot.',
+      alternatives: ['thanks a lot.', 'Thank you.'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 13,
+      blankName: 'sentence-cue:more-formal',
+      // no cueTip → no note → no `_`-cycle
+    });
+    adapter.setCursorOffset(5);
+    expect(adapter.fireKey('_')).toBe(false);
+    expect(adapter.setTextCalls).toEqual([]);
+  });
+
+  it('does NOT consume `_` when a modifier is held (bare `_` only)', async () => {
+    const { adapter, dynDefs } = await setup('thanks a lot.');
+    seedCueDef(dynDefs);
+    adapter.setCursorOffset(5);
+    expect(adapter.fireKey('_', { ctrl: true })).toBe(false);
+    expect(adapter.fireKey('_', { alt: true })).toBe(false);
+    expect(adapter.setTextCalls).toEqual([]);
+  });
+
+  it('does NOT consume `_` in secondary mode (note not painted → `_` stays a blank)', async () => {
+    const adapter = new MockAdapter({ files: { '/mock/OPENCUES.md': '---\ninline-cues-mode: secondary\n---\n' } });
+    adapter.pushText('thanks a lot.');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/OPENCUES.md' });
+    await loader.load();
+    const cycling = new Cycling(adapter, hlState, dynDefs, loader);
+    cycling.subscribe();
+    seedCueDef(dynDefs);
+    adapter.setCursorOffset(5);
+    expect(adapter.fireKey('_')).toBe(false);
+    expect(adapter.setTextCalls).toEqual([]);
+  });
+
+  it('`_` walks a transform-blank HISTORY (not just sentence-cues)', async () => {
+    // A transform/fluid blank accumulates a walkable history in `alternatives`
+    // (the findChainableLlmDef chain). It has NO cueTip — its note comes from
+    // inlineNoteText's transform-blank branch. `_` steps the history.
+    const { adapter, dynDefs } = await setup('日本語');
+    dynDefs.set(0, {
+      originalWord: 'thanks',
+      alternatives: ['日本語', 'formal english', 'thanks a lot'], // newest → older
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 3, // '日本語' is 3 chars
+      blankName: 'transform-blank',
+      // no cueTip
+    });
+    adapter.setCursorOffset(1); // inside [0,3]
+    expect(adapter.fireKey('_')).toBe(true); // consumed
+    expect(dynDefs.get(0)?.currentIndex).toBe(1);
+    expect(adapter.setTextCalls.at(-1)).toBe('formal english');
+    // caret lands at the span END of the new alt ('formal english' = 14 chars).
+    expect(adapter.getCursorOffset()).toBe(14);
+  });
+
+  it('does NOT `_`-cycle a fluid/transform blank with a single alternative', async () => {
+    const { adapter, dynDefs } = await setup('sunny');
+    dynDefs.set(0, {
+      originalWord: 'sunny',
+      alternatives: ['sunny'], // no history yet → nothing to step
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 5,
+      blankName: 'fluid-blank',
+    });
+    adapter.setCursorOffset(2);
+    expect(adapter.fireKey('_')).toBe(false);
+    expect(adapter.setTextCalls).toEqual([]);
+  });
+
+  // The uniform note model made filled blanks + selector-satellite note-bearing;
+  // `_`-cycle must reach them too (they're not DynDefs, so a separate branch).
+  it('bare `_` inside a filled list/script blank span rotates it forward (SpanFillState)', async () => {
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
+    adapter.pushText('80%');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const spanFillState = new SpanFillState();
+    spanFillState.set({
+      index: 0,
+      alternatives: ['80%', '60%', '100%'],
+      currentAltIndex: 0,
+      spanLength: 1,
+      tip: 'system volume',
+      clearOnEdit: false,
+    }, '80%');
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    await loader.load();
+    const cycling = new Cycling(adapter, hlState, dynDefs, loader, spanFillState);
+    cycling.subscribe();
+    adapter.setCursorOffset(1); // inside the filled span [0,3]
+    expect(adapter.fireKey('_')).toBe(true); // consumed, not inserted
+    expect(adapter.setTextCalls.at(-1)).toBe('60%');
+    expect(spanFillState.current?.currentAltIndex).toBe(1);
+  });
+
+  it('bare `_` on the selector part cycles setting NAMES (SelectorSatelliteState, cursor-aware)', async () => {
+    const OPENCUES_MD = `---
+voice-mode: active
+debug-mode: off
+settings:
+  voice-mode:
+    tip: Gates TTS
+    values:
+      active: a
+      inactive: i
+  debug-mode:
+    tip: Debug
+    values:
+      on: emit
+      off: silent
+---`;
+    const adapter = new MockAdapter({ cwd: '/proj', files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': OPENCUES_MD } });
+    adapter.pushText('voice-mode active');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const ss = new SelectorSatelliteState();
+    ss.set({
+      blankName: 'opencues', scriptPath: '/tmp/oc.sh',
+      selectorIndex: 0, selectorLength: 1, satelliteIndex: 1, satelliteLength: 1,
+      currentSetting: 'voice-mode', currentValue: 'active', separator: ' ', clearOnEdit: false,
+    }, 'voice-mode active');
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    await loader.load();
+    const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
+    cycling.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: 'off\n', stderr: '', timedOut: false }), kill: () => {},
+    }));
+    adapter.setCursorOffset(3); // caret on the selector word 'voice-mode' [0,10]
+    expect(adapter.fireKey('_')).toBe(true); // consumed → not inserted
+    expect(ss.current?.currentSetting).toBe('debug-mode');
+    expect(adapter.setTextCalls.at(-1)).toBe('debug-mode on');
+  });
+
+  it('bare `_` on the satellite part cycles that setting\'s VALUES (SelectorSatelliteState, cursor-aware)', async () => {
+    const OPENCUES_MD = `---
+voice-mode: active
+settings:
+  voice-mode:
+    tip: Gates TTS
+    values:
+      active: a
+      inactive: i
+---`;
+    const adapter = new MockAdapter({ cwd: '/proj', files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': OPENCUES_MD } });
+    adapter.pushText('voice-mode active');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const ss = new SelectorSatelliteState();
+    ss.set({
+      blankName: 'opencues', scriptPath: '/tmp/oc.sh',
+      selectorIndex: 0, selectorLength: 1, satelliteIndex: 1, satelliteLength: 1,
+      currentSetting: 'voice-mode', currentValue: 'active', separator: ' ', clearOnEdit: false,
+    }, 'voice-mode active');
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    await loader.load();
+    const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
+    cycling.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: '', stderr: '', timedOut: false }), kill: () => {},
+    }));
+    adapter.setCursorOffset('voice-mode active'.length - 2); // caret on the satellite word 'active'
+    expect(adapter.fireKey('_')).toBe(true); // consumed → not inserted
+    expect(ss.current?.currentValue).toBe('inactive');
+    expect(adapter.setTextCalls.at(-1)).toBe('voice-mode inactive');
+  });
+});

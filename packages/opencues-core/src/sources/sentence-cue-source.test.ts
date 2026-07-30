@@ -120,6 +120,37 @@ describe('segmentSentences', () => {
     assert.strictEqual(spans[0].text, 'no period at end');
   });
 
+  it('a hard line break terminates a sentence even without punctuation (no cross-line span)', () => {
+    // Live Gmail bug: "thanks a bunch guys\ndasdasda" (two lines, no `.`)
+    // matched as ONE span crossing the newline, so its cue highlight painted
+    // across BOTH lines. Each line must be its own sentence.
+    const text = 'thanks a bunch guys\ndasdasda';
+    const spans = segmentSentences(text, text.split(/\s+/));
+    assert.strictEqual(spans.length, 2);
+    assert.strictEqual(spans[0].text, 'thanks a bunch guys');
+    assert.strictEqual(spans[1].text, 'dasdasda');
+    // Neither span includes the newline char.
+    assert.ok(!spans[0].text.includes('\n'));
+    assert.ok(text.charAt(spans[0].end) === '\n'); // span ends exactly at the break
+  });
+
+  it('collapses a blank line (\\n\\n) into a single boundary — no empty sentence', () => {
+    const text = 'line one\n\nline two';
+    const spans = segmentSentences(text, text.split(/\s+/));
+    assert.strictEqual(spans.length, 2);
+    assert.strictEqual(spans[0].text, 'line one');
+    assert.strictEqual(spans[1].text, 'line two');
+  });
+
+  it('splits each markdown-ish line (header + list items) into its own sentence', () => {
+    const text = '# Title\n- first item\n- second item';
+    const spans = segmentSentences(text, text.split(/\s+/));
+    assert.strictEqual(spans.length, 3);
+    assert.strictEqual(spans[0].text, '# Title');
+    assert.strictEqual(spans[1].text, '- first item');
+    assert.strictEqual(spans[2].text, '- second item');
+  });
+
   it('char offsets index into the original buffer', () => {
     const text = '   leading whitespace sentence.';
     const spans = segmentSentences(text, text.trim().split(/\s+/));

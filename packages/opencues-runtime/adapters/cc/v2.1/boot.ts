@@ -52,6 +52,21 @@ import type {
   Unsubscribe,
 } from '../../../src/adapter';
 
+/**
+ * Columns Claude Code prepends to the input's FIRST line (the `❯ ` prompt +
+ * any box indent) but NOT to continuation lines. An inline cue note is injected
+ * as a continuation line, so a first-line span sits this far right of its
+ * buffer column on screen; `applyDirectives` adds it back so the note stays
+ * under the span. Tunable live via `OPENCUES_CC_NOTE_INDENT` (no rebuild —
+ * export it and restart) while we settle on the right value; default is the
+ * `❯ ` prompt width.
+ */
+const CC_INPUT_FIRST_LINE_INDENT: number = (() => {
+  const raw = typeof process !== 'undefined' ? process.env?.OPENCUES_CC_NOTE_INDENT : undefined;
+  const n = raw !== undefined ? Number(raw) : NaN;
+  return Number.isFinite(n) && n >= 0 ? n : 2;
+})();
+
 /** Minimal host info the patch supplies. boot() builds HostBindings from it. */
 export interface HostInfo {
   readonly hostVersion: string;
@@ -514,6 +529,8 @@ export function boot(host: HostInfo): BootResult {
 
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
+  // Span-lifecycle trace (debug-mode gated at the sink) — see boot-common.
+  dynDefs.setDebugLog(msg => adapter.log('debug', `DynDefs: ${msg}`));
   const spanFillState = new SpanFillState();
   const dismissedBlanks = new DismissedBlanks();
   const selectorSatelliteState = new SelectorSatelliteState();
@@ -768,6 +785,43 @@ export function boot(host: HostInfo): BootResult {
   if (process.env.OPENCUES_BRIDGE === '1') {
     startEventBridge({
       adapter,
+      // Compute the render directives (dim / highlight / inlineNote) for the
+      // live text + cursor so the dump exposes what would be painted now —
+      // makes the inline cue note observable to agentic scenarios. Mirrors
+      // applyRender's ctx construction; ZWS-stripped so DimRender's coords line
+      // up. Null returns (Statusline) are dropped.
+      renderDirectives: () => {
+        const ctxText = visible(adapter.getText());
+        const rctx: RenderContext = {
+          text: ctxText,
+          cursor: adapter.getCursorOffset(),
+          externalHighlights: [],
+        };
+        const out: RenderDirectives[] = [];
+        for (const handler of renderHandlers) {
+          try { const d = handler(rctx); if (d) out.push(d); }
+          catch { /* a broken handler must not break the dump */ }
+        }
+        return out;
+      },
+      // The PAINTED output (ANSI-stripped) for the current buffer, so scenarios
+      // can assert the inline note's aligned splice. Buffer space: firstLineIndent
+      // is 0 (the display prompt isn't part of the buffer), so the note aligns
+      // under the span's column in the text itself.
+      renderedText: () => {
+        const ctxText = visible(adapter.getText());
+        const rctx: RenderContext = {
+          text: ctxText,
+          cursor: adapter.getCursorOffset(),
+          externalHighlights: [],
+        };
+        let out = ctxText;
+        for (const handler of renderHandlers) {
+          try { const d = handler(rctx); if (d) out = applyDirectives(out, d, 0); }
+          catch { /* a broken handler must not break the dump */ }
+        }
+        return out.replace(/\x1b\[[0-9;]*m/g, '');
+      },
       // Synthetic keys go through the same handler list real keystrokes
       // use, but sample text/cursor at dispatch time (the cli.js patch
       // does the same — InputZone closures are stale across React
@@ -930,7 +984,7 @@ export function boot(host: HostInfo): BootResult {
           const directives = handler(ctx);
           if (directives) {
             debugDirectives.push(directives);
-            out = applyDirectives(out, directives);
+            out = applyDirectives(out, directives, CC_INPUT_FIRST_LINE_INDENT);
           }
         } catch (err) {
           log('error', 'render handler error', err);

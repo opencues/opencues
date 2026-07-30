@@ -60,6 +60,8 @@ export const TERMINAL_V1_CAPABILITIES: readonly Capability[] = [
   'dim-ranges',
   'highlight-range',
   'render-rgb-color',
+  // Below-input note region (no virtual text in OpenTUI); mirrors oc/v1.14.
+  'inline-note',
 ];
 
 export class ShellV1Adapter implements HostAdapter {

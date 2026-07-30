@@ -61,6 +61,7 @@ const DEFAULT_CAPS: readonly Capability[] = [
   'file-write',
   'force-render',
   'change-source',
+  'inline-note',
 ];
 
 export interface LogEntry {

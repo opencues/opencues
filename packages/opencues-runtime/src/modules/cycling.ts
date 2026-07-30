@@ -12,7 +12,7 @@
 
 import type { HostAdapter, KeyEvent, ProcessHandle, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
-import { DynDefs, type WordDef } from '../state/dyn-defs';
+import { DynDefs, inlineNoteText, type WordDef } from '../state/dyn-defs';
 import type { ConfigLoader, BlankEntry } from './config-loader';
 import { splitWords } from './navigation';
 import { resolveNavKeymap } from './nav-keymap';
@@ -78,6 +78,7 @@ export class Cycling {
   private _unsubDown: Unsubscribe | null = null;
   private _unsubUpShift: Unsubscribe | null = null;
   private _unsubDownShift: Unsubscribe | null = null;
+  private _unsubUnderscore: Unsubscribe | null = null;
 
   constructor(
     private adapter: HostAdapter,
@@ -240,6 +241,16 @@ export class Cycling {
         e => this.matchesKeymap('ctrl-shift') ? this.step(e, -1) : false,
       );
     }
+    // `_`-cycle — a bare `_` inside a PAINTED cue note rotates that cue forward,
+    // a discoverable complement to the Ctrl+Alt+arrow power path. Registered
+    // here (Cycling subscribes before both `_` handlers — BlankFill + Resolver)
+    // so it can claim the keystroke first and CONSUME it (suppress the insert)
+    // when the caret sits in a painted note; otherwise it falls through to the
+    // normal blank path. See docs/architecture/inline-cue-cycle.md.
+    this._unsubUnderscore = this.adapter.onKey(
+      { keys: ['_'] },
+      e => this.stepUnderscore(e),
+    );
   }
 
   unsubscribe(): void {
@@ -247,6 +258,105 @@ export class Cycling {
     if (this._unsubDown) { this._unsubDown(); this._unsubDown = null; }
     if (this._unsubUpShift) { this._unsubUpShift(); this._unsubUpShift = null; }
     if (this._unsubDownShift) { this._unsubDownShift(); this._unsubDownShift = null; }
+    if (this._unsubUnderscore) { this._unsubUnderscore(); this._unsubUnderscore = null; }
+  }
+
+  /**
+   * `_`-cycle handler. When a bare `_` is pressed while the caret sits inside a
+   * cue whose inline note is PAINTED, rotate that cue forward one step (wrapping)
+   * and CONSUME the keystroke (return true → the `_` is not inserted). Otherwise
+   * return false so `_` keeps its normal blank meaning.
+   *
+   * The gate mirrors DimRender's inlineNote condition exactly — that's the whole
+   * point: the note on screen IS the affordance, so `_`-cycle fires precisely
+   * where a note is visible. Conditions: no ctrl/alt/meta, the field is
+   * cycleable, `inline-cues-mode: inline`, the host advertises `inline-note`, and
+   * the caret is inside a LIVE note span with >1 alternative.
+   *
+   * Covers EVERY note-bearing gray span, matching the uniform note model:
+   *   - DynDefs (word-cues incl. spelling, sentence/contradiction `cueTip` cues,
+   *     transform/fluid history) — the loop below, via `applyAltCycle`.
+   *   - Filled list/script blanks (`SpanFillState`) — via `cycleSpanFill`.
+   *   - Settings selector-satellite (`SelectorSatelliteState`) — cursor-aware,
+   *     via `cycleSelectorSatellite`.
+   * The last two aren't DynDefs, so they're handled explicitly after the loop —
+   * the same shape as dim-render.ts's note computation. Ctrl+Alt+arrow remains
+   * the power path; `_`-on-note is the primary, discoverable one.
+   */
+  stepUnderscore(event: KeyEvent): boolean {
+    const m = event.modifiers;
+    if (m.ctrl || m.alt || m.meta) return false;            // bare `_` only
+    if (this.adapter.supportsCycling?.() === false) return false; // no-paint field
+    if (this.configLoader.opencuesState.inlineCuesMode !== 'inline') return false;
+    if (!this.adapter.capabilities.includes('inline-note')) return false;
+
+    const text = event.text;
+    const cursor = event.cursorOffset;
+    for (const [, def] of this.dynDefs.entries()) {
+      // Note-bearing = cueTip advisory OR history-bearing LLM blank (transform /
+      // fluid). Same predicate DimRender paints on, so `_`-step fires exactly
+      // where a note is visible — for a blank, the alternatives ARE the walkable
+      // transform history.
+      if (inlineNoteText(def) === undefined) continue;
+      if (def.alternatives.length <= 1) continue;
+      // Generic span-liveness (not sentence-cue-specific): the current alt is
+      // still verbatim at the recorded span. Stale → skip (user edited it).
+      if (def.spanEnd <= def.spanStart || def.spanEnd > text.length) continue;
+      if (text.slice(def.spanStart, def.spanEnd) !== def.alternatives[def.currentIndex]) continue;
+      if (cursor < def.spanStart || cursor > def.spanEnd) continue; // inclusive, matches paint
+      // Caret is inside a painted note → rotate forward, consume the `_`.
+      // applyAltCycle needs a live word index for its startWord existence check;
+      // for span-bound defs the actual splice uses the char span / word-derived
+      // range, so any word that contains spanStart works (covers whole-buffer
+      // transforms and synthetic-key CJK sentence-cues alike).
+      const words = splitWords(text);
+      let originIdx = words.findIndex(w => def.spanStart >= w.start && def.spanStart < w.end);
+      if (originIdx < 0) originIdx = 0;
+      // applyAltCycle lands the caret at the span END (against the last char,
+      // ready to keep typing / add another `_`). The selection is the
+      // caret-in-span AUTO-SELECT (DimRender), NOT a persistent hlState nav
+      // selection — so it shows while the caret is on the span (across cycles)
+      // and CLEARS the moment the caret leaves (moves to another line), which a
+      // persistent nav selection would not do.
+      return this.applyAltCycle(event, def, +1, originIdx, 'static-alts');
+    }
+
+    // Filled list/script blanks (SpanFillState) and settings selector-satellite
+    // (SelectorSatelliteState) aren't DynDefs, so the loop above never reaches
+    // them — but they're note-bearing gray spans too (the uniform note model), so
+    // `_` must cycle them wherever their note shows. Same cursor-gate the note
+    // loop in dim-render.ts uses, so `_`-cycle fires exactly where a note is
+    // painted. Caret past the span (after a space) → no match → falls through to
+    // the normal blank meaning, exactly as intended.
+    const words = splitWords(text);
+    const caretWord = words.find(w => cursor >= w.start && cursor <= w.end);
+
+    // SpanFill — caret anywhere in the multi-word fill span rotates it forward.
+    const sf = this.spanFillState?.current;
+    if (sf) {
+      const spanLen = sf.spanLength || 1;
+      const sStart = words[sf.index]?.start;
+      const sEnd = words[sf.index + spanLen - 1]?.end;
+      if (sStart !== undefined && sEnd !== undefined && cursor >= sStart && cursor <= sEnd) {
+        if (this.cycleSpanFill(event, words, sf.index, +1)) return true;
+      }
+    }
+
+    // Selector-satellite — cursor-aware, mirroring the note: caret on the
+    // selector (setting name) cycles setting names; on the satellite (value)
+    // cycles that setting's values. cycleSelectorSatellite reads which part from
+    // the wordIndex, so passing the caret's word index gives the per-part cycle.
+    const ss = this.selectorSatelliteState?.current;
+    if (ss && caretWord) {
+      const selEnd = ss.selectorIndex + Math.max(1, ss.selectorLength) - 1;
+      const satEnd = ss.satelliteIndex + Math.max(1, ss.satelliteLength) - 1;
+      const inSel = caretWord.index >= ss.selectorIndex && caretWord.index <= selEnd;
+      const inSat = caretWord.index >= ss.satelliteIndex && caretWord.index <= satEnd;
+      if (inSel || inSat) {
+        if (this.cycleSelectorSatellite(event, words, caretWord.index, +1)) return true;
+      }
+    }
+    return false;
   }
 
   private matchesKeymap(combo: 'ctrl-alt' | 'ctrl-shift'): boolean {

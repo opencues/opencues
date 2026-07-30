@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>OpenCues E2E — refocus</title>
+  </head>
+  <body>
+    <h1>refocus page</h1>
+    <!-- A non-editable blur target: focusing it fires focusout on the CE. -->
+    <button id="outside" type="button">outside</button>
+    <!-- Two independent contenteditables for the cross-buffer reset case. -->
+    <div id="ce" contenteditable="true" role="textbox" aria-label="compose one"
+         style="min-height: 3em; border: 1px solid #999; padding: 8px;"></div>
+    <div id="ce2" contenteditable="true" role="textbox" aria-label="compose two"
+         style="min-height: 3em; border: 1px solid #999; padding: 8px;"></div>
+  </body>
+</html>

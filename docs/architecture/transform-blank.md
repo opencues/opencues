@@ -173,6 +173,20 @@ slice. The LLM owns the whole buffer; the runtime diffs
 any LLM hunk that overlaps a user edit made during the async call, so
 typing while the call is in flight is never clobbered.
 
+> **Trailing blank lines are not content.** The merge's
+> paragraph-break-preservation rule (`surviveAndAdjustHunk`) refuses an
+> LLM hunk that would collapse an *internal* `\n\n`. But the editor's
+> **trailing** empty lines (`\n\n\n`) are not a content paragraph break —
+> so at end-of-buffer that rule **excludes trailing whitespace from its
+> count** (gated on `atBufEnd = raw.aEnd === snapshot.length`), and rule 3
+> re-appends the tail. Without this, a rewrite that legitimately ends with
+> no trailing newline — the textbook case is a translation (`translate to
+> japanese _` → `よぉ、元気か？`, whose output shares no words with the
+> input) — was seen as "collapsing a paragraph" and the **entire hunk was
+> dropped**, so the buffer silently kept the original. Fixed July 2026;
+> pinned in `word-diff.test.ts`. Same "trailing whitespace isn't content"
+> principle as the DynDef span trim below.
+
 This is the structural fix for the May 2026 long-body duplication bug:
 the earlier design had the LLM emit a narrow `REWRITE` of just the
 TARGET, then the resolver spliced it back using an LLM-claimed span —
@@ -391,10 +405,13 @@ packages/opencues-runtime/src/modules/resolver.ts
 }
 ```
 
-`alternatives[0]` is the original input (so cycling Down restores it).
-`alternatives[1]` is the fresh rewrite. `alternatives[2..N]` are prior
-cached variants from the variant pool (Up-arrow walks them). The
-metadata carries `transformTargetDebug`, deliberately **not**
+In this **source-emitted CueResult**, `alternatives[0]` is the original
+input, `alternatives[1]` the fresh rewrite, `alternatives[2..N]` prior
+cached variants from the variant pool. (Note the resolver REORDERS these
+when it builds the DynDef — the def's `alternatives[0]` is the rewrite
+body it currently shows, `currentIndex=0`; see Substitution step 4. The
+merge diffs the source ordering, `alternatives[0]→[1]` = original→rewrite.)
+The metadata carries `transformTargetDebug`, deliberately **not**
 `transformTarget` — its absence is the signal the resolver uses to take
 the whole-buffer merge path rather than a surgical splice (see
 Substitution below).
@@ -415,10 +432,23 @@ transform-blank branch:
    **whole-buffer path**: `threeWayMerge(originalText, rewrittenText,
    liveText)` produces the merged buffer (dropping any LLM hunk
    overlapping a concurrent user edit).
-4. Build a WordDef keyed at the merged text's first changed word, with
-   `currentIndex=1` (showing the rewrite) and
-   `blankName='transform-blank'` (locks against re-resolution by
-   subsequent LLM passes — same mechanism FluidBlank uses).
+4. Build a WordDef keyed at the merged text's first changed word.
+   `alternatives[0]` is the rewrite **body** (current visible) and
+   `alternatives[1]` the original body, with `currentIndex=0` — the
+   `alts[0] = current visible` convention every blank type shares.
+   `blankName='transform-blank'` locks it against re-resolution by
+   subsequent LLM passes (same mechanism FluidBlank uses).
+   **`spanEnd` trims trailing whitespace** — the rewrite is the content,
+   the editor's trailing empty lines (`\n\n\n`) are not, so the span ends
+   at the body and the tail lines stay in the buffer *outside* the span
+   (and `alternatives` are trimmed to match, preserving
+   `slice(spanStart,spanEnd) === alt[0]`). Without this the whole-buffer
+   span covered the tail lines, so any trailing edit — a space, a newline,
+   or just continuing to type after the result — broke that invariant →
+   the def went STALE → `pruneStale` dropped it → the next resolve
+   re-emitted it: a visible dim/note flicker. Sentence-cues never had this
+   because they trim to their sentence; this makes the transform def trim
+   identically. Fixed July 2026; pinned in `transform-blank.scenarios.test.ts`.
 5. Call `adapter.pushText(mergedText, newCursor)` — atomic
    text-and-cursor update. Falls back to `setText` + `setCursorOffset`
    + `forceRender` for hosts without pushText.
@@ -465,12 +495,15 @@ and need no skip.
 ### Cycling
 
 Cycling is delegated to the runtime's existing `WordDef`/`DynDefs`
-machinery. With `currentIndex=1` (showing the fresh rewrite), cycling
-Down sets `currentIndex=0` and replaces the span with `alternatives[0]`
-(the original input including the instruction phrase). Cycling Up walks
-through `alternatives[2..N]` — prior cached variants from the variant
-pool (identical-buffer triggers cycle through cached rewrites rather
-than re-calling the LLM).
+machinery. The def shows `alternatives[0]` (the fresh rewrite body) at
+`currentIndex=0` — the `alts[0] = current visible` convention every blank
+type shares. Cycling **Up** (`+1`) advances: `currentIndex=1` restores the
+original input (`alternatives[1]`), and further Up walks
+`alternatives[2..N]` — prior cached variants from the variant pool
+(identical-buffer triggers cycle through cached rewrites rather than
+re-calling the LLM). Bare `_` inside the span cycles the same way (forward
+only); Down (`-1`) wraps back. See
+[`inline-cue-cycle.md`](inline-cue-cycle.md).
 
 The `blankName='transform-blank'` field prevents the resolver from
 re-firing on the rewrite text — same lock that prevents FluidBlank's

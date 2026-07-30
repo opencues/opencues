@@ -61,9 +61,10 @@ A contradiction cue is a **sentence-cue** (priority 87 — it sits just
 above `more-formal` at 85, so a contradiction on a sentence wins over a
 formality rewrite of the same span). It's **passive**: the flagged
 sentence gets a cue tip on the status line describing the mismatch and,
-where meaningful, offering the corrected value as an alternative you can
-swap in with `Ctrl+Alt+↑`. Nothing is spliced into your buffer until you
-press the key. A correct sentence produces **no** cue — silence is the
+where meaningful, offering the corrected value as an alternative. With your
+caret on the flagged sentence, swap it in with a bare **`_`** (the primary,
+discoverable gesture) or `Ctrl+Alt+↑` (the power path). Nothing is spliced into
+your buffer until you press the key. A correct sentence produces **no** cue — silence is the
 precision rule; a wrong cue is worse than no cue.
 
 ## Privacy — what reaches the LLM, what leaves the machine

@@ -455,6 +455,17 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
+    scalar: 'inline-cues-mode',
+    group: 'Cues',
+    camelCase: 'inlineCuesMode',
+    description: 'Where passive cue advisories (sentence-cue / contradiction cue tips) appear — inline near the text or in the secondary display',
+    menuTip: 'inline (default): a passive cue reveals its advisory as gray inline text when your caret enters the flagged span (Error-Lens style), on hosts that can paint it. secondary: the advisory stays in the status line. Hosts with no paint surface fall back to secondary automatically.',
+    values: [
+      { id: 'inline',    description: 'Default — reveal the advisory inline (gray) on cursor-in-span, degrading to the secondary display where inline paint is unavailable' },
+      { id: 'secondary', description: 'Advisory shows only in the secondary display (status line)' },
+    ],
+  },
+  {
     scalar: 'blank-trigger-mode',
     group: 'Blanks',
     camelCase: 'blankTriggerMode',

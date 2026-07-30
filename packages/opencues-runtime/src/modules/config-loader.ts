@@ -166,6 +166,16 @@ export interface OpenCuesState {
    */
   readonly sentinelLanguage: 'bare' | 'typed';
   /**
+   * Inline cue presentation. `inline` (default) reveals a passive cue's
+   * advisory (`def.cueTip` — sentence-cue / contradiction cue) as gray inline
+   * text below the buffer when the caret sits in its span (Error-Lens style),
+   * on hosts that can paint it; `secondary` keeps the advisory in the status
+   * line only. Degradation is automatic — a host without a paint surface
+   * (e.g. chrome normal `<input>`) falls back to the secondary display
+   * regardless of this value. See docs/features/inline-cues.md.
+   */
+  readonly inlineCuesMode: 'inline' | 'secondary';
+  /**
    * USER-OWNED ai-callable trust list (typed-sentinel Phase 4). Blank names the
    * user has explicitly authorised to be called with an LLM-PROVIDED argument
    * on-demand, BEYOND the audited built-in fetch classes (stocks/weather/crypto)
@@ -263,6 +273,7 @@ export const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   blankContextMode: 'safe',
   calendarContextMode: 'on',
   sentinelLanguage: 'bare',
+  inlineCuesMode: 'inline',
   aiCallableAllow: [],
   blankTriggerMode: 'immediate',
   navKeymap: 'auto',
@@ -370,6 +381,12 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   // grammar. Unrecognised value → `bare` (fail-safe, no behavioural diff).
   const sentinelLanguage: 'bare' | 'typed' =
     get('sentinel-language', 'bare').toLowerCase() === 'typed' ? 'typed' : 'bare';
+  // Inline cue presentation — `inline` default (Error-Lens reveal on hosts
+  // that can paint it); only an explicit `secondary` pins the advisory to the
+  // status line. Unrecognised → `inline` (fail-safe to the richer surface;
+  // degradation to secondary is automatic where no paint surface exists).
+  const inlineCuesMode: 'inline' | 'secondary' =
+    get('inline-cues-mode', 'inline').toLowerCase() === 'secondary' ? 'secondary' : 'inline';
   // USER-owned ai-callable trust list (comma-separated blank names). A pack
   // can't write OPENCUES.md, so listing a name here is a deliberate user act.
   const aiCallableAllow: readonly string[] =
@@ -413,7 +430,7 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   // Tests keep shipping mock `settings:` blocks; they get the
   // file-driven definitions, identical to the pre-refactor behaviour.
   const definitions = mergeDefinitions(getMenuDefinitions(undefined, settings), parseSettingsBlock(lines));
-  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, identityContextMode, blankContextMode, calendarContextMode, sentinelLanguage, aiCallableAllow, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
+  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, identityContextMode, blankContextMode, calendarContextMode, sentinelLanguage, inlineCuesMode, aiCallableAllow, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
 }
 
 /**
@@ -782,6 +799,7 @@ export class ConfigLoader {
       blankContextMode,
       calendarContextMode: (get('calendar-context-mode', 'on').toLowerCase() === 'off' ? 'off' : 'on') as 'off' | 'on',
       sentinelLanguage: (get('sentinel-language', 'bare').toLowerCase() === 'typed' ? 'typed' : 'bare') as 'bare' | 'typed',
+      inlineCuesMode: (get('inline-cues-mode', 'inline').toLowerCase() === 'secondary' ? 'secondary' : 'inline') as 'inline' | 'secondary',
       aiCallableAllow: (get('ai-callable-allow', '') || get('param-safe-allow', '')) // LEGACY-NAME-ALLOW: pre-rename scalar
         .split(',').map(s => s.trim()).filter(s => s && !/^-+$/.test(s)),
       blankTriggerMode: (get('blank-trigger-mode', 'immediate').toLowerCase() === 'spaced' ? 'spaced' : 'immediate') as 'immediate' | 'spaced',

@@ -290,9 +290,20 @@ function surviveAndAdjustHunk(
 
   const origText = snapshot.slice(raw.aStart, raw.aEnd);
 
-  // 2. Paragraph-break preservation.
-  const origPB = countParagraphBreaks(origText);
-  if (origPB > 0 && countParagraphBreaks(raw.replacement) < origPB) {
+  // 2. Paragraph-break preservation. Don't let the LLM collapse an INTERNAL
+  // \n\n. BUT trailing whitespace at END-OF-BUFFER is the editor's empty tail
+  // lines, not a content paragraph break (rule 3 below re-appends it), so when
+  // this hunk reaches end-of-snapshot, exclude the trailing whitespace from the
+  // count. Without this, an English→Japanese translation of a buffer with blank
+  // tail lines — "whats up buddy \n\n\n\n" → "よぉ、元気か？" — had origPB=1 (the
+  // tail) vs replacement PB=0, so 0 < 1 DROPPED the entire hunk and the buffer
+  // kept the English. The trim is gated on `atBufEnd` so an internal "\n\n"→" "
+  // gap hunk (aEnd < snapshot.length) is NOT trimmed and still preserved.
+  const atBufEnd = raw.aEnd === snapshot.length;
+  const origForPB = atBufEnd ? origText.replace(/\s+$/, '') : origText;
+  const replForPB = atBufEnd ? raw.replacement.replace(/\s+$/, '') : raw.replacement;
+  const origPB = countParagraphBreaks(origForPB);
+  if (origPB > 0 && countParagraphBreaks(replForPB) < origPB) {
     return { kind: 'drop' };
   }
 

@@ -162,6 +162,11 @@ export class Navigation {
     const prevText = this._lastSeenText;
     this._lastSeenText = event.text;
     if (event.source === 'runtime') return;
+    if (this.dynDefs.size > 0) {
+      // Correlator for the DynDefs slide/prune trace below — ties each
+      // lifecycle line to the keystroke + caret that triggered it.
+      this.adapter.log('debug', `Navigation.onTextChange: user edit defs=${this.dynDefs.size} cursor=${event.cursorOffset} len ${prevText?.length ?? '?'}→${event.text.length}`);
+    }
     // Slide char spans across edits that happened entirely BEFORE them
     // (Enter above a substitution shifted every later offset; the def
     // survived by word index but its char span went stale and the dim
@@ -344,6 +349,18 @@ export class Navigation {
       // per-field hosts (windows) share one Navigation across cycling
       // and non-cycling fields). DynDef targets are unaffected.
       const cyclingOff = this.adapter.supportsCycling?.() === false;
+      // Nav targets are cueMap words (word-cues) + DynDefs — NOT bare blank
+      // keywords. A bare blank keyword (`volume`, `weather`, …) is a pure `_`
+      // trigger: nothing to cycle and no statusline tip until `_` fires the
+      // blank (which then registers a DynDef that IS navigable). Landing on one
+      // was an invisible dead target (dim was removed for the same reason). We
+      // read `cueMap` directly rather than `navigableWords` (which unions in
+      // blank keywords) — matching this method's own "matched cueMap or has a
+      // DynDef" contract above.
+      const cueMap = cyclingOff ? undefined : this.configLoader?.cueMap;
+      // `navigableWords` (cueMap ∪ blank keywords) is used ONLY to detect a
+      // genuinely-empty config for the scaffold fallback below — NOT as targets
+      // (targets are cueMap words + DynDefs; a bare blank keyword is not one).
       const navigable = cyclingOff ? undefined : this.configLoader?.navigableWords;
       const filtered: number[] = [];
       for (const w of words) {
@@ -360,21 +377,24 @@ export class Navigation {
         if (innerSpan && innerSpan.originIdx !== w.index) continue;
         const lc = w.word.toLowerCase().replace(/[\u200B\u200C]/g, '');
         if (lc.length === 0) continue;
-        if (navigable?.has(lc)) {
+        if (cueMap?.has(lc)) {
           filtered.push(w.index);
         } else if (this.dynDefs.get(w.index)) {
           filtered.push(w.index);
         }
       }
       if (filtered.length > 0) return filtered;
-      const cueMapEmpty = !navigable || navigable.size === 0;
+      // Fall back to all words ONLY when the config is genuinely empty — no
+      // word-cues AND no blanks (a fresh/scaffold install), so navigation isn't
+      // dead out of the box. A config that HAS blanks (or cues) but no word-cue
+      // match stays SILENT rather than hopping plain words. `navigable`
+      // (cueMap ∪ blank keywords) is the "is there any config content" signal;
+      // keying this on cueMap alone wrongly made every word navigable in the
+      // very common blanks-but-no-word-cues setup. Never fall back on the
+      // no-cycling profile (target set suppressed by design, not missing).
+      const emptyConfig = !navigable || navigable.size === 0;
       const noDynDefs = this.dynDefs.size === 0;
-      // Production path: cueMap is populated → silence.
-      // Test scaffold path: no cueMap, no DynDefs → fall back.
-      // The fallback must NOT fire on the no-cycling profile — there
-      // `navigable` is suppressed by design, not missing, and falling
-      // back would make every plain word a nav target.
-      if (cueMapEmpty && noDynDefs && !cyclingOff) return words.map(w => w.index);
+      if (emptyConfig && noDynDefs && !cyclingOff) return words.map(w => w.index);
       return [];
     })();
 

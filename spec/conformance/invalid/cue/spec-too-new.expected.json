@@ -1,5 +1,5 @@
 {
   "rule": "spec-too-new",
   "severity": "error",
-  "summary": "File declares spec: opencues/99.0 — runtime supports only opencues/0.7"
+  "summary": "File declares spec: opencues/99.0 — runtime supports an older spec (declared version is above the reader pin)"
 }

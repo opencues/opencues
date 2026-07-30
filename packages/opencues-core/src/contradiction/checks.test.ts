@@ -49,6 +49,32 @@ describe('weekday-date mismatch', () => {
     // Whatever "the 31st" resolves to, the check must not throw or emit a bad date.
     assert.doesNotThrow(() => run(weekdayDateCheck, 'due Monday the 31st'));
   });
+
+  it('EXPLICIT year pins the date — a correct claim stays silent even after the date passes', () => {
+    // The July 2026 time-bomb false positive: "Friday, 24 July 2026" is CORRECT
+    // (2026-07-24 = Friday), but once `now` passed the 24th, the year-less
+    // resolver rolled to 2027-07-24 (a Saturday) and flagged a true statement.
+    // With `now` AFTER the date, the explicit year must pin the resolution.
+    const late = { now: new Date(Date.UTC(2026, 6, 30, 9, 0)) };   // Thu 2026-07-30
+    assert.deepEqual(weekdayDateCheck(words('see you on Friday, 24 July 2026 for dinner'), late), []);
+  });
+
+  it('EXPLICIT year still flags a genuinely wrong weekday (with the pinned year)', () => {
+    const late = { now: new Date(Date.UTC(2026, 6, 30, 9, 0)) };
+    const [c] = weekdayDateCheck(words('see you on Monday, 24 July 2026 for dinner'), late);
+    assert.ok(c);
+    assert.match(c.tip, /the 24th is a Friday, not Monday/);
+  });
+
+  it('year-LESS phrase keeps the future-rolling behaviour (next occurrence)', () => {
+    // Same claim without the year, `now` past the 24th → next July 24 is
+    // 2027-07-24, a Saturday → "Saturday" is correct, "Friday" flags.
+    const late = { now: new Date(Date.UTC(2026, 6, 30, 9, 0)) };
+    assert.deepEqual(weekdayDateCheck(words('see you on Saturday, 24 July for dinner'), late), []);
+    const [c] = weekdayDateCheck(words('see you on Friday, 24 July for dinner'), late);
+    assert.ok(c);
+    assert.match(c.tip, /the 24th is a Saturday, not Friday/);
+  });
 });
 
 describe('split-the-bill math', () => {

@@ -1132,6 +1132,10 @@ export function buildSharedRuntime(
   // historical declaration order in both per-host boot.ts files.
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
+  // Span-lifecycle trace (debug-mode gated at the sink). Surfaces slide / prune
+  // / drop / relocate so the "span dies then reattaches" flicker is visible in
+  // /tmp/opencues.log. adapter.log auto-prefixes the host tag.
+  dynDefs.setDebugLog(msg => adapter.log('debug', `DynDefs: ${msg}`));
   const spanFillState = new SpanFillState();
   const dismissedBlanks = new DismissedBlanks();
   const selectorSatelliteState = new SelectorSatelliteState();

@@ -89,6 +89,10 @@ export const OPENCODE_V14_CAPABILITIES: readonly Capability[] = [
   // blank-loading-colors-rgb, which the bootstrap converts via
   // RGBA.fromHex(hex) and creates per-colour extmarks for.
   'render-rgb-color',
+  // OpenTUI has no virtual text, so the note can't render mid-buffer;
+  // the bootstrap renders it in a below-input region driven by a
+  // SolidJS signal (opencuesInlineNote). See patch_footer_tsx.
+  'inline-note',
 ];
 
 export class OpenCodeV14Adapter implements HostAdapter {
