@@ -1090,12 +1090,12 @@ namespace OpenCues
                 // Single-line declaration for the runtime's data-loss-free WIPE
                 // (omnibox / Explorer search / one-line form fields). ControlType
                 // .Edit is a one-line value control; .Document (Notepad, WordPad,
-                // rich editors) is multi-line prose → never single-line. A rare
+                // rich editors) is multi-line prose -> never single-line. A rare
                 // multi-line Edit is still safe: the runtime WIPEs only when the
                 // buffer is EXACTLY the query (bufferIsExactlyTheLookup), so a
                 // multi-line Edit with real content falls back to FILL.
                 //
-                // Read ControlType ONCE per element (cache it) — it never changes
+                // Read ControlType ONCE per element (cache it) -- it never changes
                 // for a live element, and `el.Current.*` is a cross-process UIA
                 // call. `mustRead` is true every tick during the fast window /
                 // when UIA events aren't working, so reading it per tick added a
@@ -1124,7 +1124,7 @@ namespace OpenCues
                 if (TryReadFocusedElectron(out mtext, out mnode))
                 {
                     // MSAA composers (Discord, Slack, ...) are multi-line message
-                    // boxes → never single-line.
+                    // boxes -> never single-line.
                     StreamAttachment(mnode, app, mtext, AttachMode.Msaa, false, false);
                     return;
                 }
@@ -3819,11 +3819,11 @@ namespace OpenCues
         // snapshot styles' default), false = marks CHASE the scroll.
         static volatile bool _scrollHidePref = true;
 
-        // ─── Local alternation (2026-07-21) ─────────────────────────────
+        // --- Local alternation (2026-07-21) -----------------------------
         // The daemon ships the ACTIVE span's alternatives with each render
         // push; an up/down chord applies the next one HERE (one TOM
-        // splice, ~20ms) instead of waiting out the chord→daemon→set-text
-        // round trip (~80ms). The chord is still forwarded — the daemon
+        // splice, ~20ms) instead of waiting out the chord->daemon->set-text
+        // round trip (~80ms). The chord is still forwarded -- the daemon
         // applies the same deterministic step (cycling.ts wrap math) and
         // its reconciling set-text arrives as an identical no-op. Any
         // disagreement (satellite active, stale cache) self-heals: the
@@ -3845,7 +3845,7 @@ namespace OpenCues
                     string cur = _lastSentText;
                     if (cur == null || _altsS < 0 || _altsE > cur.Length || _altsE <= _altsS) return;
                     if (_altsIndex < 0 || _altsIndex >= list.Count) return;
-                    if (cur.Substring(_altsS, _altsE - _altsS) != list[_altsIndex]) return;   // stale — let the daemon handle it
+                    if (cur.Substring(_altsS, _altsE - _altsS) != list[_altsIndex]) return;   // stale -- let the daemon handle it
                     int n = list.Count;
                     int next = ((_altsIndex + direction) % n + n) % n;
                     string alt = list[next] ?? "";
@@ -3938,7 +3938,7 @@ namespace OpenCues
             _dimSpans = dim;
             _hlSpan = hl;
             // Local-alternation cache: parse the alts block riding the push
-            // (or clear it when absent — a push without alts means nothing
+            // (or clear it when absent -- a push without alts means nothing
             // locally cycleable is active).
             lock (_applyLock)
             {
@@ -4339,7 +4339,7 @@ namespace OpenCues
             catch { /* span resolve is best-effort; a missing rect = no paint */ }
         }
 
-        // ─── Native-UIA rect fallback (2026-07-22) ─────────────────────
+        // --- Native-UIA rect fallback (2026-07-22) ---------------------
         // Chromium serves REAL TextPattern geometry only to native COM
         // clients - the managed wrapper gets a stubbed ~2px caret-slot rect
         // for every range (omnibox; same family as the Slack finding). When
@@ -4436,7 +4436,7 @@ namespace OpenCues
             return list.Count > before;
         }
 
-        // ─── Calibrated width synthesis (2026-07-22) ────────────────────
+        // --- Calibrated width synthesis (2026-07-22) --------------------
         // For stub-geometry single-line fields (the omnibox) the width IS
         // solvable: the stub rect's position is the real text origin, and
         // the SYSTEM caret (GetGUIThreadInfo - Chromium maintains it for
@@ -4830,7 +4830,7 @@ namespace OpenCues
     // is Per-Monitor-V2 DPI aware, so WinForms coords are physical too),
     // plus the word text (part of the capture-cache key) and whether this is
     // the actively-cycling span.
-    // ─── ARGB adornment window (the "grammarly embodiment") ─────────────
+    // --- ARGB adornment window (the "grammarly embodiment") -------------
     // A tiny click-through window with PER-PIXEL alpha, one per span row.
     // Unlike the colorkey OverlayForm (binary transparency + one global
     // alpha, hard edges only), content is rendered into a premultiplied
