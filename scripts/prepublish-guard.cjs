@@ -93,6 +93,36 @@ if (pkg.private === true) {
 }
 ok('package.json does NOT have "private": true (publish allowed by npm)');
 
+// ── CLI launch path ─────────────────────────────────────────────────
+// The bare `opencues` CLI publishes to PUBLIC npmjs (the name handover /
+// post-launch releases). Its invariants are different from the scoped
+// libraries': no GH-Packages pin, and the repo tag matching this version
+// must exist upstream — the standalone CLI clones `v<version>` at first
+// run, so publishing ahead of the tag would break every fresh install.
+if (pkg.name === 'opencues') {
+  if (pkg.publishConfig) {
+    fail(`The CLI must have NO publishConfig block (found one pointing at\n"${(pkg.publishConfig.registry) || '?'}").\nRemove it — npm then defaults to public npmjs.com, which is intended.`);
+  }
+  ok('no publishConfig — publishing to public npmjs.com (intended for the CLI)');
+
+  let tagExists = false;
+  try {
+    const out = execSync(`git ls-remote --tags https://github.com/${REPO} v${pkg.version}`, {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    tagExists = out.trim().length > 0;
+  } catch (err) {
+    fail(`Could not check upstream tags for ${REPO}:\n${err.message.split('\n')[0]}\nAborting — the version↔tag contract can't be verified.`);
+  }
+  if (!tagExists) {
+    fail(`Tag v${pkg.version} does not exist on ${REPO}.\nThe standalone CLI clones its own version tag at first run —\ncut the release (versioning.md § Releases & tagging) BEFORE publishing.`);
+  }
+  ok(`repo tag v${pkg.version} exists upstream (version = tag = repo snapshot)`);
+
+  console.log('\n  All CLI invariants hold. Publish to npmjs.com allowed.\n');
+  process.exit(0);
+}
+
 const cfgRegistry = pkg.publishConfig && pkg.publishConfig.registry;
 if (cfgRegistry !== ALLOWED_REGISTRY) {
   fail(`package.json publishConfig.registry is "${cfgRegistry || '(missing)'}".\nExpected "${ALLOWED_REGISTRY}".\nRefusing — without this pin, npm publish defaults to public npmjs.com.`);
@@ -144,7 +174,7 @@ try {
   fail(`Could not parse \`gh repo view\` output:\n${gh.slice(0, 200)}\n${err.message}`);
 }
 if (visibility !== 'PRIVATE') {
-  fail(`GitHub repo ${REPO} visibility is "${visibility}".\nExpected "PRIVATE".\nIf the repo went public intentionally, re-run with\nOPENCUES_PUBLISH_GUARD_BYPASS=i-confirm-public-leak (paranoid by design).`);
+  fail(`Refusing to publish scoped package "${pkg.name}".\nThe @opencues/* libraries are not cleared for publishing post-launch\n(the repo is now ${visibility}; GH-Packages access follows repo visibility,\nso a publish would be publicly readable). If a library is ready to ship\npublicly, that's a deliberate decision: repoint its publishConfig to\nnpmjs and extend this guard's CLI launch path to cover it.`);
 }
 ok(`GitHub repo ${REPO} is PRIVATE`);
 

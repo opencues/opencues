@@ -56,10 +56,8 @@ OpenCues is platform, model, and provider agnostic, engineered from the ground u
 
 # Quickstart
 
-> ⚠️ **Private beta.** `npm install -g opencues` isn't live yet. Install from a clone instead — see **[BETA-INSTALL.md](BETA-INSTALL.md)**. Everything past the install step below is accurate today.
-
 ```bash
-npm install -g opencues              # see BETA-INSTALL.md until this is live
+npm install -g opencues              # needs Node 22+ and git
 opencues set-key cerebras csk-...    # cerebras.ai — free tier, lowest latency
 opencues install claude-code         # or: opencode | gemini-cli | chrome | shell
 claude-cues                          # launch — native `claude` is untouched

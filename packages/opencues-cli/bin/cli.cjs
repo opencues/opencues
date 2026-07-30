@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 // `opencues` — front door CLI.
 //
-// Today this runs from a clone via `node packages/opencues-cli/bin/cli.cjs`
-// or `pnpm exec opencues`. Post-publish (Stage 8) it becomes the bin
-// entry for `npx opencues` / `npm i -g opencues`.
+// Runs two ways:
+//   • from a clone (`pnpm exec opencues`, dev) — the repo is `../..`.
+//   • standalone (`npm i -g opencues`) — the repo is resolved via
+//     $OPENCUES_REPO or ~/.opencues/repo, fetched on demand (pinned to
+//     this CLI's own version tag) the first time a repo-needing command
+//     runs. See src/lib/repo-root.cjs.
 
 'use strict';
 
@@ -11,8 +14,15 @@ const path = require('node:path');
 const fs = require('node:fs');
 
 const PKG_DIR = path.resolve(__dirname, '..');
-const REPO_ROOT = path.resolve(PKG_DIR, '../..');
 const pkg = JSON.parse(fs.readFileSync(path.join(PKG_DIR, 'package.json'), 'utf8'));
+
+// Repo root: clone (dev) → $OPENCUES_REPO → ~/.opencues/repo → fetched on
+// demand (REPO_NEEDING commands only). Light commands never clone; with no
+// repo present they see the (absent) home path and their existsSync guards
+// read it as not-installed.
+const repoRootLib = require('../src/lib/repo-root.cjs');
+const RESOLVED_REPO = repoRootLib.resolveRepoRoot(PKG_DIR);
+const REPO_ROOT = RESOLVED_REPO.root || repoRootLib.homeRepoDir();
 
 // Lazy-load command modules so `opencues --help` doesn't pay for the
 // whole tree.
@@ -62,7 +72,30 @@ const rest = (argv[0] && (ALIASES[argv[0]] || COMMANDS[argv[0]])) ? argv.slice(1
 // An unknown command → help (usage).
 if (!command || !COMMANDS[command]) command = (argv.length === 0) ? 'launcher' : 'help';
 
-const ctx = { pkg, PKG_DIR, REPO_ROOT };
+// Commands that read the repo's contents (defaults/, integrations/, core
+// dist/). Only these trigger the on-demand fetch; everything else works
+// repo-less. `launcher` stays out — its menu entries route back through
+// this same dispatch on selection.
+const REPO_NEEDING = new Set([
+  'install', 'uninstall', 'run', 'sync', 'update',
+  'seed-configs', 'update-configs', 'validate', 'review', 'models',
+]);
+
+const ctx = { pkg, PKG_DIR, REPO_ROOT, repoSource: RESOLVED_REPO.source };
+
+if (REPO_NEEDING.has(command) && !RESOLVED_REPO.root) {
+  // Standalone install with no repo yet — fetch it (pinned to this CLI's
+  // version tag) before the command runs. Sync on purpose: every
+  // repo-needing command is long-running anyway. Fetch failures are
+  // user-ready messages, not stack traces.
+  try {
+    ctx.REPO_ROOT = repoRootLib.ensureRepoRoot(PKG_DIR, pkg.version);
+    ctx.repoSource = 'home';
+  } catch (err) {
+    console.error(`\nopencues: ${err && err.message || err}\n`);
+    process.exit(1);
+  }
+}
 
 try {
   // Commands may be sync OR async (return a Promise — e.g. `update --check`
