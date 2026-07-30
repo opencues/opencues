@@ -494,11 +494,23 @@ class CommandRunner {
         // 'runtime' source flag already signals "not user-typed".
         const prevText = adapter.getText();
         if (cmd === 'text' && countUnderscores(decoded) > countUnderscores(prevText)) {
+          // Frame the synthetic keystroke as the FINAL `_` of the typed
+          // string: text = decoded with that `_` removed, cursor = its
+          // position — exactly what a real user's last keypress looks like
+          // (they typed everything before it, then hit `_`). The previous
+          // shape (pre-change buffer + the OLD cursor) mis-framed it: after
+          // a transform substitute the old cursor sat exactly at the span's
+          // END — inside the inclusive note-gate — so Cycling's `_`-step
+          // CONSUMED the synthetic key and reverted the def instead of
+          // arming the blank gate (July 2026: chain scenarios' second
+          // transform never fired). lastIndexOf matches the blank anchor
+          // (blanks anchor on the LAST `_`).
+          const usIdx = decoded.lastIndexOf('_');
           this.bindings.dispatchKey({
             key: '_',
             modifiers: { ctrl: false, alt: false, shift: false, meta: false },
-            text: prevText,
-            cursorOffset: adapter.getCursorOffset(),
+            text: decoded.slice(0, usIdx) + decoded.slice(usIdx + 1),
+            cursorOffset: usIdx,
           });
         }
         // Two-step write: (1) synthetic textChange FIRST so the

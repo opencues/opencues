@@ -13,6 +13,7 @@ import { Runtime } from '../../../src/runtime';
 import { buildBootApiKeys, pickAutoProvider } from '@opencues/core';
 import { OpenCodeV14Adapter, type OpenCodeBindings } from './adapter';
 import { startEventBridge } from '../../../src/event-bridge';
+import { applyDirectives } from '../../../src/render-directives';
 import { Statusline } from '../../../src/modules/statusline';
 import { Resolver } from '../../../src/modules/resolver';
 import { AgentRewrite } from '../../../src/modules/agent-rewrite';
@@ -363,6 +364,21 @@ export function boot(host: HostInfo): BootResult {
         { text: adapter.getText(), cursor: adapter.getCursorOffset(), externalHighlights: [] },
         err => log('error', 'render handler threw', err),
       ),
+      // The PAINTED output (ANSI-stripped) for the current buffer, so scenarios
+      // can assert the inline note's aligned splice — mirrors CC's binding
+      // (adapters/cc/v2.1/boot.ts). OC has no ZWS render-kick, so the buffer
+      // text is used as-is.
+      renderedText: () => {
+        const ctxText = adapter.getText();
+        let out = ctxText;
+        for (const d of renderEvents.collect(
+          { text: ctxText, cursor: adapter.getCursorOffset(), externalHighlights: [] },
+          err => log('error', 'render handler threw', err),
+        )) {
+          if (d) out = applyDirectives(out, d, 0);
+        }
+        return out.replace(/\x1b\[[0-9;]*m/g, '');
+      },
     });
   }
 
