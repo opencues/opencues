@@ -29,6 +29,10 @@ vi.mock('@opencues/runtime/dist/src/boot-common', () => ({
   createSourceReclassifier: () => ({ markRuntimeWrite: vi.fn(), reclassify: (_t: string, s: string) => s }),
 }));
 vi.mock('@opencues/runtime/dist/src/util/cell-width', () => ({ codeUnitsToCells: (_t: string, o: number) => o }));
+vi.mock('@opencues/runtime/dist/src/render-directives', () => ({
+  inlineNoteDisplayText: (t: string) => t,
+  inlineNoteBoxColumn: vi.fn(() => 0),
+}));
 vi.mock('@opencues/runtime/dist/src/blanks', () => ({
   createBlankInvoke: vi.fn(() => vi.fn()),
   createDefaultBlanksRegistry: vi.fn(() => new Map()),
