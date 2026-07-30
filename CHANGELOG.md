@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-30
+
+First npm-published release (`npm install -g opencues`). Highlights in the [GitHub Release](https://github.com/opencues/opencues/releases/tag/v0.4.0).
+
 ### Added — standalone CLI: `npm install -g opencues` now works (CLI 0.3.0 → 0.3.1)
 
 The CLI no longer assumes it lives inside a repo checkout. A resolution ladder (`src/lib/repo-root.cjs`) finds the runtime repo — dev clone → `$OPENCUES_REPO` → `~/.opencues/repo` — and, for a global npm install with no repo present, **fetches it on demand pinned to the CLI's own version tag** (`git clone --depth 1 --branch v<version>`), then bootstraps it (workspace deps via pnpm, falling back to corepack's bundled pnpm; `@opencues/core` built). npm version = git tag = repo snapshot, so a published CLI always drives the matching runtime. Only repo-needing commands (`install`, `run`, `validate`, …) trigger the fetch; light commands (`set-key`, `config`, `identity`, …) work repo-less. The prepublish guard gained a CLI launch path: publish to public npmjs is allowed only when the matching repo tag exists upstream; `@opencues/*` libraries remain blocked from public registries. README/BETA-INSTALL/docs updated to the live-npm quickstart. Pinned by 19 hermetic tests (`repo-root.test.cjs`) + a packed-tarball sandbox smoke (fetch → bootstrap → `validate` green end-to-end).
