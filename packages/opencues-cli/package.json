@@ -1,6 +1,6 @@
 {
   "name": "opencues",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "OpenCues enables native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",
   "keywords": [
     "ai",
