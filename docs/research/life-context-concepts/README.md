@@ -34,6 +34,13 @@ Contents:
   tokenised frame skeletons, deterministic local matching algebra,
   semantic snapping via hypernym generalization. Unlocks the
   messages/payments cue tier at calendar-context's trust level.
+- `generalized-contradiction-tracker.md` (30 Jul 2026) - the
+  counterpart approach: collect submitted text, "dream" it into a
+  claims store in the background, inject the store as a fifth
+  catalog and let the model flag collisions. Broader coverage,
+  simpler build; inverts the privacy invariant and turns the flag
+  into generation — resolved as two tiers of one system with
+  propositional dehydration as the high-stakes tier.
 
 Key rules extracted (short form): coordinates are data, never
 generation; missing data is survivable for cues, fatal for discovery
