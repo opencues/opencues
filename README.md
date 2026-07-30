@@ -23,7 +23,8 @@
 
 <br><br><br>
 
-[![npm](https://img.shields.io/npm/v/opencues)](https://npmjs.com/package/opencues)
+<!-- npm badge — hidden until announce; uncomment to show:
+[![npm](https://img.shields.io/npm/v/opencues)](https://npmjs.com/package/opencues) -->
 
 **OpenCues enables native AI integration anywhere you type.** Model agnostic and fully open source. Inline agents and prompting.
 
