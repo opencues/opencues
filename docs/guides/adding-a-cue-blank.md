@@ -34,7 +34,7 @@ If you'd rather copy-and-edit a working example than fill in a template, the shi
 - [`defaults/cues/example/CUE.md`](../../defaults/cues/example/CUE.md) — minimal word-cue. Matches `hi|hey|hello`, returns three formal-greeting alternatives via the LLM. Shows: `name`, `parser`, `scope: words`, `priority`, `match`, prompt body.
 - [`defaults/blanks/example/BLANK.md`](../../defaults/blanks/example/BLANK.md) + [`time-blank.sh`](../../defaults/blanks/example/time-blank.sh) — minimal script-blank. `time _` fires the script which prints `date '+%H:%M'`. Shows: `blankKeywords`, `blankScript`, the get/set script contract. (Auto-populate is automatic for any keyword/shape blank; read-only is inferred — a blank with no `blankStep` / `stepValues` / `blankSatellite` simply isn't cycleable.)
 
-Production packs (legal/medical/financial/volume/brightness/weather) are bigger because they need more fields for production reasons; the example packs strip those back to "what fires the simplest version".
+Production packs (volume/brightness/weather/stocks) are bigger because they need more fields for production reasons; the example packs strip those back to "what fires the simplest version".
 
 ## 1. Folder-based blank (canonical)
 

@@ -19,7 +19,7 @@ Your user-level OpenCues config lives at `~/.cues/`:
 │                               # OFF by default.
 ├── CUES.md                     # Cue master: project metadata + `ignore:` +
 │                               # `disable:`. Frontmatter only.
-├── cues/<name>/CUE.md          # Per-cue folder (legal, medical, financial, ...)
+├── cues/<name>/CUE.md          # Per-cue folder (spelling, more-formal, calendar, ...)
 ├── BLANKS.md                   # Blank master.
 ├── blanks/<name>/BLANK.md      # Per-blank folder (with optional colocated
 │                               # scripts or runtime classes)
@@ -61,7 +61,7 @@ Frontmatter keys at the top of `~/.cues/OPENCUES.md`. The same scalars are cycla
 | `tips-mode` | `on` / `off` | `on` | Show secondary-display tips (status line, side pane). |
 | `debug-mode` | `on` / `off` | `off` | Verbose logging in the host's debug surface. |
 | `cursor-navigate` | `active` / `inactive` | `inactive` | Highlight follows cursor to navigable words. |
-| `word-cues-mode` | `on` / `off` | `on` | LLM word-cue surface (legal, medical, ...) registered. |
+| `word-cues-mode` | `on` / `off` | `on` | LLM word-cue surface (spelling + any custom vocabularies) registered. |
 | `transform-blank-mode` | `on` / `off` | `on` | Imperative `_` + agent-task lifecycle (`agentically X _`) registered. |
 | `sentence-cues-mode` | `on` / `off` | `off` | Cues with `scope: sentence` (whole-sentence rewrites) registered. |
 | `fluid-config-mode` | `on` / `off` | `off` | Natural-language settings phrases (`enable debug logging _` → flips `debug-mode`). FEATURES-only scope; never routes to user blanks. |
@@ -119,7 +119,7 @@ spec: opencues/0.1-alpha
 tips-mode: on             # whether static tip-group cues fire
 word-cues-mode: on        # whether LLM word-cue sources fire
 ignore: [TODO, FIXME]     # words never to cue
-disable: [legal, medical] # cue source ids to skip at this layer
+disable: [spelling, example] # cue source ids to skip at this layer
 ---
 ```
 
@@ -183,7 +183,7 @@ Cues declare `scope:` in their CUE.md frontmatter — pick what the cue operates
 
 | `scope:` | What it operates on | Example shipped cue |
 |---|---|---|
-| `words` (default) | Each highlighted word individually. The classic "navigate to word, cycle synonyms" surface. | `defaults/cues/legal/CUE.md`, `defaults/cues/spelling/CUE.md` |
+| `words` (default) | Each highlighted word individually. The classic "navigate to word, cycle synonyms" surface. | `defaults/cues/spelling/CUE.md`, `defaults/cues/example/CUE.md` |
 | `sentence` | Whole sentences. The runtime registers a passive DynDef at the first word; cycling Up swaps the entire sentence for an alternative rewrite. | `defaults/cues/more-formal/CUE.md` |
 | `blanks` | Only runs when the buffer contains `_`. Rare for cues — most blank-shaped surfaces are blanks proper. | (no shipped defaults today) |
 | `all` | Runs in both prose-flow and `_`-flow contexts. | (no shipped defaults today) |
@@ -212,10 +212,10 @@ Every `### alternatives` section in `CUES.md` (or `cues/<name>/CUE.md`) becomes 
 Routing per word: walk every source in priority-descending order, claim each word for the FIRST source whose `match:` regex hits or whose `keywords:` list contains the word. If no source claims it, the word isn't navigable.
 
 ```yaml
-# Domain cue — high priority, narrow match
-name: legal
+# Vocabulary cue — high priority, narrow match
+name: concise
 priority: 70
-match: contract|agreement|clause|liability
+match: very|really|just|actually
 
 # Catch-all fallback — low priority, broad match
 name: spelling
@@ -223,7 +223,7 @@ priority: 10
 match: .*
 ```
 
-With this layout: `contract` → legal (priority 70 > spelling 10); `hello` → spelling (no domain match, spelling's `.*` catches it). Flip priorities and spelling would suppress every domain cue.
+With this layout: `very` → concise (priority 70 > spelling 10); `hello` → spelling (no narrow match, spelling's `.*` catches it). Flip priorities and spelling would suppress every other cue.
 
 Why per-word dispatch matters (and why we don't merge prompts):
 

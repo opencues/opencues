@@ -86,9 +86,9 @@ describe('buildSourcesFromConfig — word source routing', () => {
   it('wraps multiple alternatives sections in ONE RoutedWordSourceGroup', () => {
     const cuesConfig = mkConfig({
         sources: {
-          legal: { name: 'legal', promptText: 'Legal prompt.', priority: 70, match: 'contract' },
-          medical: { name: 'medical', promptText: 'Medical prompt.', priority: 75, match: 'diagnosis' },
-          financial: { name: 'financial', promptText: 'Financial prompt.', priority: 65, keywords: 'stock,bond' },
+          concise: { name: 'concise', promptText: 'Legal prompt.', priority: 70, match: 'contract' },
+          plain: { name: 'plain', promptText: 'Medical prompt.', priority: 75, match: 'diagnosis' },
+          tone: { name: 'tone', promptText: 'Financial prompt.', priority: 65, keywords: 'stock,bond' },
         },
     });
 
@@ -107,7 +107,7 @@ describe('buildSourcesFromConfig — word source routing', () => {
     const cuesConfig = mkConfig({
         sources: {
           catchAll: { name: 'catchAll', promptText: 'Anything.', priority: 50 },
-          legal: { name: 'legal', promptText: 'Legal.', priority: 70, match: 'contract' },
+          concise: { name: 'concise', promptText: 'Legal.', priority: 70, match: 'contract' },
         },
     });
 
@@ -120,7 +120,7 @@ describe('buildSourcesFromConfig — word source routing', () => {
   it('keeps non-alternatives parser sources separate (not in the routed group)', () => {
     const cuesConfig = mkConfig({
         sources: {
-          legal: { name: 'legal', promptText: 'Legal.', priority: 70, match: 'contract' },
+          concise: { name: 'concise', promptText: 'Legal.', priority: 70, match: 'contract' },
           custom: { name: 'custom', promptText: 'Custom.', priority: 60, parser: 'raw', scope: 'words' },
         },
     });
@@ -138,7 +138,7 @@ describe('buildSourcesFromConfig — word source routing', () => {
   it('keeps non-words scope sources separate', () => {
     const cuesConfig = mkConfig({
         sources: {
-          legal: { name: 'legal', promptText: 'Legal.', priority: 70, match: 'contract' },
+          concise: { name: 'concise', promptText: 'Legal.', priority: 70, match: 'contract' },
           allScope: { name: 'allScope', promptText: 'All.', priority: 60, scope: 'all' },
         },
     });
@@ -152,7 +152,7 @@ describe('buildSourcesFromConfig — word source routing', () => {
   it('skips disabled sources', () => {
     const cuesConfig = mkConfig({
         sources: {
-          legal: { name: 'legal', promptText: 'Legal.', priority: 70, match: 'contract' },
+          concise: { name: 'concise', promptText: 'Legal.', priority: 70, match: 'contract' },
           disabled: { name: 'disabled', promptText: 'Disabled.', match: 'foo', enabled: false },
         },
     });
@@ -166,7 +166,7 @@ describe('buildSourcesFromConfig — word source routing', () => {
   it('skips sources without promptText', () => {
     const cuesConfig = mkConfig({
         sources: {
-          legal: { name: 'legal', promptText: 'Legal.', match: 'contract' },
+          concise: { name: 'concise', promptText: 'Legal.', match: 'contract' },
           empty: { name: 'empty', match: 'foo' },
         },
     });
@@ -393,8 +393,8 @@ describe('buildSourcesFromConfig — Universal-Integration filter', () => {
   it('supportsCycling=false + word-cues enabled: word-cue source dropped', () => {
     const cuesMd: CuesMdConfig = mkConfig({
       sources: {
-        legal: {
-          name: 'legal',
+        concise: {
+          name: 'concise',
           promptText: 'Provide alts.',
           scope: 'words',
           parser: 'alternatives',
@@ -412,9 +412,9 @@ describe('buildSourcesFromConfig — Universal-Integration filter', () => {
       log: (msg) => { if (msg.includes('skipping')) droppedLogs.push(msg); },
     });
     const ids = sources.map(s => s.id);
-    assert.ok(!ids.includes('legal'), 'word-cue source not registered');
+    assert.ok(!ids.includes('concise'), 'word-cue source not registered');
     assert.ok(!ids.includes('word-cues'), 'RoutedWordSourceGroup not built (no sources to wrap)');
-    assert.ok(droppedLogs.some(m => m.includes("legal")), 'legal word-cue logged as pruned');
+    assert.ok(droppedLogs.some(m => m.includes("concise")), 'concise word-cue logged as pruned');
   });
 });
 

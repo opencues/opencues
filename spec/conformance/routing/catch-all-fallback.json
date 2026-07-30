@@ -1,12 +1,12 @@
 {
   "description": "Catch-all cue (`match: .*` at a low priority) claims words no higher-priority domain cue matched. Sources without `match:` or `keywords:` are rejected at load time — there is no implicit DEFAULT-via-field-absence in the current spec. See spec/core.md § Routing.",
   "sources": [
-    { "name": "legal",       "priority": 70, "match": "contract|clause" },
+    { "name": "concise",     "priority": 70, "match": "contract|clause" },
     { "name": "spelling",    "priority": 10, "match": ".*" }
   ],
   "expectations": [
-    { "word": "contract", "routesTo": "legal" },
-    { "word": "clause",   "routesTo": "legal" },
+    { "word": "contract", "routesTo": "concise" },
+    { "word": "clause",   "routesTo": "concise" },
     { "word": "hello",    "routesTo": "spelling" },
     { "word": "anything", "routesTo": "spelling" },
     { "word": "lawyer",   "routesTo": "spelling" }

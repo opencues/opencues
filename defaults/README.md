@@ -38,12 +38,10 @@ defaults/
 ├── AUDITORS.md                auditor-surface master
 ├── IDENTITY.md                   identity-context template (personal-data fields for identity-context-mode)
 ├── cues/                      shipped cue sources
-│   ├── tips/CUE.md            local-tip lookups (no LLM — ultrathink → Tab etc.)
-│   ├── legal/CUE.md           legal-terminology LLM cue
-│   ├── medical/CUE.md         medical-terminology LLM cue
-│   ├── financial/CUE.md       financial-terminology LLM cue
+│   ├── tips-<host>/CUE.md     local-tip lookups (no LLM — ultrathink → Tab etc.)
 │   ├── spelling/CUE.md        catch-all spelling correction
 │   ├── more-formal/CUE.md     scope:sentence — informal → formal rewrites
+│   ├── calendar/CUE.md        scope:sentence — calendar-conflict flag
 │   └── example/CUE.md         minimal walkthrough cue (copy + edit)
 ├── blanks/                    shipped blanks
 │   ├── volume/                system volume — script + .cs source
@@ -64,7 +62,7 @@ defaults/
 - **Standard normative content** — the contracts in `OPENCUES.md`,
   `CUES.md`, etc. are anchors for the spec at `spec/`. Removing one
   is a breaking change.
-- **Shipped example content** — `cues/legal/CUE.md`,
+- **Shipped example content** — `cues/spelling/CUE.md`,
   `blanks/volume/`, the auditor prompts. Quality matters but
   individual entries can be re-tuned without breaking the standard.
 - **Walkthrough packs** — `cues/example/CUE.md` and

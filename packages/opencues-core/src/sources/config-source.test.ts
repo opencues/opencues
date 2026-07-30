@@ -2,9 +2,10 @@
  * Tests for ConfigSource — the generic config-driven CueSource.
  *
  * Focus: the defensive format-spec auto-append for parser: alternatives.
- * This contract is load-bearing — without it, naive domain cues (legal,
- * medical, anything a user authors without reading the RoutedWordSourceGroup
- * docs) cause the LLM to respond in prose, breaking word highlights.
+ * This contract is load-bearing — without it, a naive domain cue (a
+ * vocabulary pack, anything a user authors without reading the
+ * RoutedWordSourceGroup docs) causes the LLM to respond in prose,
+ * breaking word highlights.
  *
  * Run with: node --test dist/sources/config-source.test.js
  */
@@ -62,7 +63,7 @@ describe('ConfigSource: format-spec auto-append (parser: alternatives)', () => {
     // respond in prose/tables, breaking parseAlternatives.
     const { adapter, sent } = mkCapturingAdapter();
     const source = mkSource({
-      promptText: 'Suggest alternatives that preserve legal meaning.',
+      promptText: 'Suggest alternatives that preserve the meaning.',
     }, adapter);
     await source.getCues(ctx);
 

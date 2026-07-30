@@ -6,7 +6,8 @@
  *
  * ## How sources are assembled
  *
- * **Word cues (per-word routing)**: Domain prompts (legal, medical, …) live
+ * **Word cues (per-word routing)**: Word-cue prompts (spelling, custom
+ * vocabularies, …) live
  * as `### alternatives` sections in `CUES.md` (or folder-based
  * `cues/<name>/CUE.md`). They get wrapped in ONE RoutedWordSourceGroup that
  * dispatches each highlighted word to one source via match/keywords.
@@ -693,9 +694,9 @@ export function buildSourcesFromConfig(
   }
 
   // Spelling has no dedicated source class anymore — it's a regular
-  // ConfigSource entry shipped at `defaults/cues/spelling.md` (a
-  // word-scope cue with `match: .*`, priority 80, parser
-  // alternatives). It loads through the same path as legal/medical/etc.
+  // ConfigSource entry shipped at `defaults/cues/spelling/CUE.md` (a
+  // word-scope cue with `match: .*`, priority 10, parser
+  // alternatives). It loads through the same path as any word cue.
 
   // Config-intent: settings-change classifier (priority 94). Routes
   // `_` to an OPENCUES.md scalar flip when the surrounding text

@@ -123,7 +123,7 @@ Context provided to sources for analysis:
 interface CueContext {
   text: string;                    // Full input text
   words: string[];                 // Text split into words
-  domain?: string;                 // 'claude-code', 'medical', etc.
+  domain?: string;                 // 'claude-code', 'gemini-cli', etc.
   previousResults?: CueResult[];   // For incremental updates
   blankIndices?: number[];         // Indices with underscore blanks
 }
@@ -312,9 +312,9 @@ const sources = [
     domain: 'claude-code',
     priority: 100
   }),
-  new LocalCueSource(medicalTips, {
-    id: 'medical-tips',
-    domain: 'medical',
+  new LocalCueSource(opencodeTips, {
+    id: 'opencode-tips',
+    domain: 'opencode',
     priority: 100
   }),
   // Config-driven sources from .md files

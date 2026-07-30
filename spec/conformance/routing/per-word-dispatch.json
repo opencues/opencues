@@ -1,17 +1,17 @@
 {
   "description": "Each word goes to exactly one source — the highest-priority match wins",
   "sources": [
-    { "name": "legal",    "priority": 70, "match": "contract|clause|agreement" },
-    { "name": "medical",  "priority": 70, "match": "diagnosis|symptom|patient" },
+    { "name": "concise",  "priority": 70, "match": "contract|clause|agreement" },
+    { "name": "plain",    "priority": 70, "match": "diagnosis|symptom|patient" },
     { "name": "catchall", "priority": 10, "match": ".*" }
   ],
   "expectations": [
-    { "word": "contract",  "routesTo": "legal" },
-    { "word": "clause",    "routesTo": "legal" },
-    { "word": "agreement", "routesTo": "legal" },
-    { "word": "diagnosis", "routesTo": "medical" },
-    { "word": "symptom",   "routesTo": "medical" },
-    { "word": "patient",   "routesTo": "medical" },
+    { "word": "contract",  "routesTo": "concise" },
+    { "word": "clause",    "routesTo": "concise" },
+    { "word": "agreement", "routesTo": "concise" },
+    { "word": "diagnosis", "routesTo": "plain" },
+    { "word": "symptom",   "routesTo": "plain" },
+    { "word": "patient",   "routesTo": "plain" },
     { "word": "hello",     "routesTo": "catchall" },
     { "word": "world",     "routesTo": "catchall" },
     { "word": "lawyer",    "routesTo": "catchall" }

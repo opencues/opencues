@@ -91,7 +91,7 @@ kill-switch on top of all per-cue declarations.
 ## Priority + overlap with word cues
 
 Sentence cues default to priority **85** — higher than typical word
-cues (legal=70, medical=70, financial=70, etc.). On a sentence
+cues (roughly 60-80). On a sentence
 containing words that have word-cues, the sentence cue wins and
 the word cues are suppressed.
 

@@ -3,8 +3,8 @@
 # example — minimal hello-world cue
 #
 # A deliberately tiny word-cue source you can copy-and-edit.
-# Production packs (legal/medical/financial/more-formal) have many
-# fields for many reasons; this one shows the minimum that fires.
+# Larger shipped cues (more-formal, spelling) carry more fields for
+# many reasons; this one shows the minimum that fires.
 #
 # What it does: when you type `hi`, `hey`, or `hello`, the runtime
 # claims that word and offers three formal-greeting alternatives.
@@ -39,8 +39,9 @@ parser: alternatives
 scope: words
 
 # Higher priority wins when multiple sources match the same word.
-# Defaults (typical range 60-80): legal=70, medical=70, spelling=80.
-# 65 sits below the domain cues so the example doesn't shadow them.
+# Shipped priorities: more-formal=85 (sentence), spelling=10 (catch-all).
+# 65 sits above the spelling catch-all but below higher-priority cues,
+# so the example claims its own words without shadowing anything else.
 priority: 65
 
 # Trigger: any word matching this regex routes to THIS source.

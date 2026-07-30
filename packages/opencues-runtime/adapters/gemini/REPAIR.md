@@ -80,7 +80,7 @@ Manual checklist (mirrored in `integrations/gemini-cli/CLAUDE.md`):
 
 | What | Type | Expect |
 |---|---|---|
-| `we shall draft the contract clause` then ctrl+alt+left | Cycling (LLM) | Highlight on `clause` (legal cue), up/down rotates alts |
+| `this has a mispelled word` then ctrl+alt+left | Cycling (LLM) | Highlight on `mispelled` (spelling cue), up/down rotates corrections |
 | `volume _` | Cue-blank script | `_` auto-populates to e.g. `25%`; up/down on it adjusts system volume |
 | `weather _` | Cue-blank HTTP | `_` auto-populates with current temp |
 | `atomic number of oxygen _` | Fluid blank | LLM substitutes `8` |

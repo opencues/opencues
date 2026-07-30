@@ -110,9 +110,9 @@ A runtime that rejects with a different rule code is allowed (the rejection itse
 [
   {
     "description": "single line, one word, two alts",
-    "input": "0:lawyer,attorney",
+    "input": "0:use,employ",
     "expected": [
-      { "wordIndex": 0, "alts": ["lawyer", "attorney"] }
+      { "wordIndex": 0, "alts": ["use", "employ"] }
     ]
   }
 ]
@@ -126,13 +126,13 @@ The `expected` array is the structured output your parser MUST produce. The orig
 {
   "description": "Two sources, domain wins over default",
   "sources": [
-    { "name": "legal",    "priority": 70, "match": "contract|clause" },
+    { "name": "concise",  "priority": 70, "match": "contract|clause" },
     { "name": "catchall", "priority": 10, "match": ".*" }
   ],
   "expectations": [
-    { "word": "contract", "routesTo": "legal" },
+    { "word": "contract", "routesTo": "concise" },
     { "word": "hello",    "routesTo": "catchall" },
-    { "word": "clause",   "routesTo": "legal" }
+    { "word": "clause",   "routesTo": "concise" }
   ]
 }
 ```

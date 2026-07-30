@@ -104,11 +104,11 @@ A **cue source** is anything that provides alternatives for words. All cue sourc
 
 **RoutedWordSourceGroup** — Wraps multiple folder-based word-cue sources (each `cues/<name>/CUE.md`) and dispatches each highlighted word to ONE child source via per-word routing. Uses fast-path rules only — no LLM classifier. Every source MUST declare `match:` (regex) or `keywords:` (list); sources without either are dropped. Words that no source claims produce no cue (not navigable). Words destined for the same source are batched into one parallel LLM call. Replaces the old "combine all sources into one giant prompt" model. See `docs/features/word-cue-routing.md`.
 
-**Word-Cue Source** — A `parser: alternatives` source with `match:` (regex) and/or `keywords:` (comma-separated list). Only fires for words that hit the regex or appear in the keyword list. Use for narrow vocabularies (legal, medical, formal connectors). Higher priority wins ties. Catch-all sources (no match, no keywords) are not supported — declare an explicit `match: .*` if you really want one.
+**Word-Cue Source** — A `parser: alternatives` source with `match:` (regex) and/or `keywords:` (comma-separated list). Only fires for words that hit the regex or appear in the keyword list. Use for narrow vocabularies (formal connectors, filler words, jargon you want tightened). Higher priority wins ties. Catch-all sources (no match, no keywords) are not supported — declare an explicit `match: .*` if you really want one.
 
 **buildSourcesFromConfig** — Factory function that takes parsed `CUES.md` plus discovered `cues/<name>/CUE.md` and `blanks/<name>/BLANK.md` folders and returns `CueSource[]`. Wires:
 - **Word cues**: Each `cues/<name>/CUE.md` becomes a `ConfigSource`; all of them wrap into ONE `RoutedWordSourceGroup` that dispatches per-word.
-- **Blanks**: Keyword-bound entries from `blanks/<name>/BLANK.md` register with `BlankSource` (priority 95). `FluidBlankSource` (priority 92) catches unbound `_`. The shipped `defaults/cues/spelling/CUE.md` cue (priority 10 — the lowest of any shipped source, deliberately, so domain cues win first) flags misspelled words on plain text — same `ConfigSource` path as legal/medical/etc.
+- **Blanks**: Keyword-bound entries from `blanks/<name>/BLANK.md` register with `BlankSource` (priority 95). `FluidBlankSource` (priority 92) catches unbound `_`. The shipped `defaults/cues/spelling/CUE.md` cue (priority 10 — the lowest of any shipped source, deliberately, so other cues win first) flags misspelled words on plain text — same `ConfigSource` path as any word cue.
 
 > **Terminology note**: "cue source" is the general concept. `CueSource` is the TypeScript interface. `ConfigSource` and `LocalCueSource` are specific implementations.
 

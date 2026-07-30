@@ -88,6 +88,13 @@ Both hosts render the note as a **flow element that reserves its own row** — g
 **Clears on vertical caret moves.** OpenTUI's `onCursorChange` fires on horizontal moves only, so `dispatchOpenCuesKey` — which re-rendered only on *consumed* keys — never re-evaluated the cursor gate on an unconsumed up/down, leaving the note on the line you left. Fixed by deferring a re-render one macrotask after any non-consumed cursor-moving key (`up`/`down`/`left`/`right`/`home`/`end`/`pageup`/`pagedown`) so it settles against the new caret.
 
 Pinned by 5 `inlineNoteBoxColumn` unit tests. Verified live on headless OpenCode + shell (note emits, no crash); the on-screen row growth is confirmed on a live host.
+## [0.3.0] - 2026-07-29
+
+First public release. Full highlights in the [GitHub Release](https://github.com/opencues/opencues/releases/tag/v0.3.0).
+
+### Removed — shipped niche word-cues `legal` / `medical` / `financial`
+
+Deleted the three professional-domain word-cue packs from `defaults/cues/`. Low value for a general audience, and because cues compete for the span via priority eviction they crowd out the genuinely useful cues (contradiction, sentence rewrites). The per-word cue **mechanism** (`RoutedWordSourceGroup`) and its docs are unchanged — only the shipped instances go. Docs, templates, and spec/conformance fixtures repointed to the remaining shipped cues (`spelling`, `more-formal`) or neutral examples. No package behaviour change (tests + comments only); the shipped-content change lands in the next release.
 
 ### Fixed — `inherit` is now a universal provider fall-through sentinel (`@opencues/core` 0.40.1 → 0.40.2, `@opencues/chrome` 0.2.101 → 0.2.102)
 
@@ -893,7 +900,7 @@ The countries blank moved to a bundled offline dataset (restcountries.com fully 
 
 ## [2026-06-25] — checkpoint
 
-Snapshot tag (`v2026.06.25`). Headline: **BlankIntent** ships behind `blank-intent-mode` (OFF by default) — an LLM invocation gate for keyword script-blanks with line-scoped Phase-1, typed get/set/step, and a single shared keyword-window predicate across all five claim/cede sites; plus the **countries** blank moving to a bundled offline dataset. Packages at this checkpoint: `@opencues/core` 0.5.1, `@opencues/runtime` 0.4.4. (All packages remain `private` — this is a source checkpoint, not an npm publish; the npm handover is tracked in `docs/launch/npm-handover.md`.)
+Snapshot tag (`v2026.06.25`). Headline: **BlankIntent** ships behind `blank-intent-mode` (OFF by default) — an LLM invocation gate for keyword script-blanks with line-scoped Phase-1, typed get/set/step, and a single shared keyword-window predicate across all five claim/cede sites; plus the **countries** blank moving to a bundled offline dataset. Packages at this checkpoint: `@opencues/core` 0.5.1, `@opencues/runtime` 0.4.4. (All packages remain `private` — this is a source checkpoint, not an npm publish; the npm handover is tracked internally.)
 
 ### Fixed — countries blank: bundled offline dataset (restcountries.com fully deprecated) (runtime 0.4.4)
 

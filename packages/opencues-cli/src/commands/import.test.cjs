@@ -113,7 +113,7 @@ test('happy: --dry-run on a valid local pack prints the plan without installing'
   const parent = makeProject();
   try {
     const packDir = makeLocalPack(parent, 'mypack', {
-      'cues/legalish/CUE.md': '---\nname: legalish\nmatch: contract\n---\n\nSuggest alternatives.\n',
+      'cues/concise/CUE.md': '---\nname: concise\nmatch: contract\n---\n\nSuggest alternatives.\n',
     });
     process.chdir(parent);
     const { logs, exitCode } = await run([`./mypack`, '--project', '--dry-run']);
@@ -130,7 +130,7 @@ test('happy: real install of a valid local pack lands files + writes .cues-pack.
   const parent = makeProject();
   try {
     makeLocalPack(parent, 'goodpack', {
-      'cues/legalish/CUE.md': '---\nname: legalish\nmatch: contract\n---\n\nSuggest alternatives.\n',
+      'cues/concise/CUE.md': '---\nname: concise\nmatch: contract\n---\n\nSuggest alternatives.\n',
       'blanks/mybla/BLANK.md': '---\nname: mybla\ntype: blank\nblankKeywords: mybla\nimpl: MyBlaBlank\n---\n',
     });
     process.chdir(parent);
@@ -138,7 +138,7 @@ test('happy: real install of a valid local pack lands files + writes .cues-pack.
     assert.strictEqual(threw, false, `unexpected throw; errs: ${JSON.stringify(errs)}`);
     assert.strictEqual(exitCode, null);
     const target = path.join(parent, '.cues', 'packs', 'goodpack');
-    assert.strictEqual(fs.existsSync(path.join(target, 'cues', 'legalish', 'CUE.md')), true);
+    assert.strictEqual(fs.existsSync(path.join(target, 'cues', 'concise', 'CUE.md')), true);
     assert.strictEqual(fs.existsSync(path.join(target, 'blanks', 'mybla', 'BLANK.md')), true);
     const meta = JSON.parse(fs.readFileSync(path.join(target, '.cues-pack.json'), 'utf8'));
     assert.strictEqual(meta.name, 'goodpack');

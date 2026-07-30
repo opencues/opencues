@@ -1,6 +1,6 @@
 # Shipped Defaults
 
-The `<repo>/defaults/` directory holds the grammar / legal / medical / volume / etc. configs that OpenCues ships to every new user. It is **a seed source, not an ambient project config.**
+The `<repo>/defaults/` directory holds the grammar / spelling / more-formal / volume / etc. configs that OpenCues ships to every new user. It is **a seed source, not an ambient project config.**
 
 It plays two roles:
 
@@ -24,13 +24,11 @@ defaults/
 ├── AUDITORS.md           # Auditor master (always-present template).
 ├── IDENTITY.md          # Personal-data template, fully commented out.
 ├── cues/                # Folder-based cue sources (one folder per source)
-│   ├── legal/CUE.md     # LLM cues: match:/keywords: in frontmatter, prompt in body
-│   ├── medical/CUE.md
-│   ├── financial/CUE.md
-│   ├── more-formal/CUE.md   # scope: sentence cue
-│   ├── spelling/CUE.md      # catch-all, lowest priority
+│   ├── more-formal/CUE.md   # scope: sentence cue — informal → formal rewrites
+│   ├── spelling/CUE.md      # catch-all word cue, lowest priority
+│   ├── calendar/CUE.md      # scope: sentence cue — calendar-conflict flag
 │   ├── tips-{claude-code,opencode,gemini-cli,shell}/CUE.md
-│   └── example/CUE.md       # minimal worked example for authors
+│   └── example/CUE.md       # minimal worked example for authors (match:/keywords: + prompt body)
 ├── auditors/
 │   ├── grammar/AUDITOR.md
 │   └── clarity/AUDITOR.md   # disabled by default; opt in
