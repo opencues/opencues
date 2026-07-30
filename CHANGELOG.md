@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — install channels: `curl | bash` installer, bun-only bootstrap, Homebrew tap (CLI 0.4.0 → 0.4.1)
+
+Three new ways in, matching the site's install bar: **curl** — `install.sh` at the repo root (served as `https://opencues.com/install` via a site redirect): checks Node 22+ and git with actionable errors, runs `npm i -g opencues`, prints next steps; covered by the shell-portability lint (root installers now in its scan). **bun** — `resolvePnpm` gains a `bun x pnpm` rung so `bun add -g opencues` bootstraps on bun-only machines (no node ⇒ no corepack); verified end-to-end in a pristine `oven/bun` container. **brew** — new tap `opencues/homebrew-opencues` (`brew install opencues/opencues/opencues`), formula tracks the npm release tarball; bumping it joins the release steps.
+
+
 ### Fixed — CC: chained transforms broke — the bridge's synthetic `_` was consumed as a note-cycle (`@opencues/runtime` 0.28.20 → 0.28.21)
 
 Six agentic scenarios (stacked bolds, three-stack, multi-blank, both chains) failed only on Claude Code: after a transform substitute, the next injected `… <instruction> _` never fired. Root cause: the event-bridge's `text:` inject frames its synthetic `_` keystroke as the final keypress of the NEW string (0.28.20's fix), but the CC band's inline bridge `dispatchKey` re-sampled adapter state and clobbered that framing — the stale cursor sat exactly at the filled span's end, inside Cycling's inclusive `_`-note gate, so the `_` cycled the def back to its original instead of arming the blank gate (the resolver then saw old-`_`/new-`_` in its diff and stayed silent). Every other band passes the bridge event through untouched; CC's inline construction had drifted — the same band-drift class as the July secret-guard incident. Fix: honour the caller's `text`/`cursorOffset` when supplied, adapter sampling only as fallback. Pinned by the six agentic scenarios (41/43/45/46/100/101).

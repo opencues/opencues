@@ -120,12 +120,17 @@ function fetchRepo(version, { log = console.log } = {}) {
 }
 
 // Resolve the pnpm invocation for a machine that may not have pnpm
-// installed: prefer a real `pnpm`, else fall back to corepack (bundled
-// with Node ≥22 — our engines floor). corepack reads the repo's
-// `packageManager` pin, so the version always matches the workspace.
+// installed: prefer a real `pnpm`, else corepack (bundled with Node ≥22 —
+// our engines floor), else `bun x pnpm` (bun-only machines installing via
+// `bun add -g opencues` have bun but neither node's corepack nor pnpm).
+// corepack reads the repo's `packageManager` pin so the version always
+// matches the workspace; bun x resolves pnpm@latest, close enough for a
+// bootstrap install.
 function resolvePnpm({ run = spawnSync } = {}) {
   if (run('pnpm', ['--version'], { stdio: 'ignore' }).status === 0) return ['pnpm'];
   if (run('corepack', ['--version'], { stdio: 'ignore' }).status === 0) return ['corepack', 'pnpm'];
+  // pnpm@9 pinned: pnpm 10 needs node:sqlite, which bun doesn't implement.
+  if (run('bun', ['--version'], { stdio: 'ignore' }).status === 0) return ['bun', 'x', 'pnpm@9'];
   return null;
 }
 
@@ -142,17 +147,24 @@ function bootstrapRepo(root, { log = console.log, run = spawnSync } = {}) {
   const pnpm = resolvePnpm({ run });
   if (!pnpm) {
     throw new Error(
-      'opencues needs pnpm (or corepack, bundled with Node 22+) to set up its\n'
-      + 'runtime repo, and neither was found. Fix with ONE of:\n'
+      'opencues needs pnpm (or corepack, bundled with Node 22+, or bun) to\n'
+      + 'set up its runtime repo, and none was found. Fix with ONE of:\n'
       + '  corepack enable pnpm      # ships with Node — no install needed\n'
-      + '  npm install -g pnpm',
+      + '  npm install -g pnpm\n'
+      + '  bun --version             # bun works too (bun x pnpm)',
     );
   }
   const env = { ...process.env, COREPACK_ENABLE_DOWNLOAD_PROMPT: '0' };
 
   if (needDeps) {
     log('  ▸ installing workspace dependencies (one-time, ~1 min)');
-    const r = run(pnpm[0], [...pnpm.slice(1), 'install'], { cwd: root, stdio: 'inherit', env });
+    // Bun rung: pnpm@9 lacks pnpm 10's default build-script deny, so it
+    // would run isolated-vm's node-gyp (doomed under bun — no toolchain,
+    // and the binding can't load in bun anyway; the runtime lazy-requires
+    // it and degrades gracefully, INFOSEC F1). --ignore-scripts restores
+    // pnpm-10-equivalent behaviour on this rung.
+    const installArgs = [...pnpm.slice(1), 'install', ...(pnpm[0] === 'bun' ? ['--ignore-scripts'] : [])];
+    const r = run(pnpm[0], installArgs, { cwd: root, stdio: 'inherit', env });
     if (r.status !== 0) throw new Error('workspace dependency install failed — see output above.');
   }
   if (needCore) {

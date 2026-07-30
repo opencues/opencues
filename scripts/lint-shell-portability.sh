@@ -28,6 +28,13 @@ SCRIPTS=$(find defaults integrations -name '*.sh' \
   -not -path '*/tweakcc/*' \
   -not -path '*/dist/*' \
   | sort)
+# Root-level user-facing installers (curl | bash targets) are the MOST
+# portability-critical scripts in the repo — they run on machines we know
+# nothing about. Explicit list (find at depth 1 would sweep worktrees).
+for root_sh in install.sh; do
+  [ -f "$root_sh" ] && SCRIPTS="$SCRIPTS
+$root_sh"
+done
 
 for f in $SCRIPTS; do
   COUNT=$((COUNT + 1))

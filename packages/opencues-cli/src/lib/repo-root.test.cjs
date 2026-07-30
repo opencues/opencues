@@ -212,6 +212,17 @@ describe('bootstrapRepo (stubbed runner — decision logic only)', () => {
     assert.ok(calls.some(c => c.join(' ') === 'corepack pnpm install'));
   });
 
+  it('falls back to `bun x pnpm` when pnpm AND corepack are absent (bun-only machine)', () => {
+    const calls = [];
+    const run = (cmd, args) => {
+      calls.push([cmd, ...args]);
+      return { status: cmd === 'bun' ? 0 : 1 };   // only bun exists
+    };
+    repoRoot.bootstrapRepo(repoWith({ deps: false, dist: false }), { log: () => {}, run });
+    assert.ok(calls.some(c => c.join(' ') === 'bun x pnpm@9 install --ignore-scripts'));
+    assert.ok(calls.some(c => c.join(' ') === 'bun x pnpm@9 run build'));
+  });
+
   it('throws a user-ready message when neither pnpm nor corepack exists', () => {
     const run = () => ({ status: 1 });
     assert.throws(

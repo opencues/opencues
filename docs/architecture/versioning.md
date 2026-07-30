@@ -95,6 +95,11 @@ product is at `0.3` is fine and expected). Don't try to sync them.
    a pristine-container cold install of the published package (fetch pinned
    to the new tag, corepack bootstrap). A publish isn't verified until this
    gate is green.
+   Then **bump the Homebrew tap** (`opencues/homebrew-opencues`,
+   `Formula/opencues.rb`): update `url` to the new registry tarball and
+   `sha256` (`curl -sL <tarball-url> | sha256sum`), commit, push. The brew
+   channel serves whatever the formula pins — skipping this leaves brew
+   users on the previous release.
 6. `gh release create vX.Y.Z --title "OpenCues vX.Y.Z" --notes-file <notes>`.
 7. **Open the paired website changelog PR** (`~/opencues-website`, repo
    `opencues/opencues-web`) — a release is not DONE until this PR exists.
