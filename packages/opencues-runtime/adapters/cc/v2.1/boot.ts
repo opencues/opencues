@@ -823,12 +823,21 @@ export function boot(host: HostInfo): BootResult {
         return out.replace(/\x1b\[[0-9;]*m/g, '');
       },
       // Synthetic keys go through the same handler list real keystrokes
-      // use, but sample text/cursor at dispatch time (the cli.js patch
-      // does the same — InputZone closures are stale across React
-      // re-renders, so the dispatch site is the only fresh source).
+      // use. HONOUR the caller's text/cursorOffset framing when supplied:
+      // the event-bridge's `text:` inject frames its synthetic `_` as the
+      // final keystroke of the injected string (new text minus the `_`,
+      // cursor at its position). Re-sampling adapter state here clobbered
+      // that framing with the PRE-inject buffer — after a transform
+      // substitute the stale cursor sat exactly at the filled span's end,
+      // inside Cycling's inclusive `_`-note gate, so the synthetic `_` was
+      // consumed as a cycle (def reverted to the original) instead of
+      // arming the blank gate. Every OTHER band passes the event through
+      // untouched (emitUntilConsumed(e)); this inline construction had
+      // drifted. Adapter sampling remains the fallback for callers that
+      // don't frame (none today — parseKeyArg samples equivalently).
       dispatchKey: (e) => {
-        const text = adapter.getText();
-        const cursor = adapter.getCursorOffset();
+        const text = e.text !== undefined ? e.text : adapter.getText();
+        const cursor = e.cursorOffset !== undefined ? e.cursorOffset : adapter.getCursorOffset();
         const ev: KeyEvent = {
           key: e.key,
           modifiers: { ...e.modifiers },
