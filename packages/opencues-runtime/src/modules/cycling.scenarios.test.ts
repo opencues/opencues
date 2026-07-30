@@ -16,7 +16,7 @@
  * describes the system, this file pins it.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Cycling } from './cycling';
 import { ConfigLoader } from './config-loader';
 import { Navigation } from './navigation';
@@ -25,6 +25,7 @@ import { BlankFill } from './blank-fill';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
 import { SpanFillState } from '../state/span-fill';
+import { SelectorSatelliteState } from '../state/selector-satellite';
 import { MockAdapter, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
 
 // ---------------------------------------------------------------------------
@@ -788,5 +789,225 @@ describe('cycling scenarios — deactivation render-kick (legacy branch)', () =>
     // The legacy branch only kicks when it actually deactivated
     // something — plain typing must not pay a render per keystroke.
     expect(adapter.forceRenderCalls).toBe(before);
+  });
+});
+
+// ===========================================================================
+// J. `_`-cycle + uniform-note-model journeys (July 2026)
+//
+// The `_` key is the primary cycle gesture: inside a painted note it rotates
+// the span; past it (or on plain text) it keeps its blank meaning. These
+// journeys replay the exact multi-step sequences that produced the July 2026
+// live bugs (transform span dying on a trailing edit; bare keywords carrying
+// affordances they don't have) — asserting at every step, per the testing
+// rule in CLAUDE.md.
+// ===========================================================================
+
+const AFFIRM_BLANK = `---
+type: blank
+name: affirmations
+blankKeywords: affirmation, affirm
+blankProximity: 10
+stepValues: ["I am strong", "I am brave"]
+tip: daily affirmation
+---
+`;
+
+const SETTINGS_MD = `---
+voice-mode: active
+debug-mode: off
+settings:
+  voice-mode:
+    tip: Gates TTS
+    values:
+      active: speak
+      inactive: silent
+  debug-mode:
+    tip: Debug logging
+    values:
+      on: emit
+      off: quiet
+---`;
+
+async function setupJourney(text: string) {
+  const adapter = new MockAdapter({
+    cwd: '/proj',
+    files: {
+      '/proj/CUES.md': RICH_TIPS,
+      '/proj/blanks/affirmations/BLANK.md': AFFIRM_BLANK,
+      '/proj/.cues/OPENCUES.md': SETTINGS_MD,
+    },
+  });
+  adapter.pushText(text);
+  const hlState = new HighlightState();
+  const dynDefs = new DynDefs();
+  const spanFillState = new SpanFillState();
+  const ss = new SelectorSatelliteState();
+  const loader = new ConfigLoader(adapter, { settingsFile: '/proj/.cues/OPENCUES.md' });
+  await loader.load();
+  // Production subscription order: Cycling claims `_` FIRST, BlankFill second.
+  const cycling = new Cycling(adapter, hlState, dynDefs, loader, spanFillState, undefined, ss);
+  cycling.subscribe();
+  const nav = new Navigation(adapter, hlState, dynDefs, loader, spanFillState, ss);
+  nav.subscribe();
+  const dim = new DimRender(adapter, hlState, dynDefs, loader, spanFillState, ss);
+  const bf = new BlankFill(adapter, loader, spanFillState);
+  bf.subscribe();
+  return { adapter, hlState, dynDefs, spanFillState, ss, cycling, nav, dim, bf, loader };
+}
+
+describe('journey — transform span survives trailing edits, then `_` reverts it', () => {
+  // The live flicker bug: whole-buffer transform result + editor tail lines.
+  // Old shape (spanEnd = full buffer incl. \n\n\n) died on ANY trailing edit.
+  const BODY = 'Good day to you.';                    // 16 chars
+  const TAIL = '\n\n\n';
+  const ORIGINAL = 'hey buddy make it formal _';
+
+  function seedTransformDef(dynDefs: DynDefs) {
+    // Exactly what the resolver registers post-fix: trimmed body + span.
+    dynDefs.set(0, {
+      originalWord: ORIGINAL,
+      alternatives: [BODY, ORIGINAL],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: BODY.length,
+      blankName: 'transform-blank',
+    });
+  }
+
+  it('type space after → delete it → def lives through both; caret back in span → `_` reverts; past span → `_` stays a blank', async () => {
+    const buf = BODY + TAIL;
+    const { adapter, dynDefs, dim } = await setupScenario(buf);
+    seedTransformDef(dynDefs);
+
+    // Step 1 — user types a space at the very end (a trailing edit).
+    adapter.pushTextNoKeystroke(buf + ' ', buf.length + 1);
+    expect(dynDefs.get(0)).toBeDefined();              // NOT dropped (the old bug)
+
+    // Step 2 — the note still paints with the caret inside the span.
+    let out = dim.compute({ text: buf + ' ', cursor: 5, externalHighlights: [] });
+    expect(out?.inlineNote?.text).toBe('transform');
+
+    // Step 3 — user deletes the char after the span (the exact live repro).
+    adapter.pushTextNoKeystroke(buf, buf.length);
+    expect(dynDefs.get(0)).toBeDefined();              // still alive — no die/reattach
+    out = dim.compute({ text: buf, cursor: 5, externalHighlights: [] });
+    expect(out?.inlineNote?.text).toBe('transform');
+
+    // Step 4 — caret PAST the span (in the tail): `_` is a normal blank again.
+    adapter.setCursorOffset(buf.length);
+    expect(adapter.fireKey('_')).toBe(false);          // falls through — would insert
+
+    // Step 5 — caret back inside the span: `_` cycles to the original prompt.
+    adapter.setCursorOffset(4);
+    expect(adapter.fireKey('_')).toBe(true);           // consumed
+    expect(adapter.setTextCalls.at(-1)).toBe(ORIGINAL + TAIL);
+    expect(dynDefs.get(0)?.currentIndex).toBe(1);
+  });
+});
+
+describe('journey — fill a stepValues blank, `_`-cycle it, leave, come back', () => {
+  it('affirm _ fills → `_` in span rotates + wraps → `_` outside span does not touch it → back inside cycles again', async () => {
+    const { adapter, spanFillState } = await setupJourney('affirm ');
+
+    // Step 1 — `_` on plain text: Cycling passes (no note span), BlankFill fills.
+    adapter.setCursorOffset(7);
+    expect(adapter.fireKey('_')).toBe(true);
+    expect(adapter.setTextCalls.at(-1)).toBe('affirm I am strong');
+    expect(spanFillState.current).not.toBeNull();
+    adapter.pushTextNoKeystroke('affirm I am strong', 18); // commit the fill as the live buffer
+
+    // Step 2 — caret inside the filled span: `_` rotates the value.
+    adapter.setCursorOffset(12);                        // inside "I am strong"
+    expect(adapter.fireKey('_')).toBe(true);
+    expect(adapter.setTextCalls.at(-1)).toBe('affirm I am brave');
+    expect(spanFillState.current?.currentAltIndex).toBe(1);
+
+    // Step 3 — again: wraps back (2 values).
+    adapter.setCursorOffset(12);
+    expect(adapter.fireKey('_')).toBe(true);
+    expect(adapter.setTextCalls.at(-1)).toBe('affirm I am strong');
+    expect(spanFillState.current?.currentAltIndex).toBe(0);
+
+    // Step 4 — caret on the KEYWORD (outside the span): `_` must not cycle.
+    // Inserting `_` mid-word isn't a standalone blank either → nothing happens.
+    adapter.setCursorOffset(3);                         // inside "affirm"
+    expect(adapter.fireKey('_')).toBe(false);
+    expect(spanFillState.current?.currentAltIndex).toBe(0); // untouched
+
+    // Step 5 — back inside the span: cycles again.
+    adapter.setCursorOffset(10);
+    expect(adapter.fireKey('_')).toBe(true);
+    expect(adapter.setTextCalls.at(-1)).toBe('affirm I am brave');
+  });
+});
+
+describe('journey — selector-satellite: `_` cycles the part under the caret, note follows', () => {
+  it('`_` on selector cycles setting NAMES; `_` on satellite cycles VALUES; the note tracks each', async () => {
+    const { adapter, ss, dim, loader } = await setupJourney('voice-mode active');
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: '', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    ss.set({
+      blankName: 'opencues', scriptPath: '/tmp/oc.sh',
+      selectorIndex: 0, selectorLength: 1, satelliteIndex: 1, satelliteLength: 1,
+      currentSetting: 'voice-mode', currentValue: 'active', separator: ' ', clearOnEdit: false,
+    }, 'voice-mode active');
+
+    // Step 1 — caret on the SELECTOR: `_` cycles setting names.
+    adapter.setCursorOffset(3);
+    expect(adapter.fireKey('_')).toBe(true);
+    expect(ss.current?.currentSetting).toBe('debug-mode');
+    expect(adapter.setTextCalls.at(-1)).toBe('debug-mode on');
+    adapter.pushTextNoKeystroke('debug-mode on', 10);
+
+    // Step 2 — the note over the selector is the SETTING's tip (cursor-aware).
+    const defs = loader.opencuesState.definitions;
+    let out = dim.compute({ text: 'debug-mode on', cursor: 3, externalHighlights: [] });
+    expect(out?.inlineNote?.text).toBe(defs.get('debug-mode')?.tip);
+
+    // Step 3 — caret on the SATELLITE: `_` cycles that setting's values.
+    adapter.setCursorOffset(12);                        // inside "on"
+    expect(adapter.fireKey('_')).toBe(true);
+    expect(ss.current?.currentValue).toBe('off');
+    expect(adapter.setTextCalls.at(-1)).toBe('debug-mode off');
+    adapter.pushTextNoKeystroke('debug-mode off', 14);
+
+    // Step 4 — the note over the satellite is the VALUE's tip.
+    out = dim.compute({ text: 'debug-mode off', cursor: 13, externalHighlights: [] });
+    expect(out?.inlineNote?.text).toBe(defs.get('debug-mode')?.valueTips.get('off'));
+  });
+});
+
+describe('journey — bare blank keyword is a pure trigger until `_` fires', () => {
+  it('no dim, no nav stop on "affirm"; after `_` fires, the FILLED span has both', async () => {
+    const text = 'fast affirm ';
+    const { adapter, hlState, dim, spanFillState } = await setupJourney(text);
+
+    // Step 1 — dim: the cue word dims, the bare keyword does NOT.
+    let out = dim.compute({ text, cursor: 0, externalHighlights: [] });
+    const ranges = out?.dimRanges ?? [];
+    expect(ranges.some(r => r.start === 0 && r.end === 4)).toBe(true);   // "fast"
+    expect(ranges.some(r => r.start <= 5 && r.end >= 11)).toBe(false);   // not "affirm"
+
+    // Step 2 — nav: first activation lands on the cue word, skipping the
+    // keyword to its right (bare keywords are not targets).
+    adapter.fireKey('left', { ctrl: true, alt: true });
+    expect(hlState.active).toBe(true);
+    expect(hlState.wordIndex).toBe(0);                  // "fast", NOT "affirm"
+    adapter.fireKey('escape');
+
+    // Step 3 — `_` fires the blank: the affordance appears WITH the fill.
+    adapter.setCursorOffset(text.length);
+    expect(adapter.fireKey('_')).toBe(true);
+    expect(adapter.setTextCalls.at(-1)).toBe('fast affirm I am strong');
+    expect(spanFillState.current).not.toBeNull();
+    adapter.pushTextNoKeystroke('fast affirm I am strong', 23);
+
+    // Step 4 — the filled span now dims (the affordance is real now).
+    out = dim.compute({ text: 'fast affirm I am strong', cursor: 0, externalHighlights: [] });
+    const spanDimmed = (out?.dimRanges ?? []).some(r => r.start <= 12 && r.end >= 23);
+    expect(spanDimmed).toBe(true);
   });
 });
