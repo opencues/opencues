@@ -1,8 +1,15 @@
-# Installing the beta
+# Installing from a clone (manual / contributor flow)
 
-`npm install -g opencues` isn't live yet — the real CLI hasn't been published to npm during private beta. Until then, install from a clone of this repo. This is the exact flow described in the main [README](README.md#quickstart), just with the pre-publish steps spelled out.
+The one-command path is live: **`npm install -g opencues`** (Node 22+ and git
+required) — the CLI fetches its runtime repo to `~/.opencues/repo` on first
+use, pinned to its own version tag, and handles workspace deps itself (pnpm,
+or corepack when pnpm isn't installed). That's the whole
+[README quickstart](README.md#quickstart).
 
-When the npm package ships, steps 1 and 3 below collapse into one `npm install -g opencues` command and step 2 becomes a `set-key` subcommand. Step 4 (the per-integration install) stays exactly the same shape either way.
+This document is the **manual clone flow** — for contributors, for anyone who
+wants the checkout somewhere specific (`$OPENCUES_REPO` points the CLI at any
+checkout), or for spelling out the prerequisites the one-command path assumes.
+Step 4 (the per-integration install) is identical in both flows.
 
 ---
 

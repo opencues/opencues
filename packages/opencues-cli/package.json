@@ -1,7 +1,6 @@
 {
   "name": "opencues",
-  "version": "0.3.0",
-  "private": true,
+  "version": "0.3.1",
   "description": "OpenCues enables native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",
   "keywords": [
     "ai",
@@ -54,10 +53,6 @@
     "type": "git",
     "url": "https://github.com/opencues/opencues",
     "directory": "packages/opencues-cli"
-  },
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com",
-    "access": "restricted"
   },
   "dependencies": {
     "enquirer": "^2.4.1"
