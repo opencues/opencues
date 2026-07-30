@@ -122,6 +122,89 @@ to protect. Naming them is the point of this section.
   same at-rest posture as IDENTITY.md (and the same curability:
   the user must be able to see and delete entries).
 
+## Prototype findings (first-person, 30 Jul 2026)
+
+Built and used in isolation the same day: three ~50-line Node
+scripts (collect / dream / check) + a shared cerebras helper
+(gpt-oss-120b, temp 0, seed pinned). Incremental dream with a raw
+cursor; catalog rendered into the SYSTEM message. I drove it as the
+user across a simulated week of my own working statements (9
+utterances, then 4 more in a second cycle), then probed the live
+check with 12 candidates. What held and what broke:
+
+### What worked, mostly first try
+
+- DREAM EXTRACTION: 9 utterances -> 8 claims; skipped the smalltalk
+  question; preserved hedging ("I think", "I might" -> hedged) and
+  amounts/names verbatim; sensible types. No prompt iteration was
+  needed.
+- LIVE PRECISION: 8/8 on the first probe set — five correct flags,
+  each naming the right claim, and correct SILENCE on the three
+  traps: a paraphrase-consistency probe ("prototype in Node" vs
+  "prototype in JavaScript" — no flag), a hedged musing, and
+  unrelated text.
+- LIFECYCLE: fulfillment closed the commitment; a restatement was
+  not duplicated; a commitment revision superseded cleanly with
+  lineage ("supersedes": old id). Ids and store ordering stayed
+  stable across dream passes — the prefix-cache-stability
+  requirement is achievable with nothing more than a prompt rule.
+- TRANSPARENCY EARNS ITS KEEP: because every flag quotes the stored
+  claim verbatim, evaluating a flag took no trust in the model —
+  the one wrong-ish behaviour below was visible instantly. This
+  rule is load-bearing, keep it.
+
+### Failure modes found (each one became a rule)
+
+1. THE BOTH-WAYS NAG TRAP. An opinion revision ("on reflection the
+   ledger should ship first") was recorded as a CONFLICT with the
+   old opinion instead of a supersession, leaving both open — after
+   which the live check flagged me WHICHEVER side I took next,
+   including when I agreed with my own most recent stance. Two
+   probes in, this was already genuinely annoying. Rule: the dream
+   pass must treat first-person stance changes as supersession by
+   default (conflict markers are for unreconciled third-party
+   facts), and the live check must never flag against a claim
+   carrying an unadjudicated conflict marker.
+2. FULFILLMENT DELETES THE FACT. Closing "I'll rebase the PR" on
+   "rebased it, done" discarded the event entirely — "I never
+   actually rebased that PR" then sailed through in SILENCE. Rule:
+   fulfillment converts the commitment into a past-tense fact
+   claim; it must not remove protection.
+3. WITHDRAWAL VS CONTRADICTION IS A UX DECISION, NOT AN NLP ONE.
+   "Actually I'll skip the rebase this week" flagged as a broken
+   commitment; the propositional ledger's state machine closes
+   withdrawals silently. For a live pre-send cue the flag is
+   arguably the desired behaviour (a once-only "you said you'd do
+   this"), but unmediated it nags on every legitimate change of
+   mind. The SUPERSEDED/WITHDRAWN transitions need to exist in the
+   generalized tier too — fire at most once, then record.
+4. FIRMNESS EXTRACTS BUT DOESN'T DAMPEN. Hedged claims were
+   correctly stored as hedged, then flagged exactly as firmly as
+   firm ones. The judge prompt needs an explicit rule: hedged
+   claims warrant flags only for direct polarity flips, and the
+   cue copy should carry the hedge ("you said you *thought*...").
+
+### Scale + cost shape observed
+
+Ten claims after a simulated week, consistent with the
+propositional doc's 5-20/week estimate. The whole loop is two
+prompts; the catalog is small and stable, so per-keystroke checking
+rides the existing resolve cadence without a new cost class. The
+retrieval problem never appeared at this scale — it is real but not
+a v1 blocker.
+
+### Net read
+
+The generalized loop works better out of the box than the concept
+doc assumed — precision held on every deliberately adversarial
+probe without prompt iteration. Every failure found was a LIFECYCLE
+failure, not a judgement failure: the model judges collisions well;
+what it lacks unprompted is the state machine (supersede vs
+conflict vs withdraw vs fulfill). Which is the propositional doc's
+state machine, vindicated from the other direction — the two-tier
+synthesis stands, and the dream prompt should encode those
+transitions explicitly rather than hoping the model infers them.
+
 ## Rules extracted
 
 - Collect on submit, never on draft — same discipline as the
@@ -137,3 +220,12 @@ to protect. Naming them is the point of this section.
 - Catalog injection must be prefix-cache-stable: session-level
   refresh, stable ordering.
 - The store is user-visible and user-curable, like IDENTITY.md.
+- First-person stance changes supersede by default; conflict
+  markers are for unreconciled facts, and the live check never
+  flags against a claim with an open conflict marker.
+- Fulfillment converts a commitment into a past-tense fact; closing
+  must never delete protection.
+- Broken-commitment flags fire at most once, then the entry goes
+  dormant (the ledger state machine applies to this tier too).
+- Hedged claims flag only on direct polarity flips, and the cue
+  copy carries the hedge.
