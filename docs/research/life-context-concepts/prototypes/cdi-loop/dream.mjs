@@ -65,6 +65,20 @@ classify the transition explicitly. Apply the FIRST matching transition:
    people are allowed to change their mind; the newest stance is the
    operative one. Mark the old claim "superseded", create the new claim
    with "supersedes": <old id>.
+1b. PENDING SUPERSESSION — a PROPOSED revision the other party has not
+   yet accepted (question form: "can we move...?", "...instead?",
+   "would Sunday work?"): create the new claim with status "pending"
+   and "supersedes": <old id>, but keep the OLD claim open — a
+   proposal is neither the old plan nor yet the new one. When a LATER
+   utterance restates or confirms the pending arrangement, promote it:
+   pending -> open, old -> superseded. When a later utterance
+   reasserts the old arrangement instead, mark the pending claim
+   "withdrawn".
+FIELD INHERITANCE — a superseding or pending claim INHERITS whatever
+   it does not restate: the recipient, the subject, and the time of
+   day ("same time Friday" means the old claim's time, on Friday).
+   Leave inherited fields unstated; the runtime fills them from the
+   claim being superseded.
 2. FULFILLED — the user reports having done a committed thing. Mark the
    commitment "closed" AND create a NEW past-tense fact claim recording
    the event (e.g. "I rebased the apple-notes PR on <date>"). Closing a
@@ -86,7 +100,7 @@ classify the transition explicitly. Apply the FIRST matching transition:
 Output ONLY a JSON object: {"claims": [ ...full updated store... ]}.
 Each claim: {"id": n, "claim": str, "type": "commitment|preference|opinion|fact|plan",
 "firmness": "firm|hedged", "source_ts": str,
-"status": "open|superseded|closed|withdrawn",
+"status": "open|pending|superseded|closed|withdrawn",
 "to"?: str, "about"?: str, "whenRef"?: str,
 "supersedes"?: n, "conflict"?: n}.`;
 
@@ -100,12 +114,30 @@ const out = parseJson(await chat(SYSTEM, user));
 const claims = out.claims;
 // Deterministic deixis: the runtime resolves whenRef against the
 // utterance timestamp; the model never does calendar arithmetic.
-const { resolveWhenRef } = await import('./temporal.mjs');
+const { resolveWhenRef, parseWhen } = await import('./temporal.mjs');
 for (const c of claims) {
   if (c.whenRef && !c.when) {
     const w = resolveWhenRef(c.whenRef, c.source_ts);
     if (w) c.when = w;
     else console.warn(`  [warn] #${c.id} unresolvable whenRef "${c.whenRef}"`);
+  }
+}
+// Deterministic field inheritance: a superseding/pending claim carries
+// forward whatever it didn't restate — recipient, subject, and the
+// time of day ("same time Friday" inherits the old 10:00).
+for (const c of claims) {
+  if (c.supersedes == null) continue;
+  const old = claims.find(o => o.id === c.supersedes);
+  if (!old) continue;
+  if (!c.to && old.to) c.to = old.to;
+  if (!c.about && old.about) c.about = old.about;
+  if (c.when && old.when) {
+    const nw = parseWhen(c.when), ow = parseWhen(old.when);
+    if (nw && ow && nw.start === nw.end && nw.part === 'UNKNOWN'
+        && ow.start === ow.end && ow.part !== 'UNKNOWN') {
+      const suffix = old.when.match(/\s+(AM|PM|EVE|\d{2}:\d{2})$/);
+      if (suffix) c.when = `${c.when} ${suffix[1]}`;
+    }
   }
 }
 const maxId = Math.max(0, ...claims.map(c => c.id));

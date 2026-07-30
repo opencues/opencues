@@ -517,6 +517,69 @@ layer both fixed its own error class outright and made the next
 layer's failures legible — each structural fix is also a diagnostic
 lens.
 
+### v7: pending supersession + field inheritance (same day)
+
+Implemented the two dream-side items from the v6 list. The state
+machine gained transition 1b — PENDING SUPERSESSION: a
+proposal-shaped revision ("same time Friday instead?") creates the
+new claim with status "pending" + supersedes:<old>, keeps the old
+claim open, and later restatement promotes (pending -> open, old ->
+superseded) while reassertion of the old plan withdraws it. FIELD
+INHERITANCE is deterministic post-processing, not prompt trust: a
+superseding/pending claim inherits recipient, subject, and — when
+its resolved "when" is date-only and the old claim's had a time —
+the old time of day. Check-side, pending claims enter the catalog
+(marked [PENDING PROPOSAL]), collide temporally, count for
+typing-now, and never go overdue; the judge got the matching rule
+(reasserting the replaced arrangement flags the pending claim).
+
+Suite: 51/62 again — same aggregate as v6, redistributed: GYM-LAZY
+10/10 (perfect — the cheat-day carve-out behaved this run),
+freelancer 7->8, family held 15/15, cafe held 10, gym-rat 10->8.
+
+The machinery itself VERIFIED at the store level: the freelancer
+store shows #8 [pending sup#2] when:2026-08-07 10:00 — the Friday
+date from whenRef "fri" with the 10:00 inherited from the claim it
+supersedes. Exactly the two v6 failures' missing structure. The
+probes over it still missed, for two different reasons worth
+recording:
+
+- The stale-plan probe ("see you tomorrow at 10" with a pending
+  Friday move outstanding) stayed silent — the new judge rule's
+  first outing didn't fire. Judge-side borderline again.
+- The typing-now probe (banter at Friday 10:15) stayed silent, and
+  on reflection the PENDING semantics make silence DEFENSIBLE: the
+  reschedule was never confirmed, so the runtime cannot assert the
+  call is happening. The scenario lacks a confirmation utterance —
+  an expectation artifact, now understood. Pending slots probably
+  shouldn't count for typing-now until promoted.
+
+New findings from this run's failures:
+
+- WHENREF GRAMMAR GAPS: "cleared FROM the 10th" and "keto until
+  COMP WEEK" have no vocabulary form, so both claims lost their
+  "when" entirely — which caused one wrong flag (the judge,
+  denied temporal data, semantically misread the clearance claim
+  as a restriction) and one miss. The vocabulary needs "from
+  <day>" (open-ended span) and, harder, ANCHORED references —
+  "comp week" is defined by ANOTHER claim's date; resolving it
+  needs cross-claim anchoring, which is the propositional ledger's
+  binding store again.
+- CLAIMS NEED THE WINDOW/SLOT BIT TOO. New wrong flag: "I can come
+  in Saturday morning" collided with "we'll repaint the front by
+  the end of the month" — a deadline WINDOW stored as a presence
+  span. The candidate side already distinguishes booking /
+  window; stored claims render both as spans. The when
+  representation must be symmetric: claim-side windows never
+  double-book.
+- Aggregate has been 51/62 across two structurally different runs
+  (v6, v7) with individual probes flipping both ways underneath
+  (bench-PR-Saturday, flagged in every run since v3, went silent
+  this run; VAT-might-slip flagged again). Roughly ±3 probes of
+  judge-side noise per run is the floor prompt engineering hits on
+  this suite; the durable gains have all come from moving things
+  OUT of the judge.
+
 ### Net read
 
 The generalized loop works better out of the box than the concept
@@ -586,3 +649,11 @@ transitions explicitly rather than hoping the model infers them.
   ("same time Friday" carries the old 10:00).
 - Availability assertions participate in temporal collision; the
   slot bit is three-valued (booking | availability | window).
+- The window/slot distinction applies to STORED claims exactly as
+  to candidates — a deadline window never double-books; the when
+  representation is symmetric on both sides.
+- Pending (unconfirmed) slots don't count for typing-now until
+  promoted — the runtime cannot assert an unaccepted meeting is
+  happening.
+- Field inheritance is runtime post-processing over the
+  supersession link, never prompt trust.

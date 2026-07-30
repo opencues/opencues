@@ -15,7 +15,9 @@ const store = JSON.parse(fs.readFileSync(S('claims.json'), 'utf8'));
 // An unadjudicated conflict is not stable ground truth: exclude BOTH
 // sides of any conflict pair from the catalog (the both-ways nag trap).
 const conflicted = new Set(store.flatMap(c => c.conflict ? [c.id, c.conflict] : []));
-const open = store.filter(c => c.status === 'open' && !conflicted.has(c.id));
+// Pending proposals are live context: they enter the catalog (marked),
+// collide temporally, and count for typing-now — but never go overdue.
+const open = store.filter(c => (c.status === 'open' || c.status === 'pending') && !conflicted.has(c.id));
 const args = process.argv.slice(2);
 const take = (flag) => { const i = args.indexOf(flag); return i >= 0 ? args.splice(i, 2)[1] : undefined; };
 const to = take('--to');
@@ -46,7 +48,7 @@ const candWhen = ext.slot ? parseWhen(resolveWhenRef(ext.whenRef, now)) : null;
 const collisions = candWhen
   ? open.filter(c => c.when && overlaps(candWhen, parseWhen(c.when)))
   : [];
-const overdue = open.filter(c => c.type === 'commitment' && c.when && isOverdue(c.when, now));
+const overdue = open.filter(c => c.status === 'open' && c.type === 'commitment' && c.when && isOverdue(c.when, now));
 // Slot-like commitments the user is typing DURING (focus/double-life).
 const activeNow = open.filter(c => c.when && containsPoint(c.when, now));
 if (process.env.CDI_DEBUG) console.error(`[debug] ext=${JSON.stringify(ext)} collisions=[${collisions.map(c => '#' + c.id)}] activeNow=[${activeNow.map(c => '#' + c.id)}]`);
@@ -84,6 +86,11 @@ Flag ONLY on a genuine collision with a specific catalog claim:
   snacks for someone with a peanut allergy). Resolution counterpart:
   mere tension or speculative inference (a venue that MIGHT not suit
   them) is SILENCE.
+- PENDING PROPOSALS: a claim marked [PENDING PROPOSAL] is the user's
+  own outstanding reschedule offer, not yet accepted. Reasserting the
+  arrangement it replaces — as if the proposal was never made — flags
+  the pending claim. Restating, confirming, or waiting on the
+  proposal is SILENCE.
 - TYPING-NOW: the runtime lists slot commitments the user is typing
   DURING. If the message plainly shows the user is NOT doing the
   committed thing (idle chat, gaming plans, ordering food from the
@@ -117,7 +124,7 @@ Output ONLY JSON:
 CLAIMS CATALOG:
 ${open.map(c => {
   const ctx = [c.to && `to ${c.to}`, c.about && `about ${c.about}`, c.when && `when ${c.when}`].filter(Boolean).join(', ');
-  return `#${c.id} (${c.type}/${c.firmness}, ${c.source_ts}${ctx ? ' | ' + ctx : ''}) ${c.claim}`;
+  return `#${c.id} (${c.type}/${c.firmness}, ${c.source_ts}${ctx ? ' | ' + ctx : ''})${c.status === 'pending' ? ' [PENDING PROPOSAL]' : ''} ${c.claim}`;
 }).join('\n')}`;
 
 const userMsg = `CANDIDATE (${[to && `to ${to}`, via && `via ${via}`, `at ${now}`].filter(Boolean).join(', ')}): ${candidate}
