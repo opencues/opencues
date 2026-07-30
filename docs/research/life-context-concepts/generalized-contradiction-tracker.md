@@ -235,6 +235,88 @@ Final tally on the 14-probe set: v1 12/14 with two structural
 holes; v2 (after the one-sentence hedge fix) 14/14, with the missed
 supersession link as the one remaining store-side defect.
 
+### v3: the family-life scenario — what context promises need (same day)
+
+Extended the loop with CONTEXT STAMPING and lived a simulated family
+fortnight in it: partner (Ana), kids (Leo's football, Maya's peanut
+allergy), boss (Priya), a friend (Dave), mum — promises fanned out
+over WhatsApp / email / SMS threads, a Lisbon holiday, shopping,
+meetings. Changes: collect records "--to <recipient> --via <channel>"
+(the thread context the host adapter already knows — recorded, never
+inferred); dream resolves deictic time against the utterance
+timestamp into a "when" field ("tonight" -> 2026-07-30, "next
+Saturday, the 8th" -> 2026-08-08, a holiday span -> a date range) and
+stamps "to" (promise recipient) and "about" (person a fact concerns);
+check receives the candidate's own thread context and three new flag
+classes, each with its resolution counterpart stated in the same
+breath (the v2 lesson): DOUBLE-BOOKING (same slot, different
+person/purpose, or inside an away-span; same person+purpose =
+restatement, reschedule = revision), ALREADY-DONE (recurring tasks
+repeat — flag only when redoing makes no sense), INCOMPATIBLE-FACT
+(action vs a stored fact about a person; mere tension stays silent).
+
+12 utterances over two dream cycles, 15 probes. 13/15.
+
+What held — the PEOPLE dimension is basically solved by context
+stamping:
+
+- CROSS-THREAD DOUBLE-BOOKING: promising Dave "Saturday morning"
+  flagged the shop promised to Ana in a different thread; promising
+  him "Saturday afternoon" stayed silent. Time granularity held.
+- THE FAMILY-SAFETY CUE: "I'll grab those peanut butter cookies for
+  Maya's class party" flagged against the stored allergy; "almond
+  croissants" stayed silent (no allergen over-generalisation), and
+  "Maya will bring snacks for the whole class" stayed silent (no
+  adjacency paranoia). This single probe class probably justifies
+  the "about:" field on its own.
+- ALREADY-DONE vs RECURRING: re-promising the booked flights flagged
+  ("you already booked the flights"); "I'll grab milk on the way
+  home" after a closed milk shortage stayed silent. The model's
+  world knowledge covered the one-shot/recurring distinction without
+  a taxonomy.
+- DEIXIS RESOLUTION AT DREAM TIME just works: every relative time
+  in the scenario resolved correctly against the utterance
+  timestamp. Store timestamps are load-bearing context, not
+  metadata.
+- Reschedules and restatements to the SAME person stayed silent;
+  the withdrawal to Dave fired exactly the once-only FYI intended.
+
+What broke — BOTH failures were temporal, and they failed in
+opposite directions:
+
+- MISSED SPAN CONTAINMENT: "camping the weekend of the 15th"
+  flagged against Lisbon 10th-17th, but "quarterly review on the
+  14th" — identical logical shape — sailed through. Same store,
+  same span, inconsistent verdicts.
+- SAME-DAY IS NOT SAME-SLOT: "I'll do the big shop tomorrow
+  morning" drew the exercise's first genuine false flag, against
+  the roadmap presentation merely scheduled the same DAY with no
+  time overlap established. The DOUBLE-BOOKING carve-out widened
+  behaviour exactly as the v2 hedge rule had — a named flag class
+  invites the model to use it.
+
+The conclusion writes itself: TIME WANTS TO BE DATA. The dream pass
+already resolves "when" into concrete dates and ranges; interval
+overlap over those fields is deterministic arithmetic the runtime
+should do itself, handing the model only the non-temporal judgement
+(same purpose? same person? does redoing make sense?). This is the
+shipped contradiction-cues doctrine (the correction is DATA, never
+generation) landing on the tracker from a third direction — first
+the state machine (v2), now the temporal algebra (v3). Also
+observed: past-dated commitments linger open (the 08-01 shop was
+still open on 08-03) — deadline passing needs the ledger's
+OPEN -> OVERDUE clock transition, which is again arithmetic over
+"when", not judgement.
+
+So: what context does promise-tracking actually need? In order of
+value observed: (1) recipient + channel, recorded from the thread,
+never inferred; (2) the utterance timestamp, spent at dream time to
+resolve deixis into concrete dates; (3) away-spans / presence as
+first-class claims; (4) facts ABOUT family members, who are parties
+to your commitments whether present or not; (5) a deterministic
+interval algebra over the resolved dates — the one piece that must
+NOT be the model's job.
+
 ### Net read
 
 The generalized loop works better out of the box than the concept
@@ -271,3 +353,14 @@ transitions explicitly rather than hoping the model infers them.
   dormant (the ledger state machine applies to this tier too).
 - Hedged claims flag only on direct polarity flips, and the cue
   copy carries the hedge.
+- Thread context (recipient, channel) is recorded at collect time,
+  never inferred; recipients on different channels are different
+  people until explicitly linked.
+- Deixis is resolved at dream time against the utterance timestamp;
+  the claim text stays verbatim, "when" carries the resolution.
+- Temporal collision (span containment, slot overlap, deadline
+  passing) is deterministic arithmetic over resolved "when" fields,
+  never model judgement — the model judges only the non-temporal
+  half (same purpose, same person, does redoing make sense).
+- Every named flag class widens behaviour: it ships with its
+  resolution counterpart in the same prompt, or it doesn't ship.

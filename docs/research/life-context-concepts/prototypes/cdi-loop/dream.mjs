@@ -29,6 +29,24 @@ Extraction rules:
 - One claim per aspect; do not merge unrelated aspects.
 - If a new utterance RESTATES an existing open claim, do not duplicate it.
 
+CONTEXT — utterances may carry a recorded thread context ("to": the
+recipient, "via": the channel). Use it; never guess it.
+- A promise made in a thread is a promise TO that recipient: set the
+  claim's "to" field from the thread context (or from an explicit name
+  in the text, e.g. "I'll tell Dave...").
+- A fact ABOUT a person (an allergy, a diet, a preference of theirs)
+  gets "about": <person>. Facts about family members are contradictable
+  claims and matter as much as the user's own.
+- RESOLVE DEICTIC TIME: using the utterance timestamp, resolve relative
+  time words to concrete dates in a "when" field — "Saturday" ->
+  "2026-08-01", "tomorrow" -> the actual date, "the 12th" -> full date,
+  a holiday span -> "2026-08-10/2026-08-17". The claim text stays
+  verbatim; "when" carries the resolution. Past-fact claims created on
+  fulfillment use the resolved date, never words like "just now".
+- Recipients on different channels are DIFFERENT people unless the
+  store already links them; never merge identities on a name match
+  alone.
+
 STATE MACHINE — when a new utterance touches an existing open claim,
 classify the transition explicitly. Apply the FIRST matching transition:
 
@@ -60,6 +78,7 @@ Output ONLY a JSON object: {"claims": [ ...full updated store... ]}.
 Each claim: {"id": n, "claim": str, "type": "commitment|preference|opinion|fact|plan",
 "firmness": "firm|hedged", "source_ts": str,
 "status": "open|superseded|closed|withdrawn",
+"to"?: str, "about"?: str, "when"?: str,
 "supersedes"?: n, "conflict"?: n}.`;
 
 const user = JSON.stringify({
@@ -74,4 +93,7 @@ const maxId = Math.max(0, ...claims.map(c => c.id));
 fs.writeFileSync(S('claims.json'), JSON.stringify(claims, null, 1));
 fs.writeFileSync(S('meta.json'), JSON.stringify({ cursor: raw.length, nextId: maxId + 1 }));
 console.log(`dreamed ${fresh.length} utterances -> store now ${claims.length} claims`);
-for (const c of claims) console.log(`  #${c.id} [${c.status}${c.supersedes ? ' supersedes #' + c.supersedes : ''}${c.conflict ? ' CONFLICT #' + c.conflict : ''}] (${c.type}/${c.firmness}) ${c.claim}`);
+for (const c of claims) {
+  const ctx = [c.to && `to:${c.to}`, c.about && `about:${c.about}`, c.when && `when:${c.when}`].filter(Boolean).join(' ');
+  console.log(`  #${c.id} [${c.status}${c.supersedes ? ' supersedes #' + c.supersedes : ''}${c.conflict ? ' CONFLICT #' + c.conflict : ''}] (${c.type}/${c.firmness}${ctx ? ' | ' + ctx : ''}) ${c.claim}`);
+}
