@@ -123,7 +123,12 @@ const user = JSON.stringify({
   new_utterances: fresh,
 }, null, 1);
 
-const out = parseJson(await chat(SYSTEM, user));
+// Dream is the offline pass — it can afford a different (stronger or
+// higher-effort) model than the hot-path check. Env-tunable per run.
+const out = parseJson(await chat(SYSTEM, user, {
+  model: process.env.CDI_DREAM_MODEL ?? 'gpt-oss-120b',
+  ...(process.env.CDI_DREAM_EFFORT && { reasoningEffort: process.env.CDI_DREAM_EFFORT }),
+}));
 const claims = out.claims;
 // Deterministic deixis: the runtime resolves whenRef against the
 // utterance timestamp; the model never does calendar arithmetic.

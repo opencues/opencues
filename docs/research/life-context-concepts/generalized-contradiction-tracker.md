@@ -641,6 +641,53 @@ for restrictions, the availability slot-bit value, anchored
 references ("comp week"), stale-plan detection, store-write span
 validation.
 
+### v9: dream-model experiment — high effort and gemma (31 Jul 2026)
+
+Question: is the residual failure a DREAM issue or a QUERY issue,
+and does a different dream model help? The dream call gained env
+knobs (CDI_DREAM_MODEL / CDI_DREAM_EFFORT; llm.mjs gained
+reasoning_effort + a max_completion_tokens knob and an
+empty-content guard) and two variants ran against the v8 baseline
+(everything on cerebras gpt-oss-120b), with extract + judge pinned
+on gpt-oss throughout.
+
+VARIANT A — gpt-oss reasoning_effort=high: INFEASIBLE. On the
+larger consolidation payloads (store + 8 utterances) the model
+runaway-thinks and returns EMPTY content with finish_reason=length
+— at a 20k completion cap and still at 60k. This empirically
+vindicates the repo's model-thinking.ts ceiling for cerebras
+gpt-oss (max=medium, which is also the provider default): "high
+thinking" on this provider is not a usable dream setting, and
+explicit medium is just the baseline again.
+
+VARIANT B — gemma-4-31b dream: 51/62 (baseline band: v8 was
+50-51). But the STORES are visibly better than gpt-oss's on
+exactly the classes gpt-oss kept fumbling:
+
+- "no takeaways this month" -> 2026-08-03/2026-08-31 (gpt-oss
+  truncated it to one day in two of three runs);
+- "6am spot done" -> 2026-08-05, a correct PAST date (gpt-oss
+  still resolved it forward even with the past-direction
+  vocabulary available);
+- "keto until comp week" -> an approximated month-end policy span
+  (gpt-oss: null — no when at all);
+- pending supersession + inherited 10:00 reproduced correctly.
+  Minor regressions: one spurious when on a dateless policy, one
+  fulfillment left open, aggressive claim merging.
+
+CONCLUSION — the question decomposes cleanly. Store quality is a
+DREAM-model issue and a better/different dream model measurably
+improves it (gemma beat gpt-oss on spans and past-dates at a
+fraction of the size — and dream is the offline pass, so this
+swap is free). The SCOREBOARD, though, is a QUERY-side issue: the
+score stayed in the same 50-51 band because the surviving failures
+are dominated by judge classes (wrong-claim/identity-bleed
+hallucination, borderline flips) and missing machinery
+(availability bit, scope-preserving supersession, stale-plan) that
+no dream model can touch. Dream-model choice buys substrate
+correctness; the remaining points live in candidate-set narrowing
+and validation in front of the judge.
+
 ### Net read
 
 The generalized loop works better out of the box than the concept
