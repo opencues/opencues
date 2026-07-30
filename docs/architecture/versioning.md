@@ -92,6 +92,17 @@ product is at `0.3` is fine and expected). Don't try to sync them.
 5. `npm publish` the CLI if the CLI changed (first publish: see
    the internal npm-handover runbook).
 6. `gh release create vX.Y.Z --title "OpenCues vX.Y.Z" --notes-file <notes>`.
+7. **Open the paired website changelog PR** (`~/opencues-website`, repo
+   `opencues/opencues-web`) — a release is not DONE until this PR exists.
+   In `md/population/changelog.md`: add a `# vX.Y.Z` entry at the top with
+   the real release date (`# 30th JULY 2026` format — don't leave the
+   `# current date` placeholder on a shipped release) and marketing-distilled
+   sections (`# TITLE / vN-anchor` headers, benefit-first bullets — match the
+   existing entries' voice, not the raw CHANGELOG). Update the website
+   CLAUDE.md "Last synced" line, run
+   `python3 scripts/update-sitemap-lastmod.py`, and note any owed follow-up
+   passes (features page, comparison grid, open-standard page on spec bumps).
+   Post-deploy: `python3 scripts/indexnow-submit.py`.
 
 ### Release notes are curated, not dumped
 
