@@ -91,6 +91,10 @@ product is at `0.3` is fine and expected). Don't try to sync them.
    `git tag vX.Y.Z && git push origin vX.Y.Z`.
 5. `npm publish` the CLI if the CLI changed (first publish: see
    the internal npm-handover runbook).
+   **After the publish**, run `bash scripts/check-npm-fresh-install.sh` —
+   a pristine-container cold install of the published package (fetch pinned
+   to the new tag, corepack bootstrap). A publish isn't verified until this
+   gate is green.
 6. `gh release create vX.Y.Z --title "OpenCues vX.Y.Z" --notes-file <notes>`.
 7. **Open the paired website changelog PR** (`~/opencues-website`, repo
    `opencues/opencues-web`) — a release is not DONE until this PR exists.
