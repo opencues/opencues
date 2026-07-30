@@ -450,6 +450,73 @@ per-kind claim semantics, candidate-set narrowing before judgement.
 That is the propositional ledger tier arriving for the fourth time,
 now with a per-class work list attached.
 
+### v6: deterministic deixis — the model stops doing calendar maths (same day)
+
+Implemented the top item on the v5 work list. The dream and extract
+prompts no longer emit dates at all: they emit a RELATIVE reference
+("whenRef") in a tiny vocabulary — "today" | "tonight" | "tomorrow" |
+"mon".."sun" | "day <1-31>" | "YYYY-MM-DD", optional " am/pm/eve/
+HH:MM" suffix; spans "<day> .. <day>", "until <day>", "this month" —
+and resolveWhenRef() in temporal.mjs resolves it against the
+utterance timestamp with real calendar arithmetic (weekday = next
+strictly-future occurrence; "day N" = next occurrence of that
+day-of-month). The model's remaining job is picking the reference,
+which is language, not arithmetic.
+
+Suite rerun: 51/62 (82%), from 46/62. Per persona: family 13->15
+(perfect again — every temporal verdict correct), cafe-owner 8->10,
+gym-rat 10 (held), gym-lazy 6->9, freelancer 9->7.
+
+The deixis error class is GONE: every whenRef in all five stores
+resolved to the correct date, including the exact v5 failure ("legs
+with Kev on Thursday" said Monday -> thu -> 2026-08-06; v5's model
+arithmetic had produced a Tuesday). gym-lazy's cascade failures
+(wrong-date overlap -> wrong flag; missed skip-flag) all recovered.
+
+The freelancer regression is not deixis — its store exposed three
+NEW structural findings:
+
+- PROPOSAL-SHAPED RESCHEDULES NEED A PENDING STATE. "need to move
+  our kickoff, same time Friday instead?" produced NO store change
+  this run (v5's run recorded a supersession — dream variance on
+  exactly the ambiguous case). With the move dropped, the
+  stale-plan probe and the mid-call typing-now probe had no Friday
+  slot to fire against. A proposed reschedule is neither the old
+  plan nor the new one; the ledger wants a PENDING-supersession
+  state resolved by the counterparty's reply or the user's next
+  restatement. Corollary: "SAME TIME Friday" must INHERIT the
+  10:00 from the claim it supersedes — supersession carries
+  unstated fields forward.
+- AVAILABILITY ASSERTIONS MUST ENTER THE COLLISION PATH. "I'm
+  completely free on the 13th" extracted slot=false (it is not a
+  booking) and so bypassed the temporal overlap that would have
+  caught Berlin. Asserting availability DURING a committed span is
+  precisely a contradiction; the slot bit needs a third value
+  (booking | availability-claim | window) with availability
+  participating in overlap.
+- WRONG-CLAIM HALLUCINATION persists and is now the largest
+  remaining wrong-flag source: two flags in one catalog cited the
+  gym claim with zero semantic link to the candidate. The judge
+  needs runtime validation of the cited claim (shared content
+  words, or a cheap verify call) — prompt instructions alone have
+  not eliminated it.
+
+Also still open (unchanged by deixis): carve-out scope (this run
+dream kept the diet open and flagged cheat-day pizza — the
+OPPOSITE verdict from v5's supersede-everything; both runs wrong in
+different directions, confirming scope rules must be structural);
+the keto-pizza semantic miss (recurrent borderline); restriction
+supersession shape ("cleared from the 10th" still doesn't yield an
+operative restriction span for the days before it).
+
+Scoreboard across versions, same 62-probe suite: v5 46 (74%) ->
+v6 51 (82%). The deixis fix bought +8 points net on the personas it
+touched (family +2, cafe +2, gym-lazy +3, and the freelancer's -2
+traces to dream lifecycle variance, not dates). Determinising one
+layer both fixed its own error class outright and made the next
+layer's failures legible — each structural fix is also a diagnostic
+lens.
+
 ### Net read
 
 The generalized loop works better out of the box than the concept
@@ -511,3 +578,11 @@ transitions explicitly rather than hoping the model infers them.
   facts, the lifecycle) must be computed, not judged.
 - The typing-now/focus class needs only slot-like whens, the clock,
   and the thread context the host already records.
+- The model picks the time REFERENCE; the runtime computes the
+  date. No prompt ever asks a model for calendar arithmetic.
+- A proposal-shaped reschedule is PENDING, not a supersession and
+  not nothing; it resolves on acceptance or restatement.
+- Supersession inherits unstated fields from the claim it replaces
+  ("same time Friday" carries the old 10:00).
+- Availability assertions participate in temporal collision; the
+  slot bit is three-valued (booking | availability | window).

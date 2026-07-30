@@ -35,6 +35,75 @@ export function isOverdue(when, nowIso) {
   return !!w && w.end < nowIso.slice(0, 10);
 }
 
+// ── Deterministic deixis ──────────────────────────────────────────
+// The model never does calendar arithmetic. It emits a RELATIVE
+// reference (whenRef) in a tiny vocabulary; the runtime resolves it
+// against the utterance timestamp with real date arithmetic.
+// Vocabulary:
+//   day:  "today" | "tonight" | "tomorrow" | "mon".."sun" (next
+//         strictly-future occurrence) | "day <1-31>" (next occurrence
+//         of that day-of-month) | "YYYY-MM-DD"
+//         — optionally followed by " am" | " pm" | " eve" | " HH:MM"
+//   span: "<day> .. <day>" | "until <day>" | "this month"
+const WD = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+const addDays = (d, n) => new Date(d.getTime() + n * 86400000);
+const fmt = (d) => d.toISOString().slice(0, 10);
+
+function splitPart(tok) {
+  tok = tok.trim().toLowerCase();
+  let part = null;
+  const pm = tok.match(/\s+(am|pm|eve|\d{1,2}:\d{2})$/);
+  if (pm) { part = pm[1]; tok = tok.slice(0, pm.index).trim(); }
+  if (tok === 'tonight') { tok = 'today'; part = part ?? 'eve'; }
+  return { tok, part };
+}
+
+function resolveDayTok(tok, base) {
+  if (tok === 'today') return base;
+  if (tok === 'tomorrow') return addDays(base, 1);
+  if (WD[tok] !== undefined) {
+    let d = addDays(base, 1);
+    while (d.getUTCDay() !== WD[tok]) d = addDays(d, 1);
+    return d;
+  }
+  const m = tok.match(/^day (\d{1,2})$/);
+  if (m) {
+    let d = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), Number(m[1])));
+    if (d < base) d = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, Number(m[1])));
+    return d;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(tok)) return new Date(tok + 'T00:00:00Z');
+  return null;
+}
+
+export function resolveWhenRef(ref, tsIso) {
+  if (!ref || !tsIso) return null;
+  const base = new Date(tsIso.slice(0, 10) + 'T00:00:00Z');
+  ref = String(ref).trim().toLowerCase();
+  if (ref === 'this month') {
+    const end = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0));
+    return `${fmt(base)}/${fmt(end)}`;
+  }
+  const until = ref.match(/^until (.+)$/);
+  if (until) {
+    const d = resolveDayTok(splitPart(until[1]).tok, base);
+    return d ? `${fmt(base)}/${fmt(d)}` : null;
+  }
+  const span = ref.split('..');
+  if (span.length === 2) {
+    const a = resolveDayTok(splitPart(span[0]).tok, base);
+    const b = a && resolveDayTok(splitPart(span[1]).tok, a);
+    return a && b ? `${fmt(a)}/${fmt(b)}` : null;
+  }
+  const { tok, part } = splitPart(ref);
+  const d = resolveDayTok(tok, base);
+  if (!d) return null;
+  const suffix = !part ? ''
+    : part === 'am' ? ' AM' : part === 'pm' ? ' PM' : part === 'eve' ? ' EVE'
+    : ' ' + part.padStart(5, '0');
+  return fmt(d) + suffix;
+}
+
 // Is `nowIso` inside a SLOT-LIKE `when`? Slot-like = single day with a
 // known part of day (a booked appointment/session). Policy spans and
 // date-only entries are excluded: a month-long diet or an unknown-time

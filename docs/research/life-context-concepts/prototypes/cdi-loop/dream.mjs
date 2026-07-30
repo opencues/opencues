@@ -37,17 +37,21 @@ recipient, "via": the channel). Use it; never guess it.
 - A fact ABOUT a person (an allergy, a diet, a preference of theirs)
   gets "about": <person>. Facts about family members are contradictable
   claims and matter as much as the user's own.
-- RESOLVE DEICTIC TIME: using the utterance timestamp, resolve relative
-  time words to concrete dates in a "when" field. Grammar (exact):
-  a single day is "YYYY-MM-DD"; when the part of day is known, append
-  it — "YYYY-MM-DD AM" (morning), "YYYY-MM-DD PM" (afternoon),
-  "YYYY-MM-DD EVE" (evening), or an exact time "YYYY-MM-DD HH:MM";
-  a span is "YYYY-MM-DD/YYYY-MM-DD". So "Saturday morning" ->
-  "2026-08-01 AM", "Saturday 10am" -> "2026-08-01 10:00", "tomorrow"
-  -> the actual date, a holiday -> "2026-08-10/2026-08-17". The claim
-  text stays verbatim; "when" carries the resolution. Past-fact claims
-  created on fulfillment use the resolved date, never words like
-  "just now".
+- TIME REFERENCES: never compute dates yourself. When a claim has a
+  time, emit a "whenRef" field using EXACTLY this relative vocabulary
+  (the runtime resolves it against the utterance timestamp):
+  a day is "today" | "tonight" | "tomorrow" | "mon".."sun" |
+  "day <1-31>" (a stated day of the month: "the 12th" -> "day 12") |
+  "YYYY-MM-DD" (only if the text states a full date); append a part
+  of day when known: " am" | " pm" | " eve" | " HH:MM" (24h).
+  A span is "<day> .. <day>", "until <day>", or "this month".
+  Examples: "Saturday morning" -> "sat am", "Thursday 6pm" ->
+  "thu 18:00", "the 10th to the 17th" -> "day 10 .. day 17",
+  "no X until the 14th" -> "until day 14". The claim text stays
+  verbatim. Past-fact claims created on fulfillment use whenRef
+  "today" (relative to the fulfilling utterance), never words like
+  "just now". Do not emit a "when" field yourself; existing claims'
+  "when" fields are kept as they are.
 - Recipients on different channels are DIFFERENT people unless the
   store already links them; never merge identities on a name match
   alone.
@@ -83,7 +87,7 @@ Output ONLY a JSON object: {"claims": [ ...full updated store... ]}.
 Each claim: {"id": n, "claim": str, "type": "commitment|preference|opinion|fact|plan",
 "firmness": "firm|hedged", "source_ts": str,
 "status": "open|superseded|closed|withdrawn",
-"to"?: str, "about"?: str, "when"?: str,
+"to"?: str, "about"?: str, "whenRef"?: str,
 "supersedes"?: n, "conflict"?: n}.`;
 
 const user = JSON.stringify({
@@ -94,6 +98,16 @@ const user = JSON.stringify({
 
 const out = parseJson(await chat(SYSTEM, user));
 const claims = out.claims;
+// Deterministic deixis: the runtime resolves whenRef against the
+// utterance timestamp; the model never does calendar arithmetic.
+const { resolveWhenRef } = await import('./temporal.mjs');
+for (const c of claims) {
+  if (c.whenRef && !c.when) {
+    const w = resolveWhenRef(c.whenRef, c.source_ts);
+    if (w) c.when = w;
+    else console.warn(`  [warn] #${c.id} unresolvable whenRef "${c.whenRef}"`);
+  }
+}
 const maxId = Math.max(0, ...claims.map(c => c.id));
 fs.writeFileSync(S('claims.json'), JSON.stringify(claims, null, 1));
 fs.writeFileSync(S('meta.json'), JSON.stringify({ cursor: raw.length, nextId: maxId + 1 }));

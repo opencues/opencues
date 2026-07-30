@@ -8,7 +8,7 @@
 // Usage: node check.mjs "<candidate text>" [--to Ana] [--via whatsapp] [--ts iso]
 import fs from 'node:fs';
 import { chat, parseJson } from './llm.mjs';
-import { parseWhen, overlaps, isOverdue, containsPoint } from './temporal.mjs';
+import { parseWhen, overlaps, isOverdue, containsPoint, resolveWhenRef } from './temporal.mjs';
 
 const S = (f) => new URL(`./${process.env.CDI_STORE ?? 'store'}/${f}`, import.meta.url);
 const store = JSON.parse(fs.readFileSync(S('claims.json'), 'utf8'));
@@ -25,21 +25,24 @@ const candidate = args.join(' ');
 if (!candidate) { console.error('usage: check.mjs "<text>" [--to who] [--via channel] [--ts iso]'); process.exit(1); }
 
 // ── 1. EXTRACT the candidate's time reference (small, fast call).
-const EXTRACT = `Resolve the time reference of one utterance. Now is ${now}.
-Output ONLY JSON: {"when": w, "slot": s} where w is the utterance's
-resolved time using exactly this grammar — "YYYY-MM-DD",
-"YYYY-MM-DD AM" (morning), "YYYY-MM-DD PM" (afternoon),
-"YYYY-MM-DD EVE" (evening), "YYYY-MM-DD HH:MM", or a span
-"YYYY-MM-DD/YYYY-MM-DD" — or null if the utterance references no
-specific time. s is true only if the utterance commits the writer (or
-their family) to BE somewhere or be occupied AT that time (an
+// The model emits a RELATIVE reference; it never computes dates.
+const EXTRACT = `Identify the time reference of one utterance.
+Output ONLY JSON: {"whenRef": w, "slot": s} where w uses EXACTLY this
+relative vocabulary (never compute dates yourself): a day is "today" |
+"tonight" | "tomorrow" | "mon".."sun" | "day <1-31>" (a stated day of
+the month: "the 12th" -> "day 12") | "YYYY-MM-DD" (only if the text
+states a full date); append " am" | " pm" | " eve" | " HH:MM" (24h)
+when the part of day is known. A span is "<day> .. <day>",
+"until <day>", or "this month". Use null if the utterance references
+no specific time. s is true only if the utterance commits the writer
+(or their family) to BE somewhere or be occupied AT that time (an
 appointment, a visit, an outing, presence); s is false when the time
 is merely a deadline or window to do a task within ("this week",
 "by Friday"), or a report about the past.`;
 const ext = parseJson(await chat(EXTRACT, candidate));
 
 // ── 2. RUNTIME temporal algebra — never the model's job.
-const candWhen = ext.slot ? parseWhen(ext.when) : null;
+const candWhen = ext.slot ? parseWhen(resolveWhenRef(ext.whenRef, now)) : null;
 const collisions = candWhen
   ? open.filter(c => c.when && overlaps(candWhen, parseWhen(c.when)))
   : [];
