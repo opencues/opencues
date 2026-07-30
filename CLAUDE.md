@@ -665,8 +665,7 @@ done
 | `package.json` (monorepo root) | `opencues` | 0.1.0 | private |
 | `packages/opencues-core/` | `@opencues/core` | 0.41.0 | private |
 | `packages/opencues-runtime/` | `@opencues/runtime` | 0.28.20 | private |
-| `packages/opencues-cli/` | `opencues` (real CLI) | 0.3.0 | private |
-| `packages/opencues-park/` | `opencues` (placeholder) | 0.0.1 | **PUBLISHED on npm** |
+| `packages/opencues-cli/` | `opencues` (real CLI) | 0.4.0 | **PUBLISHED on npm** |
 | `integrations/claude-code/` | `@opencues/claude-code` | 0.2.10 | private |
 | `integrations/opencode/` | `@opencues/opencode` | 0.2.14 | private |
 | `integrations/chrome/` | `@opencues/chrome` | 0.2.152 | private |
@@ -674,9 +673,9 @@ done
 | `integrations/shell/` | `@opencues/shell` | 0.2.21 | private |
 | `integrations/windows/` | `@opencues/windows` | 0.2.4 | private |
 
-Two packages share the bare `opencues` name — the real CLI at `packages/opencues-cli/` (still private) and the parking placeholder at `packages/opencues-park/` (published as v0.0.1 to the public npm registry, owned by the `opencues` org via the `developers` team). Launch handover is described in the npm-name pre-launch checklist above; the real CLI's v0.1.0 cleanly supersedes the placeholder's v0.0.1 on first publish.
+The bare `opencues` name on npm is the real CLI (`packages/opencues-cli/`, **published** — v0.4.0 superseded the retired parking placeholder's v0.0.1; the old `packages/opencues-park/` source was deleted post-publish, July 2026). The npm org grants access via the `developers` team.
 
-Everything except the placeholder is currently `private: true`. Flipping a package to publishable requires removing `"private": true` AND repointing (or removing) its `publishConfig` block (most currently target `npm.pkg.github.com`).
+The `@opencues/*` library packages remain `private: true`. Flipping one to publishable requires removing `"private": true` AND repointing (or removing) its `publishConfig` block (most currently target `npm.pkg.github.com`).
 
 ## Cerebras-specific features
 
