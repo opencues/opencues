@@ -61,6 +61,13 @@ function splitPart(tok) {
 function resolveDayTok(tok, base) {
   if (tok === 'today') return base;
   if (tok === 'tomorrow') return addDays(base, 1);
+  if (tok === 'yesterday') return addDays(base, -1);
+  const last = tok.match(/^last (\w+)$/);
+  if (last && WD[last[1]] !== undefined) {
+    let d = addDays(base, -1);
+    while (d.getUTCDay() !== WD[last[1]]) d = addDays(d, -1);
+    return d;
+  }
   if (WD[tok] !== undefined) {
     let d = addDays(base, 1);
     while (d.getUTCDay() !== WD[tok]) d = addDays(d, 1);
@@ -88,6 +95,11 @@ export function resolveWhenRef(ref, tsIso) {
   if (until) {
     const d = resolveDayTok(splitPart(until[1]).tok, base);
     return d ? `${fmt(base)}/${fmt(d)}` : null;
+  }
+  const from = ref.match(/^from (.+)$/);
+  if (from) {
+    const d = resolveDayTok(splitPart(from[1]).tok, base);
+    return d ? `${fmt(d)}/2099-12-31` : null; // open-ended span
   }
   const span = ref.split('..');
   if (span.length === 2) {

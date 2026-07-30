@@ -40,18 +40,30 @@ recipient, "via": the channel). Use it; never guess it.
 - TIME REFERENCES: never compute dates yourself. When a claim has a
   time, emit a "whenRef" field using EXACTLY this relative vocabulary
   (the runtime resolves it against the utterance timestamp):
-  a day is "today" | "tonight" | "tomorrow" | "mon".."sun" |
-  "day <1-31>" (a stated day of the month: "the 12th" -> "day 12") |
-  "YYYY-MM-DD" (only if the text states a full date); append a part
-  of day when known: " am" | " pm" | " eve" | " HH:MM" (24h).
-  A span is "<day> .. <day>", "until <day>", or "this month".
-  Examples: "Saturday morning" -> "sat am", "Thursday 6pm" ->
-  "thu 18:00", "the 10th to the 17th" -> "day 10 .. day 17",
-  "no X until the 14th" -> "until day 14". The claim text stays
+  a day is "today" | "tonight" | "tomorrow" | "yesterday" |
+  "mon".."sun" (the COMING one) | "last <mon..sun>" (the most recent
+  past one) | "day <1-31>" (a stated day of the month: "the 12th" ->
+  "day 12") | "YYYY-MM-DD" (only if the text states a full date);
+  append a part of day when known: " am" | " pm" | " eve" |
+  " HH:MM" (24h). PAST events (reports, fulfillments, things already
+  done) use "today", "yesterday" or "last <weekday>" — NEVER a bare
+  weekday, which always means the coming one.
+  A span is "<day> .. <day>", "until <day>", "from <day>" (open
+  ended), or "this month". Examples: "Saturday morning" -> "sat am",
+  "Thursday 6pm" -> "thu 18:00", "the 10th to the 17th" ->
+  "day 10 .. day 17", "no X until the 14th" -> "until day 14",
+  "cleared from the 10th" -> "from day 10". The claim text stays
   verbatim. Past-fact claims created on fulfillment use whenRef
   "today" (relative to the fulfilling utterance), never words like
   "just now". Do not emit a "when" field yourself; existing claims'
   "when" fields are kept as they are.
+- WHEN KIND: whenever you emit whenRef, ALSO emit "whenKind":
+  "slot" (a booked presence — an appointment, session, visit, party,
+  trip: the user or their people will BE there then), "window" (a
+  deadline or period to get a task done within — "by Friday", "by
+  the end of the month", "this week"), or "policy" (a rule or
+  restriction in force over a period — a diet, a ban,
+  "no X until...", "off alcohol until...", a clearance).
 - Recipients on different channels are DIFFERENT people unless the
   store already links them; never merge identities on a name match
   alone.
@@ -102,6 +114,7 @@ Each claim: {"id": n, "claim": str, "type": "commitment|preference|opinion|fact|
 "firmness": "firm|hedged", "source_ts": str,
 "status": "open|pending|superseded|closed|withdrawn",
 "to"?: str, "about"?: str, "whenRef"?: str,
+"whenKind"?: "slot|window|policy",
 "supersedes"?: n, "conflict"?: n}.`;
 
 const user = JSON.stringify({
@@ -131,6 +144,7 @@ for (const c of claims) {
   if (!old) continue;
   if (!c.to && old.to) c.to = old.to;
   if (!c.about && old.about) c.about = old.about;
+  if (!c.whenKind && old.whenKind) c.whenKind = old.whenKind;
   if (c.when && old.when) {
     const nw = parseWhen(c.when), ow = parseWhen(old.when);
     if (nw && ow && nw.start === nw.end && nw.part === 'UNKNOWN'
@@ -145,6 +159,6 @@ fs.writeFileSync(S('claims.json'), JSON.stringify(claims, null, 1));
 fs.writeFileSync(S('meta.json'), JSON.stringify({ cursor: raw.length, nextId: maxId + 1 }));
 console.log(`dreamed ${fresh.length} utterances -> store now ${claims.length} claims`);
 for (const c of claims) {
-  const ctx = [c.to && `to:${c.to}`, c.about && `about:${c.about}`, c.when && `when:${c.when}`].filter(Boolean).join(' ');
+  const ctx = [c.to && `to:${c.to}`, c.about && `about:${c.about}`, c.when && `when:${c.when}${c.whenKind ? '(' + c.whenKind + ')' : ''}`].filter(Boolean).join(' ');
   console.log(`  #${c.id} [${c.status}${c.supersedes ? ' supersedes #' + c.supersedes : ''}${c.conflict ? ' CONFLICT #' + c.conflict : ''}] (${c.type}/${c.firmness}${ctx ? ' | ' + ctx : ''}) ${c.claim}`);
 }

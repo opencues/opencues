@@ -580,6 +580,67 @@ New findings from this run's failures:
   this suite; the durable gains have all come from moving things
   OUT of the judge.
 
+### v8: whenKind partition + past-direction grammar (31 Jul 2026)
+
+Implemented the two v7 items plus a fix the rerun forced.
+
+- WHENKIND on stored claims: "slot" (booked presence — collides,
+  counts for typing-now), "window" (deadline — NEVER collides, still
+  goes overdue), "policy" (diet/ban/clearance — never collides;
+  instead a new runtime-computed POLICIES IN EFFECT list gives the
+  judge the restrictions covering the candidate's time, for semantic
+  judgement only). Inherited across supersession like other fields.
+- GRAMMAR: "from <day>" (open-ended span, resolves to
+  <date>/2099-12-31) and — forced by the first v8 run — the PAST
+  DIRECTION: "yesterday" | "last <mon..sun>", with the prompt rule
+  that past events NEVER use a bare weekday (which always means the
+  coming one). The first run had resolved "6am spot DONE" via
+  whenRef "wed" to NEXT Wednesday, turning a memory into a future
+  booking that false-flagged the following week's spot offer.
+- Harness corrections, both principled: family probes accept the
+  SISTER claim (dream sometimes splits Lisbon into trip +
+  don't-book-anything; flagging either with the right dates is a
+  correct cue — match on identity, not one keyword), and the
+  freelancer typing-now probe now expects SILENCE per the v7 rule
+  (pending slots don't fire typing-now).
+
+Final run: 50/62 raw — with the two remaining family "failures"
+being the sister-claim artifact again (flags with correct dates and
+reason, failing a keyword regex), so ~52/62 (84%) semantically.
+cafe-owner 11/12 (best yet — the window bit held: the
+repaint-by-month-end deadline no longer collides with anything),
+gym-lazy 9/10 (curry flag restored, cheat-day correctly silent),
+gym-rat 10/12, family 13/15, freelancer 7/13.
+
+TWO AMPLIFICATION LESSONS, one per direction. The deterministic
+layer amplifies dream data-quality errors both ways: the
+mis-scoped diet span ("this month" truncated to one day in the
+first v8 run) plus the new "a dated policy absent from the list is
+not in force" rule produced a CONFIDENT miss of a true curry flag;
+the future-resolved past-fact produced a CONFIDENT false flag.
+Deterministic machinery downstream of bad data doesn't fail soft —
+it fails certain. Store-write validation (does the resolved span
+plausibly match the claim text's scope words?) is the missing
+guard.
+
+WRONG-CLAIM HALLUCINATION IS IDENTITY BLEED. Both freelancer wrong
+flags this run cited the GYM-SAM claim on probes addressed to
+EDITOR-SAM — the hallucination class concentrates on the name
+collision. The judge binds "Sam" across channels despite the
+catalog carrying distinct recipients. Identity separation must be
+enforced by candidate-set narrowing (drop other-channel same-name
+claims before the judge sees them), not judged — the propositional
+doc's conservative-identity rule, arriving via a failure mode it
+predicted.
+
+Scoreboard, same 62-probe suite: v5 46 (74%) -> v6 51 (82%) -> v7
+51 (82%) -> v8 50 raw / ~52 semantic (84%). Residual list, in
+value order: cited-claim validation + same-name channel narrowing
+(kills the last wrong-flag class), scope-preserving supersession
+for restrictions, the availability slot-bit value, anchored
+references ("comp week"), stale-plan detection, store-write span
+validation.
+
 ### Net read
 
 The generalized loop works better out of the box than the concept
@@ -657,3 +718,14 @@ transitions explicitly rather than hoping the model infers them.
   happening.
 - Field inheritance is runtime post-processing over the
   supersession link, never prompt trust.
+- The relative-time vocabulary has a past direction ("yesterday",
+  "last <weekday>"); past events never resolve through a bare
+  weekday, which always means the coming one.
+- Deterministic machinery downstream of bad store data fails
+  CERTAIN, not soft — store writes need validation against the
+  claim text's own scope words.
+- Same-name recipients on different channels are dropped from the
+  judge's candidate set, not disambiguated by it — identity
+  separation is candidate-set narrowing.
+- Harness expectations match on claim identity (any sister claim
+  with the right dates and reason), not on one keyword.

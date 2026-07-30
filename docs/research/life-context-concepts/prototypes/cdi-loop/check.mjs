@@ -35,8 +35,8 @@ relative vocabulary (never compute dates yourself): a day is "today" |
 the month: "the 12th" -> "day 12") | "YYYY-MM-DD" (only if the text
 states a full date); append " am" | " pm" | " eve" | " HH:MM" (24h)
 when the part of day is known. A span is "<day> .. <day>",
-"until <day>", or "this month". Use null if the utterance references
-no specific time. s is true only if the utterance commits the writer
+"until <day>", "from <day>", or "this month". Use null if the
+utterance references no specific time. s is true only if the utterance commits the writer
 (or their family) to BE somewhere or be occupied AT that time (an
 appointment, a visit, an outing, presence); s is false when the time
 is merely a deadline or window to do a task within ("this week",
@@ -44,14 +44,22 @@ is merely a deadline or window to do a task within ("this week",
 const ext = parseJson(await chat(EXTRACT, candidate));
 
 // ── 2. RUNTIME temporal algebra — never the model's job.
-const candWhen = ext.slot ? parseWhen(resolveWhenRef(ext.whenRef, now)) : null;
+// whenKind partitions the semantics: only SLOTS double-book; WINDOWS
+// (deadlines) never collide; POLICIES (diets, bans, clearances) are
+// listed as in-effect context for semantic judgement, never bookings.
+const kindOf = (c) => c.whenKind ?? 'slot';
+const candWhenAny = parseWhen(resolveWhenRef(ext.whenRef, now));
+const candWhen = ext.slot ? candWhenAny : null;
 const collisions = candWhen
-  ? open.filter(c => c.when && overlaps(candWhen, parseWhen(c.when)))
+  ? open.filter(c => c.when && kindOf(c) === 'slot' && overlaps(candWhen, parseWhen(c.when)))
   : [];
-const overdue = open.filter(c => c.status === 'open' && c.type === 'commitment' && c.when && isOverdue(c.when, now));
+const policyRef = candWhenAny ?? parseWhen(now.slice(0, 10));
+const policies = open.filter(c => c.when && kindOf(c) === 'policy' && overlaps(policyRef, parseWhen(c.when)));
+const overdue = open.filter(c => c.status === 'open' && c.type === 'commitment' && c.when && kindOf(c) !== 'policy' && isOverdue(c.when, now));
 // Slot-like commitments the user is typing DURING (focus/double-life).
-const activeNow = open.filter(c => c.when && containsPoint(c.when, now));
-if (process.env.CDI_DEBUG) console.error(`[debug] ext=${JSON.stringify(ext)} collisions=[${collisions.map(c => '#' + c.id)}] activeNow=[${activeNow.map(c => '#' + c.id)}]`);
+// Pending excluded: an unaccepted meeting may not be happening.
+const activeNow = open.filter(c => c.status === 'open' && c.when && kindOf(c) === 'slot' && containsPoint(c.when, now));
+if (process.env.CDI_DEBUG) console.error(`[debug] ext=${JSON.stringify(ext)} collisions=[${collisions.map(c => '#' + c.id)}] policies=[${policies.map(c => '#' + c.id)}] activeNow=[${activeNow.map(c => '#' + c.id)}]`);
 
 // ── 3. JUDGE — catalog in the SYSTEM message (stable prefix); candidate
 // + computed overlaps in USER.
@@ -75,7 +83,15 @@ Flag ONLY on a genuine collision with a specific catalog claim:
   revision — both SILENCE. An away-span (a trip) on the list collides
   with ANY in-person commitment elsewhere, and PROPOSING a new meeting
   inside it counts — proposing a slot you cannot hold is exactly the
-  moment to flag.
+  moment to flag. The list contains only BOOKED slots: deadline
+  windows and policies never double-book.
+- POLICIES IN EFFECT: the runtime lists policy claims (diets, bans,
+  restrictions, clearances) whose period covers the candidate's time.
+  They are never double-bookings; use them for semantic compatibility
+  (INCOMPATIBLE-FACT applies: proposing what an in-effect policy
+  forbids flags that policy). A DATED policy absent from the list is
+  not in force at the candidate's time; a policy without dates may
+  still apply — judge it semantically.
 - ALREADY-DONE: the candidate promises to do something the catalog
   records as already done. Resolution counterpart: naturally recurring
   tasks repeat — flag only when redoing makes no sense (booking the
@@ -131,6 +147,9 @@ const userMsg = `CANDIDATE (${[to && `to ${to}`, via && `via ${via}`, `at ${now}
 COMPUTED TEMPORAL OVERLAPS: ${collisions.length
   ? collisions.map(c => `#${c.id} (${c.when})`).join(', ')
   : 'none'}
+POLICIES IN EFFECT at the candidate's time: ${policies.length
+  ? policies.map(c => `#${c.id} (${c.when})`).join(', ')
+  : 'none listed (dated policies only)'}
 TYPING-NOW (user is typing during these committed slots): ${activeNow.length
   ? activeNow.map(c => `#${c.id} (${c.when})`).join(', ')
   : 'none'}`;
