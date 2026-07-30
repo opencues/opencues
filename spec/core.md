@@ -1,6 +1,6 @@
 # core — shared rules across cue-spec and blank-spec
 
-> **Status:** `0.10-alpha`. Expect changes.
+> **Status:** `0.11-alpha`. Expect changes.
 
 This document covers concerns shared by `cue-spec.md`, `blank-spec.md`, and `auditor-spec.md`: the project search-path, the master `CUES.md` / `BLANKS.md` / `AUDITORS.md` files at the root, host compatibility, hot-reload, routing, and the promotion path from runtime-specific knobs to standard fields.
 
@@ -185,6 +185,32 @@ Resolution algorithm:
 3. If no source claims the word, the word produces no cue (it's not navigable).
 
 For blanks, routing is by `blankShapes` — anchored whole-segment grammar matched against the SENTENCE containing `_` (keywords desugar to shapes; a keyword claims a `_` when it leads its sentence — the segment after the last sentence terminator (`.`/`!`/`?` + whitespace, or CJK `。！？．`) or newline before `_`). Tie resolution: by source priority (declaration order if equal). The fluid-blank fallback (when implemented) handles `_` that no shape claims. Runtimes that ship a transform-blank surface alongside fluid-blank SHOULD ensure their fluid-blank fallback refuses inputs that look like transform-blank task triggers — otherwise a mistyped task command falls through to the lookup pipeline and gets hallucinated as an answer (see [`@opencues/runtime`'s `SPEC.md` § Task-trigger guard](../packages/opencues-runtime/SPEC.md#task-trigger-guard) for the OpenCues runtime's implementation).
+
+### The trigger character inside a revealed span (`0.11`)
+
+`_` is the standard's trigger character, so the standard also says when a
+typed `_` is **not** a trigger:
+
+- **Inside a revealed span, `_` is a cycle input.** When the caret sits inside
+  a span the runtime is actively presenting for interaction (a cue's proposed
+  alternatives, a filled blank's value, a settings pair — however the runtime
+  indicates it; the reference runtime paints an inline note), a runtime that
+  supports cycling SHOULD treat a bare `_` keypress as "advance this span to
+  its next alternative" and MUST consume the keystroke — the `_` is neither
+  inserted nor interpreted as a blank trigger. With the caret outside every
+  such span (including immediately after one, once the user types past it),
+  `_` keeps its normal trigger meaning. `_` is thereby the single interaction
+  verb: it *summons* on plain text and *cycles* on presented results, with
+  the caret position deciding which.
+- **A bare blank keyword carries no affordance.** A word that is only a blank
+  keyword (`volume`, `weather`, …) is a *pure trigger*: until its `_` fires, a
+  runtime MUST NOT present it as interactive (no cycling affordance, no
+  navigation stop, no indication). The affordance appears with the filled
+  result, not with the keyword.
+
+(Which other keys perform cycling — arrows, Tab, voice — remains a runtime
+decision, out of scope. This section only disambiguates the standard's own
+trigger character.)
 
 ---
 

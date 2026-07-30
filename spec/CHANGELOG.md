@@ -16,6 +16,18 @@ breaking.
 
 ---
 
+## [0.11.0-alpha] — 2026-07-30
+
+### Added — the trigger character inside a revealed span (`0.10-alpha → 0.11-alpha`)
+
+`core.md` § Routing gains "The trigger character inside a revealed span": the standard now says when a typed `_` is **not** a blank trigger. (1) With the caret inside a span the runtime is actively presenting for interaction (a cue's alternatives, a filled blank's value, a settings pair — however indicated; the reference runtime paints an inline note), a cycling-capable runtime SHOULD treat a bare `_` as "advance this span" and MUST consume the keystroke — neither inserted nor interpreted as a trigger. Outside every such span (including once the user types past one), `_` keeps its trigger meaning. `_` is thereby the single interaction verb: summon on plain text, cycle on presented results, caret position deciding. (2) A bare blank keyword is a **pure trigger**: until its `_` fires, a runtime MUST NOT present it as interactive (no cycling affordance, no navigation stop, no indication) — the affordance arrives with the filled result. Which *other* keys cycle stays out of scope (runtime decision); this section only disambiguates the standard's own trigger character. No file-format surface (no new frontmatter key or scalar), so no schema changes and no conformance fixtures — the rule is interaction-semantic.
+
+### Fixed (editorial)
+
+- `spec/conformance/invalid/cue/spec-too-new.expected.json` — the summary hardcoded "runtime supports only opencues/0.7" (three versions stale); now phrased version-neutrally. The fixture's `opencues/99.0` declaration was already future-proof; only the informational string lagged.
+
+---
+
 ## [0.10.0-alpha] — 2026-07-26
 
 ### Added — `on-field:` / `not-on-field:` field-kind scoping (`0.9-alpha → 0.10-alpha`)

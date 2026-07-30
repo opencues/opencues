@@ -1,6 +1,6 @@
 {
   "name": "@opencues/core",
-  "version": "0.40.4",
+  "version": "0.41.0",
   "description": "Core OpenCues library - pure TypeScript, no I/O dependencies",
   "private": true,
   "main": "dist/index.js",
