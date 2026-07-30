@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-30
+
+Patch release: chained-transform fix + the install channels (curl / bun / brew). Highlights in the [GitHub Release](https://github.com/opencues/opencues/releases/tag/v0.4.1).
+
 ### Added — install channels: `curl | bash` installer, bun-only bootstrap, Homebrew tap (CLI 0.4.0 → 0.4.1)
 
 Three new ways in, matching the site's install bar: **curl** — `install.sh` at the repo root (served as `https://opencues.com/install` via a site redirect): checks Node 22+ and git with actionable errors, runs `npm i -g opencues`, prints next steps; covered by the shell-portability lint (root installers now in its scan). **bun** — `resolvePnpm` gains a `bun x pnpm` rung so `bun add -g opencues` bootstraps on bun-only machines (no node ⇒ no corepack); verified end-to-end in a pristine `oven/bun` container. **brew** — new tap `opencues/homebrew-opencues` (`brew install opencues/opencues/opencues`), formula tracks the npm release tarball; bumping it joins the release steps.
