@@ -1,0 +1,26 @@
+{
+  "name": "gym-lazy",
+  "persona": "Aspirational lapser Baz: gym buddy Kev, partner Shreya, the mates group chat. Stressors: bold claims followed by indulgence talk, typing-in-the-wrong-place-during-a-slot (focus protection), diet policy vs takeaway cravings, declared cheat-day carve-outs, unverifiable brag claims (should NOT flag).",
+  "steps": [
+    {"collect": "gym tonight at 6, no excuses", "ts": "2026-08-03T10:00:00Z", "to": "Kev", "via": "whatsapp"},
+    {"collect": "diet starts today, no takeaways this month", "ts": "2026-08-03T10:30:00Z", "to": "Shreya", "via": "whatsapp"},
+    {"collect": "doing legs with Kev on Thursday at 6pm", "ts": "2026-08-03T11:00:00Z", "to": "mates", "via": "whatsapp"},
+    {"collect": "I'll cook tonight after the gym", "ts": "2026-08-03T12:00:00Z", "to": "Shreya", "via": "whatsapp"},
+    {"collect": "aiming for four sessions this week", "ts": "2026-08-03T12:30:00Z", "to": "Kev", "via": "whatsapp"},
+    {"dream": true},
+    {"probe": "anyone up for FIFA right now?", "ts": "2026-08-03T18:20:00Z", "to": "mates", "via": "whatsapp", "expect": "FLAG", "claim": "gym tonight", "note": "typing-now: mid-gym-slot gaming plans"},
+    {"probe": "here, warming up, where are you?", "ts": "2026-08-03T18:25:00Z", "to": "Kev", "via": "whatsapp", "expect": "SILENCE", "note": "typing-now counterpart: consistent with being at the gym"},
+    {"probe": "thinking massive dominos order tonight", "ts": "2026-08-03T20:00:00Z", "to": "mates", "via": "whatsapp", "expect": "FLAG", "claim": "takeaway|diet|cook", "note": "indulgence vs day-one diet"},
+    {"probe": "let's get a curry delivered tomorrow night", "ts": "2026-08-04T17:00:00Z", "to": "Shreya", "via": "whatsapp", "expect": "FLAG", "claim": "takeaway|diet"},
+    {"probe": "I'll do a big healthy stir fry tonight", "ts": "2026-08-04T17:05:00Z", "to": "Shreya", "via": "whatsapp", "expect": "SILENCE", "note": "diet-compatible"},
+    {"probe": "skipping tomorrow's legs session, not feeling it", "ts": "2026-08-05T19:00:00Z", "to": "Kev", "via": "whatsapp", "expect": "FLAG", "claim": "legs|Thursday", "note": "breaking a stated plan"},
+    {"collect": "on for tonight, see you at 6", "ts": "2026-08-06T17:00:00Z", "to": "Kev", "via": "whatsapp"},
+    {"collect": "smashed legs, cooking now", "ts": "2026-08-06T21:00:00Z", "to": "Shreya", "via": "whatsapp"},
+    {"collect": "cheat day tomorrow, I've earned it", "ts": "2026-08-07T12:00:00Z", "to": "mates", "via": "whatsapp"},
+    {"dream": true},
+    {"probe": "getting a massive pizza tonight, cheat day!", "ts": "2026-08-08T17:00:00Z", "to": "Shreya", "via": "whatsapp", "expect": "SILENCE", "note": "declared cheat-day carve-out should win"},
+    {"probe": "four sessions done this week", "ts": "2026-08-08T17:05:00Z", "to": "Kev", "via": "whatsapp", "expect": "SILENCE", "note": "unverifiable brag vs hedged aim — must not flag"},
+    {"probe": "gym at 6 Monday, going every night next week", "ts": "2026-08-08T17:10:00Z", "to": "Kev", "via": "whatsapp", "expect": "SILENCE", "note": "fresh commitment"},
+    {"probe": "anyone up for FIFA right now?", "ts": "2026-08-08T18:30:00Z", "to": "mates", "via": "whatsapp", "expect": "SILENCE", "note": "no slot active Saturday evening — typing-now must not fire"}
+  ]
+}

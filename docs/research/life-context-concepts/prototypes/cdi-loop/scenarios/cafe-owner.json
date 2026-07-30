@@ -1,0 +1,32 @@
+{
+  "name": "cafe-owner",
+  "persona": "Cafe owner: staff Keisha + Tomas, supplier DairyDirect, accountant Priti, customers Jess + Rob (instagram), landlord, plumber Sam. Stressors: staff rota promises, two-faced capacity claims across customer threads, invoice deadlines, policy claims, delegation-release.",
+  "steps": [
+    {"collect": "you can have Saturday off, I'll cover your morning shift", "ts": "2026-08-03T08:00:00Z", "to": "Keisha", "via": "whatsapp"},
+    {"collect": "I'll settle the July invoice by Friday", "ts": "2026-08-03T09:00:00Z", "to": "DairyDirect", "via": "email"},
+    {"collect": "the VAT return will be with you by Wednesday", "ts": "2026-08-03T09:30:00Z", "to": "Priti", "via": "email"},
+    {"collect": "we can do your birthday party Saturday afternoon, 20 covers in the back room", "ts": "2026-08-03T11:00:00Z", "to": "Jess", "via": "instagram"},
+    {"collect": "the leak's fixed, plumber came this morning", "ts": "2026-08-03T12:00:00Z", "to": "landlord", "via": "email"},
+    {"collect": "no staff discounts this month, we're too tight", "ts": "2026-08-03T14:00:00Z", "to": "Tomas", "via": "whatsapp"},
+    {"collect": "we're fully booked Saturday afternoon I'm afraid", "ts": "2026-08-03T15:00:00Z", "to": "Rob", "via": "instagram"},
+    {"dream": true},
+    {"probe": "any chance you could come look at the leak this week?", "ts": "2026-08-04T09:00:00Z", "to": "Sam-plumber", "via": "sms", "expect": "FLAG", "claim": "leak|fixed", "note": "already-done on a fact"},
+    {"probe": "actually we could squeeze your lot in Saturday afternoon", "ts": "2026-08-04T10:00:00Z", "to": "Rob", "via": "instagram", "expect": "FLAG", "claim": "fully booked|party|covers", "note": "two-faced capacity claim"},
+    {"probe": "go on, take 20% off for your mum's order", "ts": "2026-08-04T11:00:00Z", "to": "Tomas", "via": "whatsapp", "expect": "FLAG", "claim": "discount", "note": "policy contradiction"},
+    {"probe": "actually could you come in Saturday morning after all? I need to be at the bank", "ts": "2026-08-04T12:00:00Z", "to": "Keisha", "via": "whatsapp", "expect": "FLAG", "claim": "Saturday off|cover", "note": "revoking a granted day off"},
+    {"probe": "the VAT return might slip to Thursday", "ts": "2026-08-04T14:00:00Z", "to": "Priti", "via": "email", "expect": "SILENCE", "note": "hedged revision"},
+    {"probe": "usual dairy order for Thursday delivery please", "ts": "2026-08-04T15:00:00Z", "to": "DairyDirect", "via": "email", "expect": "SILENCE", "note": "unrelated routine order"},
+    {"collect": "VAT return submitted", "ts": "2026-08-05T10:00:00Z", "to": "Priti", "via": "email"},
+    {"collect": "party confirmed, back room set up from 2pm Saturday", "ts": "2026-08-05T12:00:00Z", "to": "Jess", "via": "instagram"},
+    {"collect": "forget what I said, enjoy your Saturday, mum can cover the morning till", "ts": "2026-08-06T09:00:00Z", "to": "Keisha", "via": "whatsapp"},
+    {"collect": "July invoice paid this morning", "ts": "2026-08-06T10:00:00Z", "to": "DairyDirect", "via": "email"},
+    {"collect": "we'll repaint the front by the end of the month", "ts": "2026-08-06T16:00:00Z", "to": "landlord", "via": "email"},
+    {"dream": true},
+    {"probe": "I'll get that July invoice sorted next week, promise", "ts": "2026-08-07T09:00:00Z", "to": "DairyDirect", "via": "email", "expect": "FLAG", "claim": "paid|invoice", "note": "already-done"},
+    {"probe": "we might need to nudge your party to Sunday", "ts": "2026-08-07T10:00:00Z", "to": "Jess", "via": "instagram", "expect": "SILENCE", "note": "hedged reschedule proposal"},
+    {"probe": "can you open up at 2 on Saturday and help set the back room?", "ts": "2026-08-07T11:00:00Z", "to": "Tomas", "via": "whatsapp", "expect": "SILENCE", "note": "consistent with the party"},
+    {"probe": "quiet one Saturday afternoon, walk-ins welcome", "ts": "2026-08-07T12:00:00Z", "to": "Rob", "via": "instagram", "expect": "FLAG", "claim": "fully booked|party", "note": "contradicts capacity claims"},
+    {"probe": "did the VAT return come through ok?", "ts": "2026-08-07T14:00:00Z", "to": "Priti", "via": "email", "expect": "SILENCE", "note": "question"},
+    {"probe": "I can come in Saturday morning", "ts": "2026-08-07T15:00:00Z", "to": "bank-manager", "via": "email", "expect": "SILENCE", "note": "delegation released the shift cover; informative probe"}
+  ]
+}

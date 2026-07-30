@@ -364,6 +364,92 @@ unstaged rerun let a probe timestamped July 31 be judged against a
 claim made August 3, which produced a phantom flag that was pure
 harness artifact; anachronistic catalogs invent contradictions.
 
+### v5: scale-up — five personas, 62 probes, where single-prompt judging plateaus (same day)
+
+Built a scenario-runner harness (run-scenario.mjs + scenarios/*.json:
+persona weeks as JSON — collects with thread context, dream points,
+probes with expected verdicts + claim regexes; probes between dreams
+run concurrently; per-scenario isolated stores) and authored five
+personas: FAMILY (the v4 week, ported as regression baseline),
+CAFE-OWNER (staff rota, two-faced capacity claims across customer
+threads, invoice deadlines, policy claims, delegation-release),
+GYM-RAT (injury-restriction spans, dry-till-comp + keto spans,
+quantifier claims, span supersession), FREELANCER (deadline windows
+vs booked slots, conference travel, stale-plan references, weekend
+policy vs weekend leisure, a name-collision Sam on two channels), and
+GYM-LAZY (Wilfred's aspirational lapser: bold claims then pizza talk,
+plus the focus-protection class — typing in the wrong place during a
+committed slot).
+
+New mechanism for the focus class: TYPING-NOW. containsPoint() in
+temporal.mjs finds slot-like open commitments (single day, known part
+of day — policy spans deliberately excluded) containing the typing
+timestamp; the judge gets the list plus a rule with its counterpart:
+idle-elsewhere content during a slot flags; logistics /
+"here, warming up" / coordinating with the slot's person is SILENCE.
+
+Aggregate: 46/62 (74%) — family 13/15, cafe 8/12, gym-rat 10/12,
+freelancer 9/13, gym-lazy 6/10. Against 15/15 on the polished v4
+single scenario, the busier adversarial weeks cut hard. The value is
+the failure taxonomy, which is now sharp:
+
+1. DREAM DATA-QUALITY ERRORS POISON THE DETERMINISTIC LAYER. Store
+   forensics found: "doing legs with Kev on Thursday" (said Monday)
+   resolved to when 2026-08-04 — a TUESDAY; the wrong date then put
+   a legitimate probe into computed overlap and produced a wrong
+   flag downstream. "No takeaways this month" truncated to a single
+   day. Worst: "cheat day tomorrow, I've earned it" SUPERSEDED the
+   entire month-long diet policy — a one-day carve-out replaced the
+   claim it should have amended, deleting the diet from the catalog
+   (the next pizza probe then hallucinated an unrelated flag).
+   Directions: deixis resolution should itself be deterministic
+   (model emits relative refs, runtime resolves against a real
+   calendar), and supersession needs SCOPE rules — an exception
+   amends, it never replaces.
+2. JUDGE BORDERLINE NONDETERMINISM. The same probe flips run to run
+   at temperature 0 with a pinned seed (family's onsite-12th flagged
+   in one run, silent the next; ditto VAT-might-slip,
+   weekend-polish, skipping-legs). Prompt edits also shift
+   borderline verdicts (adding the TYPING-NOW class flipped an
+   unrelated probe). Single-prompt judging is not a stable substrate
+   for borderline calls; per-class deterministic narrowing or a
+   voting pass is.
+3. MISSING MECHANISMS, NOW NAMED: STALE-PLAN (candidate references
+   the OLD time of a superseded plan — "see you tomorrow at 10"
+   after the kickoff moved to Friday; needs same-purpose /
+   disjoint-time detection, not overlap); MUTABLE-STATE ASSERTIVES
+   ("we're fully booked Saturday" told to Rob, then "walk-ins
+   welcome" to Rob — the model declines to flag because capacity
+   can legitimately change; needs staleness semantics per claim
+   kind); SLOT DURATIONS (part-of-day is too coarse — a 6pm gym
+   slot covers the whole evening, so an 8pm message still reads as
+   mid-slot).
+4. WRONG-CLAIM HALLUCINATION under no-good-match pressure: with the
+   right claim missing (superseded or not extracted), the judge
+   sometimes flags a semantically unrelated claim (workshop-on-the-
+   13th flagged the gym; cheat-day pizza flagged "aiming for four
+   sessions"). The claim-regex in the harness catches these; a
+   production judge needs "if no listed claim clearly matches,
+   SILENCE" plus runtime validation of the cited claim.
+5. TYPING-NOW VALIDATED: FIFA-during-gym-slot flagged; "here,
+   warming up" to the slot's person silent; the same FIFA message on
+   a slot-free evening silent; the freelancer's mid-kickoff lunch
+   banter flagged. The focus-protection idea works in its first
+   version — it needs only the clock, the thread context the host
+   already has, and slot-like whens.
+
+Caveat recorded: expected verdicts encode one person's judgement and
+a few "failures" are defensible verdicts (dominos-at-8:20pm flagged
+against the 6pm gym slot — arguably correct behaviour, scored
+against a too-narrow expectation).
+
+Net direction after v5: prompt iteration has plateaued around 75% on
+adversarial suites. Every remaining failure class points at
+structure, not phrasing — deterministic deixis, scoped supersession,
+per-kind claim semantics, candidate-set narrowing before judgement.
+That is the propositional ledger tier arriving for the fourth time,
+now with a per-class work list attached.
+
 ### Net read
 
 The generalized loop works better out of the box than the concept
@@ -411,3 +497,17 @@ transitions explicitly rather than hoping the model infers them.
   half (same purpose, same person, does redoing make sense).
 - Every named flag class widens behaviour: it ships with its
   resolution counterpart in the same prompt, or it doesn't ship.
+- Deixis resolution is deterministic runtime work against a real
+  calendar; a model-miscomputed date poisons every deterministic
+  check downstream of it.
+- Supersession has scope: an exception or carve-out AMENDS a claim,
+  it never replaces it. A one-day cheat day must not delete a
+  month-long diet.
+- A judge with no clearly matching claim says SILENCE; it never
+  reaches for the nearest unrelated claim. The runtime validates
+  the cited claim id.
+- Borderline verdicts are not reproducible even at temperature 0 —
+  anything that must be stable (the candidate set, the temporal
+  facts, the lifecycle) must be computed, not judged.
+- The typing-now/focus class needs only slot-like whens, the clock,
+  and the thread context the host already records.

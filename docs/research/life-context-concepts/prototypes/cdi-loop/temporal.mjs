@@ -34,3 +34,17 @@ export function isOverdue(when, nowIso) {
   const w = parseWhen(when);
   return !!w && w.end < nowIso.slice(0, 10);
 }
+
+// Is `nowIso` inside a SLOT-LIKE `when`? Slot-like = single day with a
+// known part of day (a booked appointment/session). Policy spans and
+// date-only entries are excluded: a month-long diet or an unknown-time
+// commitment is not a place the user is supposed to BE right now.
+export function containsPoint(when, nowIso) {
+  const w = parseWhen(when);
+  if (!w || w.start !== w.end || w.part === 'ALL' || w.part === 'UNKNOWN') return false;
+  const date = nowIso.slice(0, 10);
+  if (date !== w.start) return false;
+  const h = Number(nowIso.slice(11, 13));
+  const part = h < 12 ? 'AM' : h < 17 ? 'PM' : 'EVE';
+  return part === w.part;
+}

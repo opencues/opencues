@@ -8,9 +8,9 @@
 // Usage: node check.mjs "<candidate text>" [--to Ana] [--via whatsapp] [--ts iso]
 import fs from 'node:fs';
 import { chat, parseJson } from './llm.mjs';
-import { parseWhen, overlaps, isOverdue } from './temporal.mjs';
+import { parseWhen, overlaps, isOverdue, containsPoint } from './temporal.mjs';
 
-const S = (f) => new URL(`./store/${f}`, import.meta.url);
+const S = (f) => new URL(`./${process.env.CDI_STORE ?? 'store'}/${f}`, import.meta.url);
 const store = JSON.parse(fs.readFileSync(S('claims.json'), 'utf8'));
 // An unadjudicated conflict is not stable ground truth: exclude BOTH
 // sides of any conflict pair from the catalog (the both-ways nag trap).
@@ -44,6 +44,9 @@ const collisions = candWhen
   ? open.filter(c => c.when && overlaps(candWhen, parseWhen(c.when)))
   : [];
 const overdue = open.filter(c => c.type === 'commitment' && c.when && isOverdue(c.when, now));
+// Slot-like commitments the user is typing DURING (focus/double-life).
+const activeNow = open.filter(c => c.when && containsPoint(c.when, now));
+if (process.env.CDI_DEBUG) console.error(`[debug] ext=${JSON.stringify(ext)} collisions=[${collisions.map(c => '#' + c.id)}] activeNow=[${activeNow.map(c => '#' + c.id)}]`);
 
 // ── 3. JUDGE — catalog in the SYSTEM message (stable prefix); candidate
 // + computed overlaps in USER.
@@ -64,21 +67,34 @@ Flag ONLY on a genuine collision with a specific catalog claim:
   look like. For claims ON the list, you judge only the non-temporal
   half: a DIFFERENT person or purpose is a double-booking; the SAME
   person and purpose is a restatement, and an explicit reschedule is a
-  revision — both SILENCE.
+  revision — both SILENCE. An away-span (a trip) on the list collides
+  with ANY in-person commitment elsewhere, and PROPOSING a new meeting
+  inside it counts — proposing a slot you cannot hold is exactly the
+  moment to flag.
 - ALREADY-DONE: the candidate promises to do something the catalog
   records as already done. Resolution counterpart: naturally recurring
-  tasks (shopping, school runs) repeat — flag only when redoing makes
-  no sense (booking the same flights twice), else SILENCE.
+  tasks repeat — flag only when redoing makes no sense (booking the
+  same flights twice), else SILENCE. Groceries and household staples
+  are ALWAYS recurring: never flag re-buying them.
 - INCOMPATIBLE-FACT: the candidate proposes an action DIRECTLY
   incompatible with a stored fact about a person (e.g. buying peanut
   snacks for someone with a peanut allergy). Resolution counterpart:
   mere tension or speculative inference (a venue that MIGHT not suit
   them) is SILENCE.
+- TYPING-NOW: the runtime lists slot commitments the user is typing
+  DURING. If the message plainly shows the user is NOT doing the
+  committed thing (idle chat, gaming plans, ordering food from the
+  sofa), flag that commitment. Resolution counterpart: messages
+  consistent with BEING at the activity — logistics, "on my way",
+  "here now", coordinating with the person the slot is with — are
+  SILENCE. An empty TYPING-NOW list means no such flag is possible.
 
 Do NOT flag: revisions/updates ("actually make it Sunday" is a
 revision, not a contradiction), fulfillments, hedged musings, unrelated
-text, or anything requiring speculative inference. A missed flag is
-cheap; a wrong flag is expensive. When uncertain, stay silent.
+text, or anything requiring speculative inference. Re-promising or
+rescheduling YOUR OWN open or overdue commitment for the same purpose
+is a revision, never a collision with itself. A missed flag is cheap;
+a wrong flag is expensive. When uncertain, stay silent.
 
 Firmness matters. A claim marked "hedged" was a tentative statement
 ("I think...", "I might..."): flag it ONLY on a direct polarity flip on
@@ -104,6 +120,9 @@ ${open.map(c => {
 const userMsg = `CANDIDATE (${[to && `to ${to}`, via && `via ${via}`, `at ${now}`].filter(Boolean).join(', ')}): ${candidate}
 COMPUTED TEMPORAL OVERLAPS: ${collisions.length
   ? collisions.map(c => `#${c.id} (${c.when})`).join(', ')
+  : 'none'}
+TYPING-NOW (user is typing during these committed slots): ${activeNow.length
+  ? activeNow.map(c => `#${c.id} (${c.when})`).join(', ')
   : 'none'}`;
 
 const out = parseJson(await chat(SYSTEM, userMsg));

@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import { chat, parseJson } from './llm.mjs';
 
-const S = (f) => new URL(`./store/${f}`, import.meta.url);
+const S = (f) => new URL(`./${process.env.CDI_STORE ?? 'store'}/${f}`, import.meta.url);
 const raw = fs.existsSync(S('raw.jsonl'))
   ? fs.readFileSync(S('raw.jsonl'), 'utf8').trim().split('\n').map(JSON.parse) : [];
 const meta = fs.existsSync(S('meta.json')) ? JSON.parse(fs.readFileSync(S('meta.json'), 'utf8')) : { cursor: 0, nextId: 1 };

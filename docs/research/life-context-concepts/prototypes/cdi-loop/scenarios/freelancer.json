@@ -1,0 +1,31 @@
+{
+  "name": "freelancer",
+  "persona": "Freelancer Noor: clients Hana + Otto, editor Sam (email), gym friend Sam (whatsapp — name collision, different channel), mum, conference organiser. Stressors: deadline windows vs booked slots, conference travel span, stale-plan references after a move, weekend-work policy vs weekend leisure, identity separation, typing-during-a-call.",
+  "steps": [
+    {"collect": "draft will be with you by Wednesday end of day", "ts": "2026-08-03T09:00:00Z", "to": "Hana", "via": "email"},
+    {"collect": "I can take the rebrand, kickoff call Thursday 10am", "ts": "2026-08-03T09:30:00Z", "to": "Otto", "via": "email"},
+    {"collect": "confirming DevSummit, I'll be in Berlin the 12th to the 14th", "ts": "2026-08-03T10:00:00Z", "to": "conf-organiser", "via": "email"},
+    {"collect": "I'll file the column by Friday", "ts": "2026-08-03T10:30:00Z", "to": "Sam", "via": "email"},
+    {"collect": "I don't work weekends any more, that's the rule", "ts": "2026-08-03T19:00:00Z", "to": "mum", "via": "sms"},
+    {"collect": "see you at the gym Thursday 6pm", "ts": "2026-08-03T19:30:00Z", "to": "Sam", "via": "whatsapp"},
+    {"dream": true},
+    {"probe": "let's do a review call Thursday 10am", "ts": "2026-08-04T09:00:00Z", "to": "Hana", "via": "email", "expect": "FLAG", "claim": "kickoff|rebrand", "note": "double-booked against Otto"},
+    {"probe": "let's do a review call Thursday afternoon", "ts": "2026-08-04T09:05:00Z", "to": "Hana", "via": "email", "expect": "SILENCE", "note": "same day, free slot"},
+    {"probe": "I'm completely free on the 13th if you want a workshop day", "ts": "2026-08-04T09:10:00Z", "to": "Otto", "via": "email", "expect": "FLAG", "claim": "Berlin|DevSummit"},
+    {"probe": "I'll polish the draft over the weekend and get it to you Monday", "ts": "2026-08-04T09:15:00Z", "to": "Hana", "via": "email", "expect": "FLAG", "claim": "weekend", "note": "violates own no-weekend-work rule"},
+    {"probe": "column's going well, on track for Friday", "ts": "2026-08-04T09:20:00Z", "to": "Sam", "via": "email", "expect": "SILENCE", "note": "restatement"},
+    {"probe": "still on for the gym Thursday 6pm?", "ts": "2026-08-04T09:25:00Z", "to": "Sam", "via": "whatsapp", "expect": "SILENCE", "note": "gym-Sam must not cross with editor-Sam"},
+    {"collect": "draft sent!", "ts": "2026-08-05T16:00:00Z", "to": "Hana", "via": "email"},
+    {"collect": "need to move our kickoff, same time Friday instead?", "ts": "2026-08-05T17:00:00Z", "to": "Otto", "via": "email"},
+    {"dream": true},
+    {"probe": "see you tomorrow at 10 for the kickoff", "ts": "2026-08-05T19:00:00Z", "to": "Otto", "via": "email", "expect": "FLAG", "claim": "Friday", "note": "stale plan — kickoff moved to Friday"},
+    {"probe": "see you Friday at 10 for the kickoff", "ts": "2026-08-05T19:05:00Z", "to": "Otto", "via": "email", "expect": "SILENCE", "note": "restatement of operative plan"},
+    {"probe": "I'll get you the draft this week", "ts": "2026-08-05T19:10:00Z", "to": "Hana", "via": "email", "expect": "FLAG", "claim": "sent|draft", "note": "already-done"},
+    {"collect": "column filed early, it's in your inbox", "ts": "2026-08-06T11:00:00Z", "to": "Sam", "via": "email"},
+    {"dream": true},
+    {"probe": "I'll file the column by Friday, promise", "ts": "2026-08-06T19:00:00Z", "to": "Sam", "via": "email", "expect": "FLAG", "claim": "filed|column", "note": "already-done"},
+    {"probe": "could you add me for a workshop slot on the 13th too?", "ts": "2026-08-06T19:05:00Z", "to": "conf-organiser", "via": "email", "expect": "SILENCE", "note": "same trip, same purpose — overlap but no conflict"},
+    {"probe": "I'll pop over Sunday afternoon for lunch", "ts": "2026-08-06T19:10:00Z", "to": "mum", "via": "sms", "expect": "SILENCE", "note": "weekend lunch is not weekend work"},
+    {"probe": "fancy a long lunch today?", "ts": "2026-08-07T10:15:00Z", "to": "Sam", "via": "whatsapp", "expect": "FLAG", "claim": "kickoff|Friday", "note": "typing-now: mid-kickoff-call banter"}
+  ]
+}

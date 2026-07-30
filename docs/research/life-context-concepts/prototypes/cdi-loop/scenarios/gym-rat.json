@@ -1,0 +1,30 @@
+{
+  "name": "gym-rat",
+  "persona": "Serious lifter: coach Andre, gym buddy Jake, physio, partner Mia, race organiser. Stressors: injury-restriction spans, diet spans (dry-till-comp, keto), quantifier claims (never miss Monday), span supersession (cleared early), activity-specificity (legs vs upper body).",
+  "steps": [
+    {"collect": "understood, no upper body work until the 14th", "ts": "2026-08-03T09:00:00Z", "to": "physio", "via": "email"},
+    {"collect": "I'm off alcohol until the comp on the 29th", "ts": "2026-08-03T10:00:00Z", "to": "Andre", "via": "whatsapp"},
+    {"collect": "I'll spot you Wednesday 6am", "ts": "2026-08-03T12:00:00Z", "to": "Jake", "via": "whatsapp"},
+    {"collect": "I never miss a Monday session", "ts": "2026-08-03T12:30:00Z", "to": "Andre", "via": "whatsapp"},
+    {"collect": "date night Friday, I'm booking the tapas place", "ts": "2026-08-03T18:00:00Z", "to": "Mia", "via": "whatsapp"},
+    {"collect": "protein order's in, arrives Thursday", "ts": "2026-08-03T19:00:00Z", "to": "Jake", "via": "whatsapp"},
+    {"dream": true},
+    {"probe": "bench PR attempt Saturday?", "ts": "2026-08-04T10:00:00Z", "to": "Jake", "via": "whatsapp", "expect": "FLAG", "claim": "upper body", "note": "inside the restriction span"},
+    {"probe": "leg day Saturday, squats and lunges", "ts": "2026-08-04T10:05:00Z", "to": "Jake", "via": "whatsapp", "expect": "SILENCE", "note": "legs unaffected by upper-body ban"},
+    {"probe": "pints Friday after the session?", "ts": "2026-08-04T10:10:00Z", "to": "Jake", "via": "whatsapp", "expect": "FLAG", "claim": "alcohol|comp"},
+    {"probe": "fancy mocktails on our date Friday?", "ts": "2026-08-04T10:15:00Z", "to": "Mia", "via": "whatsapp", "expect": "SILENCE", "note": "dry-compatible, same person same plan"},
+    {"probe": "skipping Monday's session, can't be bothered", "ts": "2026-08-04T10:20:00Z", "to": "Andre", "via": "whatsapp", "expect": "FLAG", "claim": "never miss", "note": "quantifier claim"},
+    {"probe": "I'd like to enter the September 10k as well", "ts": "2026-08-04T10:25:00Z", "to": "race-organiser", "via": "email", "expect": "SILENCE", "note": "new unrelated commitment"},
+    {"collect": "6am spot done, good session mate", "ts": "2026-08-05T07:30:00Z", "to": "Jake", "via": "whatsapp"},
+    {"collect": "cleared for upper body from the 10th, thanks!", "ts": "2026-08-06T15:00:00Z", "to": "physio", "via": "email"},
+    {"collect": "tapas booked for 8pm Friday", "ts": "2026-08-06T18:00:00Z", "to": "Mia", "via": "whatsapp"},
+    {"collect": "keto until comp week, then carb loading", "ts": "2026-08-07T09:00:00Z", "to": "Andre", "via": "whatsapp"},
+    {"dream": true},
+    {"probe": "quick bench session tomorrow?", "ts": "2026-08-08T10:00:00Z", "to": "Jake", "via": "whatsapp", "expect": "FLAG", "claim": "upper body|10th|cleared", "note": "tomorrow=Sun 9th, still restricted until the 10th"},
+    {"probe": "bench and overhead press on Tuesday?", "ts": "2026-08-08T10:05:00Z", "to": "Jake", "via": "whatsapp", "expect": "SILENCE", "note": "Tue 11th is past the cleared date — tests span supersession"},
+    {"probe": "cheeky pizza tonight?", "ts": "2026-08-08T10:10:00Z", "to": "Mia", "via": "whatsapp", "expect": "FLAG", "claim": "keto"},
+    {"probe": "steak and eggs for dinner tonight", "ts": "2026-08-08T10:15:00Z", "to": "Andre", "via": "whatsapp", "expect": "SILENCE", "note": "keto-compatible"},
+    {"probe": "I'll spot you Wednesday 6am again next week", "ts": "2026-08-08T10:20:00Z", "to": "Jake", "via": "whatsapp", "expect": "SILENCE", "note": "recurring session, previous fulfilled"},
+    {"probe": "shall we make date night a weekly thing?", "ts": "2026-08-08T10:25:00Z", "to": "Mia", "via": "whatsapp", "expect": "SILENCE"}
+  ]
+}

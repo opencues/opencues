@@ -10,6 +10,6 @@ const to = take('--to');
 const via = take('--via');
 const text = args.join(' ');
 if (!text) { console.error('usage: collect.mjs "<text>" [--ts iso] [--to who] [--via channel]'); process.exit(1); }
-fs.appendFileSync(new URL('./store/raw.jsonl', import.meta.url),
+fs.appendFileSync(new URL(`./${process.env.CDI_STORE ?? 'store'}/raw.jsonl`, import.meta.url),
   JSON.stringify({ ts, ...(to && { to }), ...(via && { via }), text }) + '\n');
 console.log(`collected${to ? ` [to ${to}${via ? ' via ' + via : ''}]` : ''}:`, text);
