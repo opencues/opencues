@@ -38,7 +38,7 @@ host and the runtime.
 > the repo restructure. See `docs/architecture/repo-structure.md` for the
 > target layout + stage tracker.
 
-## Website sync - ping Wilfred
+## Website sync — REQUIRED at every release, ping Wilfred for the rest
 
 opencues.com (repo: `~/opencues-website`) is maintained separately and distills
 this repo's CHANGELOG.md, feature docs, and FAQ.md into published pages
@@ -49,6 +49,14 @@ release cuts; anything that alters install steps or the public capability
 story. Unpublished-on-site features (see the website repo's CLAUDE.md content
 rules) still apply there. The website repo tracks its last sync date against
 this repo in its own CLAUDE.md.
+
+**Release cuts are not advisory: cutting `vX.Y.Z` REQUIRES the paired
+website changelog PR in the same pass** — it is step 7 of
+[versioning.md § How to cut a release](docs/architecture/versioning.md#releases--tagging)
+(site `changelog.md` entry with the real date + website CLAUDE.md sync line +
+sitemap script). A release without its site PR is an incomplete release;
+whoever cuts the tag opens the PR. There is no CI gate across the two repos —
+this contract IS the gate, which is why it lives here.
 
 ---
 
