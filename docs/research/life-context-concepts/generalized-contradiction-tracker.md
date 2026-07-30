@@ -317,6 +317,53 @@ to your commitments whether present or not; (5) a deterministic
 interval algebra over the resolved dates — the one piece that must
 NOT be the model's job.
 
+### v4: time as data — the temporal algebra moved into the runtime (same day)
+
+Implemented the v3 conclusion and re-ran the full staged scenario.
+Changes: dream's "when" grammar gained part-of-day ("2026-08-01 AM",
+"2026-08-01 10:00", spans "2026-08-10/2026-08-17"); a new pure module
+(temporal.mjs, ~40 lines) does interval overlap with a precision-first
+policy — multi-day/presence spans cover all parts of their days;
+single-day entries with UNKNOWN part collide with nothing sub-day (a
+collision must be ESTABLISHED, never inferred); the check path became
+three steps: a small EXTRACT call resolves the candidate's time into
+the same grammar plus a slot-vs-window bit (an appointment books a
+slot; "this week" is a deadline window and double-books nothing), the
+RUNTIME computes the overlap list, and the JUDGE call receives that
+list with the instruction that claims absent from it do NOT collide
+in time — it judges only the non-temporal half (same person? same
+purpose?). The same arithmetic gives OPEN -> OVERDUE for free
+(runtime-only line, no model involved).
+
+Result: 15/15 on the replayed scenario, from v3's 13/15, with every
+non-temporal verdict unchanged.
+
+- The missed span containment fixed: "quarterly review for the 14th"
+  now lands on the computed overlap list against Lisbon 10th-17th and
+  flags — same verdict as camping-on-the-15th, because the same
+  arithmetic produced both.
+- The same-day false flag fixed: "big shop tomorrow morning"
+  (2026-08-04 AM) vs the presentation (2026-08-04, part unknown) is
+  ruled out by the algebra — unknown part establishes no overlap —
+  and the judge, forbidden from its own date maths, stays silent.
+- The overdue channel worked immediately: the un-fulfilled "book the
+  flights tonight" commitment surfaced as overdue the next day, and
+  dropped off once batch 2's "flights booked!" closed it. (The
+  prototype prints overdue on every check, which is exactly the
+  guilt-engine shape the ledger doc warns about — a real
+  implementation surfaces it contextually, next time the user types
+  to that person or touches those bindings.)
+
+Two implementation notes. The slot-vs-window bit earned its place
+instantly: without it, "I'll book the flights this week" (a window)
+would overlap half the store and invite spurious double-booking
+judgements; with it the probe correctly resolved to no temporal
+collisions and flagged via ALREADY-DONE instead. And the replay had
+to be STAGED (probe set 1 against the batch-1 store) — an early
+unstaged rerun let a probe timestamped July 31 be judged against a
+claim made August 3, which produced a phantom flag that was pure
+harness artifact; anachronistic catalogs invent contradictions.
+
 ### Net read
 
 The generalized loop works better out of the box than the concept

@@ -1,12 +1,14 @@
-// INJECT + CHECK: the live path. Given a candidate utterance the user is
-// about to submit, inject the open claims catalog and ask the model
-// whether the candidate contradicts a stored claim.
-// v3: the candidate carries its thread context (--to / --via), and the
-// checker knows about double-booking, already-done, and incompatible
-// third-party facts — each with its resolution counterpart stated.
+// INJECT + CHECK: the live path. v4 splits temporal from semantic:
+//   1. a small EXTRACT call resolves the candidate's time reference
+//      (and whether it books a slot vs merely names a deadline window);
+//   2. the RUNTIME computes interval overlaps against the catalog's
+//      resolved "when" fields (temporal.mjs — deterministic algebra);
+//   3. the JUDGE call decides only the non-temporal half, and is
+//      forbidden from inferring date/time collisions itself.
 // Usage: node check.mjs "<candidate text>" [--to Ana] [--via whatsapp] [--ts iso]
 import fs from 'node:fs';
 import { chat, parseJson } from './llm.mjs';
+import { parseWhen, overlaps, isOverdue } from './temporal.mjs';
 
 const S = (f) => new URL(`./store/${f}`, import.meta.url);
 const store = JSON.parse(fs.readFileSync(S('claims.json'), 'utf8'));
@@ -22,22 +24,47 @@ const now = take('--ts') ?? new Date().toISOString();
 const candidate = args.join(' ');
 if (!candidate) { console.error('usage: check.mjs "<text>" [--to who] [--via channel] [--ts iso]'); process.exit(1); }
 
-// Catalog goes in the SYSTEM message (stable prefix); candidate in USER.
+// ── 1. EXTRACT the candidate's time reference (small, fast call).
+const EXTRACT = `Resolve the time reference of one utterance. Now is ${now}.
+Output ONLY JSON: {"when": w, "slot": s} where w is the utterance's
+resolved time using exactly this grammar — "YYYY-MM-DD",
+"YYYY-MM-DD AM" (morning), "YYYY-MM-DD PM" (afternoon),
+"YYYY-MM-DD EVE" (evening), "YYYY-MM-DD HH:MM", or a span
+"YYYY-MM-DD/YYYY-MM-DD" — or null if the utterance references no
+specific time. s is true only if the utterance commits the writer (or
+their family) to BE somewhere or be occupied AT that time (an
+appointment, a visit, an outing, presence); s is false when the time
+is merely a deadline or window to do a task within ("this week",
+"by Friday"), or a report about the past.`;
+const ext = parseJson(await chat(EXTRACT, candidate));
+
+// ── 2. RUNTIME temporal algebra — never the model's job.
+const candWhen = ext.slot ? parseWhen(ext.when) : null;
+const collisions = candWhen
+  ? open.filter(c => c.when && overlaps(candWhen, parseWhen(c.when)))
+  : [];
+const overdue = open.filter(c => c.type === 'commitment' && c.when && isOverdue(c.when, now));
+
+// ── 3. JUDGE — catalog in the SYSTEM message (stable prefix); candidate
+// + computed overlaps in USER.
 const SYSTEM = `You are the live contradiction checker of a personal writing
 assistant. Below is the user's CLAIMS CATALOG: things they have previously
 committed to, stated, or preferred — each with who it was promised to
 ("to"), who it concerns ("about"), and resolved dates ("when") where
 known. You will receive one CANDIDATE utterance the user is about to
-send, with its own thread context (who it is addressed to, and when).
+send, with its thread context and a COMPUTED TEMPORAL OVERLAPS list.
 
 Flag ONLY on a genuine collision with a specific catalog claim:
 - CONTRADICTION: opposite polarity on the same matter, a broken
   commitment, an incompatible preference or fact.
-- DOUBLE-BOOKING: the candidate commits a time already committed to a
-  DIFFERENT person or purpose, or falls inside a period the user has
-  said they will be away. Resolution counterpart: the SAME person and
-  purpose is a restatement, and an explicit reschedule is a revision —
-  both SILENCE.
+- DOUBLE-BOOKING: temporal collision detection has ALREADY been done by
+  deterministic date arithmetic — the result is the COMPUTED TEMPORAL
+  OVERLAPS list. NEVER infer date or time collisions yourself; claims
+  absent from that list do NOT collide in time, whatever their dates
+  look like. For claims ON the list, you judge only the non-temporal
+  half: a DIFFERENT person or purpose is a double-booking; the SAME
+  person and purpose is a restatement, and an explicit reschedule is a
+  revision — both SILENCE.
 - ALREADY-DONE: the candidate promises to do something the catalog
   records as already done. Resolution counterpart: naturally recurring
   tasks (shopping, school runs) repeat — flag only when redoing makes
@@ -74,10 +101,15 @@ ${open.map(c => {
   return `#${c.id} (${c.type}/${c.firmness}, ${c.source_ts}${ctx ? ' | ' + ctx : ''}) ${c.claim}`;
 }).join('\n')}`;
 
-const userMsg = `CANDIDATE (${[to && `to ${to}`, via && `via ${via}`, `at ${now}`].filter(Boolean).join(', ')}): ${candidate}`;
+const userMsg = `CANDIDATE (${[to && `to ${to}`, via && `via ${via}`, `at ${now}`].filter(Boolean).join(', ')}): ${candidate}
+COMPUTED TEMPORAL OVERLAPS: ${collisions.length
+  ? collisions.map(c => `#${c.id} (${c.when})`).join(', ')
+  : 'none'}`;
+
 const out = parseJson(await chat(SYSTEM, userMsg));
 if (out.verdict === 'FLAG') {
   console.log(`FLAG  #${out.claim_id}: "${out.quote}"\n      why: ${out.why}`);
 } else {
   console.log('SILENCE');
 }
+if (overdue.length) console.log(`      (overdue, runtime-computed: ${overdue.map(c => `#${c.id} "${c.claim}" was due ${c.when}`).join('; ')})`);

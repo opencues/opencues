@@ -38,11 +38,16 @@ recipient, "via": the channel). Use it; never guess it.
   gets "about": <person>. Facts about family members are contradictable
   claims and matter as much as the user's own.
 - RESOLVE DEICTIC TIME: using the utterance timestamp, resolve relative
-  time words to concrete dates in a "when" field — "Saturday" ->
-  "2026-08-01", "tomorrow" -> the actual date, "the 12th" -> full date,
-  a holiday span -> "2026-08-10/2026-08-17". The claim text stays
-  verbatim; "when" carries the resolution. Past-fact claims created on
-  fulfillment use the resolved date, never words like "just now".
+  time words to concrete dates in a "when" field. Grammar (exact):
+  a single day is "YYYY-MM-DD"; when the part of day is known, append
+  it — "YYYY-MM-DD AM" (morning), "YYYY-MM-DD PM" (afternoon),
+  "YYYY-MM-DD EVE" (evening), or an exact time "YYYY-MM-DD HH:MM";
+  a span is "YYYY-MM-DD/YYYY-MM-DD". So "Saturday morning" ->
+  "2026-08-01 AM", "Saturday 10am" -> "2026-08-01 10:00", "tomorrow"
+  -> the actual date, a holiday -> "2026-08-10/2026-08-17". The claim
+  text stays verbatim; "when" carries the resolution. Past-fact claims
+  created on fulfillment use the resolved date, never words like
+  "just now".
 - Recipients on different channels are DIFFERENT people unless the
   store already links them; never merge identities on a name match
   alone.
