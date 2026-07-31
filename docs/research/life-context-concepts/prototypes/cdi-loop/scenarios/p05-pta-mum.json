@@ -1,0 +1,119 @@
+{
+ "name": "p05-pta-mum",
+ "persona": "PTA mum Helen: friend Jo, committee, teacher, other-mum Sam. Bake-sale slot, cupcake window, sugar policy vs baking trap, school-run swap, committee slot.",
+ "steps": [
+  {
+   "collect": "bake sale Saturday morning, I'm running the stall",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "Jo",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'll do 24 cupcakes by Friday night",
+   "ts": "2026-08-03T09:05:00Z",
+   "to": "Jo",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "no sugar in our house this month, we're doing it as a family",
+   "ts": "2026-08-03T09:10:00Z",
+   "to": "Jo",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "committee meeting Tuesday 7:30, I'm chairing",
+   "ts": "2026-08-03T09:15:00Z",
+   "to": "committee",
+   "via": "email"
+  },
+  {
+   "collect": "I'll take the school run Thursday so Sam can do her interview",
+   "ts": "2026-08-03T09:20:00Z",
+   "to": "Sam",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "baking the cupcakes Thursday evening",
+   "ts": "2026-08-04T10:00:00Z",
+   "to": "Jo",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "baking for the sale is not eating sugar — trap"
+  },
+  {
+   "probe": "let's get the kids doughnuts after school",
+   "ts": "2026-08-04T10:05:00Z",
+   "to": "Jo",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "sugar"
+  },
+  {
+   "probe": "book me spin class Tuesday 7:30",
+   "ts": "2026-08-04T10:10:00Z",
+   "to": "gym",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "committee"
+  },
+  {
+   "probe": "book me spin class Tuesday lunchtime",
+   "ts": "2026-08-04T10:15:00Z",
+   "to": "gym",
+   "via": "email",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "I can cover your school run Thursday",
+   "ts": "2026-08-04T11:00:00Z",
+   "to": "other-mum-Katie",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "Sam|school run",
+   "note": "same morning promised to Sam"
+  },
+  {
+   "collect": "cupcakes done, 24 little vanilla ones in the tin",
+   "ts": "2026-08-06T21:00:00Z",
+   "to": "Jo",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "stall's moved to Sunday, church hall double booked us",
+   "ts": "2026-08-07T09:00:00Z",
+   "to": "Jo",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "see you at the stall Saturday morning",
+   "ts": "2026-08-07T10:00:00Z",
+   "to": "Jo",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "Sunday|moved",
+   "note": "stale plan"
+  },
+  {
+   "probe": "see you at the stall Sunday",
+   "ts": "2026-08-07T10:05:00Z",
+   "to": "Jo",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "I'll bake the cupcakes tomorrow",
+   "ts": "2026-08-07T10:10:00Z",
+   "to": "Jo",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "done|cupcakes",
+   "note": "already-done"
+  }
+ ]
+}

@@ -1,0 +1,113 @@
+{
+ "name": "p27-side-hustler",
+ "persona": "Etsy seller Demi: customer Rowan, market organiser, day-job boss, partner Ash-p. Ship windows, market slot, no-commissions policy, custom order.",
+ "steps": [
+  {
+   "collect": "your order ships within three days, so by Thursday",
+   "ts": "2026-08-03T10:00:00Z",
+   "to": "Rowan",
+   "via": "email"
+  },
+  {
+   "collect": "market stall Saturday morning, pitch 14",
+   "ts": "2026-08-03T10:05:00Z",
+   "to": "market-organiser",
+   "via": "email"
+  },
+  {
+   "collect": "not taking custom commissions this month, too slammed",
+   "ts": "2026-08-03T10:10:00Z",
+   "to": "Ash-p",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "day job has me in the office Thursday all day",
+   "ts": "2026-08-03T10:15:00Z",
+   "to": "Ash-p",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "yes I can do a custom pet portrait for next week",
+   "ts": "2026-08-04T11:00:00Z",
+   "to": "customer-Beth",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "commissions"
+  },
+  {
+   "probe": "I can add you to the September commission list",
+   "ts": "2026-08-04T11:05:00Z",
+   "to": "customer-Beth",
+   "via": "email",
+   "expect": "SILENCE",
+   "note": "outside the month policy"
+  },
+  {
+   "probe": "coffee Saturday morning?",
+   "ts": "2026-08-04T11:10:00Z",
+   "to": "Ash-p",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "market|stall"
+  },
+  {
+   "probe": "coffee Sunday morning?",
+   "ts": "2026-08-04T11:15:00Z",
+   "to": "Ash-p",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "I'll pop your parcel in the post Friday",
+   "ts": "2026-08-04T11:20:00Z",
+   "to": "Rowan",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "Thursday|three days",
+   "note": "quietly slipping own ship window"
+  },
+  {
+   "collect": "Rowan's parcel posted, tracking sent",
+   "ts": "2026-08-05T12:00:00Z",
+   "to": "Rowan",
+   "via": "email"
+  },
+  {
+   "collect": "market's cancelled, storm forecast",
+   "ts": "2026-08-07T08:00:00Z",
+   "to": "market-organiser",
+   "via": "email"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "your parcel goes out tomorrow",
+   "ts": "2026-08-07T09:00:00Z",
+   "to": "Rowan",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "posted|tracking",
+   "note": "already-done"
+  },
+  {
+   "probe": "see you at pitch 14 tomorrow",
+   "ts": "2026-08-07T09:05:00Z",
+   "to": "Ash-p",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "cancelled|storm",
+   "note": "stale plan"
+  },
+  {
+   "probe": "lie-in tomorrow then, market's off",
+   "ts": "2026-08-07T09:10:00Z",
+   "to": "Ash-p",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  }
+ ]
+}

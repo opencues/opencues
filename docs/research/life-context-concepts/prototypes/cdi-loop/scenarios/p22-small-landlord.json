@@ -1,0 +1,119 @@
+{
+ "name": "p22-small-landlord",
+ "persona": "Landlord Bern: tenants Ana-t (flat A) + Piotr (flat B), gas engineer, wife Viv. Gas-cert window, repair promise, two-faced pet policy, rent promise.",
+ "steps": [
+  {
+   "collect": "gas certificate will be renewed by the 15th",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "Ana-t",
+   "via": "email"
+  },
+  {
+   "collect": "boiler man's coming to yours this week, I'll confirm the day",
+   "ts": "2026-08-03T09:05:00Z",
+   "to": "Ana-t",
+   "via": "email"
+  },
+  {
+   "collect": "no pets in the building I'm afraid, it's in the lease",
+   "ts": "2026-08-03T09:10:00Z",
+   "to": "Ana-t",
+   "via": "email"
+  },
+  {
+   "collect": "your rent stays put this year, you have my word",
+   "ts": "2026-08-03T09:15:00Z",
+   "to": "Piotr",
+   "via": "email"
+  },
+  {
+   "collect": "viewings for flat C Saturday 11am",
+   "ts": "2026-08-03T09:20:00Z",
+   "to": "Viv",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "a small cat would be fine honestly",
+   "ts": "2026-08-04T10:00:00Z",
+   "to": "Piotr",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "no pets",
+   "note": "two-faced pet policy"
+  },
+  {
+   "probe": "I'm putting your rent up 5% from October",
+   "ts": "2026-08-04T10:05:00Z",
+   "to": "Piotr",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "stays put|word"
+  },
+  {
+   "probe": "golf Saturday 11?",
+   "ts": "2026-08-04T10:10:00Z",
+   "to": "mate-Frank",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "viewings"
+  },
+  {
+   "probe": "golf Sunday 11?",
+   "ts": "2026-08-04T10:15:00Z",
+   "to": "mate-Frank",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "boiler man is booked for Thursday morning",
+   "ts": "2026-08-04T10:20:00Z",
+   "to": "Ana-t",
+   "via": "email",
+   "expect": "SILENCE",
+   "note": "fulfils the confirm promise"
+  },
+  {
+   "collect": "gas cert done, engineer left the paperwork",
+   "ts": "2026-08-06T14:00:00Z",
+   "to": "Viv",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "viewings moved to Sunday, three families coming",
+   "ts": "2026-08-07T09:00:00Z",
+   "to": "Viv",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "I'll sort the gas cert next week, before the 15th",
+   "ts": "2026-08-07T10:00:00Z",
+   "to": "Ana-t",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "done|paperwork",
+   "note": "already-done"
+  },
+  {
+   "probe": "see you for viewings Saturday 11",
+   "ts": "2026-08-07T10:05:00Z",
+   "to": "Viv",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "Sunday|moved",
+   "note": "stale plan"
+  },
+  {
+   "probe": "viewings Sunday, three families",
+   "ts": "2026-08-07T10:10:00Z",
+   "to": "Viv",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  }
+ ]
+}

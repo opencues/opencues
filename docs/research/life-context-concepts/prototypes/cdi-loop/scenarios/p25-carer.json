@@ -1,0 +1,118 @@
+{
+ "name": "p25-carer",
+ "persona": "Carer Yusuf: mum (cared for), sister Leyla, GP, work boss. Hospital slot, prescription window, respite span, stairs fact, sibling rota.",
+ "steps": [
+  {
+   "collect": "mum's hospital appointment is the 12th at 9",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "Leyla",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'll pick up her prescription by Friday",
+   "ts": "2026-08-03T09:05:00Z",
+   "to": "Leyla",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "respite care is booked the 15th and 16th, first break in months",
+   "ts": "2026-08-03T09:10:00Z",
+   "to": "Leyla",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "mum can't do stairs any more, not since the fall",
+   "ts": "2026-08-03T09:15:00Z",
+   "to": "Leyla",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "you've got mum Wednesdays, I've got the rest",
+   "ts": "2026-08-03T09:20:00Z",
+   "to": "Leyla",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "I can do the 9am stand-up on the 12th",
+   "ts": "2026-08-04T09:00:00Z",
+   "to": "boss",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "hospital"
+  },
+  {
+   "probe": "I can do a 1pm catch-up on the 12th",
+   "ts": "2026-08-04T09:05:00Z",
+   "to": "boss",
+   "via": "email",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "booked us the rooftop place for mum's birthday, it's up two flights",
+   "ts": "2026-08-04T09:10:00Z",
+   "to": "Leyla",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "stairs",
+   "note": "incompatible third-party fact"
+  },
+  {
+   "probe": "booked the ground-floor bistro for mum's birthday",
+   "ts": "2026-08-04T09:15:00Z",
+   "to": "Leyla",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "weekend away the 15th?",
+   "ts": "2026-08-04T09:20:00Z",
+   "to": "friend-Tarek",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "respite weekend is exactly when he is free"
+  },
+  {
+   "collect": "prescription collected, it's in her blue bag",
+   "ts": "2026-08-05T15:00:00Z",
+   "to": "Leyla",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "hospital moved mum to the 19th at 9",
+   "ts": "2026-08-06T10:00:00Z",
+   "to": "Leyla",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "I'll grab mum's prescription tomorrow",
+   "ts": "2026-08-06T11:00:00Z",
+   "to": "Leyla",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "collected|blue bag",
+   "note": "already-done"
+  },
+  {
+   "probe": "stand-up at 9 on the 12th works after all",
+   "ts": "2026-08-06T11:05:00Z",
+   "to": "boss",
+   "via": "email",
+   "expect": "SILENCE",
+   "note": "freed by the move"
+  },
+  {
+   "probe": "busy 9am on the 19th, mum's hospital",
+   "ts": "2026-08-06T11:10:00Z",
+   "to": "boss",
+   "via": "email",
+   "expect": "SILENCE",
+   "note": "restatement"
+  }
+ ]
+}

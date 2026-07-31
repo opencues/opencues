@@ -1,0 +1,139 @@
+{
+ "name": "p01-new-mum",
+ "persona": "New mother Asha: partner Tom, mum, friend Zoe, boss. Health-visitor slot, caffeine policy, visitor slots, shortage facts, announcement window, availability-vs-slot probe.",
+ "steps": [
+  {
+   "collect": "health visitor is coming Thursday at 10",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "Tom",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'm off caffeine while breastfeeding, could be months",
+   "ts": "2026-08-03T09:30:00Z",
+   "to": "Zoe",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "come meet the baby Sunday afternoon",
+   "ts": "2026-08-03T10:00:00Z",
+   "to": "mum",
+   "via": "sms"
+  },
+  {
+   "collect": "we're out of size-1 nappies",
+   "ts": "2026-08-03T12:00:00Z",
+   "to": "Tom",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "jabs are booked for the 12th at 9",
+   "ts": "2026-08-03T14:00:00Z",
+   "to": "Tom",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'll send you the announcement list by Friday",
+   "ts": "2026-08-03T15:00:00Z",
+   "to": "Zoe",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "fancy a double espresso catch up tomorrow?",
+   "ts": "2026-08-04T10:00:00Z",
+   "to": "Zoe",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "caffeine"
+  },
+  {
+   "probe": "decaf oat latte tomorrow?",
+   "ts": "2026-08-04T10:05:00Z",
+   "to": "Zoe",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "decaf is policy-compatible"
+  },
+  {
+   "probe": "actually can we do Saturday instead of Sunday?",
+   "ts": "2026-08-04T10:10:00Z",
+   "to": "mum",
+   "via": "sms",
+   "expect": "SILENCE",
+   "note": "reschedule = revision"
+  },
+  {
+   "probe": "I can do a quick call Thursday at 10",
+   "ts": "2026-08-04T11:00:00Z",
+   "to": "boss",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "health visitor"
+  },
+  {
+   "probe": "I can do a quick call Thursday at 2",
+   "ts": "2026-08-04T11:05:00Z",
+   "to": "boss",
+   "via": "email",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "can you grab size-1 nappies on the way home",
+   "ts": "2026-08-04T16:00:00Z",
+   "to": "Tom",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "consistent with shortage"
+  },
+  {
+   "collect": "sent the announcement list to Zoe",
+   "ts": "2026-08-07T10:00:00Z",
+   "to": "Tom",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "naming day is the 23rd, save the date",
+   "ts": "2026-08-07T11:00:00Z",
+   "to": "Zoe",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "got a big box of size-1s, we're stocked",
+   "ts": "2026-08-07T12:00:00Z",
+   "to": "Tom",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "I'll get you that announcement list this weekend",
+   "ts": "2026-08-08T10:00:00Z",
+   "to": "Zoe",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "sent|list",
+   "note": "already-done"
+  },
+  {
+   "probe": "we're free on the 23rd if you want to visit",
+   "ts": "2026-08-08T10:05:00Z",
+   "to": "auntie",
+   "via": "sms",
+   "expect": "FLAG",
+   "claim": "naming day|23rd",
+   "note": "availability assertion vs booked day — known gap class"
+  },
+  {
+   "probe": "see you Sunday afternoon",
+   "ts": "2026-08-08T10:10:00Z",
+   "to": "mum",
+   "via": "sms",
+   "expect": "SILENCE",
+   "note": "restatement"
+  }
+ ]
+}

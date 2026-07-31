@@ -1,0 +1,113 @@
+{
+ "name": "p11-marathon-trainer",
+ "persona": "Marathoner Ines: coach Paolo, friend Jess-run, partner Theo. Race day slot, taper policy, long-run slot, pacing promise, carb window.",
+ "steps": [
+  {
+   "collect": "race day is the 30th, everything points at that",
+   "ts": "2026-08-03T08:00:00Z",
+   "to": "Paolo",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "no long runs from the 23rd, full taper",
+   "ts": "2026-08-03T08:05:00Z",
+   "to": "Paolo",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "long run Sunday 7am, 30k",
+   "ts": "2026-08-03T08:10:00Z",
+   "to": "Jess-run",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'll pace you for your 10k on the 16th",
+   "ts": "2026-08-03T08:15:00Z",
+   "to": "Jess-run",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "no alcohol until after the race",
+   "ts": "2026-08-03T08:20:00Z",
+   "to": "Theo",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "massive 35k on the 25th to top up?",
+   "ts": "2026-08-04T09:00:00Z",
+   "to": "Paolo",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "taper|23rd",
+   "note": "long run inside taper"
+  },
+  {
+   "probe": "massive 35k on the 16th?",
+   "ts": "2026-08-04T09:05:00Z",
+   "to": "Paolo",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "pace|10k",
+   "note": "same day as the pacing promise"
+  },
+  {
+   "probe": "easy 5k shakeout on the 25th",
+   "ts": "2026-08-04T09:10:00Z",
+   "to": "Paolo",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "easy run is taper-compatible"
+  },
+  {
+   "probe": "prosecco brunch Saturday?",
+   "ts": "2026-08-04T09:15:00Z",
+   "to": "Theo",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "alcohol"
+  },
+  {
+   "probe": "mocktail brunch Saturday?",
+   "ts": "2026-08-04T09:20:00Z",
+   "to": "Theo",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "collect": "calf's tight, physio says swap Sunday's 30k for the bike",
+   "ts": "2026-08-06T18:00:00Z",
+   "to": "Jess-run",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "see you for the 30k Sunday 7am",
+   "ts": "2026-08-06T19:00:00Z",
+   "to": "Jess-run",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "bike|physio|swap",
+   "note": "stale plan after supersession"
+  },
+  {
+   "probe": "bike spin Sunday 7 instead?",
+   "ts": "2026-08-06T19:05:00Z",
+   "to": "Jess-run",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "I might do a cheeky parkrun Saturday",
+   "ts": "2026-08-06T19:10:00Z",
+   "to": "Theo",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "hedged musing"
+  }
+ ]
+}

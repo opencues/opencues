@@ -1,0 +1,115 @@
+{
+ "name": "p24-allotment",
+ "persona": "Allotment holder Pete-a: plot neighbour June, society sec, wife Carol. Watering rota, show entry, no-chemicals policy, holiday delegation.",
+ "steps": [
+  {
+   "collect": "I'll water Tuesdays and Fridays, you do the rest",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "June",
+   "via": "sms"
+  },
+  {
+   "collect": "entering the onions in the show on the 22nd",
+   "ts": "2026-08-03T09:05:00Z",
+   "to": "society-sec",
+   "via": "email"
+  },
+  {
+   "collect": "fully organic this year, no chemicals on my plot",
+   "ts": "2026-08-03T09:10:00Z",
+   "to": "June",
+   "via": "sms"
+  },
+  {
+   "collect": "we're in Devon the 14th to the 16th",
+   "ts": "2026-08-03T09:15:00Z",
+   "to": "Carol",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "slug pellets tonight, they're murdering the lettuces",
+   "ts": "2026-08-04T19:00:00Z",
+   "to": "June",
+   "via": "sms",
+   "expect": "FLAG",
+   "claim": "organic|chemicals"
+  },
+  {
+   "probe": "beer traps for the slugs tonight",
+   "ts": "2026-08-04T19:05:00Z",
+   "to": "June",
+   "via": "sms",
+   "expect": "SILENCE",
+   "note": "organic-compatible"
+  },
+  {
+   "probe": "can you cover my Friday watering on the 14th? we're away",
+   "ts": "2026-08-04T19:10:00Z",
+   "to": "June",
+   "via": "sms",
+   "expect": "SILENCE",
+   "note": "delegation consistent with holiday"
+  },
+  {
+   "probe": "I'll water Friday the 14th as usual",
+   "ts": "2026-08-04T19:15:00Z",
+   "to": "June",
+   "via": "sms",
+   "expect": "FLAG",
+   "claim": "Devon",
+   "note": "promising rota during holiday"
+  },
+  {
+   "probe": "pulling out of the show, onions are pathetic",
+   "ts": "2026-08-04T19:20:00Z",
+   "to": "Carol",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "entering|show",
+   "note": "withdrawal FYI"
+  },
+  {
+   "collect": "June's covering both my waterings while we're in Devon",
+   "ts": "2026-08-05T09:00:00Z",
+   "to": "Carol",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "show entry posted, onions class and marrows class",
+   "ts": "2026-08-06T10:00:00Z",
+   "to": "society-sec",
+   "via": "email"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "I'll get my show entry in this week",
+   "ts": "2026-08-06T11:00:00Z",
+   "to": "Carol",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "posted|entry",
+   "note": "already-done"
+  },
+  {
+   "probe": "Tuesday watering's on me as usual next week",
+   "ts": "2026-08-06T11:05:00Z",
+   "to": "June",
+   "via": "sms",
+   "expect": "SILENCE",
+   "note": "back from Devon by Tuesday the 18th"
+  },
+  {
+   "probe": "we could stay in Devon till the 20th actually",
+   "ts": "2026-08-06T11:10:00Z",
+   "to": "Carol",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "hedged musing"
+  }
+ ]
+}

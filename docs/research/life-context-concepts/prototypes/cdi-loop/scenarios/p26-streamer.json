@@ -1,0 +1,113 @@
+{
+ "name": "p26-streamer",
+ "persona": "Streamer Kaz: mods channel, sponsor rep, collab partner Nyx, flatmate Jo-f. Stream slots, sponsor window, family-friendly policy, typing-now during stream.",
+ "steps": [
+  {
+   "collect": "streams are Tuesday and Thursday 8pm, locked schedule",
+   "ts": "2026-08-03T12:00:00Z",
+   "to": "mods",
+   "via": "discord"
+  },
+  {
+   "collect": "sponsor video delivers by the 14th",
+   "ts": "2026-08-03T12:05:00Z",
+   "to": "sponsor-rep",
+   "via": "email"
+  },
+  {
+   "collect": "channel stays family friendly, that's the brand",
+   "ts": "2026-08-03T12:10:00Z",
+   "to": "mods",
+   "via": "discord"
+  },
+  {
+   "collect": "collab with Nyx Saturday 3pm",
+   "ts": "2026-08-03T12:15:00Z",
+   "to": "Nyx",
+   "via": "discord"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "thinking a swear-heavy horror playthrough Thursday",
+   "ts": "2026-08-04T13:00:00Z",
+   "to": "mods",
+   "via": "discord",
+   "expect": "FLAG",
+   "claim": "family friendly"
+  },
+  {
+   "probe": "cosy farming sim Thursday",
+   "ts": "2026-08-04T13:05:00Z",
+   "to": "mods",
+   "via": "discord",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "cinema Tuesday 8?",
+   "ts": "2026-08-04T13:10:00Z",
+   "to": "Jo-f",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "stream|Tuesday"
+  },
+  {
+   "probe": "cinema Wednesday 8?",
+   "ts": "2026-08-04T13:15:00Z",
+   "to": "Jo-f",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "can we push the collab to 5pm Saturday?",
+   "ts": "2026-08-04T13:20:00Z",
+   "to": "Nyx",
+   "via": "discord",
+   "expect": "SILENCE",
+   "note": "revision proposal"
+  },
+  {
+   "collect": "sponsor cut delivered early, they love it",
+   "ts": "2026-08-05T16:00:00Z",
+   "to": "sponsor-rep",
+   "via": "email"
+  },
+  {
+   "collect": "collab confirmed moved to 5pm Saturday",
+   "ts": "2026-08-05T16:05:00Z",
+   "to": "Nyx",
+   "via": "discord"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "I'll get your video over by the 14th, on track",
+   "ts": "2026-08-05T17:00:00Z",
+   "to": "sponsor-rep",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "delivered",
+   "note": "already-done"
+  },
+  {
+   "probe": "see you at 3 Saturday",
+   "ts": "2026-08-05T17:05:00Z",
+   "to": "Nyx",
+   "via": "discord",
+   "expect": "FLAG",
+   "claim": "5pm|moved",
+   "note": "stale plan"
+  },
+  {
+   "probe": "pizza order for the flat?",
+   "ts": "2026-08-06T20:30:00Z",
+   "to": "Jo-f",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "stream|Thursday",
+   "note": "typing-now during Thursday stream"
+  }
+ ]
+}

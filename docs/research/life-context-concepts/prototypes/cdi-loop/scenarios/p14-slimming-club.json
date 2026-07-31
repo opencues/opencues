@@ -1,0 +1,106 @@
+{
+ "name": "p14-slimming-club",
+ "persona": "Slimming club member Tina: buddy Donna, husband Kev-h, group leader. Weigh-in slot, no-takeaway policy with declared treat-night AMENDS test, walking aim.",
+ "steps": [
+  {
+   "collect": "weigh-in is Thursday 6:30, every week without fail",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "Donna",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "no takeaways this month, I'm being good",
+   "ts": "2026-08-03T09:05:00Z",
+   "to": "Kev-h",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "except Friday treat night, that's allowed, one a week",
+   "ts": "2026-08-03T09:06:00Z",
+   "to": "Kev-h",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "10k steps every day this week, hold me to it",
+   "ts": "2026-08-03T09:10:00Z",
+   "to": "Donna",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "chinese tonight?",
+   "ts": "2026-08-04T17:00:00Z",
+   "to": "Kev-h",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "takeaway|treat night",
+   "note": "Tuesday is not treat night"
+  },
+  {
+   "probe": "chinese Friday night?",
+   "ts": "2026-08-04T17:05:00Z",
+   "to": "Kev-h",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "declared treat-night exception — AMENDS test"
+  },
+  {
+   "probe": "cinema Thursday 6:30?",
+   "ts": "2026-08-04T17:10:00Z",
+   "to": "Donna",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "weigh-in"
+  },
+  {
+   "probe": "cinema Thursday 8:30?",
+   "ts": "2026-08-04T17:15:00Z",
+   "to": "Donna",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "sofa day tomorrow, zero steps",
+   "ts": "2026-08-04T17:20:00Z",
+   "to": "Donna",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "10k|steps"
+  },
+  {
+   "collect": "leader says weigh-in moves to Wednesdays from next week",
+   "ts": "2026-08-06T19:00:00Z",
+   "to": "Donna",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "see you at weigh-in Thursday the 13th",
+   "ts": "2026-08-06T20:00:00Z",
+   "to": "Donna",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "Wednesday|moves",
+   "note": "stale plan"
+  },
+  {
+   "probe": "see you at weigh-in Wednesday the 12th",
+   "ts": "2026-08-06T20:05:00Z",
+   "to": "Donna",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "thinking of switching to the running club",
+   "ts": "2026-08-06T20:10:00Z",
+   "to": "Donna",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "hedged musing"
+  }
+ ]
+}

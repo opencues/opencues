@@ -1,0 +1,114 @@
+{
+ "name": "p21-house-mover",
+ "persona": "Mover Kwame: solicitor, partner Efua, movers, landlord. Completion day, movers slot, clean-by window, dentist clash, key handover.",
+ "steps": [
+  {
+   "collect": "completion is the 21st, confirmed today",
+   "ts": "2026-08-03T10:00:00Z",
+   "to": "Efua",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "movers booked for the 21st, 8am start",
+   "ts": "2026-08-03T10:05:00Z",
+   "to": "Efua",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'll have the old flat cleaned by the 20th",
+   "ts": "2026-08-03T10:10:00Z",
+   "to": "landlord",
+   "via": "email"
+  },
+  {
+   "collect": "keys back to you by noon on the 21st",
+   "ts": "2026-08-03T10:15:00Z",
+   "to": "landlord",
+   "via": "email"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "dentist on the 21st at 9?",
+   "ts": "2026-08-04T09:00:00Z",
+   "to": "Efua",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "movers|8am"
+  },
+  {
+   "probe": "dentist on the 19th at 9?",
+   "ts": "2026-08-04T09:05:00Z",
+   "to": "Efua",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "leaving the oven for the next tenant to clean",
+   "ts": "2026-08-04T09:10:00Z",
+   "to": "Efua",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "cleaned",
+   "note": "contradicts clean-by promise"
+  },
+  {
+   "probe": "cleaner's coming on the 19th to do the lot",
+   "ts": "2026-08-04T09:15:00Z",
+   "to": "Efua",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "consistent with the window"
+  },
+  {
+   "probe": "solicitor says it might slip to the 24th",
+   "ts": "2026-08-04T09:20:00Z",
+   "to": "Efua",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "hedged report"
+  },
+  {
+   "collect": "completion slipped to the 24th, movers rebooked same time",
+   "ts": "2026-08-06T15:00:00Z",
+   "to": "Efua",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "flat's professionally cleaned, receipts kept",
+   "ts": "2026-08-07T17:00:00Z",
+   "to": "landlord",
+   "via": "email"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "see you with the keys at noon on the 21st",
+   "ts": "2026-08-07T18:00:00Z",
+   "to": "landlord",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "24th|slipped",
+   "note": "stale plan"
+  },
+  {
+   "probe": "I'll get the flat cleaned this weekend",
+   "ts": "2026-08-07T18:05:00Z",
+   "to": "landlord",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "professionally cleaned",
+   "note": "already-done"
+  },
+  {
+   "probe": "dentist on the 21st at 9 works now",
+   "ts": "2026-08-07T18:10:00Z",
+   "to": "Efua",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "freed by the slip"
+  }
+ ]
+}

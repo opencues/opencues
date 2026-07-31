@@ -1,0 +1,107 @@
+{
+ "name": "p12-new-diabetic",
+ "persona": "Newly diagnosed Raj: wife Simran, GP surgery, colleague Pete. Sugar policy, clinic slot, meds routine, cake trap, clinic-day meeting.",
+ "steps": [
+  {
+   "collect": "no sugary drinks for me any more, doctor's orders",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "Simran",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "diabetes clinic is the 11th at 9:30",
+   "ts": "2026-08-03T09:05:00Z",
+   "to": "Simran",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "metformin with breakfast every day, can't miss it",
+   "ts": "2026-08-03T09:10:00Z",
+   "to": "Simran",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'll walk the long way to work all this month",
+   "ts": "2026-08-03T09:15:00Z",
+   "to": "Simran",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "get me a full-fat coke with the meal deal",
+   "ts": "2026-08-04T12:00:00Z",
+   "to": "Pete",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "sugary"
+  },
+  {
+   "probe": "get me a diet coke with the meal deal",
+   "ts": "2026-08-04T12:05:00Z",
+   "to": "Pete",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "I can do the 9am project kickoff on the 11th",
+   "ts": "2026-08-04T13:00:00Z",
+   "to": "Pete",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "clinic"
+  },
+  {
+   "probe": "I can do an 11:30 kickoff on the 11th",
+   "ts": "2026-08-04T13:05:00Z",
+   "to": "Pete",
+   "via": "email",
+   "expect": "SILENCE",
+   "note": "after the clinic"
+  },
+  {
+   "probe": "cab to work tomorrow, it's raining",
+   "ts": "2026-08-04T13:10:00Z",
+   "to": "Simran",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "walk|long way",
+   "note": "soft self-promise broken"
+  },
+  {
+   "collect": "clinic moved me to the 13th at 9:30, they called",
+   "ts": "2026-08-05T10:00:00Z",
+   "to": "Simran",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "kickoff at 9 on the 11th works now",
+   "ts": "2026-08-05T11:00:00Z",
+   "to": "Pete",
+   "via": "email",
+   "expect": "SILENCE",
+   "note": "clinic moved off the 11th"
+  },
+  {
+   "probe": "busy 9:30 on the 13th, clinic",
+   "ts": "2026-08-05T11:05:00Z",
+   "to": "Pete",
+   "via": "email",
+   "expect": "SILENCE",
+   "note": "restatement"
+  },
+  {
+   "probe": "might skip the metformin on holiday",
+   "ts": "2026-08-05T11:10:00Z",
+   "to": "Simran",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "metformin|every day",
+   "note": "quantifier routine"
+  }
+ ]
+}

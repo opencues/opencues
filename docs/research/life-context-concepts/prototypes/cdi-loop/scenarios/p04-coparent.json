@@ -1,0 +1,114 @@
+{
+ "name": "p04-coparent",
+ "persona": "Co-parent Dee: son Alfie, ex Jack, boss, friend Meg. Alternating custody spans, school-play quantifier, work clash with play, ex-weekend cinema promise.",
+ "steps": [
+  {
+   "collect": "Alfie's with Jack this weekend, the 8th and 9th",
+   "ts": "2026-08-03T08:00:00Z",
+   "to": "Meg",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "school play is Wednesday at 2, I never miss the school play",
+   "ts": "2026-08-03T08:30:00Z",
+   "to": "Meg",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'll do the costume by Tuesday night",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "Meg",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I've got Alfie the weekend of the 15th",
+   "ts": "2026-08-03T09:30:00Z",
+   "to": "Meg",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "I'll take Alfie to the cinema on Saturday",
+   "ts": "2026-08-04T10:00:00Z",
+   "to": "Meg",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "Jack|weekend",
+   "note": "promising the kid on the ex's weekend"
+  },
+  {
+   "probe": "I'll take Alfie to the cinema on the 15th",
+   "ts": "2026-08-04T10:05:00Z",
+   "to": "Meg",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "own weekend"
+  },
+  {
+   "probe": "I can take the 2pm slot on Wednesday",
+   "ts": "2026-08-04T11:00:00Z",
+   "to": "boss",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "play"
+  },
+  {
+   "probe": "I can take a 4pm slot on Wednesday",
+   "ts": "2026-08-04T11:05:00Z",
+   "to": "boss",
+   "via": "email",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "costume's nearly there, done by tomorrow night",
+   "ts": "2026-08-04T12:00:00Z",
+   "to": "Meg",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "restatement"
+  },
+  {
+   "collect": "costume finished, it's a very good sheep",
+   "ts": "2026-08-04T22:00:00Z",
+   "to": "Meg",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "swapped with Jack, I've got Alfie this weekend after all",
+   "ts": "2026-08-05T09:00:00Z",
+   "to": "Meg",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "I'll take Alfie to the cinema on Saturday",
+   "ts": "2026-08-05T10:00:00Z",
+   "to": "Meg",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "custody swap superseded — now own weekend"
+  },
+  {
+   "probe": "I'll finish the costume tonight",
+   "ts": "2026-08-05T10:05:00Z",
+   "to": "Meg",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "costume|finished",
+   "note": "already-done"
+  },
+  {
+   "probe": "might skip the play, swamped at work",
+   "ts": "2026-08-05T10:10:00Z",
+   "to": "Meg",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "never miss",
+   "note": "quantifier"
+  }
+ ]
+}

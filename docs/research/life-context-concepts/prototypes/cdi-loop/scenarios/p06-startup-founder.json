@@ -1,0 +1,119 @@
+{
+ "name": "p06-startup-founder",
+ "persona": "Founder Lena: cofounder Max, investor Priya-VC, candidate Omar, team channel. Investor slot, payroll window, no-discount policy, two-faced hiring freeze.",
+ "steps": [
+  {
+   "collect": "investor call Wednesday 3pm, do not book over it",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "Max",
+   "via": "slack"
+  },
+  {
+   "collect": "payroll will be run by the 28th, always",
+   "ts": "2026-08-03T09:10:00Z",
+   "to": "Max",
+   "via": "slack"
+  },
+  {
+   "collect": "we never discount the enterprise tier",
+   "ts": "2026-08-03T09:20:00Z",
+   "to": "team",
+   "via": "slack"
+  },
+  {
+   "collect": "hiring is frozen until the next raise closes",
+   "ts": "2026-08-03T09:30:00Z",
+   "to": "team",
+   "via": "slack"
+  },
+  {
+   "collect": "demo build has to be ready by the 14th",
+   "ts": "2026-08-03T09:40:00Z",
+   "to": "Max",
+   "via": "slack"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "can we do your onsite Wednesday 3pm?",
+   "ts": "2026-08-04T10:00:00Z",
+   "to": "Omar",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "investor"
+  },
+  {
+   "probe": "can we do your onsite Wednesday morning?",
+   "ts": "2026-08-04T10:05:00Z",
+   "to": "Omar",
+   "via": "email",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "I'll do 20% off enterprise if you sign this week",
+   "ts": "2026-08-04T11:00:00Z",
+   "to": "prospect-Dan",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "discount"
+  },
+  {
+   "probe": "we'd love to make you an offer this week",
+   "ts": "2026-08-04T11:30:00Z",
+   "to": "Omar",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "frozen|hiring",
+   "note": "two-faced vs freeze told to team"
+  },
+  {
+   "probe": "pushing the demo target to the 18th, cutting scope",
+   "ts": "2026-08-04T12:00:00Z",
+   "to": "Max",
+   "via": "slack",
+   "expect": "SILENCE",
+   "note": "revision"
+  },
+  {
+   "collect": "freeze is lifted, the bridge came through",
+   "ts": "2026-08-06T09:00:00Z",
+   "to": "team",
+   "via": "slack"
+  },
+  {
+   "collect": "demo target moved to the 18th",
+   "ts": "2026-08-06T09:10:00Z",
+   "to": "Max",
+   "via": "slack"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "we'd love to make you an offer this week",
+   "ts": "2026-08-06T10:00:00Z",
+   "to": "Omar",
+   "via": "email",
+   "expect": "SILENCE",
+   "note": "freeze superseded"
+  },
+  {
+   "probe": "demo lands on the 14th as planned",
+   "ts": "2026-08-06T10:05:00Z",
+   "to": "Priya-VC",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "18th|moved",
+   "note": "stale plan to investor"
+  },
+  {
+   "probe": "standard pricing I'm afraid, we don't discount enterprise",
+   "ts": "2026-08-06T10:10:00Z",
+   "to": "prospect-Dan",
+   "via": "email",
+   "expect": "SILENCE",
+   "note": "restatement"
+  }
+ ]
+}

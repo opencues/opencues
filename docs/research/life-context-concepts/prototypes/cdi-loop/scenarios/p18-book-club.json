@@ -1,0 +1,113 @@
+{
+ "name": "p18-book-club",
+ "persona": "Book-club host Nadia: members Faye + Priti-b, partner Col-b. Hosting slot, finish-book window, two-faced read claims, snacks promise.",
+ "steps": [
+  {
+   "collect": "book club at mine Thursday 7:30",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "Faye",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'll finish the book by Thursday, only 80 pages left",
+   "ts": "2026-08-03T09:05:00Z",
+   "to": "Faye",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "haven't started it yet honestly, don't tell the others",
+   "ts": "2026-08-03T09:10:00Z",
+   "to": "Priti-b",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'm doing those little cheese things again",
+   "ts": "2026-08-03T09:15:00Z",
+   "to": "Faye",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "the ending made me cry, so good",
+   "ts": "2026-08-04T10:00:00Z",
+   "to": "Faye",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "haven't started",
+   "note": "two-faced read claim across members"
+  },
+  {
+   "probe": "I'm 40 pages from the end",
+   "ts": "2026-08-04T10:05:00Z",
+   "to": "Faye",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "consistent progress"
+  },
+  {
+   "probe": "date night Thursday 7:30?",
+   "ts": "2026-08-04T10:10:00Z",
+   "to": "Col-b",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "book club"
+  },
+  {
+   "probe": "date night Friday?",
+   "ts": "2026-08-04T10:15:00Z",
+   "to": "Col-b",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "shall I do a cheese board instead of the little things?",
+   "ts": "2026-08-04T10:20:00Z",
+   "to": "Faye",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "revision of own snack plan"
+  },
+  {
+   "collect": "moved club to Priti's, my boiler's leaking",
+   "ts": "2026-08-05T18:00:00Z",
+   "to": "Faye",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "finished the book, the twist is outrageous",
+   "ts": "2026-08-06T09:00:00Z",
+   "to": "Priti-b",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "see you at mine Thursday 7:30",
+   "ts": "2026-08-06T10:00:00Z",
+   "to": "Faye",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "Priti|moved",
+   "note": "stale plan"
+  },
+  {
+   "probe": "see you at Priti's Thursday",
+   "ts": "2026-08-06T10:05:00Z",
+   "to": "Faye",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "I'll try to finish the book tonight",
+   "ts": "2026-08-06T10:10:00Z",
+   "to": "Faye",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "finished|twist",
+   "note": "already-done"
+  }
+ ]
+}

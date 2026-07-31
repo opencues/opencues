@@ -1,0 +1,108 @@
+{
+ "name": "p15-physio-patient",
+ "persona": "Physio patient Col: physio clinic, running buddy Nas, wife Deb. No-running span, parkrun probe, swimming compat, follow-up slot.",
+ "steps": [
+  {
+   "collect": "physio says no running for two weeks, until the 17th",
+   "ts": "2026-08-03T11:00:00Z",
+   "to": "Deb",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "follow-up appointment on the 17th at 2",
+   "ts": "2026-08-03T11:05:00Z",
+   "to": "Deb",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "swimming's fine, encouraged actually",
+   "ts": "2026-08-03T11:10:00Z",
+   "to": "Deb",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'll do the school quiz night on the 14th, on the team",
+   "ts": "2026-08-03T11:15:00Z",
+   "to": "Deb",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "parkrun Saturday?",
+   "ts": "2026-08-04T09:00:00Z",
+   "to": "Nas",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "no running"
+  },
+  {
+   "probe": "swim Saturday morning?",
+   "ts": "2026-08-04T09:05:00Z",
+   "to": "Nas",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "explicitly allowed"
+  },
+  {
+   "probe": "parkrun on the 22nd?",
+   "ts": "2026-08-04T09:10:00Z",
+   "to": "Nas",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "after the ban ends"
+  },
+  {
+   "probe": "pub quiz round 2 on the 14th at the Crown?",
+   "ts": "2026-08-04T09:15:00Z",
+   "to": "Nas",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "school quiz|team",
+   "note": "double-booked quiz night"
+  },
+  {
+   "probe": "gentle bike ride Sunday?",
+   "ts": "2026-08-04T09:20:00Z",
+   "to": "Nas",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "not running, not banned"
+  },
+  {
+   "collect": "physio's really pleased, cleared to jog from the 10th",
+   "ts": "2026-08-07T15:00:00Z",
+   "to": "Deb",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "easy jog on the 12th?",
+   "ts": "2026-08-07T16:00:00Z",
+   "to": "Nas",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "cleared early — span supersession"
+  },
+  {
+   "probe": "easy jog tomorrow the 8th?",
+   "ts": "2026-08-07T16:05:00Z",
+   "to": "Nas",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "10th|cleared",
+   "note": "before the new clearance date"
+  },
+  {
+   "probe": "I'll cancel the follow-up, all better",
+   "ts": "2026-08-07T16:10:00Z",
+   "to": "Deb",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "withdrawal of own appointment — UX-contested, expect silence"
+  }
+ ]
+}

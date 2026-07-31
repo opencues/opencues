@@ -1,0 +1,118 @@
+{
+ "name": "p10-driving-instructor",
+ "persona": "Instructor Dave-I: students Katie + Josh, garage, wife Pam. Lesson slots, no-Sundays policy, same-slot two students, test day, car service window.",
+ "steps": [
+  {
+   "collect": "your lesson is Tuesday 10am as usual",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "Katie",
+   "via": "sms"
+  },
+  {
+   "collect": "your test is booked for the 18th at 11:15",
+   "ts": "2026-08-03T09:05:00Z",
+   "to": "Josh",
+   "via": "sms"
+  },
+  {
+   "collect": "I don't teach Sundays, family day",
+   "ts": "2026-08-03T09:10:00Z",
+   "to": "Pam",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "car's booked in for a service by Friday",
+   "ts": "2026-08-03T09:15:00Z",
+   "to": "Pam",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "Josh, Tuesday 2pm for your mock test",
+   "ts": "2026-08-03T09:20:00Z",
+   "to": "Josh",
+   "via": "sms"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "I can fit you in Tuesday 10am",
+   "ts": "2026-08-04T09:00:00Z",
+   "to": "Josh",
+   "via": "sms",
+   "expect": "FLAG",
+   "claim": "Katie|10am",
+   "note": "same slot two students"
+  },
+  {
+   "probe": "I can fit you in Tuesday 4pm",
+   "ts": "2026-08-04T09:05:00Z",
+   "to": "Josh",
+   "via": "sms",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "yes I can do Sunday morning",
+   "ts": "2026-08-04T09:10:00Z",
+   "to": "new-student-Ria",
+   "via": "sms",
+   "expect": "FLAG",
+   "claim": "Sundays"
+  },
+  {
+   "probe": "I can do Saturday morning",
+   "ts": "2026-08-04T09:15:00Z",
+   "to": "new-student-Ria",
+   "via": "sms",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "let's move your mock to Wednesday 2",
+   "ts": "2026-08-04T09:20:00Z",
+   "to": "Josh",
+   "via": "sms",
+   "expect": "SILENCE",
+   "note": "revision"
+  },
+  {
+   "collect": "service done, brakes sorted",
+   "ts": "2026-08-05T16:00:00Z",
+   "to": "Pam",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "Katie cancelled Tuesday, slot's free now",
+   "ts": "2026-08-06T10:00:00Z",
+   "to": "Pam",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "I can fit you in Tuesday 10am after all",
+   "ts": "2026-08-06T11:00:00Z",
+   "to": "Josh",
+   "via": "sms",
+   "expect": "SILENCE",
+   "note": "slot freed by cancellation"
+  },
+  {
+   "probe": "I'll get the car serviced next week",
+   "ts": "2026-08-06T11:05:00Z",
+   "to": "Pam",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "service done|brakes",
+   "note": "already-done"
+  },
+  {
+   "probe": "test's on the 18th at 11:15, don't be late",
+   "ts": "2026-08-06T11:10:00Z",
+   "to": "Josh",
+   "via": "sms",
+   "expect": "SILENCE",
+   "note": "restatement"
+  }
+ ]
+}

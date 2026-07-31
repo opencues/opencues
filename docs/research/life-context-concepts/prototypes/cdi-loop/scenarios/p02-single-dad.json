@@ -1,0 +1,130 @@
+{
+ "name": "p02-single-dad",
+ "persona": "Single dad Marco: daughter Sofia, ex Rachel, boss, mate Gav. Custody weekend, no-drinking-with-Sofia anchored policy, pending pickup change, typing-now during pickup.",
+ "steps": [
+  {
+   "collect": "I've got Sofia this weekend, picking her up Friday at 6",
+   "ts": "2026-08-03T08:00:00Z",
+   "to": "Rachel",
+   "via": "sms"
+  },
+  {
+   "collect": "taking Sofia to the zoo Saturday",
+   "ts": "2026-08-03T08:05:00Z",
+   "to": "Rachel",
+   "via": "sms"
+  },
+  {
+   "collect": "I don't drink when I've got Sofia",
+   "ts": "2026-08-03T08:10:00Z",
+   "to": "Rachel",
+   "via": "sms"
+  },
+  {
+   "collect": "I'll have the report over by Thursday",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "boss",
+   "via": "email"
+  },
+  {
+   "collect": "school trip money's paid, all sorted",
+   "ts": "2026-08-03T12:00:00Z",
+   "to": "Gav",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "happy to jump on the client call Saturday morning",
+   "ts": "2026-08-05T09:00:00Z",
+   "to": "boss",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "zoo|Sofia"
+  },
+  {
+   "probe": "beers Saturday night?",
+   "ts": "2026-08-05T18:00:00Z",
+   "to": "Gav",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "drink|Sofia",
+   "note": "anchored policy — drinking during custody weekend"
+  },
+  {
+   "probe": "beers next Wednesday?",
+   "ts": "2026-08-05T18:05:00Z",
+   "to": "Gav",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "not custody time"
+  },
+  {
+   "probe": "I'll sort the school trip money this week",
+   "ts": "2026-08-05T18:10:00Z",
+   "to": "Gav",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "paid|sorted",
+   "note": "already-done"
+  },
+  {
+   "probe": "do I still owe anything for the trip?",
+   "ts": "2026-08-05T18:15:00Z",
+   "to": "school",
+   "via": "email",
+   "expect": "SILENCE",
+   "note": "question"
+  },
+  {
+   "collect": "can we make pickup 7 instead of 6 on Friday?",
+   "ts": "2026-08-05T19:00:00Z",
+   "to": "Rachel",
+   "via": "sms"
+  },
+  {
+   "collect": "report sent early",
+   "ts": "2026-08-06T15:00:00Z",
+   "to": "boss",
+   "via": "email"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "see you at 7 on Friday",
+   "ts": "2026-08-06T18:00:00Z",
+   "to": "Rachel",
+   "via": "sms",
+   "expect": "SILENCE",
+   "note": "confirming pending"
+  },
+  {
+   "probe": "fifa tonight mate?",
+   "ts": "2026-08-07T18:20:00Z",
+   "to": "Gav",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "pick|Sofia|6",
+   "note": "typing-now during pickup slot"
+  },
+  {
+   "probe": "just grabbed Sofia, heading home",
+   "ts": "2026-08-07T18:25:00Z",
+   "to": "Rachel",
+   "via": "sms",
+   "expect": "SILENCE",
+   "note": "at-activity"
+  },
+  {
+   "probe": "I'll get that report to you by Thursday, promise",
+   "ts": "2026-08-08T10:00:00Z",
+   "to": "boss",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "sent|report",
+   "note": "already-done"
+  }
+ ]
+}

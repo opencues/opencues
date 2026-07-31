@@ -1,0 +1,114 @@
+{
+ "name": "p19-band-member",
+ "persona": "Bassist Rix: bandmates Vic + Chuck, venue, girlfriend Lou. Rehearsal slot, gig slot, learn-solo window, sold-out two-faced, day-job clash.",
+ "steps": [
+  {
+   "collect": "rehearsal Tuesday 8pm, full run-through",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "Vic",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "gig's the 15th, 9pm at the Lantern",
+   "ts": "2026-08-03T09:05:00Z",
+   "to": "Lou",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'll have the solo down by Tuesday",
+   "ts": "2026-08-03T09:10:00Z",
+   "to": "Chuck",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "gig's sold out, no more list spots",
+   "ts": "2026-08-03T09:15:00Z",
+   "to": "Vic",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "late shift Tuesday, might get to rehearsal about 9",
+   "ts": "2026-08-04T10:00:00Z",
+   "to": "Vic",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "hedged, partial attendance"
+  },
+  {
+   "probe": "can't make rehearsal Tuesday, shift's immovable",
+   "ts": "2026-08-04T10:05:00Z",
+   "to": "Vic",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "rehearsal|8pm"
+  },
+  {
+   "probe": "I can put you plus three on the list",
+   "ts": "2026-08-04T10:10:00Z",
+   "to": "Lou",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "sold out|no more",
+   "note": "two-faced list spots"
+  },
+  {
+   "probe": "dinner on the 15th, 6ish before the gig?",
+   "ts": "2026-08-04T10:15:00Z",
+   "to": "Lou",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "before stage time"
+  },
+  {
+   "probe": "dinner on the 15th at 9?",
+   "ts": "2026-08-04T10:20:00Z",
+   "to": "Lou",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "gig|9pm"
+  },
+  {
+   "collect": "solo's learned, nailed it twice through",
+   "ts": "2026-08-05T21:00:00Z",
+   "to": "Chuck",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "gig moved to the 16th, double booking at the venue",
+   "ts": "2026-08-06T12:00:00Z",
+   "to": "Vic",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "see you at the Lantern on the 15th",
+   "ts": "2026-08-06T13:00:00Z",
+   "to": "Lou",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "16th|moved",
+   "note": "stale plan"
+  },
+  {
+   "probe": "I'll woodshed the solo all weekend",
+   "ts": "2026-08-06T13:05:00Z",
+   "to": "Chuck",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "learned|nailed",
+   "note": "already-done"
+  },
+  {
+   "probe": "see you on the 16th, doors 8",
+   "ts": "2026-08-06T13:10:00Z",
+   "to": "Lou",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  }
+ ]
+}

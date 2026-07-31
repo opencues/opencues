@@ -1,0 +1,116 @@
+{
+ "name": "p09-nurse",
+ "persona": "Nurse Femi: colleague Grace, sister Bola, ward manager. Night-shift slots, cover promise, Sunday double-book, typing-now during shift.",
+ "steps": [
+  {
+   "collect": "I'm on nights Friday and Saturday this week",
+   "ts": "2026-08-03T10:00:00Z",
+   "to": "Bola",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'll cover your Sunday day shift",
+   "ts": "2026-08-03T10:05:00Z",
+   "to": "Grace",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "dinner at mine Thursday 7, I'm cooking jollof",
+   "ts": "2026-08-03T10:10:00Z",
+   "to": "Bola",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'll do the medication audit by Wednesday",
+   "ts": "2026-08-03T10:15:00Z",
+   "to": "ward-manager",
+   "via": "email"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "Sunday lunch at mum's?",
+   "ts": "2026-08-04T09:00:00Z",
+   "to": "Bola",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "cover|Sunday",
+   "note": "promised Grace's day shift"
+  },
+  {
+   "probe": "Sunday dinner at mum's instead?",
+   "ts": "2026-08-04T09:05:00Z",
+   "to": "Bola",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "evening after a day shift is free"
+  },
+  {
+   "probe": "drinks Friday night?",
+   "ts": "2026-08-04T09:10:00Z",
+   "to": "Grace",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "nights",
+   "note": "on shift Friday night"
+  },
+  {
+   "probe": "drinks Wednesday night?",
+   "ts": "2026-08-04T09:15:00Z",
+   "to": "Grace",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "audit's on my list for Friday",
+   "ts": "2026-08-04T09:20:00Z",
+   "to": "ward-manager",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "Wednesday|audit",
+   "note": "quietly slipping own deadline"
+  },
+  {
+   "collect": "audit done and filed",
+   "ts": "2026-08-05T14:00:00Z",
+   "to": "ward-manager",
+   "via": "email"
+  },
+  {
+   "collect": "swapped with Grace, she has Sunday back, I get her Tuesday",
+   "ts": "2026-08-06T10:00:00Z",
+   "to": "Bola",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "Sunday lunch at mum's then?",
+   "ts": "2026-08-06T11:00:00Z",
+   "to": "Bola",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "swap released Sunday"
+  },
+  {
+   "probe": "I'll get that audit done this week",
+   "ts": "2026-08-06T11:05:00Z",
+   "to": "ward-manager",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "done|filed",
+   "note": "already-done"
+  },
+  {
+   "probe": "anyone fancy the quiz tonight?",
+   "ts": "2026-08-07T21:30:00Z",
+   "to": "Bola",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "nights",
+   "note": "typing-now during Friday night shift"
+  }
+ ]
+}

@@ -1,0 +1,112 @@
+{
+ "name": "p20-am-dram",
+ "persona": "Am-dram actor Bev: director Hugh, castmate Rosa, husband Ted. Rehearsal slots, show-week span, off-book window, never-miss quantifier, holiday clash.",
+ "steps": [
+  {
+   "collect": "rehearsals Monday and Wednesday 7pm till the show",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "Ted",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "show week is the 17th to the 22nd, every evening",
+   "ts": "2026-08-03T09:05:00Z",
+   "to": "Ted",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'll be off book by the 10th",
+   "ts": "2026-08-03T09:10:00Z",
+   "to": "Hugh",
+   "via": "sms"
+  },
+  {
+   "collect": "I've never missed a first night in forty years",
+   "ts": "2026-08-03T09:15:00Z",
+   "to": "Rosa",
+   "via": "sms"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "shall we book the Lakes for the 18th to the 20th?",
+   "ts": "2026-08-04T10:00:00Z",
+   "to": "Ted",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "show week"
+  },
+  {
+   "probe": "the Lakes the 25th to the 27th?",
+   "ts": "2026-08-04T10:05:00Z",
+   "to": "Ted",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "bridge night Wednesday 7?",
+   "ts": "2026-08-04T10:10:00Z",
+   "to": "Rosa",
+   "via": "sms",
+   "expect": "FLAG",
+   "claim": "rehearsal"
+  },
+  {
+   "probe": "bridge Friday 7?",
+   "ts": "2026-08-04T10:15:00Z",
+   "to": "Rosa",
+   "via": "sms",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "might give the first night a miss, nerves",
+   "ts": "2026-08-04T10:20:00Z",
+   "to": "Rosa",
+   "via": "sms",
+   "expect": "FLAG",
+   "claim": "never missed",
+   "note": "quantifier vs hedged skip"
+  },
+  {
+   "collect": "I'm fully off book, whole thing, did it for Ted twice",
+   "ts": "2026-08-08T20:00:00Z",
+   "to": "Hugh",
+   "via": "sms"
+  },
+  {
+   "collect": "Hugh cancelled Monday rehearsal, hall's flooded",
+   "ts": "2026-08-09T10:00:00Z",
+   "to": "Ted",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "see you at rehearsal Monday 7",
+   "ts": "2026-08-09T11:00:00Z",
+   "to": "Rosa",
+   "via": "sms",
+   "expect": "FLAG",
+   "claim": "cancelled|flooded",
+   "note": "stale plan"
+  },
+  {
+   "probe": "I'll be off book by Friday, nearly there",
+   "ts": "2026-08-09T11:05:00Z",
+   "to": "Hugh",
+   "via": "sms",
+   "expect": "FLAG",
+   "claim": "fully off book",
+   "note": "already-done"
+  },
+  {
+   "probe": "Wednesday rehearsal still on as far as I know",
+   "ts": "2026-08-09T11:10:00Z",
+   "to": "Rosa",
+   "via": "sms",
+   "expect": "SILENCE"
+  }
+ ]
+}

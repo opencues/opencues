@@ -1,0 +1,110 @@
+{
+ "name": "p13-yoga-teacher",
+ "persona": "Yoga teacher Willow: studio manager Kim, private client Ed, cover teacher Bea, partner Ash. Class slots, retreat span, cover promise, private during retreat.",
+ "steps": [
+  {
+   "collect": "my classes are Monday and Wednesday 6pm as usual",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "Kim",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'm on retreat the 22nd to the 24th, fully off grid",
+   "ts": "2026-08-03T09:05:00Z",
+   "to": "Kim",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "Bea will cover both my classes retreat week",
+   "ts": "2026-08-03T09:10:00Z",
+   "to": "Kim",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "your private is Thursday 8am as always",
+   "ts": "2026-08-03T09:15:00Z",
+   "to": "Ed",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "I can do a private on the 23rd",
+   "ts": "2026-08-04T09:00:00Z",
+   "to": "Ed",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "retreat|off grid"
+  },
+  {
+   "probe": "I can do a private on the 20th",
+   "ts": "2026-08-04T09:05:00Z",
+   "to": "Ed",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "dinner Monday 6?",
+   "ts": "2026-08-04T09:10:00Z",
+   "to": "Ash",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "classes|6pm"
+  },
+  {
+   "probe": "dinner Monday 8:30 after class?",
+   "ts": "2026-08-04T09:15:00Z",
+   "to": "Ash",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "actually can we move your private to 9am Thursdays?",
+   "ts": "2026-08-04T09:20:00Z",
+   "to": "Ed",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "revision"
+  },
+  {
+   "collect": "Bea's injured, she can't cover retreat week after all",
+   "ts": "2026-08-06T10:00:00Z",
+   "to": "Kim",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "Kim found Marco-the-cover for retreat week instead",
+   "ts": "2026-08-06T11:00:00Z",
+   "to": "Kim",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "Bea's got my classes covered for retreat week",
+   "ts": "2026-08-06T12:00:00Z",
+   "to": "Ash",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "injured|Marco",
+   "note": "stale delegation"
+  },
+  {
+   "probe": "Marco's covering my classes retreat week",
+   "ts": "2026-08-06T12:05:00Z",
+   "to": "Ash",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "I'll bring you back some incense from the retreat",
+   "ts": "2026-08-06T12:10:00Z",
+   "to": "Ash",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "fresh promise"
+  }
+ ]
+}

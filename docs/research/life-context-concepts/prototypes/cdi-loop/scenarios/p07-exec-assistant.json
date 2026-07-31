@@ -1,0 +1,106 @@
+{
+ "name": "p07-exec-assistant",
+ "persona": "EA Marta: boss Victor, travel desk, catering, colleague Ben. Flight slot, car window, minutes already sent, boardroom double-book.",
+ "steps": [
+  {
+   "collect": "Victor flies Thursday 9am from City",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "travel-desk",
+   "via": "email"
+  },
+  {
+   "collect": "I'll book his car by end of today",
+   "ts": "2026-08-03T09:05:00Z",
+   "to": "Victor",
+   "via": "email"
+  },
+  {
+   "collect": "board minutes went out this morning",
+   "ts": "2026-08-03T12:00:00Z",
+   "to": "Victor",
+   "via": "email"
+  },
+  {
+   "collect": "boardroom is held for the leadership offsite all day Friday",
+   "ts": "2026-08-03T14:00:00Z",
+   "to": "Ben",
+   "via": "email"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "I'll circulate the board minutes tomorrow",
+   "ts": "2026-08-04T09:00:00Z",
+   "to": "Victor",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "minutes|went out",
+   "note": "already-done"
+  },
+  {
+   "probe": "you can have the boardroom Friday 2pm",
+   "ts": "2026-08-04T09:10:00Z",
+   "to": "Ben",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "offsite|held"
+  },
+  {
+   "probe": "you can have the small meeting room Friday 2pm",
+   "ts": "2026-08-04T09:15:00Z",
+   "to": "Ben",
+   "via": "email",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "shall I book Victor a lunch slot Thursday 9:30?",
+   "ts": "2026-08-04T09:20:00Z",
+   "to": "catering",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "flies|9am",
+   "note": "he is on a plane"
+  },
+  {
+   "probe": "dinner reservation Thursday 8pm for Victor?",
+   "ts": "2026-08-04T09:25:00Z",
+   "to": "catering",
+   "via": "email",
+   "expect": "SILENCE"
+  },
+  {
+   "collect": "flight moved to Thursday 2pm, same airline",
+   "ts": "2026-08-05T10:00:00Z",
+   "to": "travel-desk",
+   "via": "email"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "car for the 9am flight is confirmed",
+   "ts": "2026-08-05T11:00:00Z",
+   "to": "Victor",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "2pm|moved",
+   "note": "stale plan"
+  },
+  {
+   "probe": "car for the 2pm flight is confirmed",
+   "ts": "2026-08-05T11:05:00Z",
+   "to": "Victor",
+   "via": "email",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "morning coffee with the Zurich team Thursday 9:30 works now",
+   "ts": "2026-08-05T11:10:00Z",
+   "to": "Ben",
+   "via": "email",
+   "expect": "SILENCE",
+   "note": "freed by the flight move"
+  }
+ ]
+}

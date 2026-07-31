@@ -1,0 +1,112 @@
+{
+ "name": "p29-phd-student",
+ "persona": "PhD student Wen: supervisor Prof-Hale, conference chairs, students, flatmate Dan-f. Supervision slot, paper window, teaching slot, Vienna span.",
+ "steps": [
+  {
+   "collect": "supervision is Friday 2pm, every week",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "Prof-Hale",
+   "via": "email"
+  },
+  {
+   "collect": "camera-ready paper due the 15th",
+   "ts": "2026-08-03T09:05:00Z",
+   "to": "Prof-Hale",
+   "via": "email"
+  },
+  {
+   "collect": "I teach the Monday 9am lab all term",
+   "ts": "2026-08-03T09:10:00Z",
+   "to": "Dan-f",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "Vienna for the conference the 20th to the 22nd",
+   "ts": "2026-08-03T09:15:00Z",
+   "to": "Dan-f",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "can I move my Friday 2 to see the dentist?",
+   "ts": "2026-08-04T10:00:00Z",
+   "to": "Prof-Hale",
+   "via": "email",
+   "expect": "SILENCE",
+   "note": "revision request"
+  },
+  {
+   "probe": "board games Friday 2pm?",
+   "ts": "2026-08-04T10:05:00Z",
+   "to": "Dan-f",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "supervision"
+  },
+  {
+   "probe": "board games Friday evening?",
+   "ts": "2026-08-04T10:10:00Z",
+   "to": "Dan-f",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "I can cover your Friday 2pm lab on the 21st",
+   "ts": "2026-08-04T10:15:00Z",
+   "to": "colleague-Ravi",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "Vienna",
+   "note": "promising cover while abroad"
+  },
+  {
+   "probe": "I can cover your lab on the 28th",
+   "ts": "2026-08-04T10:20:00Z",
+   "to": "colleague-Ravi",
+   "via": "email",
+   "expect": "SILENCE"
+  },
+  {
+   "collect": "paper submitted early, camera-ready is in",
+   "ts": "2026-08-06T23:00:00Z",
+   "to": "Prof-Hale",
+   "via": "email"
+  },
+  {
+   "collect": "supervision moved to Thursdays 2pm from next week",
+   "ts": "2026-08-07T10:00:00Z",
+   "to": "Prof-Hale",
+   "via": "email"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "I'll polish the camera-ready over the weekend",
+   "ts": "2026-08-07T11:00:00Z",
+   "to": "Prof-Hale",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "submitted|in",
+   "note": "already-done"
+  },
+  {
+   "probe": "see you Friday 2 next week as usual",
+   "ts": "2026-08-07T11:05:00Z",
+   "to": "Prof-Hale",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "Thursday|moved",
+   "note": "stale plan"
+  },
+  {
+   "probe": "see you Thursday 2 next week",
+   "ts": "2026-08-07T11:10:00Z",
+   "to": "Prof-Hale",
+   "via": "email",
+   "expect": "SILENCE"
+  }
+ ]
+}

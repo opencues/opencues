@@ -1,0 +1,105 @@
+{
+ "name": "p30-retiree",
+ "persona": "Retiree Gordon: daughter Fi, bowls club sec, GP surgery, pal Ernie. Bowls slots, babysitting promise, coach trip, GP slot, bingo clash.",
+ "steps": [
+  {
+   "collect": "bowls Tuesday and Thursday afternoons, as ever",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "Ernie",
+   "via": "sms"
+  },
+  {
+   "collect": "I'll have the grandkids Friday evening so you two can go out",
+   "ts": "2026-08-03T09:05:00Z",
+   "to": "Fi",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "coach trip to Whitby on the 19th, all day",
+   "ts": "2026-08-03T09:10:00Z",
+   "to": "Ernie",
+   "via": "sms"
+  },
+  {
+   "collect": "GP on the 19th at 3",
+   "ts": "2026-08-03T09:15:00Z",
+   "to": "Fi",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "bingo Friday night?",
+   "ts": "2026-08-04T10:00:00Z",
+   "to": "Ernie",
+   "via": "sms",
+   "expect": "FLAG",
+   "claim": "grandkids"
+  },
+  {
+   "probe": "bingo Saturday night?",
+   "ts": "2026-08-04T10:05:00Z",
+   "to": "Ernie",
+   "via": "sms",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "lunch Tuesday 1?",
+   "ts": "2026-08-04T10:10:00Z",
+   "to": "Fi",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "bowls"
+  },
+  {
+   "probe": "lunch Monday 1?",
+   "ts": "2026-08-04T10:15:00Z",
+   "to": "Fi",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "looking forward to Whitby on the 19th",
+   "ts": "2026-08-04T10:20:00Z",
+   "to": "Ernie",
+   "via": "sms",
+   "expect": "FLAG",
+   "claim": "GP|3",
+   "note": "all-day trip vs 3pm GP — cross-claim clash"
+  },
+  {
+   "collect": "moved the GP to the 21st at 3, receptionist was very nice",
+   "ts": "2026-08-05T11:00:00Z",
+   "to": "Fi",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "Whitby on the 19th, wouldn't miss it",
+   "ts": "2026-08-05T12:00:00Z",
+   "to": "Ernie",
+   "via": "sms",
+   "expect": "SILENCE",
+   "note": "freed by GP move"
+  },
+  {
+   "probe": "I'll pop to the GP on the 19th after the trip",
+   "ts": "2026-08-05T12:05:00Z",
+   "to": "Fi",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "21st|moved",
+   "note": "stale plan"
+  },
+  {
+   "probe": "cards at mine Wednesday afternoon?",
+   "ts": "2026-08-05T12:10:00Z",
+   "to": "Ernie",
+   "via": "sms",
+   "expect": "SILENCE"
+  }
+ ]
+}

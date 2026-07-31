@@ -1,0 +1,113 @@
+{
+ "name": "p17-church-volunteer",
+ "persona": "Volunteer Margaret: vicar, friend Doris, grandson Ben-g. Service slot, flower rota, visiting promise, fete bake window.",
+ "steps": [
+  {
+   "collect": "I'm doing the flowers Saturday morning for Sunday service",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "vicar",
+   "via": "email"
+  },
+  {
+   "collect": "I'll visit Mrs Pemberton Wednesday afternoon",
+   "ts": "2026-08-03T09:05:00Z",
+   "to": "Doris",
+   "via": "sms"
+  },
+  {
+   "collect": "two victoria sponges for the fete by Friday teatime",
+   "ts": "2026-08-03T09:10:00Z",
+   "to": "vicar",
+   "via": "email"
+  },
+  {
+   "collect": "I never miss the Sunday service",
+   "ts": "2026-08-03T09:15:00Z",
+   "to": "Doris",
+   "via": "sms"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "garden centre trip Wednesday afternoon?",
+   "ts": "2026-08-04T10:00:00Z",
+   "to": "Doris",
+   "via": "sms",
+   "expect": "FLAG",
+   "claim": "Pemberton"
+  },
+  {
+   "probe": "garden centre Thursday afternoon?",
+   "ts": "2026-08-04T10:05:00Z",
+   "to": "Doris",
+   "via": "sms",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "I'll have a lie-in this Sunday I think",
+   "ts": "2026-08-04T10:10:00Z",
+   "to": "Doris",
+   "via": "sms",
+   "expect": "FLAG",
+   "claim": "never miss"
+  },
+  {
+   "probe": "can you do the flowers Saturday? I'm poorly",
+   "ts": "2026-08-04T10:15:00Z",
+   "to": "Doris",
+   "via": "sms",
+   "expect": "SILENCE",
+   "note": "asking Doris a question, not contradicting"
+  },
+  {
+   "probe": "sponges will be there Friday teatime",
+   "ts": "2026-08-04T10:20:00Z",
+   "to": "vicar",
+   "via": "email",
+   "expect": "SILENCE",
+   "note": "restatement"
+  },
+  {
+   "collect": "Mrs Pemberton's moved to Thursday, her daughter's down Wednesday",
+   "ts": "2026-08-05T09:00:00Z",
+   "to": "Doris",
+   "via": "sms"
+  },
+  {
+   "collect": "sponges baked and in tins",
+   "ts": "2026-08-06T16:00:00Z",
+   "to": "vicar",
+   "via": "email"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "see you at Mrs P's Wednesday",
+   "ts": "2026-08-05T10:00:00Z",
+   "to": "Doris",
+   "via": "sms",
+   "expect": "FLAG",
+   "claim": "Thursday|moved",
+   "note": "stale plan"
+  },
+  {
+   "probe": "I'll bake the sponges Friday morning",
+   "ts": "2026-08-06T17:00:00Z",
+   "to": "vicar",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "baked|tins",
+   "note": "already-done"
+  },
+  {
+   "probe": "garden centre Wednesday afternoon then, now I'm free?",
+   "ts": "2026-08-06T17:05:00Z",
+   "to": "Doris",
+   "via": "sms",
+   "expect": "SILENCE",
+   "note": "freed by the move"
+  }
+ ]
+}

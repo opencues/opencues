@@ -1,0 +1,108 @@
+{
+ "name": "p23-dog-owner",
+ "persona": "Dog owner Saskia: vet, partner Milo-p, kennels, puppy-class trainer. Vet slot, kennels span vs holiday, jabs policy for pup, walker promise.",
+ "steps": [
+  {
+   "collect": "Biscuit's vet check is Thursday 4pm",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "Milo-p",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "kennels are booked the 10th to the 17th while we're away",
+   "ts": "2026-08-03T09:05:00Z",
+   "to": "Milo-p",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "no dog parks for Biscuit until his second jabs on the 12th",
+   "ts": "2026-08-03T09:10:00Z",
+   "to": "Milo-p",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'll walk him every morning before work this week",
+   "ts": "2026-08-03T09:15:00Z",
+   "to": "Milo-p",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "puppy social at the park Saturday?",
+   "ts": "2026-08-04T10:00:00Z",
+   "to": "trainer",
+   "via": "sms",
+   "expect": "FLAG",
+   "claim": "jabs",
+   "note": "park before the 12th"
+  },
+  {
+   "probe": "puppy class in the village hall Saturday?",
+   "ts": "2026-08-04T10:05:00Z",
+   "to": "trainer",
+   "via": "sms",
+   "expect": "SILENCE",
+   "note": "indoors, not a park"
+  },
+  {
+   "probe": "book Biscuit's grooming for the 13th?",
+   "ts": "2026-08-04T10:10:00Z",
+   "to": "Milo-p",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "kennels",
+   "note": "dog is in kennels the 13th"
+  },
+  {
+   "probe": "grooming on the 19th?",
+   "ts": "2026-08-04T10:15:00Z",
+   "to": "Milo-p",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "can't be bothered walking him tomorrow, you do it",
+   "ts": "2026-08-04T21:00:00Z",
+   "to": "Milo-p",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "every morning"
+  },
+  {
+   "collect": "vet moved us to Friday 4, Thursday's overbooked",
+   "ts": "2026-08-05T12:00:00Z",
+   "to": "Milo-p",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "see you after the vet Thursday 5ish",
+   "ts": "2026-08-05T13:00:00Z",
+   "to": "Milo-p",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "Friday|moved",
+   "note": "stale plan"
+  },
+  {
+   "probe": "see you after the vet Friday 5ish",
+   "ts": "2026-08-05T13:05:00Z",
+   "to": "Milo-p",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "dog park meetup on the 14th?",
+   "ts": "2026-08-05T13:10:00Z",
+   "to": "trainer",
+   "via": "sms",
+   "expect": "FLAG",
+   "claim": "kennels",
+   "note": "jabs done by then but dog is away"
+  }
+ ]
+}

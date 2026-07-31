@@ -1,0 +1,113 @@
+{
+ "name": "p28-travel-blogger",
+ "persona": "Travel blogger Io: editor Sana, embassy, dentist, partner Kit. Visa slot, trip span, sponsored-post window, no-paid-reviews policy.",
+ "steps": [
+  {
+   "collect": "visa appointment is the 11th at 10, embassy",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "Kit",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "Jordan trip is the 18th to the 25th",
+   "ts": "2026-08-03T09:05:00Z",
+   "to": "Kit",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "sponsored post files to you by the 16th",
+   "ts": "2026-08-03T09:10:00Z",
+   "to": "Sana",
+   "via": "email"
+  },
+  {
+   "collect": "I never take payment for reviews, disclosure or nothing",
+   "ts": "2026-08-03T09:15:00Z",
+   "to": "Sana",
+   "via": "email"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "sure, £300 and I'll say nice things about the resort",
+   "ts": "2026-08-04T10:00:00Z",
+   "to": "resort-pr",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "payment|reviews"
+  },
+  {
+   "probe": "happy to review on a hosted basis with full disclosure",
+   "ts": "2026-08-04T10:05:00Z",
+   "to": "resort-pr",
+   "via": "email",
+   "expect": "SILENCE",
+   "note": "policy-compatible"
+  },
+  {
+   "probe": "dentist on the 20th?",
+   "ts": "2026-08-04T10:10:00Z",
+   "to": "Kit",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "Jordan|trip"
+  },
+  {
+   "probe": "dentist on the 27th?",
+   "ts": "2026-08-04T10:15:00Z",
+   "to": "Kit",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "brunch the 11th at 10:30?",
+   "ts": "2026-08-04T10:20:00Z",
+   "to": "Kit",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "visa|embassy"
+  },
+  {
+   "collect": "visa's granted, passport back in hand",
+   "ts": "2026-08-06T15:00:00Z",
+   "to": "Kit",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "trip pushed a week, now the 25th to the 1st",
+   "ts": "2026-08-07T09:00:00Z",
+   "to": "Kit",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "dentist on the 20th works now",
+   "ts": "2026-08-07T10:00:00Z",
+   "to": "Kit",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "freed by the push"
+  },
+  {
+   "probe": "flying on the 18th, can't wait",
+   "ts": "2026-08-07T10:05:00Z",
+   "to": "Sana",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "25th|pushed",
+   "note": "stale plan"
+  },
+  {
+   "probe": "I'll chase the embassy about my visa tomorrow",
+   "ts": "2026-08-07T10:10:00Z",
+   "to": "Kit",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "granted|passport",
+   "note": "already-done"
+  }
+ ]
+}

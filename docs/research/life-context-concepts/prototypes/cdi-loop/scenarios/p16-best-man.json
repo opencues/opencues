@@ -1,0 +1,118 @@
+{
+ "name": "p16-best-man",
+ "persona": "Best man Ollie: groom Jake-groom, fiancee-of-groom Em, mate Woody, tailor. Stag span, speech window, fitting slot, wedding slot, clean-speech promise.",
+ "steps": [
+  {
+   "collect": "stag do is the 15th and 16th, whole weekend booked",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "Woody",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "speech will be written by the 20th",
+   "ts": "2026-08-03T09:05:00Z",
+   "to": "Jake-groom",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "suit fitting Thursday 5pm",
+   "ts": "2026-08-03T09:10:00Z",
+   "to": "tailor",
+   "via": "sms"
+  },
+  {
+   "collect": "wedding's on the 22nd, I'm there at 10 for setup",
+   "ts": "2026-08-03T09:15:00Z",
+   "to": "Jake-groom",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'll keep the speech clean, Em, promise",
+   "ts": "2026-08-03T09:20:00Z",
+   "to": "Em",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "fishing trip on the 15th?",
+   "ts": "2026-08-04T09:00:00Z",
+   "to": "Woody",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "stag"
+  },
+  {
+   "probe": "fishing trip on the 9th?",
+   "ts": "2026-08-04T09:05:00Z",
+   "to": "Woody",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "putting the vegas story in the speech, it's too good",
+   "ts": "2026-08-04T09:10:00Z",
+   "to": "Woody",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "clean",
+   "note": "promise to Em"
+  },
+  {
+   "probe": "client dinner Thursday 5?",
+   "ts": "2026-08-04T09:15:00Z",
+   "to": "boss",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "fitting"
+  },
+  {
+   "probe": "client dinner Thursday 7:30?",
+   "ts": "2026-08-04T09:20:00Z",
+   "to": "boss",
+   "via": "email",
+   "expect": "SILENCE"
+  },
+  {
+   "collect": "speech done, two pages, zero vegas",
+   "ts": "2026-08-06T22:00:00Z",
+   "to": "Jake-groom",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "fitting moved to Friday 5, tailor's request",
+   "ts": "2026-08-06T22:05:00Z",
+   "to": "Em",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "I'll write the speech on the train on the 21st",
+   "ts": "2026-08-07T09:00:00Z",
+   "to": "Woody",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "done|two pages",
+   "note": "already-done"
+  },
+  {
+   "probe": "see you at the fitting Thursday 5",
+   "ts": "2026-08-07T09:05:00Z",
+   "to": "Em",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "Friday|moved",
+   "note": "stale plan"
+  },
+  {
+   "probe": "see you at the fitting Friday 5",
+   "ts": "2026-08-07T09:10:00Z",
+   "to": "Em",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  }
+ ]
+}

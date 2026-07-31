@@ -1,0 +1,119 @@
+{
+ "name": "p03-expecting-dad",
+ "persona": "Expecting dad Rob: partner Nina, mate Si, mum. Antenatal slots, solidarity no-alcohol policy, hospital-bag window, nursery weekend, poker clash.",
+ "steps": [
+  {
+   "collect": "antenatal class is Thursday at 7pm, I'm coming to every one",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "Nina",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'm off the beers until the baby comes, doing it with you",
+   "ts": "2026-08-03T09:10:00Z",
+   "to": "Nina",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'll have the hospital bag sorted by the 20th",
+   "ts": "2026-08-03T09:20:00Z",
+   "to": "Nina",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "painting the nursery this Saturday, all day job",
+   "ts": "2026-08-03T09:30:00Z",
+   "to": "Nina",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "mum's coming over Sunday lunch to drop the cot off",
+   "ts": "2026-08-03T10:00:00Z",
+   "to": "Nina",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "poker at mine Thursday night?",
+   "ts": "2026-08-04T12:00:00Z",
+   "to": "Si",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "antenatal"
+  },
+  {
+   "probe": "poker Friday night instead?",
+   "ts": "2026-08-04T12:05:00Z",
+   "to": "Si",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "get the ipas in for Friday",
+   "ts": "2026-08-04T12:10:00Z",
+   "to": "Si",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "beers|baby",
+   "note": "solidarity policy"
+  },
+  {
+   "probe": "alcohol-free lagers for me Friday",
+   "ts": "2026-08-04T12:15:00Z",
+   "to": "Si",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "can you do the big match Saturday afternoon?",
+   "ts": "2026-08-04T13:00:00Z",
+   "to": "Si",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "nursery|painting"
+  },
+  {
+   "collect": "class moved to Wednesday 7 this week only, told them fine",
+   "ts": "2026-08-05T09:00:00Z",
+   "to": "Nina",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "bag's packed and in the hall, done",
+   "ts": "2026-08-06T20:00:00Z",
+   "to": "Nina",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "see you at class Thursday 7",
+   "ts": "2026-08-06T21:00:00Z",
+   "to": "Nina",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "Wednesday|moved",
+   "note": "stale plan after supersession"
+  },
+  {
+   "probe": "I'll pack the hospital bag next week",
+   "ts": "2026-08-07T09:00:00Z",
+   "to": "Nina",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "packed|bag",
+   "note": "already-done"
+  },
+  {
+   "probe": "shall we prewash the babygrows on Sunday?",
+   "ts": "2026-08-07T09:05:00Z",
+   "to": "Nina",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "compatible with mum lunch, unknown times"
+  }
+ ]
+}

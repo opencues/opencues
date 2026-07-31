@@ -1,0 +1,119 @@
+{
+ "name": "p08-chef",
+ "persona": "Chef Tomasz: sous Ana-sous, supplier FreshCo, inspector, partner Kasia. Menu-launch date, closed-Mondays policy, inspection slot, supplier window, staff promise.",
+ "steps": [
+  {
+   "collect": "new menu launches on the 14th, locked",
+   "ts": "2026-08-03T10:00:00Z",
+   "to": "Ana-sous",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "we're closed Mondays, always have been",
+   "ts": "2026-08-03T10:05:00Z",
+   "to": "Kasia",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "hygiene inspection Friday 10am",
+   "ts": "2026-08-03T10:10:00Z",
+   "to": "Ana-sous",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'll get the veg order in by Wednesday",
+   "ts": "2026-08-03T10:15:00Z",
+   "to": "FreshCo",
+   "via": "email"
+  },
+  {
+   "collect": "Ana can have the 15th off after launch",
+   "ts": "2026-08-03T10:20:00Z",
+   "to": "Ana-sous",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "private tasting Monday the 10th, 7pm?",
+   "ts": "2026-08-04T09:00:00Z",
+   "to": "prospect-party",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "closed Mondays"
+  },
+  {
+   "probe": "private tasting Tuesday the 11th, 7pm?",
+   "ts": "2026-08-04T09:05:00Z",
+   "to": "prospect-party",
+   "via": "email",
+   "expect": "SILENCE"
+  },
+  {
+   "probe": "supplier meeting Friday 10?",
+   "ts": "2026-08-04T09:10:00Z",
+   "to": "FreshCo",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "inspection"
+  },
+  {
+   "probe": "I need you in on the 15th for the review",
+   "ts": "2026-08-04T09:15:00Z",
+   "to": "Ana-sous",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "15th off",
+   "note": "revoking granted leave"
+  },
+  {
+   "probe": "launch tasting menu preview on the 13th?",
+   "ts": "2026-08-04T09:20:00Z",
+   "to": "Kasia",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "day before launch, fine"
+  },
+  {
+   "collect": "veg order's in, confirmed for Thursday delivery",
+   "ts": "2026-08-05T11:00:00Z",
+   "to": "FreshCo",
+   "via": "email"
+  },
+  {
+   "collect": "launch pushed to the 21st, printer ruined the menus",
+   "ts": "2026-08-06T16:00:00Z",
+   "to": "Ana-sous",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "see you at the launch on the 14th",
+   "ts": "2026-08-06T17:00:00Z",
+   "to": "Kasia",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "21st|pushed",
+   "note": "stale plan"
+  },
+  {
+   "probe": "I'll send the veg order over tonight",
+   "ts": "2026-08-06T17:05:00Z",
+   "to": "FreshCo",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "order's in|confirmed",
+   "note": "already-done"
+  },
+  {
+   "probe": "come to the launch on the 21st",
+   "ts": "2026-08-06T17:10:00Z",
+   "to": "Kasia",
+   "via": "whatsapp",
+   "expect": "SILENCE"
+  }
+ ]
+}
