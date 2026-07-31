@@ -122,6 +122,82 @@ to protect. Naming them is the point of this section.
   same at-rest posture as IDENTITY.md (and the same curability:
   the user must be able to see and delete entries).
 
+## Production architecture (measured — see v9-v12 for the evidence)
+
+Three LLM roles with different constraints, each choice validated
+empirically on the 62-probe persona suite:
+
+- DREAM — offline consolidation. Run the STRONGEST model
+  affordable: substrate quality converts directly into judge
+  headroom (v12), and latency is irrelevant. Measured: Opus dream
+  produced the store on which even a 31B judge scored
+  near-ceiling. High reasoning effort on cerebras gpt-oss is NOT a
+  substitute (runaway reasoning, empty output — v9).
+- EXTRACT + JUDGE — the hot path (per-keystroke cadence). A cheap
+  fast model (gemma-tier on cerebras) suffices OVER A CLEAN STORE:
+  57/62 vs the 58/62 Opus ceiling (v12), and it errs toward
+  SILENCE — the cheap error direction. Judge capability only
+  looked like the bottleneck (v11) while the store was flawed; the
+  50-51 plateau was the joint product of mid store x mid judge.
+- ESCALATE-ON-FLAG — any FLAG verdict from the cheap judge is
+  confirmed by a strong model asynchronously before the cue
+  renders. Flags are rare, so cost is marginal; silence stays
+  cheap; the wrong-flag class (the expensive error) gets a second
+  gate.
+
+Model-proof structure still required regardless of tier (survived
+the Opus ceiling test): cited-claim validation + same-name channel
+narrowing, the AMENDS relation for carve-outs, scope-preserving
+supersession, store-write span validation.
+
+## Recording model and UX — when does text become a claim?
+
+The two halves of the loop read the user's text at DIFFERENT
+moments, and that split is the UX:
+
+- TYPING feeds the CHECK, never the store. The draft buffer is the
+  candidate; the live path runs debounced against the catalog so
+  the cue lands BEFORE send — "you're about to contradict
+  yourself" is only useful pre-send. Nothing typed is recorded.
+- SUBMIT (Enter / send) is the commit point — the only moment text
+  enters the raw stream. "Commitment requires commitment": you
+  promised when you SAID it, not when you typed-and-deleted it.
+  The abandoned-draft stream stays a local event log (the
+  drafted-but-never-sent cue's data); it never becomes a claim.
+- Summary: CHECK-BEFORE-SEND, COLLECT-AFTER-SEND. Same text, two
+  roles, one keystroke apart.
+
+Submit detection is per-host: CC/OC/shell adapters have a real
+submit event; chrome approximates (buffer emptied not-by-backspace
+after Enter/send-click). Precision-first applies to collection:
+if the host is not sure the text was SENT, it does not collect —
+a missed claim is cheap, a phantom commitment is not.
+
+ACCIDENTAL ENTRIES, by case:
+
+1. Accidentally SENT (wrong chat, sent too soon): the recipient
+   read it, so socially it IS a commitment — collecting is
+   correct. Unsend events would ideally emit a WITHDRAWN
+   retraction, but hosts mostly can't observe unsend; v1's answer
+   is curation.
+2. NOT-A-COMMITMENT text (jokes, sarcasm, quoting someone else):
+   the dream extraction gate + firmness absorb most; what slips
+   through surfaces at flag time — every cue NAMES the stored
+   claim, so a junk claim is visible the moment it ever matters,
+   and dismissal sends it dormant permanently.
+3. NOT-YOUR-WORDS text (paste, forward): hosts distinguish typed
+   from pasted insertions; pasted blocks are skippable at collect.
+4. STORED BUT SHOULDN'T BE: the store is a user-visible, editable
+   file (IDENTITY.md posture), plus a retraction verb in the
+   system's own idiom — "forget that _" / "that was a joke _" as
+   a blank that strikes the claim.
+
+VISIBLE SURFACE: collect adds ZERO new pixels. Recording is
+silent; the only surfaces are the existing cue channel on a
+collision, the claims file, and the retraction blank. Any visible
+recording affordance (indicator, counter) is a new UI element and
+goes through the ask-before-new-UI rule first.
+
 ## Prototype findings (first-person, 30 Jul 2026)
 
 Built and used in isolation the same day: three ~50-line Node
