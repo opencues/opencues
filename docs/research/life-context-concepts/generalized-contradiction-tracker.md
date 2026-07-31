@@ -173,6 +173,16 @@ after Enter/send-click). Precision-first applies to collection:
 if the host is not sure the text was SENT, it does not collect —
 a missed claim is cheap, a phantom commitment is not.
 
+DRAFT-STATELESSNESS INVARIANT (pinned): the check path sees text
+the recorder is forbidden to keep — that asymmetry IS the privacy
+split, and it only holds if the check path is genuinely stateless
+about drafts. No caching, logging, or retention of unsent text
+beyond the live debounce window, anywhere in the check pipeline
+(including any escalate-on-flag confirm call, whose candidate text
+dies with the verdict). If a future optimisation wants to remember
+drafts (negative caching, retry queues, telemetry), it violates
+this invariant and must be redesigned or dropped.
+
 ACCIDENTAL ENTRIES, by case:
 
 1. Accidentally SENT (wrong chat, sent too soon): the recipient
@@ -945,6 +955,9 @@ last misses.
 - Catalog injection must be prefix-cache-stable: session-level
   refresh, stable ordering.
 - The store is user-visible and user-curable, like IDENTITY.md.
+- Draft statelessness: the check path retains no unsent text beyond
+  the live debounce window — checking may SEE drafts, recording may
+  not KEEP them, and no optimisation gets to blur that line.
 - First-person stance changes supersede by default; conflict
   markers are for unreconciled facts, and the live check never
   flags against a claim with an open conflict marker.
