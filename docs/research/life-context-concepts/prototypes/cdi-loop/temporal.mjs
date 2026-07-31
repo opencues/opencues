@@ -6,33 +6,72 @@
 // single-day entries with unknown part of day collide with nothing
 // sub-day (unknown x anything-not-ALL -> no collision).
 
+const partOf = (tok) => {
+  if (tok === 'AM' || tok === 'PM' || tok === 'EVE') return tok;
+  if (!tok) return 'UNKNOWN';
+  const h = Number(tok.slice(0, 2));
+  return h < 12 ? 'AM' : h < 17 ? 'PM' : 'EVE';
+};
+const WDNAME = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+const weekdayOf = (iso) => new Date(iso + 'T00:00:00Z').getUTCDay();
+
 export function parseWhen(str) {
   if (!str) return null;
+  // Recurring pattern: "WEEKLY:mon,wed 18:00" | "WEEKLY:daily eve"
+  const wk = str.match(/^WEEKLY:([a-z,]+)(?:\s+(AM|PM|EVE|\d{2}:\d{2}))?$/i);
+  if (wk) {
+    const days = wk[1].toLowerCase() === 'daily'
+      ? new Set([0, 1, 2, 3, 4, 5, 6])
+      : new Set(wk[1].toLowerCase().split(',').map(d => WDNAME[d]).filter(d => d !== undefined));
+    return days.size ? { weekly: days, part: partOf(wk[2]) } : null;
+  }
   const range = str.match(/^(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2})$/);
   if (range) return { start: range[1], end: range[2], part: 'ALL' };
   const m = str.match(/^(\d{4}-\d{2}-\d{2})(?:\s+(AM|PM|EVE|\d{2}:\d{2}))?$/);
   if (!m) return null;
-  let part = 'UNKNOWN';
-  if (m[2] === 'AM' || m[2] === 'PM' || m[2] === 'EVE') part = m[2];
-  else if (m[2]) {
-    const h = Number(m[2].slice(0, 2));
-    part = h < 12 ? 'AM' : h < 17 ? 'PM' : 'EVE';
-  }
-  return { start: m[1], end: m[1], part };
+  return { start: m[1], end: m[1], part: partOf(m[2]) };
+}
+
+const partsCollide = (a, b) => {
+  if (a === 'ALL' || b === 'ALL') return true;
+  if (a === 'UNKNOWN' || b === 'UNKNOWN') return false;
+  return a === b;
+};
+// Does a dated entry hit any occurrence of a weekly pattern?
+function datedHitsWeekly(dated, weekly) {
+  const days = spanDays(dated);
+  if (days === null) return true; // span ≥ 7 days covers every weekday
+  return days.some(d => weekly.weekly.has(weekdayOf(d)));
+}
+function spanDays(w) {
+  const out = [];
+  let d = new Date(w.start + 'T00:00:00Z');
+  const end = new Date(w.end + 'T00:00:00Z');
+  if ((end - d) / 86400000 >= 7) return null;
+  for (; d <= end; d = new Date(d.getTime() + 86400000)) out.push(d.toISOString().slice(0, 10));
+  return out;
 }
 
 export function overlaps(a, b) {
   if (!a || !b) return false;
+  if (a.weekly && b.weekly) {
+    if (![...a.weekly].some(d => b.weekly.has(d))) return false;
+    return partsCollide(a.part, b.part);
+  }
+  if (a.weekly || b.weekly) {
+    const [wk, dated] = a.weekly ? [a, b] : [b, a];
+    if (!datedHitsWeekly(dated, wk)) return false;
+    return partsCollide(wk.part, dated.part);
+  }
   if (a.start > b.end || b.start > a.end) return false; // ISO strings compare
-  if (a.part === 'ALL' || b.part === 'ALL') return true;
-  if (a.part === 'UNKNOWN' || b.part === 'UNKNOWN') return false;
-  return a.part === b.part;
+  return partsCollide(a.part, b.part);
 }
 
 // Open commitments whose whole window is before `now` (date compare).
+// Weekly patterns never go overdue.
 export function isOverdue(when, nowIso) {
   const w = parseWhen(when);
-  return !!w && w.end < nowIso.slice(0, 10);
+  return !!w && !w.weekly && w.end < nowIso.slice(0, 10);
 }
 
 // ── Deterministic deixis ──────────────────────────────────────────
@@ -87,6 +126,18 @@ export function resolveWhenRef(ref, tsIso) {
   if (!ref || !tsIso) return null;
   const base = new Date(tsIso.slice(0, 10) + 'T00:00:00Z');
   ref = String(ref).trim().toLowerCase();
+  // Recurring: "weekly mon,wed 18:00" | "daily [part]" — a pattern,
+  // not a date; no resolution against the timestamp needed.
+  const wk = ref.match(/^(?:every|weekly)\s+([a-z, +]+?)(\s+(?:am|pm|eve|\d{1,2}:\d{2}))?$/)
+    ?? (ref.match(/^daily(\s+(?:am|pm|eve|\d{1,2}:\d{2}))?$/) ? ['', 'daily', ref.match(/^daily(.*)$/)[1]] : null);
+  if (wk) {
+    const days = wk[1].trim() === 'daily' ? 'daily'
+      : wk[1].split(/[,+]/).map(s => s.trim()).filter(s => WDNAME[s] !== undefined).join(',');
+    if (!days) return null;
+    const part = (wk[2] ?? '').trim();
+    const suffix = !part ? '' : part === 'am' ? ' AM' : part === 'pm' ? ' PM' : part === 'eve' ? ' EVE' : ' ' + part.padStart(5, '0');
+    return `WEEKLY:${days}${suffix}`;
+  }
   if (ref === 'this month') {
     const end = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0));
     return `${fmt(base)}/${fmt(end)}`;
@@ -122,10 +173,15 @@ export function resolveWhenRef(ref, tsIso) {
 // commitment is not a place the user is supposed to BE right now.
 export function containsPoint(when, nowIso) {
   const w = parseWhen(when);
-  if (!w || w.start !== w.end || w.part === 'ALL' || w.part === 'UNKNOWN') return false;
-  const date = nowIso.slice(0, 10);
-  if (date !== w.start) return false;
+  if (!w) return false;
   const h = Number(nowIso.slice(11, 13));
-  const part = h < 12 ? 'AM' : h < 17 ? 'PM' : 'EVE';
-  return part === w.part;
+  const nowPart = h < 12 ? 'AM' : h < 17 ? 'PM' : 'EVE';
+  if (w.weekly) {
+    // A recurring slot with a known part counts (weekly class, shift).
+    if (w.part === 'ALL' || w.part === 'UNKNOWN') return false;
+    return w.weekly.has(weekdayOf(nowIso.slice(0, 10))) && w.part === nowPart;
+  }
+  if (w.start !== w.end || w.part === 'ALL' || w.part === 'UNKNOWN') return false;
+  if (nowIso.slice(0, 10) !== w.start) return false;
+  return nowPart === w.part;
 }

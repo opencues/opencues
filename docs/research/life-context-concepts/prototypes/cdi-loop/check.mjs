@@ -35,8 +35,13 @@ relative vocabulary (never compute dates yourself): a day is "today" |
 the month: "the 12th" -> "day 12") | "YYYY-MM-DD" (only if the text
 states a full date); append " am" | " pm" | " eve" | " HH:MM" (24h)
 when the part of day is known. A span is "<day> .. <day>",
-"until <day>", "from <day>", or "this month". Use null if the
-utterance references no specific time. s is true only if the utterance commits the writer
+"until <day>", "from <day>", or "this month". A recurring schedule
+is "weekly <days> [part]" (e.g. "weekly mon,wed 18:00") or
+"daily [part]". An all-day single-day event is "<day> .. <day>"
+(same day both sides). INFER the part of day from event words when clear:
+night/dinner/evening -> eve, lunch/afternoon -> pm,
+breakfast/morning -> am. Use null if the utterance references no
+specific time. s is true only if the utterance commits the writer
 (or their family) to BE somewhere or be occupied AT that time (an
 appointment, a visit, an outing, presence); s is false when the time
 is merely a deadline or window to do a task within ("this week",

@@ -58,7 +58,7 @@
    "to": "colleague-Ravi",
    "via": "email",
    "expect": "FLAG",
-   "claim": "Vienna",
+   "claim": "Vienna|supervision",
    "note": "promising cover while abroad"
   },
   {

@@ -49,11 +49,20 @@ recipient, "via": the channel). Use it; never guess it.
   done) use "today", "yesterday" or "last <weekday>" — NEVER a bare
   weekday, which always means the coming one.
   A span is "<day> .. <day>", "until <day>", "from <day>" (open
-  ended), or "this month". Examples: "Saturday morning" -> "sat am",
+  ended), or "this month". A RECURRING schedule is "weekly
+  <days> [part]" or "daily [part]" — use it for every-week classes,
+  shifts, rotas, streams, standing meetings: "classes Monday and
+  Wednesday 6pm" -> "weekly mon,wed 18:00", "nights Friday and
+  Saturday" -> "weekly fri,sat eve", "metformin with breakfast every
+  day" -> "daily am". Examples: "Saturday morning" -> "sat am",
   "Thursday 6pm" -> "thu 18:00", "the 10th to the 17th" ->
   "day 10 .. day 17", "no X until the 14th" -> "until day 14",
-  "cleared from the 10th" -> "from day 10". The claim text stays
-  verbatim. Past-fact claims created on fulfillment use whenRef
+  "cleared from the 10th" -> "from day 10". An ALL-DAY single-day
+  event uses "<day> .. <day>" (same day both sides): "coach trip all
+  day on the 19th" -> "day 19 .. day 19". INFER the part of day
+  from event words when clear: night/dinner/evening events -> eve,
+  lunch/afternoon -> pm, breakfast/morning -> am ("quiz night on the
+  14th" -> "day 14 eve"). The claim text stays verbatim. Past-fact claims created on fulfillment use whenRef
   "today" (relative to the fulfilling utterance), never words like
   "just now". Do not emit a "when" field yourself; existing claims'
   "when" fields are kept as they are.
