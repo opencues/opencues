@@ -966,9 +966,24 @@ DREAM/JUDGE CONFIG COMPARISON on an 8-scenario subset (family,
 cafe, single-dad, nurse, slimming-club, landlord, streamer,
 retiree — recurring-heavy by design):
 
-  sonnet dream + sonnet check   69/76 (91%)
-  opus dream + opus check       66/76 (87%)
-  opus dream + gemma check      63/76 (83%)
+  sonnet dream + sonnet check             69/76 (91%)
+  sonnet+MEDIUM-THINKING dream + gemma    67/76 (88%)
+  opus dream + opus check                 66/76 (87%)
+  opus dream + gemma check                63/76 (83%)
+
+ADDENDUM — thinking on the dream (same day): wired adaptive
+extended thinking into the Anthropic path (Claude 5 family:
+thinking.type=adaptive + output_config.effort; token-budget form is
+rejected; thinking cannot starve output the way cerebras
+reasoning_effort did in v9). Sonnet dream at MEDIUM effort with the
+UNCHANGED gemma judge scored 67/76 — +4 over plain opus dream with
+the same judge (pure substrate effect, judge held constant), ABOVE
+opus-both, and within 2 points of full sonnet-both while keeping
+the hot path on the cheapest model. The v12 law strengthens:
+substrate quality converts into judge headroom, and deliberation on
+the offline consolidation pass is the cheapest place to buy it.
+Production shape, updated: thinking-tier dream (offline, latency
+free) + gemma-tier hot judge + escalate-on-flag.
 
 Two refinements over v12: (1) sonnet-both EDGES opus-both on the
 richer suite (within noise, but the ordering held) — the

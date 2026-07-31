@@ -5,8 +5,10 @@
 const KEY = process.env.CEREBRAS_API_KEY;
 if (!KEY) { console.error('CEREBRAS_API_KEY not set'); process.exit(1); }
 
-async function anthropicChat(system, user, { model }) {
-  // No temperature: deprecated on Claude 5-family models.
+async function anthropicChat(system, user, { model, reasoningEffort }) {
+  // No temperature: deprecated on Claude 5-family models. Thinking on
+  // the Claude 5 family is adaptive: thinking.type=adaptive plus
+  // output_config.effort (low|medium|high) — no token budgets.
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -17,6 +19,10 @@ async function anthropicChat(system, user, { model }) {
     body: JSON.stringify({
       model, system,
       max_tokens: Number(process.env.CDI_MAX_TOKENS ?? 20000),
+      ...(reasoningEffort && {
+        thinking: { type: 'adaptive' },
+        output_config: { effort: reasoningEffort },
+      }),
       messages: [{ role: 'user', content: user }],
     }),
   });
@@ -32,7 +38,7 @@ export async function chat(system, user, { model = 'gpt-oss-120b', temperature =
   for (let attempt = 0; attempt < 4; attempt++) {
     if (attempt) await new Promise(r => setTimeout(r, 2000 * attempt));
     try {
-      if (model.startsWith('claude')) return await anthropicChat(system, user, { model });
+      if (model.startsWith('claude')) return await anthropicChat(system, user, { model, reasoningEffort });
       const res = await fetch('https://api.cerebras.ai/v1/chat/completions', {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${KEY}` },
