@@ -688,6 +688,54 @@ no dream model can touch. Dream-model choice buys substrate
 correctness; the remaining points live in candidate-set narrowing
 and validation in front of the judge.
 
+### v10: Sonnet as the dream model (31 Jul 2026)
+
+Added an Anthropic path to the llm helper (claude-* models route to
+the Messages API; note temperature is deprecated on the Claude
+5-family and must be omitted) and ran the suite with
+CDI_DREAM_MODEL=claude-sonnet-5, check/extract still on cerebras
+gpt-oss.
+
+Score: 51/62 — the FOURTH distinct dream configuration to land in
+the 50-51 band (gpt-oss default x2, gemma, sonnet), each with a
+different failure distribution underneath. Freelancer hit its best
+ever (11/13; the gym-Sam identity-bleed wrong flags did not fire),
+cafe dropped to 8 on judge-side wrong flags (hedged revisions,
+delegation claims). The plateau is now definitive.
+
+The STORE, though, is the best of the three dream models:
+
+- "keto until COMP WEEK" -> 2026-08-07/2026-08-29 — Sonnet
+  resolved the anchor from ANOTHER claim's comp date, and split a
+  separate carb-loading policy from the 29th. The
+  anchored-references design gap, partially closed by model
+  quality alone (gemma approximated month-end; gpt-oss emitted
+  null).
+- The fulfillment fact was rewritten to a proper past-tense claim
+  ("spotted Jake Wednesday 6am, good session") with the correct
+  PAST date — the only dream model to do the normalization the
+  prompt asks for.
+- Cleanest claim splitting (rebrand vs kickoff separated, the slot
+  on the right one); diet month-span correct; pending supersession
+  + inherited 10:00 reproduced.
+- Still broken even on Sonnet: the cheat-day carve-out superseded
+  the whole diet, and the restriction supersession still replaces
+  rather than shortens (bench-on-the-9th missed again). All three
+  models make the same scope mistakes — final confirmation that
+  supersession SCOPE is a state-machine design gap, not a model
+  capability gap.
+
+Dream-model scoreboard (same suite, check pinned): gpt-oss default
+50-51, store errors in spans + past-dates; gpt-oss high effort
+UNUSABLE (runaway reasoning, empty content); gemma-4-31b 51,
+spans + past-dates fixed; claude-sonnet-5 51, best store, anchored
+refs + past-tense normalization, cost fine because dream is
+offline. Recommendation shape for a real implementation: dream on
+the strongest affordable model (it buys substrate correctness and
+even absorbs design gaps), check on the hot-path tier, and accept
+that the next SCORE points come only from candidate-set narrowing,
+cited-claim validation, and scope-preserving supersession.
+
 ### Net read
 
 The generalized loop works better out of the box than the concept
