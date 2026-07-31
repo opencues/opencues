@@ -55,6 +55,7 @@ for (const step of scen.steps) {
   if (step.probe) { block.push(step); continue; }
   await flush();
   if (step.collect) await node('collect.mjs', [step.collect, ...ctxArgs(step)]);
+  else if (step.dismiss) console.log('  ' + (await node('dismiss.mjs', [step.dismiss, ...(step.forever ? ['--forever'] : []), ...(step.ts ? ['--ts', step.ts] : [])])).trim());
   else if (step.dream) console.log((await node('dream.mjs', [])).trim().split('\n')[0]);
 }
 await flush();

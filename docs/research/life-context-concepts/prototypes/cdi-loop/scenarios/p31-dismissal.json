@@ -1,0 +1,101 @@
+{
+ "name": "p31-dismissal",
+ "persona": "Dismissal lifecycle: episode mute (24h snooze, claim survives), forever kill (forget-that verb), claim-scoped isolation, policy revival next day.",
+ "steps": [
+  {
+   "collect": "no fizzy drinks for me this month, cutting sugar",
+   "ts": "2026-08-03T09:00:00Z",
+   "to": "Kay",
+   "via": "whatsapp"
+  },
+  {
+   "collect": "I'll fix your dripping tap by Friday",
+   "ts": "2026-08-03T09:05:00Z",
+   "to": "tenant-Ana",
+   "via": "email"
+  },
+  {
+   "collect": "gym Thursday 6pm with Ollie",
+   "ts": "2026-08-03T09:10:00Z",
+   "to": "Kay",
+   "via": "whatsapp"
+  },
+  {
+   "dream": true
+  },
+  {
+   "probe": "grab me a coke at lunch?",
+   "ts": "2026-08-04T10:00:00Z",
+   "to": "Kay",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "fizzy",
+   "note": "policy live"
+  },
+  {
+   "dismiss": "fizzy",
+   "ts": "2026-08-04T10:05:00Z"
+  },
+  {
+   "probe": "cherry coke with the meal deal then",
+   "ts": "2026-08-04T12:00:00Z",
+   "to": "Kay",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "episode-muted — no re-nag same day"
+  },
+  {
+   "probe": "cinema Thursday 6pm?",
+   "ts": "2026-08-04T12:05:00Z",
+   "to": "Kay",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "gym",
+   "note": "dismissal must not blind OTHER claims"
+  },
+  {
+   "probe": "fancy a coke float tomorrow?",
+   "ts": "2026-08-05T12:00:00Z",
+   "to": "Kay",
+   "via": "whatsapp",
+   "expect": "FLAG",
+   "claim": "fizzy",
+   "note": "episode expired — policy revives next day"
+  },
+  {
+   "dismiss": "fizzy",
+   "ts": "2026-08-05T12:05:00Z",
+   "forever": true
+  },
+  {
+   "probe": "big bottle of fanta for movie night",
+   "ts": "2026-08-07T18:00:00Z",
+   "to": "Kay",
+   "via": "whatsapp",
+   "expect": "SILENCE",
+   "note": "claim dismissed forever — dormant (Friday, no gym)"
+  },
+  {
+   "probe": "the tap will have to wait till next month I'm afraid",
+   "ts": "2026-08-06T18:05:00Z",
+   "to": "tenant-Ana",
+   "via": "email",
+   "expect": "FLAG",
+   "claim": "tap|Friday",
+   "note": "broken promise still flags — unrelated claim alive"
+  },
+  {
+   "dismiss": "tap",
+   "ts": "2026-08-06T18:10:00Z",
+   "forever": true
+  },
+  {
+   "probe": "honestly the tap's staying broken, sorry",
+   "ts": "2026-08-07T09:00:00Z",
+   "to": "tenant-Ana",
+   "via": "email",
+   "expect": "SILENCE",
+   "note": "commitment retired by forever-dismiss"
+  }
+ ]
+}

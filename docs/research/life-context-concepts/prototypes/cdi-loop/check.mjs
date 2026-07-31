@@ -17,6 +17,11 @@ const store = JSON.parse(fs.readFileSync(S('claims.json'), 'utf8'));
 const conflicted = new Set(store.flatMap(c => c.conflict ? [c.id, c.conflict] : []));
 // Pending proposals are live context: they enter the catalog (marked),
 // collide temporally, and count for typing-now — but never go overdue.
+// Episode-dismissed claims are muted until their window expires (a
+// dismissal snoozes the nag, never kills the claim); dormant claims
+// (dismissed forever) are excluded by status like any closed claim.
+const dFile = S('dismissals.json');
+const dismissals = fs.existsSync(dFile) ? JSON.parse(fs.readFileSync(dFile, 'utf8')) : [];
 const open = store.filter(c => (c.status === 'open' || c.status === 'pending') && !conflicted.has(c.id));
 const args = process.argv.slice(2);
 const take = (flag) => { const i = args.indexOf(flag); return i >= 0 ? args.splice(i, 2)[1] : undefined; };
@@ -25,6 +30,8 @@ const via = take('--via');
 const now = take('--ts') ?? new Date().toISOString();
 const candidate = args.join(' ');
 if (!candidate) { console.error('usage: check.mjs "<text>" [--to who] [--via channel] [--ts iso]'); process.exit(1); }
+const muted = new Set(dismissals.filter(d => now < d.until).map(d => d.claimId));
+const catalog = open.filter(c => !muted.has(c.id));
 
 // ── 1. EXTRACT the candidate's time reference (small, fast call).
 // The model emits a RELATIVE reference; it never computes dates.
@@ -59,14 +66,14 @@ const kindOf = (c) => c.whenKind ?? 'slot';
 const candWhenAny = parseWhen(resolveWhenRef(ext.whenRef, now));
 const candWhen = ext.slot ? candWhenAny : null;
 const collisions = candWhen
-  ? open.filter(c => c.when && kindOf(c) === 'slot' && overlaps(candWhen, parseWhen(c.when)))
+  ? catalog.filter(c => c.when && kindOf(c) === 'slot' && overlaps(candWhen, parseWhen(c.when)))
   : [];
 const policyRef = candWhenAny ?? parseWhen(now.slice(0, 10));
-const policies = open.filter(c => c.when && kindOf(c) === 'policy' && overlaps(policyRef, parseWhen(c.when)));
-const overdue = open.filter(c => c.status === 'open' && c.type === 'commitment' && c.when && kindOf(c) !== 'policy' && isOverdue(c.when, now));
+const policies = catalog.filter(c => c.when && kindOf(c) === 'policy' && overlaps(policyRef, parseWhen(c.when)));
+const overdue = catalog.filter(c => c.status === 'open' && c.type === 'commitment' && c.when && kindOf(c) !== 'policy' && isOverdue(c.when, now));
 // Slot-like commitments the user is typing DURING (focus/double-life).
 // Pending excluded: an unaccepted meeting may not be happening.
-const activeNow = open.filter(c => c.status === 'open' && c.when && kindOf(c) === 'slot' && containsPoint(c.when, now));
+const activeNow = catalog.filter(c => c.status === 'open' && c.when && kindOf(c) === 'slot' && containsPoint(c.when, now));
 if (process.env.CDI_DEBUG) console.error(`[debug] ext=${JSON.stringify(ext)} collisions=[${collisions.map(c => '#' + c.id)}] policies=[${policies.map(c => '#' + c.id)}] activeNow=[${activeNow.map(c => '#' + c.id)}]`);
 
 // ── 3. JUDGE — catalog in the SYSTEM message (stable prefix); candidate
@@ -149,7 +156,7 @@ Output ONLY JSON:
    "why":"<one short sentence>"}
 
 CLAIMS CATALOG:
-${open.map(c => {
+${catalog.map(c => {
   const ctx = [c.to && `to ${c.to}`, c.about && `about ${c.about}`, c.when && `when ${c.when}`].filter(Boolean).join(', ');
   return `#${c.id} (${c.type}/${c.firmness}, ${c.source_ts}${ctx ? ' | ' + ctx : ''})${c.status === 'pending' ? ' [PENDING PROPOSAL]' : ''} ${c.claim}`;
 }).join('\n')}`;

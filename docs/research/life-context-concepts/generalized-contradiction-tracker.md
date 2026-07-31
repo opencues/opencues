@@ -208,6 +208,40 @@ collision, the claims file, and the retraction blank. Any visible
 recording affordance (indicator, counter) is a new UI element and
 goes through the ask-before-new-UI rule first.
 
+## Dismissal — two grains, both on existing verbs
+
+The user's response to a flag needs the same rigor as the flag (the
+guilt-engine risk lives here). Two grains, implemented and pinned by
+scenario p31 (7/7 on the production config):
+
+- TAP-DISMISS (the in-note shortcut) = EPISODE MUTE. One keystroke
+  while the flag-cue is visible mutes THIS claim's collisions for
+  24h. The claim survives: dismissing tonight's pizza nag never
+  kills the diet. The fire-once ledger rule, made interactive.
+- "forget that _" = CLAIM KILL. The typed blank retires the claim
+  permanently (dormant). Deliberately one gesture more effortful
+  than the snooze — killing a claim should cost more than muting a
+  nag, or a hurried dismiss silently blinds the tracker.
+
+Pinned properties (each one a probe in p31): dismissal is
+CLAIM-SCOPED (muting the diet doesn't blind the gym double-book);
+episode mutes EXPIRE (the policy revives next day); forever-dismiss
+is permanent across all future collisions; unrelated claims are
+untouched throughout. Dismissals are also SIGNAL — dismissing a
+diet flag on a declared cheat day is evidence for an AMENDS the
+dream pass can consume (not yet implemented). Mechanism: a
+dismissals.json alongside the store (episode entries with an until
+timestamp, filtered out of the check catalog while live) plus
+status: dormant for kills; runner supports {"dismiss": <regex>,
+"forever"?: true} steps. UI note: in TUI hosts the shortcut rides
+the existing cue-gesture channel and the note already names the
+claim — zero new pixels; anything clickable is new UI and needs
+sign-off first. A bonus validation from authoring the scenario: a
+mistimed probe ("fanta for movie night" placed on gym night) drew a
+flag that looked like a dismissal failure and was actually a REAL
+collision correctly caught — the machinery outperformed its own
+test.
+
 ## Prototype findings (first-person, 30 Jul 2026)
 
 Built and used in isolation the same day: three ~50-line Node
