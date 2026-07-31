@@ -815,6 +815,45 @@ state machine, vindicated from the other direction — the two-tier
 synthesis stands, and the dream prompt should encode those
 transitions explicitly rather than hoping the model infers them.
 
+### v12: the production shape — Opus dream + gemma judge (31 Jul 2026)
+
+The architecture Wilfred proposed, measured: CDI_DREAM_MODEL=
+claude-opus-4-8 (offline pass), CDI_CHECK_MODEL=gemma-4-31b (both
+hot-path calls).
+
+RESULT: 57/62 (92%) — ONE point below the Opus-everywhere ceiling
+(58), six above the gpt-oss plateau (50-51), at cerebras hot-path
+speed. freelancer 13/13 (first perfect run on that persona — no
+identity bleed, stale-plan passed), family 14/15, cafe 11/12,
+gym-rat 10/12, gym-lazy 9/10.
+
+This REFINES the v11 conclusion. v11 said the plateau was
+substantially judge capability; v12 shows judge capability barely
+matters WHEN THE STORE IS CLEAN: over the same Opus-dreamed
+substrate, a 31B judge scores 57 vs the frontier judge's 58. The
+plateau was the JOINT product of a flawed store and a mid judge —
+fix the store (strong offline dream) and the cheap judge nearly
+matches the ceiling. Substrate quality converts directly into
+judge headroom.
+
+The failure PROFILE is as important as the score: four misses and
+only ONE wrong flag (gemma misread the from-the-10th clearance as
+a restriction — the scope-machinery class again). A cheap judge
+over a clean store errs toward SILENCE, which is the cheap error
+direction by the engine's own precision rule. And under
+escalate-on-flag, the one wrong flag is exactly what the strong
+confirm gate would have killed; the misses (Dave withdrawal =
+contested UX; Keisha revocation, skipping-legs, bench-Sunday =
+softness + the scope gap) are the true residual cost.
+
+Production recommendation, final form: STRONG OFFLINE DREAM (best
+model affordable — it converts to judge headroom), CHEAP HOT
+JUDGE (gemma-tier; errs silent), ESCALATE-ON-FLAG (strong model
+confirms rare flags before rendering), plus the model-proof
+structural list (cited-claim validation, identity narrowing,
+AMENDS, scope-preserving supersession) which is what closes the
+last misses.
+
 ## Rules extracted
 
 - Collect on submit, never on draft — same discipline as the
