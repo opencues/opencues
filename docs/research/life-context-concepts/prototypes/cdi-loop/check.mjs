@@ -174,7 +174,10 @@ TYPING-NOW (user is typing during these committed slots): ${activeNow.length
 
 const out = parseJson(await chat(SYSTEM, userMsg, { model: CHECK_MODEL }));
 if (out.verdict === 'FLAG') {
-  console.log(`FLAG  #${out.claim_id}: "${out.quote}"\n      why: ${out.why}`);
+  // The note carries its own dismiss indication: the action lives ON
+  // the note (single gesture = episode mute, double = forget), never
+  // in the message buffer.
+  console.log(`FLAG  #${out.claim_id}: "${out.quote}"\n      why: ${out.why}\n      [↓ dismiss today · ↓↓ forget]  (sim: dismiss.mjs ${out.claim_id}${''} | --forever)`);
 } else {
   console.log('SILENCE');
 }

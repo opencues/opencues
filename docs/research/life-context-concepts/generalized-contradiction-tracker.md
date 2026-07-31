@@ -218,10 +218,24 @@ scenario p31 (7/7 on the production config):
   while the flag-cue is visible mutes THIS claim's collisions for
   24h. The claim survives: dismissing tonight's pizza nag never
   kills the diet. The fire-once ledger rule, made interactive.
-- "forget that _" = CLAIM KILL. The typed blank retires the claim
-  permanently (dormant). Deliberately one gesture more effortful
-  than the snooze — killing a claim should cost more than muting a
-  nag, or a hurried dismiss silently blinds the tracker.
+- DOUBLE-GESTURE ON THE NOTE = CLAIM KILL (forget). Retires the
+  claim permanently (dormant). Deliberately one gesture more
+  effortful than the snooze — killing a claim should cost more than
+  muting a nag, or a hurried dismiss silently blinds the tracker.
+  (A typed "forget that _" blank was considered and REJECTED: it
+  has to be typed into the message DRAFT — the wrong channel; it
+  pollutes an outgoing message with a meta-command and the keyword
+  collides with natural prose. The flag's context is the note, so
+  BOTH grains live on the note.)
+
+THE NOTE CARRIES ITS OWN INDICATION. The flag renders with the
+dismiss affordance inline, discoverable at the moment it matters:
+
+    ⚠ you said you'd fix the tap by Friday
+      [↓ dismiss today · ↓↓ forget]
+
+This is cue TEXT on the existing cue surface — no new UI elements;
+styling beyond text goes through the ask-before-new-UI rule.
 
 Pinned properties (each one a probe in p31): dismissal is
 CLAIM-SCOPED (muting the diet doesn't blind the gym double-book);
