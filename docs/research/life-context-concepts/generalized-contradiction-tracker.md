@@ -985,6 +985,19 @@ the offline consolidation pass is the cheapest place to buy it.
 Production shape, updated: thinking-tier dream (offline, latency
 free) + gemma-tier hot judge + escalate-on-flag.
 
+FULL-SUITE CONFIRMATION: the production config (sonnet medium-
+thinking dream + gemma check) ran all 35 scenarios: 271/304
+(89.1%) vs sonnet-both's 275/304 (90.4%) — four probes behind the
+all-frontier configuration at cerebras hot-path speed. Three
+personas hit their first-ever perfect scores ON THE CHEAP JUDGE
+(co-parent's custody-swap supersession, marathon's taper +
+same-day pacing, side-hustler), and the health cluster ran 36/40.
+The residual gemma-judge failure profile is exactly the
+escalate-on-flag shape: soft misses on stale-plan/already-done
+plus two over-flags on semantic nuance (beer traps read as
+chemicals; a rota restatement flagged against a delegation that
+only covered the away-span — delegation SCOPE, a new small class).
+
 Two refinements over v12: (1) sonnet-both EDGES opus-both on the
 richer suite (within noise, but the ordering held) — the
 subscription-tier model is not a compromise as the judge; (2) the
