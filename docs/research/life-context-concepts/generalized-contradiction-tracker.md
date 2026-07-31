@@ -901,6 +901,85 @@ state machine, vindicated from the other direction — the two-tier
 synthesis stands, and the dream prompt should encode those
 transitions explicitly rather than hoping the model infers them.
 
+### v13: the 35-persona suite — scale-up two, overnight run (31 Jul 2026)
+
+Commissioned overnight: 30 NEW persona scenarios across six
+lifestyle clusters (parenting, work, health, community, household,
+modern — new mum, single dad, expecting dad, co-parent, PTA mum,
+founder, EA, chef, nurse, driving instructor, marathoner, diabetic,
+yoga teacher, slimming club, physio patient, best man, church
+volunteer, book club, band, am-dram, mover, landlord, dog owner,
+allotment, carer, streamer, side-hustler, travel blogger, PhD
+student, retiree), ~8 probes each. Suite: 5 -> 35 scenarios,
+62 -> 304 probes. Runner gained a shell driver (run-suite.sh) for
+detached full-suite runs.
+
+FIRST EXPOSURE (sonnet dream + sonnet check): 263/304 (86.5%) —
+originals 60/62 (their best ever), the 30 unseen personas 203/242
+(84%) with zero tuning. Ten new personas perfect first try; the
+two-faced classes (hiring freeze vs offer, no-pets vs pet-fine,
+fully-booked vs walk-ins, sold-out vs list spots) essentially all
+landed.
+
+THE HEADLINE ARCHITECTURAL FINDING — RECURRING SCHEDULES. Real
+lifestyles run on standing patterns ("classes Mon/Wed 6pm",
+"streams Tue/Thu 8", "nights Fri and Sat", "bowls Tue and Thu
+afternoons", "weigh-in every Thursday 6:30") and the when grammar
+had no form for them, so the LARGEST claim class in ordinary life
+silently dropped out of the deterministic layer (~10 of 41
+first-run failures). Machinery added and re-measured:
+
+- WEEKLY patterns: whenRef "weekly <days> [part]" / "daily [part]"
+  -> when "WEEKLY:mon,wed 18:00"; overlaps handles weekly x dated
+  (span >= 7 days hits every weekday; shorter spans check each
+  day) and weekly x weekly; containsPoint fires typing-now on
+  recurring slots; weekly never goes overdue.
+- ALL-DAY single-day events: "<day> .. <day>" (same day both
+  sides) -> part ALL.
+- PART-OF-DAY INFERENCE from event words (quiz NIGHT -> eve,
+  LUNCH -> pm) in both prompts.
+- EXACT-TIME PROXIMITY: when both sides carry HH:MM, collision is
+  a 90-minute window, not a part bucket — a 9:30 clinic no longer
+  collides with an 11:30 meeting, and a 6:30 weigh-in no longer
+  collides with an 8:30 cinema. (The first weekly rollout
+  regressed three scenarios precisely because computed bucket
+  collisions became load-bearing; the window fixed all three.)
+- OBLIGATION DIRECTION: the computed-overlaps instruction now
+  binds both ways — claims on the list DO collide; the judge's
+  only question is person/purpose, and different MUST flag.
+
+POST-TWEAK: the 14 affected scenarios went 88 -> 95/115, then the
+regression-fix rerun took the six worst to 39/48. Best-known suite
+total: 275/304 (90.4%).
+
+NEW RESIDUAL CLASSES the personas surfaced (now on the build
+list): WEEKLY-UNTIL (rehearsals "till the show" must stop
+colliding after the show — anchored end dates on recurring
+patterns); MULTI-PART SHIFTS ("day shift" spans AM+PM; a night
+shift crosses midnight — both unrepresentable); and a bank of
+genuinely CONTESTED probes worth keeping as a calibration set
+(does baking cupcakes violate "no sugar in our house"? does "might
+skip the metformin" flag despite the hedge, given the stakes? does
+a respite-care span read as free time or a booking?).
+
+DREAM/JUDGE CONFIG COMPARISON on an 8-scenario subset (family,
+cafe, single-dad, nurse, slimming-club, landlord, streamer,
+retiree — recurring-heavy by design):
+
+  sonnet dream + sonnet check   69/76 (91%)
+  opus dream + opus check       66/76 (87%)
+  opus dream + gemma check      63/76 (83%)
+
+Two refinements over v12: (1) sonnet-both EDGES opus-both on the
+richer suite (within noise, but the ordering held) — the
+subscription-tier model is not a compromise as the judge; (2) the
+cheap-judge gap WIDENS as scenarios get semantically richer
+(gemma trailed by 8pp here vs 1pt on the polished original
+suite): anchored custody policies, two-faced claims and policy
+nuance need more judge than mechanical slot collision does.
+Escalate-on-flag remains the production answer, with sonnet-tier
+as a strong middle option for the hot judge where affordable.
+
 ### v12: the production shape — Opus dream + gemma judge (31 Jul 2026)
 
 The architecture Wilfred proposed, measured: CDI_DREAM_MODEL=

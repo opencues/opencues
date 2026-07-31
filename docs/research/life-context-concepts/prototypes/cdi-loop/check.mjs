@@ -83,9 +83,12 @@ Flag ONLY on a genuine collision with a specific catalog claim:
   commitment, an incompatible preference or fact.
 - DOUBLE-BOOKING: temporal collision detection has ALREADY been done by
   deterministic date arithmetic — the result is the COMPUTED TEMPORAL
-  OVERLAPS list. NEVER infer date or time collisions yourself; claims
-  absent from that list do NOT collide in time, whatever their dates
-  look like. For claims ON the list, you judge only the non-temporal
+  OVERLAPS list, and it is authoritative in BOTH directions. NEVER
+  infer date or time collisions yourself; claims absent from that list
+  do NOT collide in time, whatever their dates look like. Claims ON
+  the list DO collide in time — do not re-litigate the dates; your
+  only question for a listed claim is same-vs-different person and
+  purpose, and a different person or purpose MUST flag. For claims ON the list, you judge only the non-temporal
   half: a DIFFERENT person or purpose is a double-booking; the SAME
   person and purpose is a restatement, and an explicit reschedule is a
   revision — both SILENCE. An away-span (a trip) on the list collides

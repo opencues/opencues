@@ -12,6 +12,7 @@ const partOf = (tok) => {
   const h = Number(tok.slice(0, 2));
   return h < 12 ? 'AM' : h < 17 ? 'PM' : 'EVE';
 };
+const minsOf = (tok) => /^\d{2}:\d{2}$/.test(tok ?? '') ? Number(tok.slice(0, 2)) * 60 + Number(tok.slice(3)) : null;
 const WDNAME = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
 const weekdayOf = (iso) => new Date(iso + 'T00:00:00Z').getUTCDay();
 
@@ -23,19 +24,23 @@ export function parseWhen(str) {
     const days = wk[1].toLowerCase() === 'daily'
       ? new Set([0, 1, 2, 3, 4, 5, 6])
       : new Set(wk[1].toLowerCase().split(',').map(d => WDNAME[d]).filter(d => d !== undefined));
-    return days.size ? { weekly: days, part: partOf(wk[2]) } : null;
+    return days.size ? { weekly: days, part: partOf(wk[2]), mins: minsOf(wk[2]) } : null;
   }
   const range = str.match(/^(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2})$/);
   if (range) return { start: range[1], end: range[2], part: 'ALL' };
   const m = str.match(/^(\d{4}-\d{2}-\d{2})(?:\s+(AM|PM|EVE|\d{2}:\d{2}))?$/);
   if (!m) return null;
-  return { start: m[1], end: m[1], part: partOf(m[2]) };
+  return { start: m[1], end: m[1], part: partOf(m[2]), mins: minsOf(m[2]) };
 }
 
+// Sub-day collision: when BOTH sides carry an exact time, use a 90-min
+// proximity window (a 9:30 clinic does not collide with an 11:30
+// meeting); part-of-day buckets apply only when a side has no time.
 const partsCollide = (a, b) => {
-  if (a === 'ALL' || b === 'ALL') return true;
-  if (a === 'UNKNOWN' || b === 'UNKNOWN') return false;
-  return a === b;
+  if (a.part === 'ALL' || b.part === 'ALL') return true;
+  if (a.mins != null && b.mins != null) return Math.abs(a.mins - b.mins) <= 90;
+  if (a.part === 'UNKNOWN' || b.part === 'UNKNOWN') return false;
+  return a.part === b.part;
 };
 // Does a dated entry hit any occurrence of a weekly pattern?
 function datedHitsWeekly(dated, weekly) {
@@ -56,15 +61,15 @@ export function overlaps(a, b) {
   if (!a || !b) return false;
   if (a.weekly && b.weekly) {
     if (![...a.weekly].some(d => b.weekly.has(d))) return false;
-    return partsCollide(a.part, b.part);
+    return partsCollide(a, b);
   }
   if (a.weekly || b.weekly) {
     const [wk, dated] = a.weekly ? [a, b] : [b, a];
     if (!datedHitsWeekly(dated, wk)) return false;
-    return partsCollide(wk.part, dated.part);
+    return partsCollide(wk, dated);
   }
   if (a.start > b.end || b.start > a.end) return false; // ISO strings compare
-  return partsCollide(a.part, b.part);
+  return partsCollide(a, b);
 }
 
 // Open commitments whose whole window is before `now` (date compare).

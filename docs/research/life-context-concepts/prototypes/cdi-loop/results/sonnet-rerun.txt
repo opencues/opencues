@@ -1,2 +1,184 @@
 ════ p01-new-mum ════
 dreamed 6 utterances -> store now 6 claims
+  ✓ [want FLAG ~/caffeine/] "fancy a double espresso catch up tomorrow?" → FLAG #2 "I'm off caffeine while breastfeeding, could be months"
+  ✓ [want SILENCE] "decaf oat latte tomorrow?" → SILENCE
+  ✓ [want SILENCE] "actually can we do Saturday instead of Sunday?" → SILENCE
+  ✓ [want FLAG ~/health visitor/] "I can do a quick call Thursday at 10" → FLAG #1 "health visitor is coming Thursday at 10"
+  ✓ [want SILENCE] "I can do a quick call Thursday at 2" → SILENCE
+  ✓ [want SILENCE] "can you grab size-1 nappies on the way home" → SILENCE
+dreamed 3 utterances -> store now 9 claims
+  ✓ [want FLAG ~/sent|list/] "I'll get you that announcement list this weekend" → FLAG #7 "sent the announcement list to Zoe"
+  ✗ [want FLAG ~/naming day|23rd/] "we're free on the 23rd if you want to visit" → SILENCE  (availability assertion vs booked day — known gap class)
+  ✓ [want SILENCE] "see you Sunday afternoon" → SILENCE
+
+p01-new-mum: 8/9
+════ p02-single-dad ════
+dreamed 5 utterances -> store now 5 claims
+  ✗ [want FLAG ~/zoo|Sofia/] "happy to jump on the client call Saturday morning" → SILENCE
+  ✓ [want FLAG ~/drink|Sofia/] "beers Saturday night?" → FLAG #3 "I don't drink when I've got Sofia"
+  ✓ [want SILENCE] "beers next Wednesday?" → SILENCE
+  ✓ [want FLAG ~/paid|sorted/] "I'll sort the school trip money this week" → FLAG #5 "school trip money's paid, all sorted"
+  ✓ [want SILENCE] "do I still owe anything for the trip?" → SILENCE
+dreamed 2 utterances -> store now 7 claims
+  ✓ [want SILENCE] "see you at 7 on Friday" → SILENCE
+  ✓ [want FLAG ~/pick|Sofia|6/] "fifa tonight mate?" → FLAG #1 "I've got Sofia this weekend, picking her up Friday at 6"
+  ✓ [want SILENCE] "just grabbed Sofia, heading home" → SILENCE
+  ✓ [want FLAG ~/sent|report/] "I'll get that report to you by Thursday, promise" → FLAG #7 "I sent the report early"
+
+p02-single-dad: 8/9
+════ p03-expecting-dad ════
+dreamed 5 utterances -> store now 5 claims
+  ✓ [want FLAG ~/antenatal/] "poker at mine Thursday night?" → FLAG #1 "antenatal class is Thursday at 7pm, I'm coming to every one"
+  ✓ [want SILENCE] "poker Friday night instead?" → SILENCE
+  ✓ [want FLAG ~/beers|baby/] "get the ipas in for Friday" → FLAG #2 "I'm off the beers until the baby comes, doing it with you"
+  ✓ [want SILENCE] "alcohol-free lagers for me Friday" → SILENCE
+  ✓ [want FLAG ~/nursery|painting/] "can you do the big match Saturday afternoon?" → FLAG #4 "painting the nursery this Saturday, all day job"
+dreamed 2 utterances -> store now 7 claims
+  ✓ [want FLAG ~/Wednesday|moved/] "see you at class Thursday 7" → FLAG #6 "class moved to Wednesday 7 this week only, told them fine"
+  ✓ [want FLAG ~/packed|bag/] "I'll pack the hospital bag next week" → FLAG #7 "bag's packed and in the hall, done"
+  ✓ [want SILENCE] "shall we prewash the babygrows on Sunday?" → SILENCE
+
+p03-expecting-dad: 8/8
+════ p05-pta-mum ════
+dreamed 5 utterances -> store now 5 claims
+  ✗ [want SILENCE] "baking the cupcakes Thursday evening" → FLAG #3 "no sugar in our house this month, we're doing it as a family"  (baking for the sale is not eating sugar — trap)
+  ✓ [want FLAG ~/sugar/] "let's get the kids doughnuts after school" → FLAG #3 "no sugar in our house this month, we're doing it as a family"
+  ✗ [want FLAG ~/committee/] "book me spin class Tuesday 7:30" → SILENCE
+  ✓ [want SILENCE] "book me spin class Tuesday lunchtime" → SILENCE
+  ✗ [want FLAG ~/Sam|school run/] "I can cover your school run Thursday" → SILENCE  (same morning promised to Sam)
+dreamed 2 utterances -> store now 7 claims
+  ✓ [want FLAG ~/Sunday|moved/] "see you at the stall Saturday morning" → FLAG #7 "stall's moved to Sunday, church hall double booked us"
+  ✓ [want SILENCE] "see you at the stall Sunday" → SILENCE
+  ✗ [want FLAG ~/done|cupcakes/] "I'll bake the cupcakes tomorrow" → FLAG #3 "no sugar in our house this month, we're doing it as a family"  (already-done)
+
+p05-pta-mum: 4/8
+════ p09-nurse ════
+dreamed 4 utterances -> store now 4 claims
+  ✗ [want FLAG ~/cover|Sunday/] "Sunday lunch at mum's?" → SILENCE  (promised Grace's day shift)
+  ✓ [want SILENCE] "Sunday dinner at mum's instead?" → SILENCE
+  ✓ [want FLAG ~/nights/] "drinks Friday night?" → FLAG #1 "I'm on nights Friday and Saturday this week"
+  ✓ [want SILENCE] "drinks Wednesday night?" → SILENCE
+  ✗ [want FLAG ~/Wednesday|audit/] "audit's on my list for Friday" → FLAG #1 "I'm on nights Friday and Saturday this week"  (quietly slipping own deadline)
+dreamed 2 utterances -> store now 6 claims
+  ✓ [want SILENCE] "Sunday lunch at mum's then?" → SILENCE
+  ✓ [want FLAG ~/done|filed/] "I'll get that audit done this week" → FLAG #5 "audit done and filed"
+  ✓ [want FLAG ~/nights/] "anyone fancy the quiz tonight?" → FLAG #1 "I'm on nights Friday and Saturday this week"
+
+p09-nurse: 6/8
+════ p12-new-diabetic ════
+dreamed 4 utterances -> store now 4 claims
+  ✓ [want FLAG ~/sugary/] "get me a full-fat coke with the meal deal" → FLAG #1 "no sugary drinks for me any more, doctor's orders"
+  ✓ [want SILENCE] "get me a diet coke with the meal deal" → SILENCE
+  ✓ [want FLAG ~/clinic/] "I can do the 9am project kickoff on the 11th" → FLAG #2 "diabetes clinic is the 11th at 9:30"
+  ✗ [want SILENCE] "I can do an 11:30 kickoff on the 11th" → FLAG #2 "diabetes clinic is the 11th at 9:30"  (after the clinic)
+  ✓ [want FLAG ~/walk|long way/] "cab to work tomorrow, it's raining" → FLAG #4 "I'll walk the long way to work all this month"
+dreamed 1 utterances -> store now 5 claims
+  ✓ [want SILENCE] "kickoff at 9 on the 11th works now" → SILENCE
+  ✓ [want SILENCE] "busy 9:30 on the 13th, clinic" → SILENCE
+  ✗ [want FLAG ~/metformin|every day/] "might skip the metformin on holiday" → SILENCE  (quantifier routine)
+
+p12-new-diabetic: 6/8
+════ p13-yoga-teacher ════
+dreamed 4 utterances -> store now 4 claims
+  ✓ [want FLAG ~/retreat|off grid/] "I can do a private on the 23rd" → FLAG #2 "I'm on retreat the 22nd to the 24th, fully off grid"
+  ✓ [want SILENCE] "I can do a private on the 20th" → SILENCE
+  ✓ [want FLAG ~/classes|6pm/] "dinner Monday 6?" → FLAG #1 "my classes are Monday and Wednesday 6pm as usual"
+  ✓ [want SILENCE] "dinner Monday 8:30 after class?" → SILENCE
+  ✓ [want SILENCE] "actually can we move your private to 9am Thursdays?" → SILENCE
+dreamed 2 utterances -> store now 6 claims
+  ✓ [want FLAG ~/injured|Marco/] "Bea's got my classes covered for retreat week" → FLAG #5 "Bea's injured, she can't cover retreat week after all"
+  ✓ [want SILENCE] "Marco's covering my classes retreat week" → SILENCE
+  ✓ [want SILENCE] "I'll bring you back some incense from the retreat" → SILENCE
+
+p13-yoga-teacher: 8/8
+════ p14-slimming-club ════
+dreamed 4 utterances -> store now 4 claims
+  ✓ [want FLAG ~/takeaway|treat night/] "chinese tonight?" → FLAG #3 "no takeaways this month except Friday treat night, that's allowed, one a week"
+  ✓ [want SILENCE] "chinese Friday night?" → SILENCE
+  ✓ [want FLAG ~/weigh-in/] "cinema Thursday 6:30?" → FLAG #1 "weigh-in is Thursday 6:30, every week without fail"
+  ✗ [want SILENCE] "cinema Thursday 8:30?" → FLAG #1 "weigh-in is Thursday 6:30, every week without fail"
+  ✓ [want FLAG ~/10k|steps/] "sofa day tomorrow, zero steps" → FLAG #4 "10k steps every day this week, hold me to it"
+dreamed 1 utterances -> store now 5 claims
+  ✓ [want FLAG ~/Wednesday|moves/] "see you at weigh-in Thursday the 13th" → FLAG #5 "leader says weigh-in moves to Wednesdays from next week"
+  ✓ [want SILENCE] "see you at weigh-in Wednesday the 12th" → SILENCE
+  ✓ [want SILENCE] "thinking of switching to the running club" → SILENCE
+
+p14-slimming-club: 7/8
+════ p15-physio-patient ════
+dreamed 4 utterances -> store now 4 claims
+  ✓ [want FLAG ~/no running/] "parkrun Saturday?" → FLAG #1 "no running for two weeks, until the 17th"
+  ✓ [want SILENCE] "swim Saturday morning?" → SILENCE
+  ✓ [want SILENCE] "parkrun on the 22nd?" → SILENCE
+  ✓ [want FLAG ~/school quiz|team/] "pub quiz round 2 on the 14th at the Crown?" → FLAG #4 "I'll do the school quiz night on the 14th, on the team"
+  ✓ [want SILENCE] "gentle bike ride Sunday?" → SILENCE
+dreamed 1 utterances -> store now 5 claims
+  ✓ [want SILENCE] "easy jog on the 12th?" → SILENCE
+  ✓ [want FLAG ~/10th|cleared/] "easy jog tomorrow the 8th?" → FLAG #5 "cleared to jog from the 10th"
+  ✓ [want SILENCE] "I'll cancel the follow-up, all better" → SILENCE
+
+p15-physio-patient: 8/8
+════ p16-best-man ════
+dreamed 5 utterances -> store now 5 claims
+  ✗ [want FLAG ~/stag/] "fishing trip on the 15th?" → SILENCE
+  ✓ [want SILENCE] "fishing trip on the 9th?" → SILENCE
+  ✓ [want FLAG ~/clean/] "putting the vegas story in the speech, it's too good" → FLAG #5 "I'll keep the speech clean, promise"
+  ✗ [want FLAG ~/fitting/] "client dinner Thursday 5?" → SILENCE
+  ✗ [want SILENCE] "client dinner Thursday 7:30?" → FLAG #3 "suit fitting Thursday 5pm"
+dreamed 2 utterances -> store now 8 claims
+  ✓ [want FLAG ~/done|two pages/] "I'll write the speech on the train on the 21st" → FLAG #6 "speech is done, two pages"
+  ✓ [want FLAG ~/Friday|moved/] "see you at the fitting Thursday 5" → FLAG #8 "fitting moved to Friday 5, tailor's request"
+  ✓ [want SILENCE] "see you at the fitting Friday 5" → SILENCE
+
+p16-best-man: 5/8
+════ p20-am-dram ════
+dreamed 4 utterances -> store now 4 claims
+  ✓ [want FLAG ~/show week/] "shall we book the Lakes for the 18th to the 20th?" → FLAG #2 "show week is the 17th to the 22nd, every evening"
+  ✗ [want SILENCE] "the Lakes the 25th to the 27th?" → FLAG #1 "rehearsals Monday and Wednesday 7pm till the show"
+  ✓ [want FLAG ~/rehearsal/] "bridge night Wednesday 7?" → FLAG #1 "rehearsals Monday and Wednesday 7pm till the show"
+  ✓ [want SILENCE] "bridge Friday 7?" → SILENCE
+  ✗ [want FLAG ~/never missed/] "might give the first night a miss, nerves" → SILENCE  (quantifier vs hedged skip)
+dreamed 2 utterances -> store now 6 claims
+  ✓ [want FLAG ~/cancelled|flooded/] "see you at rehearsal Monday 7" → FLAG #6 "Hugh cancelled Monday rehearsal, hall's flooded"
+  ✓ [want FLAG ~/fully off book/] "I'll be off book by Friday, nearly there" → FLAG #5 "I'm fully off book, whole thing"
+  ✓ [want SILENCE] "Wednesday rehearsal still on as far as I know" → SILENCE
+
+p20-am-dram: 6/8
+════ p26-streamer ════
+dreamed 4 utterances -> store now 4 claims
+  ✓ [want FLAG ~/family friendly/] "thinking a swear-heavy horror playthrough Thursday" → FLAG #3 "channel stays family friendly, that's the brand"
+  ✓ [want SILENCE] "cosy farming sim Thursday" → SILENCE
+  ✓ [want FLAG ~/stream|Tuesday/] "cinema Tuesday 8?" → FLAG #1 "streams are Tuesday and Thursday 8pm, locked schedule"
+  ✓ [want SILENCE] "cinema Wednesday 8?" → SILENCE
+  ✓ [want SILENCE] "can we push the collab to 5pm Saturday?" → SILENCE
+dreamed 2 utterances -> store now 6 claims
+  ✗ [want FLAG ~/delivered/] "I'll get your video over by the 14th, on track" → SILENCE  (already-done)
+  ✓ [want FLAG ~/5pm|moved/] "see you at 3 Saturday" → FLAG #6 "collab confirmed moved to 5pm Saturday"
+  ✓ [want FLAG ~/stream|Thursday/] "pizza order for the flat?" → FLAG #1 "streams are Tuesday and Thursday 8pm, locked schedule"
+
+p26-streamer: 7/8
+════ p29-phd-student ════
+dreamed 4 utterances -> store now 4 claims
+  ✓ [want SILENCE] "can I move my Friday 2 to see the dentist?" → SILENCE
+  ✓ [want FLAG ~/supervision/] "board games Friday 2pm?" → FLAG #1 "supervision is Friday 2pm, every week"
+  ✓ [want SILENCE] "board games Friday evening?" → SILENCE
+  ✓ [want FLAG ~/Vienna|supervision/] "I can cover your Friday 2pm lab on the 21st" → FLAG #1 "supervision is Friday 2pm, every week"
+  ✓ [want SILENCE] "I can cover your lab on the 28th" → SILENCE
+dreamed 2 utterances -> store now 6 claims
+  ✓ [want FLAG ~/submitted|in/] "I'll polish the camera-ready over the weekend" → FLAG #5 "camera-ready paper submitted early"
+  ✓ [want FLAG ~/Thursday|moved/] "see you Friday 2 next week as usual" → FLAG #6 "supervision moved to Thursdays 2pm from next week"
+  ✓ [want SILENCE] "see you Thursday 2 next week" → SILENCE
+
+p29-phd-student: 8/8
+════ p30-retiree ════
+dreamed 4 utterances -> store now 4 claims
+  ✓ [want FLAG ~/grandkids/] "bingo Friday night?" → FLAG #2 "I'll have the grandkids Friday evening so you two can go out"
+  ✓ [want SILENCE] "bingo Saturday night?" → SILENCE
+  ✓ [want FLAG ~/bowls/] "lunch Tuesday 1?" → FLAG #1 "bowls Tuesday and Thursday afternoons, as ever"
+  ✓ [want SILENCE] "lunch Monday 1?" → SILENCE
+  ✗ [want FLAG ~/GP|3/] "looking forward to Whitby on the 19th" → SILENCE  (all-day trip vs 3pm GP — cross-claim clash)
+dreamed 1 utterances -> store now 5 claims
+  ✓ [want SILENCE] "Whitby on the 19th, wouldn't miss it" → SILENCE
+  ✗ [want FLAG ~/21st|moved/] "I'll pop to the GP on the 19th after the trip" → SILENCE  (stale plan)
+  ✓ [want SILENCE] "cards at mine Wednesday afternoon?" → SILENCE
+
+p30-retiree: 6/8
