@@ -736,6 +736,73 @@ even absorbs design gaps), check on the hot-path tier, and accept
 that the next SCORE points come only from candidate-set narrowing,
 cited-claim validation, and scope-preserving supersession.
 
+### v11: Opus on both sides — the ceiling test (31 Jul 2026)
+
+Sanity test: claude-opus-4-8 as dream AND check (extract + judge),
+via a new CDI_CHECK_MODEL knob. (Two harness notes: Opus prefixes
+JSON with prose despite instructions — parseJson now extracts the
+embedded object; and five parallel scenarios saturated something,
+so clean runs are sequential.)
+
+RESULT: 58/62 (94%). family 14/15, cafe 11/12, GYM-RAT 12/12,
+freelancer 12/13, gym-lazy 9/10. The 50-51 plateau was therefore
+NOT purely structural — it was substantially a CHECK-SIDE
+capability ceiling. Dream-model swaps (v9, v10) couldn't move the
+score because the judge was the bottleneck; upgrading the judge
+released ~7 points. The v9 conclusion stands corrected in one
+clause: the scoreboard was a query issue in BOTH senses — judge
+inputs (structure) and judge capability.
+
+What Opus absorbed that structure was queued to fix:
+- bench-on-the-9th: same store shape as every other run (restriction
+  superseded by the from-the-10th clearance), but the Opus judge
+  INFERRED the implied restriction from the clearance's start date —
+  reasoning around the missing scope machinery.
+- keto span, stale-plan class, availability class: all passed via
+  sheer judgement on this run.
+- The Opus dream also split "diet starts today, no takeaways this
+  month" into TWO policy claims and had the cheat day supersede only
+  the generic diet, leaving no-takeaways standing — claim
+  granularity as implicit scope handling.
+
+What SURVIVED Opus — the definitively structural residue:
+1. WRONG-CLAIM CITATION: "I'll pop over Sunday afternoon for lunch"
+   (to mum) flagged the gym-Sam Thursday claim. Even the strongest
+   judge available mis-cites; runtime cited-claim validation +
+   same-name channel narrowing is confirmed as a MUST, not a
+   nice-to-have.
+2. CARVE-OUT SEMANTICS: cheat-day pizza flagged against the
+   still-open no-takeaways policy with the cheat-day claim in full
+   view. Contested ground truth — a human could rule either way —
+   which is exactly why it needs an explicit AMENDS relation
+   (exceptions attached to the policy and rendered with it), not
+   judgement.
+3. TWO UX POLICY DECISIONS masquerading as failures: the Dave
+   withdrawal (Opus applies withdrawn-closes-silently — literally
+   the propositional ledger's rule; the fire-once FYI is a product
+   choice) and the hedged VAT slip (every model flags it; an FYI on
+   a hedged same-person revision may simply be desirable). These
+   should be decided, encoded, and removed from the failure count.
+
+HOW TO SOLVE THE REMAINING — the full answer, post-ceiling-test:
+- Structure (model-proof): cited-claim validation + identity
+  narrowing; AMENDS in the state machine; the rest of the residual
+  list (availability bit, scope supersession) still worth building
+  because production won't run Opus.
+- Production judge architecture: the hot path cannot be Opus
+  (latency/cost), so use ESCALATE-ON-FLAG — the cheap judge
+  (cerebras) proposes, and any FLAG verdict is confirmed by a
+  strong model asynchronously before the cue renders. Flags are
+  rare, so the strong-model cost is marginal; silence stays cheap;
+  wrong flags (the expensive error) get a second gate. This is the
+  precision-first shape the cue engine already believes in.
+- UX policy: rule on withdrawal-FYI and hedged-revision-FYI
+  explicitly; encode; done.
+
+Final scoreboard, same 62-probe suite: gpt-oss everywhere 50-51;
+gemma/sonnet dream swaps 51 (better stores, same score); Opus both
+sides 58 (94%), with the residue above.
+
 ### Net read
 
 The generalized loop works better out of the box than the concept

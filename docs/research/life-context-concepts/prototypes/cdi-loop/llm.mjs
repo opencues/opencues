@@ -56,8 +56,13 @@ export async function chat(system, user, { model = 'gpt-oss-120b', temperature =
   throw lastErr;
 }
 
-// Strip an optional ```json fence and parse.
+// Parse model JSON output robustly: fenced block, raw, or embedded in
+// prose (some models preface JSON with commentary despite instructions).
 export function parseJson(text) {
   const m = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  return JSON.parse(m ? m[1] : text);
+  if (m) text = m[1];
+  try { return JSON.parse(text); } catch { /* fall through */ }
+  const s = text.indexOf('{'), e = text.lastIndexOf('}');
+  if (s >= 0 && e > s) return JSON.parse(text.slice(s, e + 1));
+  throw new Error('no JSON found in: ' + text.slice(0, 120));
 }

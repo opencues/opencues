@@ -41,7 +41,10 @@ utterance references no specific time. s is true only if the utterance commits t
 appointment, a visit, an outing, presence); s is false when the time
 is merely a deadline or window to do a task within ("this week",
 "by Friday"), or a report about the past.`;
-const ext = parseJson(await chat(EXTRACT, candidate));
+// Check-side model is env-tunable for capability-ceiling experiments;
+// production keeps this on the hot-path tier.
+const CHECK_MODEL = process.env.CDI_CHECK_MODEL ?? 'gpt-oss-120b';
+const ext = parseJson(await chat(EXTRACT, candidate, { model: CHECK_MODEL }));
 
 // ── 2. RUNTIME temporal algebra — never the model's job.
 // whenKind partitions the semantics: only SLOTS double-book; WINDOWS
@@ -154,7 +157,7 @@ TYPING-NOW (user is typing during these committed slots): ${activeNow.length
   ? activeNow.map(c => `#${c.id} (${c.when})`).join(', ')
   : 'none'}`;
 
-const out = parseJson(await chat(SYSTEM, userMsg));
+const out = parseJson(await chat(SYSTEM, userMsg, { model: CHECK_MODEL }));
 if (out.verdict === 'FLAG') {
   console.log(`FLAG  #${out.claim_id}: "${out.quote}"\n      why: ${out.why}`);
 } else {
