@@ -27,6 +27,15 @@ beforeEach(() => { try { fs.rmSync(path.join(tmpHome, '.cues'), { recursive: tru
 const feedsPath = () => path.join(tmpHome, '.cues', 'calendar-feeds.txt');
 const feedsText = () => { try { return fs.readFileSync(feedsPath(), 'utf8'); } catch { return null; } };
 
+// ICS UTC timestamp (YYYYMMDDTHHMMSSZ) relative to NOW. The sync keeps only
+// events inside [now-1h, now+60d], so any hardcoded calendar date becomes a
+// time-bomb — it silently drops out of the window once the clock passes it
+// (the `2026-08-01` literals here started failing on 2026-08-02). Compute dates
+// relative to now so the test can't expire.
+function icsUtc(offsetMs) {
+  return new Date(Date.now() + offsetMs).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+}
+
 async function run(argv) {
   const logs = [], errs = [];
   const oLog = console.log, oErr = console.error;
@@ -138,11 +147,15 @@ test('remove with feeds REMAINING re-syncs immediately (removed events drop now,
   const snapPath = path.join(tmpHome, '.cues', 'calendar.json');
   fs.writeFileSync(snapPath, JSON.stringify({ ingestedAt: '2026-07-01T00:00:00Z', events: [{ title: 'FromA', start: '2026-08-01T10:00', end: '2026-08-01T11:00' }] }));
   // stub global fetch so the immediate re-sync is hermetic: remaining feed (B) has one event
+  // FromB must land INSIDE the sync window [now-1h, now+60d] to survive the
+  // re-sync — use tomorrow, not a hardcoded date (see icsUtc).
+  const start = icsUtc(24 * 3600e3);
+  const end = icsUtc(25 * 3600e3);
   const savedFetch = globalThis.fetch;
   globalThis.fetch = async () => ({
     ok: true, status: 200,
     headers: { get: () => 'text/calendar' },
-    text: async () => 'BEGIN:VCALENDAR\nBEGIN:VEVENT\nDTSTART:20260801T120000Z\nDTEND:20260801T130000Z\nSUMMARY:FromB\nEND:VEVENT\nEND:VCALENDAR\n',
+    text: async () => `BEGIN:VCALENDAR\nBEGIN:VEVENT\nDTSTART:${start}\nDTEND:${end}\nSUMMARY:FromB\nEND:VEVENT\nEND:VCALENDAR\n`,
   });
   try {
     const r = await run(['remove', URL_A]);
