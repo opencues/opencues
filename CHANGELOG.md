@@ -7,9 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-08-02
+
+Patch release: launch-readiness for the published `opencues` CLI — a user-facing npm README, Apache-2.0 reconciled across every package, and a time-bomb test fix. Highlights in the [GitHub Release](https://github.com/opencues/opencues/releases/tag/v0.4.2).
+
 ### Changed — user-facing npm README (`opencues` 0.4.1 → 0.4.2)
 
-Replaced the CLI package's internal contributor README (the one npmjs.com/package/opencues renders) with a launch-ready, user-facing one: the "you type / you get" hook table, a real quickstart (`npm i -g opencues` → `set-key` → `install` → `run`), the 5 integrations, the feature + provider summary, a security one-liner, and links. Fixes the stale "Coming (Tier 2/3)" tables that listed dozens of already-shipped commands (`run`, `doctor`, `import`, `init`, `validate`, …) as unbuilt, and drops the internal "Stage 8 / thin dispatcher / architecture tree" language. All doc links are absolute GitHub URLs (npm resolves relative links against `repository.directory`, which is the CLI subpath, so relative links would 404). Requires a republish to take effect on npm.
+Replaced the CLI package's internal contributor README (the one npmjs.com/package/opencues renders) with a launch-ready, user-facing one: the "you type / you get" hook table, a real quickstart (`npm i -g opencues` → `set-key` → `install` → `run`), the 5 integrations, the feature + provider summary, a security one-liner, and links. Fixes the stale "Coming (Tier 2/3)" tables that listed dozens of already-shipped commands (`run`, `doctor`, `import`, `init`, `validate`, …) as unbuilt, and drops the internal "Stage 8 / thin dispatcher / architecture tree" language. All doc links are absolute GitHub URLs (npm resolves relative links against `repository.directory`, which is the CLI subpath, so relative links would 404).
+
+### Fixed — Apache-2.0 reconciled across all packages; stale proprietary LICENSE files dropped
+
+The repo root is Apache-2.0 and everything is positioned as "fully open source", but three packages shipped a leftover **proprietary "All Rights Reserved"** LICENSE and most `package.json` files declared no `license` at all — worst of all the **published `opencues` CLI**, whose npm page therefore read as proprietary, and `@opencues/core` / `-runtime`, which declared `"license": "Apache-2.0"` in `package.json` while shipping a proprietary LICENSE file (a direct contradiction). Replaced the proprietary LICENSE files in `opencues-cli` / `-core` / `-runtime` with the root Apache-2.0 text, and added `"license": "Apache-2.0"` to every one of our `package.json` files that lacked it (root, cli, all 6 integrations). Metadata only; third-party licenses untouched.
+
+### Fixed — calendar re-sync test was a time-bomb (hardcoded dates fell out of the sync window)
+
+`calendar.test.cjs`'s `remove with feeds REMAINING re-syncs immediately` hardcoded a calendar event at `2026-08-01`. The sync keeps only events inside `[now-1h, now+60d]`, so once the clock passed that date the event dropped out of the window — the re-sync produced 0 events instead of 1 and the assertion flipped to `0 == 1`, failing on **every** PR against master from 2026-08-02 onward (unrelated to any diff). Fixed by computing the event's dates relative to `now` via a small `icsUtc` helper, so the test can't expire again. No product-code change — the sync was always correct.
 
 ## [0.4.1] - 2026-07-30
 
