@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — user-facing npm README (`opencues` 0.4.1 → 0.4.2)
+
+Replaced the CLI package's internal contributor README (the one npmjs.com/package/opencues renders) with a launch-ready, user-facing one: the "you type / you get" hook table, a real quickstart (`npm i -g opencues` → `set-key` → `install` → `run`), the 5 integrations, the feature + provider summary, a security one-liner, and links. Fixes the stale "Coming (Tier 2/3)" tables that listed dozens of already-shipped commands (`run`, `doctor`, `import`, `init`, `validate`, …) as unbuilt, and drops the internal "Stage 8 / thin dispatcher / architecture tree" language. All doc links are absolute GitHub URLs (npm resolves relative links against `repository.directory`, which is the CLI subpath, so relative links would 404). Requires a republish to take effect on npm.
+
 ## [0.4.1] - 2026-07-30
 
 Patch release: chained-transform fix + the install channels (curl / bun / brew). Highlights in the [GitHub Release](https://github.com/opencues/opencues/releases/tag/v0.4.1).
