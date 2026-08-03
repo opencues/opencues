@@ -34,6 +34,19 @@ marked — a real "card" where the host can paint one, a stacked list where it
 can't. The structured `toolQuestion` is already stashed on the cue's
 `metadata.toolQuestion` for exactly this.
 
+### Align with the real tool's `preview` field
+
+The genuine AskUserQuestion tool (Agent SDK docs) already has the concept we
+want for the card: an optional per-option **`preview`** — a visual mockup shown
+alongside the label — set via `toolConfig.askUserQuestion.previewFormat`
+(`"markdown"` = ASCII art / fenced code, `"html"` = a styled `<div>`), included
+only on options where a visual comparison helps. Phase 2 should mirror that:
+each option carries an optional `preview`, rendered in the card body (Chrome can
+paint the `html` form directly in its overlay div; CC/OpenTUI render the
+`markdown`/plain form as stacked lines). Our `apply` (the concrete rewrite text)
+is a separate OpenCues extension — it's what a pick DOES, whereas `preview` is
+what a pick would LOOK like.
+
 ### The one shared change: widen the note contract
 
 Today `InlineNote` (`packages/opencues-runtime/src/adapter.ts:95-99`) carries a
@@ -42,7 +55,8 @@ single `text` string, and `inlineNoteText(def)`
 `def.cueTip`. The minimal widening:
 
 1. Add optional structured fields to `InlineNote`:
-   `question?: string` + `options?: { label: string; description?: string; current?: boolean }[]`.
+   `question?: string` + `options?: { label: string; description?: string; preview?: string; current?: boolean }[]`
+   (mirroring the real tool's `{ label, description, preview }`).
 2. Carry the structured question on the `WordDef` (from
    `CueResult.metadata.toolQuestion` at registration in `resolver.ts`), and in
    `dim-render.ts` (~line 374) populate the new `InlineNote` fields from it +
