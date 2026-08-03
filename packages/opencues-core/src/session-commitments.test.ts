@@ -83,6 +83,21 @@ describe('extractTranscriptTurns', () => {
     expect(extractTranscriptTurns('')).toEqual([]);
     expect(extractTranscriptTurns('{bad\n{"type":"user"}')).toEqual([]);
   });
+
+  it('strips CC harness framing (slash-command scaffolding, system-reminders)', () => {
+    const jsonl = [
+      JSON.stringify({ type: 'user', message: { role: 'user', content: '<local-command-caveat>Caveat: DO NOT respond to this.</local-command-caveat>\n<command-name>/clear</command-name>' } }),
+      JSON.stringify({ type: 'user', message: { role: 'user', content: 'use Deno <system-reminder>ignore me, injected context</system-reminder> not Node' } }),
+    ].join('\n');
+    const turns = extractTranscriptTurns(jsonl);
+    // The pure-framing turn is dropped entirely; the mixed one keeps only prose.
+    expect(turns).toHaveLength(1);
+    expect(turns[0].text).toBe('use Deno not Node');
+    const joined = turns.map((t) => t.text).join(' ');
+    expect(joined).not.toContain('command-name');
+    expect(joined).not.toContain('system-reminder');
+    expect(joined).not.toContain('DO NOT respond');
+  });
 });
 
 describe('renderTranscriptForExtraction', () => {

@@ -104,7 +104,7 @@ test('mode on + turns but no provider key → skip (no LLM resolvable), no outpu
   const { code, json } = await run([tp]);
   assert.strictEqual(code, 0);
   assert.strictEqual(json.skipped, true);
-  assert.match(json.reason, /no cues-bucket LLM/);
+  assert.match(json.reason, /no extraction LLM/);
   assert.ok(!fs.existsSync(path.join(tmpHome, 'session-commitments.json')), 'no watchlist written without an LLM');
 });
 
@@ -115,5 +115,5 @@ test('--force bypasses the mode gate (still skips on no key, proving the gate wa
   // With --force we pass the mode + debounce gates and reach LLM resolution,
   // which fails on the keyless pinned provider → this reason proves we got past the gate.
   assert.strictEqual(json.skipped, true);
-  assert.match(json.reason, /no cues-bucket LLM/);
+  assert.match(json.reason, /no extraction LLM/);
 });

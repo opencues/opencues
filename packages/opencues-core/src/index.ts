@@ -358,6 +358,7 @@ export { parseIcs } from './ics';
 export {
   buildSessionCommitmentsSnapshot,
   extractTranscriptTurns,
+  stripHarnessFraming,
   renderTranscriptForExtraction,
   renderSessionCommitmentsCatalog,
   SESSION_COMMITMENTS_EXTRACT_SYSTEM,

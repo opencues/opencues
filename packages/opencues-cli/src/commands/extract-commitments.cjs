@@ -152,31 +152,31 @@ module.exports = async function extractCommitments(argv, ctx) {
       if (fs.existsSync(settingsFile)) scalarsMap = readScalars(fs.readFileSync(settingsFile, 'utf8'));
     } catch { /* empty scalars */ }
     const routing = core.resolveEffectiveRouting({ scalars: (n) => scalarsMap.get(n), apiKeys });
-    const cues = routing && routing.cues;
-    if (!cues || !cues.provider || !cues.model || !cues.keyPresent) {
-      return done({ skipped: true, reason: 'no cues-bucket LLM resolvable (no key / provider)' });
+    const ex = resolveExtractionLLM(core, apiKeys, routing);
+    if (!ex) {
+      return done({ skipped: true, reason: 'no extraction LLM resolvable (no key / provider)' });
     }
 
-    // Wire call (raw fetch — mirrors `opencues review`). No temperature: some
-    // reasoning models reject it; determinism comes from the seed + terse task.
+    // Wire call (raw fetch — mirrors `opencues review`). No temperature/seed:
+    // Anthropic 4.x rejects temperature and has no seed; determinism isn't
+    // essential for a terse extraction.
     const wire = core.buildProviderRequest(
-      cues.provider.id,
+      ex.provider.id,
       {
         messages: [
           { role: 'system', content: core.SESSION_COMMITMENTS_EXTRACT_SYSTEM },
           { role: 'user', content: `TRANSCRIPT:\n${transcriptText}` },
         ],
-        model: cues.model,
+        model: ex.model,
         maxTokens: 1024,
-        seed: 42,
       },
-      { apiKey: cues.provider.envKeyName ? apiKeys[cues.provider.envKeyName] : undefined },
+      { apiKey: ex.apiKey },
     );
     let raw;
     try {
       const resp = await fetch(wire.url, { method: 'POST', headers: wire.headers, body: typeof wire.body === 'string' ? wire.body : JSON.stringify(wire.body) });
-      if (!resp.ok) { return done({ skipped: true, reason: `LLM http ${resp.status}` }); }
-      raw = core.parseProviderResponse(cues.provider.id, await resp.text());
+      if (!resp.ok) { return done({ skipped: true, reason: `LLM http ${resp.status} (${ex.provider.id}/${ex.model})` }); }
+      raw = core.parseProviderResponse(ex.provider.id, await resp.text());
     } catch (e) {
       return done({ skipped: true, reason: `LLM call failed: ${(e && e.message) || e}` });
     }
@@ -194,12 +194,39 @@ module.exports = async function extractCommitments(argv, ctx) {
     fs.renameSync(tmp, outPath);
     writeMarker(markerPath, transcriptPath, transcriptStat.mtimeMs);
 
-    if (!quiet && !json) console.log(`opencues: distilled ${snapshot.commitments.length} session commitment(s) (${cues.provider.id}/${cues.model})`);
-    return done({ ok: true, count: snapshot.commitments.length, provider: cues.provider.id, model: cues.model, path: outPath });
+    if (!quiet && !json) console.log(`opencues: distilled ${snapshot.commitments.length} session commitment(s) (${ex.provider.id}/${ex.model})`);
+    return done({ ok: true, count: snapshot.commitments.length, provider: ex.provider.id, model: ex.model, source: ex.why, path: outPath });
   } finally {
     if (locked) { try { fs.unlinkSync(lockPath); } catch { /* already gone */ } }
   }
 };
+
+// Extraction reads the WHOLE transcript tail — a large context — every ~8s of
+// activity, so it should run on a cheap, big-context model, NOT burn the
+// realtime cues-bucket provider. Preference order:
+//   1. OPENCUES_EXTRACT_PROVIDER + OPENCUES_EXTRACT_MODEL (power-user override)
+//   2. Claude Haiku (anthropic/claude-haiku-4-5) when ANTHROPIC_API_KEY is set —
+//      cheap + fast on long context, and keeps the matcher's provider free.
+//   3. the cues bucket (whatever the user configured) as the fallback.
+const HAIKU_MODEL = 'claude-haiku-4-5-20251001';
+function resolveExtractionLLM(core, apiKeys, routing) {
+  const key = (p) => (p && p.envKeyName ? apiKeys[p.envKeyName] : undefined);
+  const ovP = process.env.OPENCUES_EXTRACT_PROVIDER;
+  const ovM = process.env.OPENCUES_EXTRACT_MODEL;
+  if (ovP && ovM) {
+    const p = core.getProvider(ovP.toLowerCase());
+    if (p) return { provider: p, model: ovM, apiKey: key(p), why: 'env-override' };
+  }
+  if (apiKeys.ANTHROPIC_API_KEY) {
+    const p = core.getProvider('anthropic');
+    if (p) return { provider: p, model: ovM || HAIKU_MODEL, apiKey: apiKeys.ANTHROPIC_API_KEY, why: 'haiku' };
+  }
+  const cues = routing && routing.cues;
+  if (cues && cues.provider && cues.model && cues.keyPresent) {
+    return { provider: cues.provider, model: cues.model, apiKey: key(cues.provider), why: 'cues-bucket' };
+  }
+  return null;
+}
 
 function writeMarker(markerPath, transcriptPath, mtimeMs) {
   try { fs.writeFileSync(markerPath, JSON.stringify({ transcriptPath, mtimeMs, extractedAt: Date.now() })); }

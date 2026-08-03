@@ -135,10 +135,32 @@ export function extractTranscriptTurns(jsonl: string): TranscriptTurn[] {
     const msg = rec.message as { role?: unknown; content?: unknown } | undefined;
     if (!msg) continue;
     const role: 'user' | 'assistant' = rec.type === 'user' ? 'user' : 'assistant';
-    const text = textFromContent(msg.content);
+    const text = stripHarnessFraming(textFromContent(msg.content));
     if (text) turns.push({ role, text });
   }
   return turns;
+}
+
+/**
+ * Strip Claude Code harness framing that rides inside message content but isn't
+ * the developer's prose: injected `<system-reminder>` context blocks, slash-
+ * command scaffolding (`<command-name>` / `<command-message>` / `<command-args>`
+ * / `<local-command-stdout>` / …), and the `<local-command-caveat>` notice.
+ * These pollute the watchlist ("Do not respond to this context…" is not a
+ * project decision). Conservative: removes the framing, keeps everything else.
+ */
+export function stripHarnessFraming(text: string): string {
+  if (!text) return '';
+  return text
+    // Whole framing blocks (tags AND their content) → drop entirely: injected
+    // context, slash-command scaffolding, command output. None of it is the
+    // developer's prose.
+    .replace(/<(system-reminder|local-command-caveat|local-command-stdout|local-command-stderr|command-name|command-message|command-args|command-contents|user-prompt-submit-hook)>[\s\S]*?<\/\1>/gi, ' ')
+    // Any leftover standalone framing tag (unpaired) → remove the tag.
+    .replace(/<\/?(command-name|command-message|command-args|local-command-caveat|local-command-stdout|local-command-stderr|system-reminder|user-prompt-submit-hook|command-contents)[^>]*>/gi, ' ')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
 }
 
 /** Pull only human/model prose from a message's content (string or block array).
@@ -181,6 +203,8 @@ Categories:
 
 RULES (precision over recall — a wrong watchlist item is worse than a missing one):
 - Extract a commitment ONLY when it was clearly DECIDED / AGREED / INSTRUCTED, not merely discussed, considered, or asked about. "Should we use Postgres?" is NOT a commitment; "Let's go with Postgres" is.
+- IGNORE conversational process and self-narration — statements about what someone is ABOUT to do, is currently doing, or just did as a step: "I'll verify X", "let me run the tests", "now I'll check Y", "next I'll build Z", "will confirm parsing". These are steps, not durable commitments. Extract only decisions/constraints that OUTLAST the current step.
+- IGNORE the assistant narrating its own plan or todo list. A commitment is something the DEVELOPER decided about the PROJECT, not the assistant's working notes.
 - Prefer the MOST RECENT statement when a decision was revised — a later reversal supersedes the earlier choice.
 - Write each statement as a standalone assertion a checker can compare a new sentence against. Name the concrete subject (the tool, the module, the file), never a pronoun.
 - NEVER include secrets, API keys, tokens, credentials, file contents, code snippets, or personal data — only the decision itself.
