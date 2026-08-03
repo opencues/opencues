@@ -27,14 +27,17 @@ _oc_kick_commitments() {
   grep -qiE '^session-contradiction-mode:[[:space:]]*on([[:space:]]|$)' "$_oc_home/OPENCUES.md" 2>/dev/null || return 0
   _oc_tp=$(printf '%s' "$_oc_stdin" | grep -oE '"transcript_path"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')
   [ -n "$_oc_tp" ] || return 0
-  # bash-level debounce — at most one kick per 45s so we don't spawn node on
-  # every redraw (the producer ALSO self-debounces + self-gates; this just
-  # avoids the process-spawn cost).
+  # bash-level debounce — a SHORT spawn-gate (5s) so we don't launch node on
+  # every redraw during streaming. This is deliberately shorter than the
+  # producer's own extract cadence so the two don't "beat" against each other
+  # (a mid-session decision then lands within ~one producer window, not two).
+  # The FIRST kick of a session has no stamp, so the initial watchlist builds
+  # promptly on the first activity.
   _oc_stamp="$_oc_home/.session-commitments.kick"
   _oc_now=$(date +%s 2>/dev/null || echo 0)
   if [ -f "$_oc_stamp" ]; then
     _oc_last=$(cat "$_oc_stamp" 2>/dev/null || echo 0)
-    [ -n "$_oc_last" ] && [ "$((_oc_now - _oc_last))" -lt 45 ] 2>/dev/null && return 0
+    [ -n "$_oc_last" ] && [ "$((_oc_now - _oc_last))" -lt 5 ] 2>/dev/null && return 0
   fi
   printf '%s' "$_oc_now" > "$_oc_stamp" 2>/dev/null
   _oc_cli="$OPENCUES_CLI"

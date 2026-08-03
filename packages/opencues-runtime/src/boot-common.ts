@@ -941,7 +941,12 @@ export function buildSessionCommitmentsIngest(
     }
   };
 
-  const refreshMs = opts.refreshMs ?? 60_000;
+  // Poll cheaply (a single mtime statSync) so a freshly-produced watchlist
+  // becomes active in the running host within a few seconds, not a minute —
+  // the producer writes the file out-of-band and this is the only path that
+  // folds it into the live holder. 5s keeps "decision → active" responsive
+  // without meaningful cost.
+  const refreshMs = opts.refreshMs ?? 4_000;
   load();   // boot read
   const timer = setInterval(load, refreshMs);
   if (typeof (timer as { unref?: () => void }).unref === 'function') (timer as { unref: () => void }).unref();

@@ -50,10 +50,20 @@ session transcript into a terse **commitments watchlist**:
 
 Trigger: the CC statusline (`highlight-statusline.sh`) receives CC's
 `{transcript_path, …}` JSON on stdin every turn. When the feature is on and a
-bash-level 45 s debounce has elapsed, it fire-and-forgets the producer. The
-producer *also* self-gates (mode off → exit) and self-debounces (a marker
-records the transcript mtime + last-run time), so a burst of turns yields at
-most one LLM call per interval. A lock file guards concurrent kicks.
+short bash-level 5 s spawn-gate has elapsed, it fire-and-forgets the producer.
+The producer *also* self-gates (mode off → exit) and self-debounces (a marker
+records the transcript mtime + last-run time) with an 8 s batch floor, so a
+burst of turns yields at most one LLM call per ~8 s. A lock file guards
+concurrent kicks.
+
+**Cadence tuning (measured).** Three intervals compose: the statusline
+spawn-gate (5 s), the producer batch floor (8 s — the effective watchlist
+cadence, kept *longer* than the spawn-gate so the two don't "beat"), and the
+ingest poll (4 s). Net end-to-end, measured on cerebras/gpt-oss-120b: a fresh
+session's first watchlist is active **~4–5 s** after activity (the first kick
+has no stamp, so it fires immediately; producer ~0.8 s; ingest ≤4 s), and a
+**mid-session** new decision becomes guardable in **~11–12 s**. The matcher
+itself adds ~0.4–0.6 s once the watchlist is warm.
 
 **Why the statusline is the trigger:** an OpenCues source in CC sees only the
 input buffer — no transcript handle, no session id. The statusline is the one
@@ -77,7 +87,7 @@ prefix-caches it); the draft is the USER message.
 ## Ingest — live holder, re-read without restart
 
 The CC boot band (`adapters/cc/v2.1/boot.ts`) calls
-`buildSessionCommitmentsIngest` (`boot-common.ts`) — an mtime-gated 60 s
+`buildSessionCommitmentsIngest` (`boot-common.ts`) — an mtime-gated 4 s
 re-read of `session-commitments.json` into a live holder passed to the
 `Resolver` as `options.sessionCommitments`. The resolver forwards it (gated by
 `session-contradiction-mode`) onto every `CueContext` as `sessionCommitments`,

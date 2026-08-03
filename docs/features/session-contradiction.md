@@ -23,9 +23,10 @@ It learns that in the background:
 1. **Watchlist (slow, background).** As your session grows, a producer reads the
    session transcript and distils it into a short **commitments watchlist** —
    the stack choices, constraints, memory/compaction intents, and scope
-   boundaries worth guarding. It runs at most once every ~45 s of activity, and
-   only ever sees your and Claude's prose (tool output, file contents, and
-   thinking are stripped first).
+   boundaries worth guarding. It refreshes within seconds of new activity
+   (batched so it makes at most one call every ~8 s), and only ever sees your
+   and Claude's prose (tool output, file contents, and thinking are stripped
+   first).
 2. **Match (fast, realtime).** As you type in the input box, a fast model checks
    your draft against that watchlist and flags a sentence that directly
    contradicts a listed decision.

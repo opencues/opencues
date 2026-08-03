@@ -24,7 +24,11 @@ const path = require('node:path');
 const os = require('node:os');
 const { readScalars } = require('../lib/opencues-md.cjs');
 
-const MIN_INTERVAL_MS = 45_000;   // at most one extraction per 45s of activity
+const MIN_INTERVAL_MS = 8_000;    // batch-window floor: at most one extraction
+                                  // per 8s of activity. This is the effective
+                                  // watchlist cadence — the statusline spawn-gate
+                                  // (5s) is deliberately shorter so it never adds
+                                  // a second beat. cerebras extraction is ~0.8s.
 const STALE_LOCK_MS = 120_000;    // a lock older than this is assumed dead
 const TAIL_BYTES = 256 * 1024;    // only the transcript tail is parsed (recent turns win)
 
