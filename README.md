@@ -26,7 +26,7 @@
 <!-- npm badge — hidden until announce; uncomment to show:
 [![npm](https://img.shields.io/npm/v/opencues)](https://npmjs.com/package/opencues) -->
 
-**An inline LLM that reads what you write and fills what you ask.** It reviews your text as you type and acts on demand: end a line with `_` and it answers right where your cursor is. A drop-in for Claude Code, OpenCode, Gemini CLI, your shell, and Chrome. Model-agnostic, output you review before it sends, an open standard with no chat window.
+**Turn any text field into a two-way LLM channel.** It reads what you write and fills what you ask: catching a slip as you type, or answering the moment you end a line with `_`. A drop-in for Claude Code, OpenCode, Gemini CLI, your shell, and Chrome. Model-agnostic, output you review before it sends, an open standard with no chat window.
 
 The model comes to your cursor, both ways. **Cues** react to what you've already written and surface a fix or a sharper line inline, unprompted. **Blanks** act on demand: end a line with `_` and the model fills in the rest. No chat window, no copy-paste, no context switch.
 
