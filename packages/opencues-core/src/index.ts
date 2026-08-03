@@ -372,6 +372,21 @@ export type {
   SessionCommitmentsSnapshot,
   TranscriptTurn,
 } from './session-commitments';
+
+// Tool-prompt cues — populate cues from a well-known tool system-prompt
+// (AskUserQuestion first): question → tip, options → cyclable alternatives on
+// the selected span. A generic, pluggable primitive. See tool-prompt-source.ts.
+export {
+  ToolPromptCueSource,
+  parseToolQuestion,
+  ASK_USER_QUESTION_SYSTEM,
+  TOOL_PROMPTS,
+} from './sources/tool-prompt-source';
+export type {
+  ToolOption,
+  ToolQuestion,
+  ToolPrompt,
+} from './sources/tool-prompt-source';
 export type { IcsEvent, ParseIcsOptions } from './ics';
 
 // IDENTITY.md write-validator — load-bearing safety check for any path

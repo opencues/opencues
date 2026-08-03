@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — AskUserQuestion cues: a generic "populate cues from a well-known tool prompt" primitive (`@opencues/core` 0.42.0, `@opencues/runtime` 0.29.0)
+
+A new cue that turns the sentence under your cursor into an inline **question with cyclable options**, populated by the AskUserQuestion tool's own (well-known, reliably-emitted) system prompt. The question becomes the cue tip; each option becomes a cycle alternative on the sentence; options carrying a concrete `apply` rewrite the sentence when chosen, advisory ones just inform. **No new UI** — it reuses the existing navigate + cycle + tip surface. Generic + pluggable: `ToolPromptCueSource` + a `TOOL_PROMPTS` registry (AskUserQuestion is the first entry; adding a tool is one entry). Ambient at cursor, cached per sentence (one LLM call per new sentence). OFF by default (`ask-cues-mode: on`). Docs: `docs/features/ask-cues.md`. Also fixed a test-harness gap: three vitest-style core test files are now excluded from the `node --test` build path and added to the vitest include (they'd otherwise fail the `node --test` half of `pnpm test`).
+
 ### Added — session-contradiction cues: catch yourself contradicting a decision you made earlier in a Claude Code session (`@opencues/core` 0.41.0 → 0.42.0, `@opencues/runtime` 0.28.21 → 0.29.0, `opencues` 0.4.2 → 0.5.0, `@opencues/claude-code` 0.2.10 → 0.2.11)
 
 A new Claude-Code-only cue that flags when your draft message goes against a decision established earlier in the same session — you agreed "runtime is Bun, not Node," then start typing "switch this to node"; you scoped the work to the cache module, then reach for auth; you said "no new deps," then ask to add a package. OFF by default (`session-contradiction-mode: on`).

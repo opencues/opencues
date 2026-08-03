@@ -847,6 +847,7 @@ export class Resolver {
       enableSentenceCues: settings.get('sentence-cues-mode') === 'on',
       enableContradictionCues: settings.get('contradiction-cues-mode') === 'on',
       enableSessionContradiction: settings.get('session-contradiction-mode') === 'on',
+      enableAskCues: settings.get('ask-cues-mode') === 'on',
       worldDataFetch: this.options.worldDataFetch,
       weatherLocation: settings.get('weather-location'),
       enableWordCues: settings.get('word-cues-mode') === 'on',

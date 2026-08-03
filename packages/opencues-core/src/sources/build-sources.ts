@@ -31,6 +31,7 @@ import { ConfigIntentSource, type ConfigIntentSourceConfig } from './config-inte
 import { SentenceCueSource, type SentenceCueSourceConfig } from './sentence-cue-source';
 import { ContradictionLlmSource } from '../contradiction/contradiction-llm-source';
 import { SessionContradictionSource } from '../contradiction/session-contradiction-source';
+import { ToolPromptCueSource } from './tool-prompt-source';
 import { BankHolidayProvider } from '../contradiction/bank-holidays';
 import { WeatherProvider } from '../contradiction/weather';
 import { TflProvider } from '../contradiction/tfl';
@@ -214,6 +215,12 @@ export interface BuildSourcesOptions {
    *  just the on/off gate. Defaults to false; flip on via OPENCUES.md
    *  `session-contradiction-mode: on`. */
   enableSessionContradiction?: boolean;
+  /** Enable the AskUserQuestion (tool-prompt) cue — the sentence at the cursor
+   *  gets an inline question + cyclable options populated by the AskUserQuestion
+   *  tool prompt. Defaults to false; flip on via OPENCUES.md `ask-cues-mode:
+   *  on`. Ambient (fires on the current sentence; the source caches per
+   *  sentence so it's one LLM call per new sentence). */
+  enableAskCues?: boolean;
   /** Host-provided GET for the contradiction world-data caches (bank holidays,
    *  weather). Chrome passes a service-worker-routed fetch (a content-script
    *  fetch is blocked by the host page's CSP); native hosts omit it → global fetch. */
@@ -553,6 +560,28 @@ export function buildSourcesFromConfig(
       }));
     } else {
       options.log?.('buildSources: session-contradiction → SKIPPED (no LLM resolvable — no key / trainsOnInput provider)');
+    }
+  }
+
+  // AskUserQuestion (tool-prompt) cue — populates a cue on the sentence at the
+  // cursor from the well-known AskUserQuestion tool prompt. Reuses the
+  // sentence-cues LLM tier. Same temporal-dead-zone constraint as above (after
+  // resolveFor). If no LLM resolves, it simply doesn't run.
+  if (options.enableAskCues) {
+    const aqLlm = resolveFor(options.sentenceCues);
+    if (aqLlm) {
+      options.log?.(`buildSources: ask-cues → LLM engine (${aqLlm.provider.id}/${aqLlm.model})`);
+      sources.push(new ToolPromptCueSource({
+        httpAdapter: withFallback(options.httpAdapter, aqLlm.fallback),
+        provider: aqLlm.provider,
+        endpoint: aqLlm.endpoint,
+        apiKey: aqLlm.apiKey,
+        model: aqLlm.model,
+        maxThinking: options.maxThinking,
+        log: (m) => options.log?.(m),
+      }));
+    } else {
+      options.log?.('buildSources: ask-cues → SKIPPED (no LLM resolvable — no key / trainsOnInput provider)');
     }
   }
 

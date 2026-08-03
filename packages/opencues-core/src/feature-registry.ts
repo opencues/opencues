@@ -466,6 +466,17 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
+    scalar: 'ask-cues-mode',
+    group: 'Cues',
+    camelCase: 'askCuesMode',
+    description: 'AskUserQuestion cues — attaches an inline question with cyclable options to the sentence under your cursor, populated by the well-known AskUserQuestion tool prompt. The question is the tip; each option is a cycle alternative (options that carry a concrete rewrite edit the sentence; advisory ones just inform).',
+    menuTip: 'Turn the sentence you\'re on into a question with options: "Substantiate the speed claim with data or qualify it?" → cycle "Add data" / "Qualify claim". Reuses the cue/cycling UI; the AskUserQuestion tool prompt populates it. Ambient (fires on the sentence at your cursor). One LLM call per new sentence (cached). OFF by default.',
+    values: [
+      { id: 'off', description: 'Disabled (default) — no tool-prompt question cues' },
+      { id: 'on',  description: 'Enabled — the sentence at your cursor gets an AskUserQuestion-shaped cue' },
+    ],
+  },
+  {
     scalar: 'inline-cues-mode',
     group: 'Cues',
     camelCase: 'inlineCuesMode',

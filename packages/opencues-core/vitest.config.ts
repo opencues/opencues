@@ -30,6 +30,9 @@ export default defineConfig({
       'src/sources/missing-key-fallback-source.test.ts',
       'src/segment.test.ts',
       'src/sources/blank-source.test.ts',
+      'src/session-commitments.test.ts',
+      'src/contradiction/session-contradiction-source.test.ts',
+      'src/sources/tool-prompt-source.test.ts',
     ],
     // Never discover into git worktrees (`.claude/worktrees/`) — stale repo
     // copies with unbuilt dist; their test copies pollute the run.
