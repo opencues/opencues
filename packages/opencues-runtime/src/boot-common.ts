@@ -860,6 +860,95 @@ export function buildCalendarContextIngest(
   return holder;
 }
 
+/**
+ * Session-commitments ingest for the CC host — read the shared
+ * `session-commitments.json` snapshot (produced by `opencues
+ * extract-commitments`, kicked by the CC statusline) into a live holder the
+ * resolver reads fresh each pass. Mirrors buildCalendarContextIngest but
+ * simpler: no token/catalog build (the commitments are the user's own project
+ * decisions, not PII) and no feed-sync (the producer is the statusline-kick,
+ * out-of-band).
+ *
+ * Search order: `$OPENCUES_HOME/session-commitments.json` first (test-shard
+ * isolation), then `~/.cues/session-commitments.json`. Missing file → holder
+ * empties (the documented inert mode — the source stays silent). mtime-gated
+ * re-read on a 60s unref'd timer so a re-ingest applies without a host restart.
+ * Returns undefined in non-Node environments.
+ */
+export interface SessionCommitmentsHolder {
+  commitments: Array<{ id: string; category: string; statement: string }>;
+  ingestedAt?: string;
+  sessionId?: string;
+  /** Stop the refresh timer (harness teardown / tests). */
+  stop(): void;
+}
+
+export function buildSessionCommitmentsIngest(
+  log: (level: LogLevel, msg: string) => void,
+  opts: { refreshMs?: number } = {},
+): SessionCommitmentsHolder | undefined {
+  if (typeof process === 'undefined' || !process.versions?.node) return undefined;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fsMod = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const pathMod = require('node:path') as typeof import('node:path');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const osMod = require('node:os') as typeof import('node:os');
+
+  const snapshotPath = (): string => {
+    const override = typeof process !== 'undefined' ? process.env['OPENCUES_HOME'] : undefined;
+    if (override && override.trim().length > 0) return pathMod.join(override, 'session-commitments.json');
+    return pathMod.join(osMod.homedir(), '.cues', 'session-commitments.json');
+  };
+
+  let lastMtimeMs = -1;
+  let lastPath = '';
+  const holder: SessionCommitmentsHolder = { commitments: [], ingestedAt: undefined, sessionId: undefined, stop() { /* set below */ } };
+
+  const load = (): void => {
+    const file = snapshotPath();
+    try {
+      const st = fsMod.statSync(file, { throwIfNoEntry: false });
+      if (!st) {
+        if (holder.commitments.length > 0) {
+          holder.commitments.length = 0;
+          holder.ingestedAt = undefined;
+          holder.sessionId = undefined;
+          log('info', 'session-contradiction: snapshot removed — watchlist now empty');
+        }
+        lastMtimeMs = -1; lastPath = file;
+        return;
+      }
+      if (file === lastPath && st.mtimeMs === lastMtimeMs) return;   // unchanged
+      const parsed = JSON.parse(fsMod.readFileSync(file, 'utf8')) as { commitments?: unknown; ingestedAt?: string; sessionId?: string } | null;
+      const raw = parsed && Array.isArray(parsed.commitments) ? parsed.commitments : [];
+      holder.commitments.length = 0;
+      for (const c of raw) {
+        if (c && typeof c === 'object') {
+          const r = c as { id?: unknown; category?: unknown; statement?: unknown };
+          if (typeof r.id === 'string' && typeof r.statement === 'string') {
+            holder.commitments.push({ id: r.id, category: typeof r.category === 'string' ? r.category : 'decision', statement: r.statement });
+          }
+        }
+      }
+      holder.ingestedAt = parsed?.ingestedAt;
+      holder.sessionId = parsed?.sessionId;
+      lastMtimeMs = st.mtimeMs; lastPath = file;
+      log('info', `session-contradiction: ${holder.commitments.length} commitment(s) loaded from ${file}`);
+    } catch (err) {
+      // Malformed snapshot must never take the host down; keep last-good.
+      log('warn', `session-contradiction: load failed (${(err as Error)?.message ?? err})`);
+    }
+  };
+
+  const refreshMs = opts.refreshMs ?? 60_000;
+  load();   // boot read
+  const timer = setInterval(load, refreshMs);
+  if (typeof (timer as { unref?: () => void }).unref === 'function') (timer as { unref: () => void }).unref();
+  holder.stop = () => clearInterval(timer);
+  return holder;
+}
+
 export const AI_CALLABLE_ARG_MAX = 200;
 
 /**

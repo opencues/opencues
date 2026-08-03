@@ -83,6 +83,18 @@ export interface ResolverOptions {
     readonly ingestedAt?: string;
   };
   /**
+   * Ingested session-commitments watchlist (the CC-developer decisions the
+   * `opencues extract-commitments` producer distilled from the session
+   * transcript). A live holder the host mutates on a cadence; read fresh each
+   * resolve and forwarded to SessionContradictionSource via `CueContext`.
+   * Gated by `session-contradiction-mode` (off by default).
+   */
+  readonly sessionCommitments?: {
+    readonly commitments: ReadonlyArray<{ id: string; category: string; statement: string }>;
+    readonly ingestedAt?: string;
+    readonly sessionId?: string;
+  };
+  /**
    * Default-model override from a host-level UI (chrome popup's Model
    * dropdown). When non-empty, takes precedence over OPENCUES.md's
    * `llm-model:` scalar AND the legacy `defaultModel` fallback.
@@ -834,6 +846,7 @@ export class Resolver {
       enableUndoActions: settings.get('undo-mode') !== 'off',
       enableSentenceCues: settings.get('sentence-cues-mode') === 'on',
       enableContradictionCues: settings.get('contradiction-cues-mode') === 'on',
+      enableSessionContradiction: settings.get('session-contradiction-mode') === 'on',
       worldDataFetch: this.options.worldDataFetch,
       weatherLocation: settings.get('weather-location'),
       enableWordCues: settings.get('word-cues-mode') === 'on',
@@ -1426,6 +1439,21 @@ export class Resolver {
               catalog: this.options.calendarContext.catalog,
               ingestedAt: this.options.calendarContext.ingestedAt,
               mode: 'on' as const,
+            }
+          : undefined,
+        // Session-commitments watchlist (ingested from the CC transcript by the
+        // `extract-commitments` producer). Host mutates the holder on a cadence;
+        // read fresh here so a re-ingest applies without restart. Gated by
+        // `session-contradiction-mode` (off by default). Not PII-dehydrated —
+        // these are the user's own project decisions, terse by construction; the
+        // producer prompt forbids secrets / code / file contents.
+        sessionCommitments: this.configLoader.opencuesState.sessionContradictionMode === 'on'
+          && this.options.sessionCommitments
+          && this.options.sessionCommitments.commitments.length > 0
+          ? {
+              commitments: this.options.sessionCommitments.commitments,
+              ingestedAt: this.options.sessionCommitments.ingestedAt,
+              sessionId: this.options.sessionCommitments.sessionId,
             }
           : undefined,
         // Sentinel grammar (bare default / typed opt-in). Threaded so the

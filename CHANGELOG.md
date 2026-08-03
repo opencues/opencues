@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — session-contradiction cues: catch yourself contradicting a decision you made earlier in a Claude Code session (`@opencues/core` 0.41.0 → 0.42.0, `@opencues/runtime` 0.28.21 → 0.29.0, `opencues` 0.4.2 → 0.5.0, `@opencues/claude-code` 0.2.10 → 0.2.11)
+
+A new Claude-Code-only cue that flags when your draft message goes against a decision established earlier in the same session — you agreed "runtime is Bun, not Node," then start typing "switch this to node"; you scoped the work to the cache module, then reach for auth; you said "no new deps," then ask to add a package. OFF by default (`session-contradiction-mode: on`).
+
+Two-stage, distinct from the deterministic `contradiction-cues-mode`: a background producer (`opencues extract-commitments`, kicked fire-and-forget by the CC statusline) distils the session transcript into a terse **commitments watchlist** (`~/.cues/session-commitments.json`, categories: stack / architecture / constraint / memory / scope / decision); a fast matcher (`SessionContradictionSource`, priority 88) checks each draft against it and surfaces a contradiction as a passive `⚠` sentence-cue (`Ctrl+Alt+↑` applies a reconciled rewrite; never auto-splices). Grounded: a flag survives only if its quote is an exact buffer substring AND its cited commitment is on the watchlist. Data-minimized: only your and Claude's prose reaches the producer — tool I/O, file contents, and thinking blocks are dropped before anything is sent. New CLI command `opencues extract-commitments`. Docs: `docs/features/session-contradiction.md`, `docs/architecture/session-contradiction.md`. Not a spec change (runtime-only knob).
+
 ## [0.4.2] - 2026-08-02
 
 Patch release: launch-readiness for the published `opencues` CLI — a user-facing npm README, Apache-2.0 reconciled across every package, and a time-bomb test fix. Highlights in the [GitHub Release](https://github.com/opencues/opencues/releases/tag/v0.4.2).

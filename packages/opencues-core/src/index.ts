@@ -349,6 +349,29 @@ export {
 // Pure (no network); the host poller fetches the feed and passes the text.
 // One parser covers Luma / Google / Outlook / Apple / any .ics feed.
 export { parseIcs } from './ics';
+
+// Session-commitments — a REASONING watchlist of CC-developer decisions
+// distilled from the session transcript, matched against the draft in realtime
+// by SessionContradictionSource. Ingest-on-a-timer (the `opencues
+// extract-commitments` producer writes the snapshot), never per-keystroke.
+// See docs/architecture/session-contradiction.md.
+export {
+  buildSessionCommitmentsSnapshot,
+  extractTranscriptTurns,
+  renderTranscriptForExtraction,
+  renderSessionCommitmentsCatalog,
+  SESSION_COMMITMENTS_EXTRACT_SYSTEM,
+  COMMITMENT_CATEGORIES,
+  MAX_COMMITMENTS,
+  MAX_STATEMENT_LEN,
+} from './session-commitments';
+export type {
+  SessionContradictionMode,
+  CommitmentCategory,
+  SessionCommitment,
+  SessionCommitmentsSnapshot,
+  TranscriptTurn,
+} from './session-commitments';
 export type { IcsEvent, ParseIcsOptions } from './ics';
 
 // IDENTITY.md write-validator — load-bearing safety check for any path

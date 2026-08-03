@@ -36,7 +36,7 @@ import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { UndoJournal } from '../../../src/state/undo-journal';
 import { applyDirectives } from '../../../src/render-directives';
-import { buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, buildCyclingProviderProbe, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, buildSessionCommitmentsIngest, buildCyclingProviderProbe, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { buildBlankWeaver } from '../../../src/modules/blank-weave';
 import { startEventBridge } from '../../../src/event-bridge';
 import type {
@@ -716,6 +716,12 @@ export function boot(host: HostInfo): BootResult {
   // Resolver is constructed even with no keys so the MissingKeyFallbackSource
   // can substitute a visible in-buffer hint on `_` instead of silent no-op.
   const calendarContextHolder = buildCalendarContextIngest(log);
+  // Session-contradiction: CC-only. Native read of the shared
+  // session-commitments.json watchlist (produced by `opencues
+  // extract-commitments`, kicked by the statusline). Live holder — refreshed
+  // on a timer; the resolver reads it fresh each pass. Inert until the producer
+  // writes the file (feature off / no transcript growth → empty → source silent).
+  const sessionCommitmentsHolder = buildSessionCommitmentsIngest(log);
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
@@ -729,6 +735,7 @@ export function boot(host: HostInfo): BootResult {
     // ($OPENCUES_HOME first, then ~/.cues), refreshed on a timer. Live
     // holder — the resolver reads it fresh each pass. See boot-common.
     calendarContext: calendarContextHolder,
+    sessionCommitments: sessionCommitmentsHolder,
     externallySuppressed: (text: string) => kataCoach.shouldSuppressResolve(text),
   }, spanFillState, agentTaskState, blankLoading, markdownRender, selectorSatelliteState,
   buildBlankContextProvider(configLoader, host.blanks, log),

@@ -167,6 +167,22 @@ export interface CueContext {
   };
 
   /**
+   * Ingested session-commitments watchlist. Populated by the runtime when
+   * `session-contradiction-mode: on` (off by default). A REASONING catalog:
+   * SessionContradictionSource matches the draft buffer against these
+   * developer-decisions and flags a direct contradiction as a passive cue.
+   * The producer (`opencues extract-commitments`, kicked by the CC statusline)
+   * distils the session transcript into this list. Mirror of
+   * `@opencues/core/session-commitments.ts` SessionCommitmentsSnapshot;
+   * declared inline so CueContext closes over it without a circular import.
+   */
+  sessionCommitments?: {
+    commitments: ReadonlyArray<{ id: string; category: string; statement: string }>;
+    ingestedAt?: string;
+    sessionId?: string;
+  };
+
+  /**
    * Sentinel grammar for rendering + resolving identity-/blank-context
    * tokens. `undefined` / `'bare'` → flat `[TOKEN]` form (the default,
    * byte-identical to pre-feature behaviour). `'typed'` → the

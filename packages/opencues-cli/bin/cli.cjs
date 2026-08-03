@@ -47,6 +47,7 @@ const COMMANDS = {
   identity:       () => require('../src/commands/identity.cjs'),
   context:        () => require('../src/commands/context.cjs'),
   calendar:       () => require('../src/commands/calendar.cjs'),
+  'extract-commitments': () => require('../src/commands/extract-commitments.cjs'),
   launcher:       () => require('../src/commands/launcher.cjs'), // no-arg interactive menu
   config:         () => require('../src/commands/config.cjs'),
   cleanup:        () => require('../src/commands/cleanup.cjs'),

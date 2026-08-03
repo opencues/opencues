@@ -30,6 +30,7 @@ import { TransformBlankSource, type TransformBlankSourceConfig } from './transfo
 import { ConfigIntentSource, type ConfigIntentSourceConfig } from './config-intent-source';
 import { SentenceCueSource, type SentenceCueSourceConfig } from './sentence-cue-source';
 import { ContradictionLlmSource } from '../contradiction/contradiction-llm-source';
+import { SessionContradictionSource } from '../contradiction/session-contradiction-source';
 import { BankHolidayProvider } from '../contradiction/bank-holidays';
 import { WeatherProvider } from '../contradiction/weather';
 import { TflProvider } from '../contradiction/tfl';
@@ -206,6 +207,13 @@ export interface BuildSourcesOptions {
    *  mismatch, split-the-bill math — buffer + clock only, no LLM/network).
    *  Defaults to false; flip on via OPENCUES.md `contradiction-cues-mode: on`. */
   enableContradictionCues?: boolean;
+  /** Enable the session-contradiction layer — a fast LLM matches the draft
+   *  buffer against a watchlist of session decisions (produced out-of-band by
+   *  `opencues extract-commitments`) and flags a direct contradiction as a
+   *  passive cue. The watchlist arrives per-resolve on `CueContext`, so this is
+   *  just the on/off gate. Defaults to false; flip on via OPENCUES.md
+   *  `session-contradiction-mode: on`. */
+  enableSessionContradiction?: boolean;
   /** Host-provided GET for the contradiction world-data caches (bank holidays,
    *  weather). Chrome passes a service-worker-routed fetch (a content-script
    *  fetch is blocked by the host page's CSP); native hosts omit it → global fetch. */
@@ -520,6 +528,31 @@ export function buildSourcesFromConfig(
       }));
     } else {
       options.log?.('buildSources: contradiction-cues → SKIPPED (no LLM resolvable — no key / trainsOnInput provider)');
+    }
+  }
+
+  // Session-contradiction cues (validator class) — a built-in source, not
+  // driven by any CUE.md. The watchlist (session commitments) arrives per
+  // resolve on CueContext (the runtime ingests session-commitments.json into a
+  // live holder), so here we only construct the matcher + wire its LLM. Reuses
+  // the sentence-cues LLM tier like the deterministic engine. Same
+  // temporal-dead-zone constraint as the block above — MUST come after
+  // resolveFor is defined. If no LLM resolves, the cue simply doesn't run.
+  if (options.enableSessionContradiction) {
+    const scLlm = resolveFor(options.sentenceCues);
+    if (scLlm) {
+      options.log?.(`buildSources: session-contradiction → LLM engine (${scLlm.provider.id}/${scLlm.model})`);
+      sources.push(new SessionContradictionSource({
+        httpAdapter: withFallback(options.httpAdapter, scLlm.fallback),
+        provider: scLlm.provider,
+        endpoint: scLlm.endpoint,
+        apiKey: scLlm.apiKey,
+        model: scLlm.model,
+        maxThinking: options.maxThinking,
+        log: (m) => options.log?.(m),
+      }));
+    } else {
+      options.log?.('buildSources: session-contradiction → SKIPPED (no LLM resolvable — no key / trainsOnInput provider)');
     }
   }
 
