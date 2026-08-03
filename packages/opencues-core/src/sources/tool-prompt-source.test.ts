@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ToolPromptCueSource, parseToolQuestion } from './tool-prompt-source';
+import { ToolPromptCueSource, parseToolQuestion, renderSingleLineTip } from './tool-prompt-source';
 import { getProvider } from '../llm-provider';
 import type { CueContext, HttpAdapter } from '../types';
 
@@ -10,6 +10,21 @@ function ctx(text: string): CueContext {
   return { text, words: text.split(/\s+/).filter(Boolean), cursor: text.length };
 }
 const base = { provider: getProvider('groq')!, endpoint: 'https://x.test/v1/chat/completions', apiKey: 'k', model: 'm' };
+
+describe('renderSingleLineTip', () => {
+  it('puts question + option labels on one line, marking advisory options', () => {
+    expect(renderSingleLineTip({ header: 'Tone', question: 'Formal or casual?', options: [
+      { label: 'Formal', apply: 'We request…' },
+      { label: 'Leave it' },
+    ] })).toBe('❓ Tone — Formal or casual?  ▸ Formal · Leave it°');
+  });
+  it('elides the QUESTION past the one-line budget but keeps the option labels', () => {
+    const tip = renderSingleLineTip({ question: 'Q '.repeat(80), options: [{ label: 'keepme', apply: 'y' }] });
+    expect(tip.length).toBeLessThanOrEqual(96);
+    expect(tip).toContain('…');           // question was truncated
+    expect(tip).toContain('▸ keepme');    // the option label survives
+  });
+});
 
 describe('parseToolQuestion', () => {
   it('parses a well-formed AQT object, tolerating fences', () => {
@@ -45,7 +60,9 @@ describe('ToolPromptCueSource', () => {
     expect(res.results).toHaveLength(1);
     const r = res.results[0]!;
     expect(r.source).toBe('sentence-cue:tool-ask');
-    expect(r.cueTip).toBe('❓ Evidence: Substantiate the claim or qualify it?');
+    // Single-line AQT: question + option labels on one tip line; advisory option
+    // (no apply) marked with a ° dot.
+    expect(r.cueTip).toBe('❓ Evidence — Substantiate the claim or qualify it?  ▸ Add data · Qualify · Keep as is°');
     // alternatives[0] is the exact span; only the two apply-bearing options cycle.
     expect(r.alternatives[0]).toBe(buffer);
     expect(buffer.slice(r.spanStart!, r.spanEnd!)).toBe(buffer);

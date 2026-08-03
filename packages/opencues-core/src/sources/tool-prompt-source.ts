@@ -150,7 +150,12 @@ export class ToolPromptCueSource implements CueSource {
       .map((o) => (typeof o.apply === 'string' && o.apply.trim() ? o.apply.trim() : null))
       .filter((a): a is string => a !== null && a !== original);
     const alternatives = [original, ...applies];
-    const cueTip = q.header ? `${q.header}: ${q.question}` : q.question;
+    // Single-line AQT (v1): the whole question + option labels ride in ONE tip
+    // line, so the existing inline-note / statusline channel shows the full
+    // "card" without any render-contract change. Multi-line rows are a later
+    // phase — see docs/architecture/inline-aqt-ui.md. The structured
+    // `toolQuestion` is stashed in metadata for that renderer.
+    const cueTip = renderSingleLineTip(q);
     const wordIndex = this.wordIndexAt(context, sel.start);
     const result: CueResult = {
       wordIndex,
@@ -160,7 +165,7 @@ export class ToolPromptCueSource implements CueSource {
       priority: this.priority,
       spanStart: sel.start,
       spanEnd: sel.end,
-      cueTip: `❓ ${cueTip}`,
+      cueTip,
       metadata: { sentenceCue: { cueName: this.id }, toolQuestion: q },
     };
     this.log(`ToolPrompt(${this.tool.id}): "${q.question}" (${q.options.length} option(s))`);
@@ -197,6 +202,35 @@ export class ToolPromptCueSource implements CueSource {
     );
     return parseToolQuestion(raw);
   }
+}
+
+/** One-line inline budget — a cue tip has to fit a single terminal/statusline
+ *  row without wrapping. Beyond this the tail is elided. */
+export const SINGLE_LINE_TIP_MAX = 96;
+
+/**
+ * Render the whole AskUserQuestion result onto ONE line: `❓ <header —>question
+ * ▸ opt · opt · opt`. Options that carry a concrete edit are shown plainly;
+ * advisory ones (no `apply`) get a trailing `·` dot marker so the reader can
+ * tell which cycle stops actually rewrite the sentence. Budget-capped with an
+ * ellipsis so it never wraps. Pure + unit-tested.
+ */
+export function renderSingleLineTip(q: ToolQuestion): string {
+  const prefix = `❓ ${q.header ? `${q.header} — ` : ''}`;
+  const labels = q.options
+    .map((o) => (o.apply && o.apply.trim() ? o.label : `${o.label}°`))   // ° = advisory (no edit)
+    .join(' · ');
+  const labelsPart = labels ? `  ▸ ${labels}` : '';
+  // The OPTIONS are the actionable part of an AQT, so they're kept in full;
+  // the question is truncated to whatever budget remains (it's context, the
+  // labels are the choices).
+  const budgetForQ = SINGLE_LINE_TIP_MAX - prefix.length - labelsPart.length;
+  let question = q.question;
+  if (budgetForQ > 12 && question.length > budgetForQ) question = `${question.slice(0, budgetForQ - 1)}…`;
+  let tip = `${prefix}${question}${labelsPart}`;
+  // Final guard: if the labels alone blow the budget, elide the whole thing.
+  if (tip.length > SINGLE_LINE_TIP_MAX) tip = `${tip.slice(0, SINGLE_LINE_TIP_MAX - 1)}…`;
+  return tip;
 }
 
 /** Tolerant parse of a ToolQuestion JSON object (strip prose / fences). */

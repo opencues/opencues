@@ -380,6 +380,8 @@ export type {
 export {
   ToolPromptCueSource,
   parseToolQuestion,
+  renderSingleLineTip,
+  SINGLE_LINE_TIP_MAX,
   ASK_USER_QUESTION_SYSTEM,
   TOOL_PROMPTS,
 } from './sources/tool-prompt-source';
