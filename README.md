@@ -26,9 +26,9 @@
 <!-- npm badge — hidden until announce; uncomment to show:
 [![npm](https://img.shields.io/npm/v/opencues)](https://npmjs.com/package/opencues) -->
 
-**OpenCues enables native AI integration anywhere you type.** Model agnostic and fully open source. Inline agents and prompting.
+**Turn any text field into a two-way LLM channel.** It reads what you write and fills what you ask: catching a slip as you type, or answering the moment you end a line with `_`. A drop-in for Claude Code, OpenCode, Gemini CLI, your shell, and Chrome. Model-agnostic, output you review before it sends, an open standard with no chat window.
 
-Rather than navigating to a chat interface or AI-enabled input box, define a query in plain text: an LLM discovers your query and answers it inline, right where you wrote it.
+The model comes to your cursor, both ways. **Cues** react to what you've already written and surface a fix or a sharper line inline, unprompted. **Blanks** act on demand: end a line with `_` and the model fills in the rest. No chat window, no copy-paste, no context switch.
 
 <!-- VIDEO: hero demo (~30-60s), replace this comment with the real embed.
      GitHub-hosted asset (renders inline): ![demo](https://github.com/opencues/opencues/assets/.../demo.mp4)
@@ -40,11 +40,15 @@ OpenCues is platform, model, and provider agnostic, engineered from the ground u
 
 | You type | You get |
 |---|---|
+| let's ship it Thursday the 19th | ↳ the 19th is a Friday |
+| we should probably go ahead and refactor this | ↳ we should refactor this |
 | hey can u send me that report when u get a sec make this formal _ | Could you please send me that report at your earliest convenience? |
 | 4 + 4 = _ | 4 + 4 = 8 |
 | hello world translate to japanese _ | こんにちは世界 |
 | draft an email to my landlord asking for a rent reduction _ | (the email, written) |
 | ffmpeg command to convert a video to web-ready mp4 _ | ffmpeg -i input.mov -c:v libx264 -preset slow -crf 23 -c:a aac -b:a 128k -movflags +faststart output.mp4 |
+
+Rows with `_` are **blanks**: you ask, the model fills in. Rows without are **cues**: the model speaks up on what you wrote, no prompt.
 
 #
 
