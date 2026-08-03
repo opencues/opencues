@@ -178,6 +178,9 @@ export interface CueContext {
    */
   sessionCommitments?: {
     commitments: ReadonlyArray<{ id: string; category: string; statement: string }>;
+    /** One-line "what the developer is working on" — conversation context for
+     *  grounding ask-cues. */
+    summary?: string;
     ingestedAt?: string;
     sessionId?: string;
   };

@@ -91,6 +91,7 @@ export interface ResolverOptions {
    */
   readonly sessionCommitments?: {
     readonly commitments: ReadonlyArray<{ id: string; category: string; statement: string }>;
+    readonly summary?: string;
     readonly ingestedAt?: string;
     readonly sessionId?: string;
   };
@@ -1448,11 +1449,16 @@ export class Resolver {
         // `session-contradiction-mode` (off by default). Not PII-dehydrated —
         // these are the user's own project decisions, terse by construction; the
         // producer prompt forbids secrets / code / file contents.
-        sessionCommitments: this.configLoader.opencuesState.sessionContradictionMode === 'on'
+        // Forwarded when EITHER consumer is on: session-contradiction (matches
+        // the draft against the commitments) OR ask-cues (grounds its question
+        // in the summary + decisions). Carries the `summary` for the latter.
+        sessionCommitments: (this.configLoader.opencuesState.sessionContradictionMode === 'on'
+          || this.configLoader.opencuesState.askCuesMode === 'on')
           && this.options.sessionCommitments
-          && this.options.sessionCommitments.commitments.length > 0
+          && (this.options.sessionCommitments.commitments.length > 0 || !!this.options.sessionCommitments.summary)
           ? {
               commitments: this.options.sessionCommitments.commitments,
+              summary: this.options.sessionCommitments.summary,
               ingestedAt: this.options.sessionCommitments.ingestedAt,
               sessionId: this.options.sessionCommitments.sessionId,
             }

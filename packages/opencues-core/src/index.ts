@@ -357,10 +357,12 @@ export { parseIcs } from './ics';
 // See docs/architecture/session-contradiction.md.
 export {
   buildSessionCommitmentsSnapshot,
+  parseExtractionResult,
   extractTranscriptTurns,
   stripHarnessFraming,
   renderTranscriptForExtraction,
   renderSessionCommitmentsCatalog,
+  renderSessionContextForAsk,
   SESSION_COMMITMENTS_EXTRACT_SYSTEM,
   COMMITMENT_CATEGORIES,
   MAX_COMMITMENTS,

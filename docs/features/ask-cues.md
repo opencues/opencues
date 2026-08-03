@@ -29,6 +29,26 @@ AskUserQuestion is the first plugged-in tool prompt (`TOOL_PROMPTS.ask`);
 others can be added as one registry entry, and session-contradiction is
 expressible as another.
 
+## Grounded in your session, not just the sentence
+
+The question isn't reasoned from the bare sentence — it's grounded in **what
+you're actually working on**. The same producer that feeds session-contradiction
+distils your Claude Code session into a one-line summary + your decisions, and
+ask-cues reads that as context. So it:
+
+- **catches tensions with your decisions** — with "no new dependencies" on
+  record, "we should add redis to speed up the cache" becomes *"Add Redis even
+  though it's a new dependency? [Keep dependency-free / …]"*;
+- **resolves ambiguity from context instead of asking** — if the session
+  already settled the runtime, "use the library everyone's using" grounds to
+  *"Use a Bun built-in?"* rather than a generic "which library?";
+- **stays quiet** when the sentence is already consistent with the session.
+
+Measured effect (independent Claude judge, `tests/benchmarks/ask-cues/`):
+question quality **1.0/2 → 2.0/2** with context, and every grounded question
+used it. Because the session feeds both features, the producer runs when
+**either** `ask-cues-mode` **or** `session-contradiction-mode` is on.
+
 ## What it looks like
 
 ```

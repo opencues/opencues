@@ -64,6 +64,10 @@ export interface SessionCommitment {
 
 export interface SessionCommitmentsSnapshot {
   readonly commitments: readonly SessionCommitment[];
+  /** One-line "what the developer is working on right now" — conversation
+   *  context for grounding cues (e.g. ask-cues). Distilled from the transcript
+   *  alongside the commitments. Empty when the session is too thin. */
+  readonly summary?: string;
   /** ISO string — when the producer last distilled the transcript. */
   readonly ingestedAt?: string;
   /** The CC session this was distilled from (for staleness / debugging). */
@@ -86,7 +90,7 @@ export const MAX_STATEMENT_LEN = 200;
  */
 export function buildSessionCommitmentsSnapshot(
   raw: ReadonlyArray<Partial<SessionCommitment> & { statement?: string }>,
-  meta: { ingestedAt?: string; sessionId?: string } = {},
+  meta: { summary?: string; ingestedAt?: string; sessionId?: string } = {},
 ): SessionCommitmentsSnapshot {
   const commitments: SessionCommitment[] = [];
   for (const r of raw) {
@@ -98,7 +102,32 @@ export function buildSessionCommitmentsSnapshot(
     commitments.push({ id: `c${commitments.length + 1}`, category, statement });
     if (commitments.length >= MAX_COMMITMENTS) break;
   }
-  return { commitments, ingestedAt: meta.ingestedAt, sessionId: meta.sessionId };
+  const summary = typeof meta.summary === 'string' ? meta.summary.trim().replace(/\s+/g, ' ').slice(0, MAX_STATEMENT_LEN) : undefined;
+  return { commitments, summary: summary || undefined, ingestedAt: meta.ingestedAt, sessionId: meta.sessionId };
+}
+
+/**
+ * Tolerant parse of the producer's raw LLM output into `{ summary, commitments }`.
+ * Accepts BOTH the new object form (`{"summary":…,"commitments":[…]}`) and the
+ * legacy bare-array form (`[…]`), so an older snapshot / model reply still works.
+ */
+export function parseExtractionResult(raw: string): { summary?: string; commitments: Array<{ category?: string; statement?: string }> } {
+  if (!raw) return { commitments: [] };
+  // Prefer an object; fall back to a bare array.
+  const obj = raw.match(/\{[\s\S]*\}/);
+  if (obj) {
+    try {
+      const o = JSON.parse(obj[0]) as { summary?: unknown; commitments?: unknown };
+      if (Array.isArray(o.commitments)) {
+        return { summary: typeof o.summary === 'string' ? o.summary : undefined, commitments: o.commitments as Array<{ category?: string; statement?: string }> };
+      }
+    } catch { /* fall through to array */ }
+  }
+  const arr = raw.match(/\[[\s\S]*\]/);
+  if (arr) {
+    try { const a = JSON.parse(arr[0]); if (Array.isArray(a)) return { commitments: a }; } catch { /* none */ }
+  }
+  return { commitments: [] };
 }
 
 /** One text turn extracted from the transcript for the producer to reason over. */
@@ -187,11 +216,16 @@ function textFromContent(content: unknown): string {
  * precision over recall; data-minimizing (no secrets, no code — short decision
  * statements only).
  */
-export const SESSION_COMMITMENTS_EXTRACT_SYSTEM = `You read a slice of a Claude Code (an AI coding assistant) session transcript and extract the developer's load-bearing COMMITMENTS: the decisions, constraints, and choices that — if silently contradicted later in the session — would waste the developer's time or undo their intent. Output is a watchlist a fast checker uses to flag when the developer's next message goes against one of them.
+export const SESSION_COMMITMENTS_EXTRACT_SYSTEM = `You read a slice of a Claude Code (an AI coding assistant) session transcript and distil two things: (1) a one-line SUMMARY of what the developer is currently working on, and (2) their load-bearing COMMITMENTS — the decisions, constraints, and choices that, if silently contradicted later, would waste their time or undo their intent.
 
-Output ONLY a JSON array (no prose, no markdown fences). Output [] when the transcript states no durable commitment.
+Output ONLY a JSON object (no prose, no markdown fences):
+{"summary": "<one sentence, ≤160 chars: what the developer is building / focused on right now>", "commitments": [ {"category": <one of stack|architecture|constraint|memory|scope|decision>, "statement": "<one terse assertion, up to 160 chars>"} ]}
 
-Each element: {"category": <one of stack|architecture|constraint|memory|scope|decision>, "statement": "<one terse assertion, up to 160 chars>"}.
+Output {"summary":"","commitments":[]} when the transcript states nothing durable.
+
+The SUMMARY is context for a writing assistant — plain, concrete, present-tense ("Building a session-contradiction cue for Claude Code; tuning the extraction prompt"). No secrets, no code.
+
+Each commitment: {"category": …, "statement": …} as above.
 
 Categories:
 - stack — a chosen runtime / language / framework / library / tool (and the rejected alternative if stated). e.g. "Runtime is Bun, not Node"; "Use pnpm, not npm".
@@ -233,6 +267,24 @@ export function renderTranscriptForExtraction(
     total += line.length;
   }
   return rendered.reverse().join('\n\n');
+}
+
+/**
+ * Render the session as CONVERSATION CONTEXT for a writing cue (ask-cues) — the
+ * summary + the commitments as "what the developer is working on and has
+ * decided". Lets a question be GROUNDED in the actual work (and stay silent
+ * when the sentence is already consistent with it) instead of reacting to the
+ * bare sentence. Returns '' when there's nothing to ground on.
+ */
+export function renderSessionContextForAsk(snapshot: SessionCommitmentsSnapshot | undefined): string {
+  if (!snapshot) return '';
+  const parts: string[] = [];
+  if (snapshot.summary) parts.push(`Working on: ${snapshot.summary}`);
+  if (snapshot.commitments.length > 0) {
+    parts.push(`Decisions/constraints so far:\n${snapshot.commitments.map((c) => `- ${c.statement}`).join('\n')}`);
+  }
+  if (parts.length === 0) return '';
+  return `\n\nSESSION CONTEXT (what the developer is doing in this Claude Code session — use it to make your question specific and to stay silent when the sentence is already fine given this context):\n${parts.join('\n')}`;
 }
 
 /**

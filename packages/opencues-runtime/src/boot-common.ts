@@ -877,6 +877,7 @@ export function buildCalendarContextIngest(
  */
 export interface SessionCommitmentsHolder {
   commitments: Array<{ id: string; category: string; statement: string }>;
+  summary?: string;
   ingestedAt?: string;
   sessionId?: string;
   /** Stop the refresh timer (harness teardown / tests). */
@@ -903,15 +904,16 @@ export function buildSessionCommitmentsIngest(
 
   let lastMtimeMs = -1;
   let lastPath = '';
-  const holder: SessionCommitmentsHolder = { commitments: [], ingestedAt: undefined, sessionId: undefined, stop() { /* set below */ } };
+  const holder: SessionCommitmentsHolder = { commitments: [], summary: undefined, ingestedAt: undefined, sessionId: undefined, stop() { /* set below */ } };
 
   const load = (): void => {
     const file = snapshotPath();
     try {
       const st = fsMod.statSync(file, { throwIfNoEntry: false });
       if (!st) {
-        if (holder.commitments.length > 0) {
+        if (holder.commitments.length > 0 || holder.summary) {
           holder.commitments.length = 0;
+          holder.summary = undefined;
           holder.ingestedAt = undefined;
           holder.sessionId = undefined;
           log('info', 'session-contradiction: snapshot removed — watchlist now empty');
@@ -920,7 +922,7 @@ export function buildSessionCommitmentsIngest(
         return;
       }
       if (file === lastPath && st.mtimeMs === lastMtimeMs) return;   // unchanged
-      const parsed = JSON.parse(fsMod.readFileSync(file, 'utf8')) as { commitments?: unknown; ingestedAt?: string; sessionId?: string } | null;
+      const parsed = JSON.parse(fsMod.readFileSync(file, 'utf8')) as { commitments?: unknown; summary?: string; ingestedAt?: string; sessionId?: string } | null;
       const raw = parsed && Array.isArray(parsed.commitments) ? parsed.commitments : [];
       holder.commitments.length = 0;
       for (const c of raw) {
@@ -931,6 +933,7 @@ export function buildSessionCommitmentsIngest(
           }
         }
       }
+      holder.summary = typeof parsed?.summary === 'string' ? parsed.summary : undefined;
       holder.ingestedAt = parsed?.ingestedAt;
       holder.sessionId = parsed?.sessionId;
       lastMtimeMs = st.mtimeMs; lastPath = file;

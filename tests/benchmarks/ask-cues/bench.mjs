@@ -50,12 +50,28 @@ const CASES = [
   { s: 'The meeting is at 3pm on Tuesday.', ask: false },
 ];
 
-const JUDGE_SYS = `You are a strict writing editor evaluating an assistant that attaches an OPTIONAL inline question to a sentence a user is writing. The assistant should raise a question ONLY when there is a genuine, useful fork — a vague or risky claim, an ambiguity, or a real decision the sentence implies — and should STAY SILENT when the sentence is clear and fine as-is. Over-asking is a failure.
+// A fixed session context for the context-aware cases (Phase 2). Grounding
+// should sharpen questions AND silence sentences already consistent with it.
+const CTX = { summary: 'Building a cache layer for a Bun service; keeping it dependency-free', commitments: [
+  { id: 'c1', category: 'stack', statement: 'Runtime is Bun, standard library only' },
+  { id: 'c2', category: 'constraint', statement: 'Do not add new npm dependencies' },
+  { id: 'c3', category: 'scope', statement: 'Only touching the cache module this session' },
+] };
+const CTX_CASES = [
+  { s: 'we should add redis to speed up the cache', ask: true, ground: true },       // contradicts no-deps
+  { s: "let me also refactor the auth module while I'm here", ask: true, ground: true }, // out of scope
+  { s: "let's pull in lodash for the utils", ask: true, ground: true },              // contradicts no-deps
+  { s: 'store the cache entries in a plain Map', ask: false },                       // consistent → silent
+  { s: 'the cache uses an LRU eviction policy', ask: false },                        // clear + on-scope → silent
+];
 
-You are given a SELECTION and the assistant's OUTPUT (either a question with options, or ABSTAINED).
-Return ONLY JSON: {"warranted": <true|false>, "quality": <0|1|2|null>, "reason": "<≤14 words>"}
-- warranted: judging the SELECTION on its own, would a thoughtful editor genuinely want to raise a question here?
-- quality: if the assistant asked, rate the question — 0 = forced/rhetorical/options not distinct or wrong, 1 = ok, 2 = genuinely useful (real fork, distinct sensible options, sound recommended-first). If it ABSTAINED, quality = null.`;
+const JUDGE_SYS = `You are a strict writing editor evaluating an assistant that attaches an OPTIONAL inline question to a sentence a user is writing. It should raise a question ONLY for a genuine, useful fork — a vague/risky claim, an ambiguity, a real decision, or a tension with what the developer already decided (SESSION CONTEXT) — and STAY SILENT when the sentence is clear/fine or already consistent with the context. Over-asking is a failure.
+
+You get optional SESSION CONTEXT, a SELECTION, and the assistant's OUTPUT (a question with options, or ABSTAINED).
+Return ONLY JSON: {"warranted": <true|false>, "quality": <0|1|2|null>, "grounded": <true|false|null>, "reason": "<up to 14 words>"}
+- warranted: given the context (if any), would a thoughtful editor genuinely want a question here?
+- quality: if asked — 0 = forced/rhetorical/options not distinct or wrong, 1 = ok, 2 = genuinely useful. ABSTAINED -> null.
+- grounded: if SESSION CONTEXT was provided AND the assistant asked, did the question meaningfully USE the context (specific to their project, or caught a tension with a decision)? No context, or abstained -> null.`;
 
 async function chat(who, sys, user, maxTokens) {
   const raw = await core.dispatchChat(who.provider, http,
@@ -64,40 +80,49 @@ async function chat(who, sys, user, maxTokens) {
   return raw;
 }
 function parseObj(raw) { const m = String(raw).match(/\{[\s\S]*\}/); if (!m) return null; try { return JSON.parse(m[0]); } catch { return null; } }
-
 async function mapLimit(items, n, fn) {
   const out = new Array(items.length); let i = 0;
   await Promise.all(Array.from({ length: n }, async () => { while (i < items.length) { const j = i++; out[j] = await fn(items[j], j); } }));
   return out;
 }
 
-console.log(`\nask-cues bench — generator ${GEN.name}, judge anthropic/${JUDGE.model}\n${'='.repeat(78)}`);
-const rows = await mapLimit(CASES, 4, async (c) => {
-  const genRaw = await chat(GEN, core.ASK_USER_QUESTION_SYSTEM, `SELECTION: ${c.s}`, 500);
+async function evalCase(c, snap) {
+  const ctxBlock = snap ? core.renderSessionContextForAsk(snap) : '';
+  const genRaw = await chat(GEN, `${core.ASK_USER_QUESTION_SYSTEM}${ctxBlock}`, `SELECTION: ${c.s}`, 500);
   const q = core.parseToolQuestion(genRaw);
   const asked = !!(q && q.question && q.options.length > 0);
   const outStr = asked ? `Q: ${q.question}\nOPTIONS: ${q.options.map(o => o.label).join(' | ')}` : 'ABSTAINED';
-  const jRaw = await chat(JUDGE, JUDGE_SYS, `SELECTION: ${c.s}\n\nASSISTANT OUTPUT:\n${outStr}`, 200);
+  const ctxForJudge = snap ? `SESSION CONTEXT:\n${core.renderSessionContextForAsk(snap).trim()}\n\n` : '';
+  const jRaw = await chat(JUDGE, JUDGE_SYS, `${ctxForJudge}SELECTION: ${c.s}\n\nASSISTANT OUTPUT:\n${outStr}`, 200);
   const j = parseObj(jRaw) || {};
-  return { c, asked, q, warranted: !!j.warranted, quality: j.quality, reason: j.reason };
-});
-
-let firedOnAsk = 0, silentOnNo = 0, qSum = 0, qN = 0, judgeAgree = 0;
-const askTotal = CASES.filter(c => c.ask).length, noTotal = CASES.length - askTotal;
-for (const r of rows) {
-  const tag = r.c.ask ? 'ASK ' : 'skip';
-  const act = r.asked ? 'asked ' : 'silent';
-  if (r.c.ask && r.asked) firedOnAsk++;
-  if (!r.c.ask && !r.asked) silentOnNo++;
-  if (r.asked && typeof r.quality === 'number') { qSum += r.quality; qN++; }
-  if (r.warranted === r.c.ask) judgeAgree++;
-  const qtxt = r.asked ? (r.q.question.slice(0, 46)) : '—';
-  const flag = (r.c.ask === r.asked) ? '  ' : '⚠ ';
-  console.log(`${flag}[${tag}→${act}] q${typeof r.quality === 'number' ? r.quality : '·'} | ${r.c.s.slice(0, 40).padEnd(40)} | ${qtxt}`);
+  return { c, asked, q, warranted: !!j.warranted, quality: j.quality, grounded: j.grounded, reason: j.reason };
 }
-console.log('='.repeat(78));
-console.log(`FIRING (recall on should-ask):   ${firedOnAsk}/${askTotal}  (${(100 * firedOnAsk / askTotal).toFixed(0)}%)`);
-console.log(`RESTRAINT (silent on fine text): ${silentOnNo}/${noTotal}  (${(100 * silentOnNo / noTotal).toFixed(0)}%)`);
-console.log(`QUALITY (independent judge, asked only): ${qN ? (qSum / qN).toFixed(2) : 'n/a'} / 2   (n=${qN})`);
-console.log(`JUDGE agrees with my ask/skip labels:    ${judgeAgree}/${CASES.length}  (${(100 * judgeAgree / CASES.length).toFixed(0)}%)`);
+
+function report(title, rows, wantGround) {
+  let fireOnAsk = 0, silentOnNo = 0, qSum = 0, qN = 0, agree = 0, gY = 0, gN = 0;
+  const askTot = rows.filter(r => r.c.ask).length, noTot = rows.length - askTot;
+  console.log(`\n${title}\n${'='.repeat(78)}`);
+  for (const r of rows) {
+    if (r.c.ask && r.asked) fireOnAsk++;
+    if (!r.c.ask && !r.asked) silentOnNo++;
+    if (r.asked && typeof r.quality === 'number') { qSum += r.quality; qN++; }
+    if (r.warranted === r.c.ask) agree++;
+    if (wantGround && r.c.ground && r.asked) { gN++; if (r.grounded) gY++; }
+    const flag = (r.c.ask === r.asked) ? '  ' : '! ';
+    const g = (wantGround && r.asked) ? (r.grounded ? ' [grounded]' : ' [generic] ') : '';
+    console.log(`${flag}[${r.c.ask ? 'ASK ' : 'skip'}->${r.asked ? 'asked ' : 'silent'}] q${typeof r.quality === 'number' ? r.quality : '.'}${g} | ${r.c.s.slice(0, 38).padEnd(38)} | ${r.asked ? r.q.question.slice(0, 44) : '-'}`);
+  }
+  console.log('-'.repeat(78));
+  console.log(`FIRING (should-ask -> asked):    ${fireOnAsk}/${askTot}  (${askTot ? (100 * fireOnAsk / askTot).toFixed(0) : '-'}%)`);
+  console.log(`RESTRAINT (fine text -> silent): ${silentOnNo}/${noTot}  (${noTot ? (100 * silentOnNo / noTot).toFixed(0) : '-'}%)`);
+  console.log(`QUALITY (independent judge):     ${qN ? (qSum / qN).toFixed(2) : 'n/a'} / 2  (n=${qN})`);
+  if (wantGround) console.log(`GROUNDED (used the context):     ${gN ? `${gY}/${gN}  (${(100 * gY / gN).toFixed(0)}%)` : 'n/a'}`);
+  console.log(`JUDGE agrees w/ my labels:       ${agree}/${rows.length}  (${(100 * agree / rows.length).toFixed(0)}%)`);
+}
+
+console.log(`\nask-cues bench — generator ${GEN.name}, judge anthropic/${JUDGE.model}`);
+const isoRows = await mapLimit(CASES, 4, (c) => evalCase(c, undefined));
+report('PHASE 1 — sentence alone (no session context)', isoRows, false);
+const ctxRows = await mapLimit(CTX_CASES, 4, (c) => evalCase(c, CTX));
+report('PHASE 2 — with SESSION CONTEXT (Bun cache, no new deps, cache-module only)', ctxRows, true);
 console.log('');

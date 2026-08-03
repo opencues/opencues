@@ -99,8 +99,12 @@ module.exports = async function extractCommitments(argv, ctx) {
     try {
       const settingsFile = path.join(dir, core.CORE_SETTINGS_FILE || 'OPENCUES.md');
       const scalars = fs.existsSync(settingsFile) ? readScalars(fs.readFileSync(settingsFile, 'utf8')) : new Map();
-      const mode = (scalars.get('session-contradiction-mode') || 'off').toLowerCase();
-      if (mode !== 'on') return done({ skipped: true, reason: 'session-contradiction-mode off' });
+      // The distilled session feeds BOTH session-contradiction (the watchlist)
+      // AND ask-cues (the summary + decisions as grounding context), so run the
+      // producer when EITHER is on.
+      const sc = (scalars.get('session-contradiction-mode') || 'off').toLowerCase() === 'on';
+      const ac = (scalars.get('ask-cues-mode') || 'off').toLowerCase() === 'on';
+      if (!sc && !ac) return done({ skipped: true, reason: 'session-contradiction + ask-cues both off' });
     } catch { /* unreadable settings → treat as off */ return done({ skipped: true, reason: 'settings unreadable' }); }
   }
 
@@ -181,8 +185,9 @@ module.exports = async function extractCommitments(argv, ctx) {
       return done({ skipped: true, reason: `LLM call failed: ${(e && e.message) || e}` });
     }
 
-    const parsed = parseArray(raw);
-    const snapshot = core.buildSessionCommitmentsSnapshot(parsed, {
+    const ext = core.parseExtractionResult(raw);
+    const snapshot = core.buildSessionCommitmentsSnapshot(ext.commitments, {
+      summary: ext.summary,
       ingestedAt: new Date().toISOString(),
       sessionId: path.basename(transcriptPath).replace(/\.jsonl$/i, ''),
     });
@@ -195,7 +200,7 @@ module.exports = async function extractCommitments(argv, ctx) {
     writeMarker(markerPath, transcriptPath, transcriptStat.mtimeMs);
 
     if (!quiet && !json) console.log(`opencues: distilled ${snapshot.commitments.length} session commitment(s) (${ex.provider.id}/${ex.model})`);
-    return done({ ok: true, count: snapshot.commitments.length, provider: ex.provider.id, model: ex.model, source: ex.why, path: outPath });
+    return done({ ok: true, count: snapshot.commitments.length, summary: snapshot.summary || '', provider: ex.provider.id, model: ex.model, source: ex.why, path: outPath });
   } finally {
     if (locked) { try { fs.unlinkSync(lockPath); } catch { /* already gone */ } }
   }
@@ -239,14 +244,6 @@ function envKeyBag(core) {
   try { for (const a of core.listProviders()) if (a.envKeyName) bag[a.envKeyName] = process.env[a.envKeyName]; }
   catch { /* no listProviders */ }
   return bag;
-}
-
-/** Tolerant JSON-array parse (strip prose / fences). */
-function parseArray(raw) {
-  if (!raw) return [];
-  const m = String(raw).match(/\[[\s\S]*\]/);
-  if (!m) return [];
-  try { const a = JSON.parse(m[0]); return Array.isArray(a) ? a : []; } catch { return []; }
 }
 
 function printHelp() {

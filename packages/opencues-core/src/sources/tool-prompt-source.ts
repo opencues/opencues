@@ -28,6 +28,7 @@
 import type { CueContext, CueResult, CueSource, CueSourceResult, HttpAdapter } from '../types';
 import { dispatchChat, type ProviderAdapter } from '../llm-provider';
 import { segmentSentences } from './sentence-cue-source';
+import { renderSessionContextForAsk, type SessionCommitmentsSnapshot } from '../session-commitments';
 
 /** One choice the tool prompt produced. Mirrors an AskUserQuestion option,
  *  plus an optional concrete edit to apply when chosen. */
@@ -80,6 +81,8 @@ ASK only when the sentence genuinely has ONE of these:
 - a risky shortcut ("hardcode the API key", "skip the tests", "delete it and start over")
 - a real ambiguity the writer must resolve ("sometime next month", "the library everyone's using")
 
+USE THE SESSION CONTEXT (when provided below): it tells you what the developer is working on and has decided. Ground your question in it — make options concrete to their actual project, and RESOLVE ambiguity from it rather than asking (if the context already says which library / which module / what runtime, the sentence is NOT ambiguous — stay silent). Only ask when the fork is still genuinely open given everything they've established.
+
 When (and only when) you ask, output ONLY a JSON object (no prose, no fences):
 {"header":"<≤12 chars>","question":"<the question, one sentence>","options":[{"label":"<1–5 words>","description":"<one line: what this choice means / its trade-off>","apply":"<optional: the exact replacement text for the selection if this choice edits it>"}]}
 
@@ -119,8 +122,10 @@ export class ToolPromptCueSource implements CueSource {
   // Ambient-at-cursor fires on the sentence under the cursor every resolve, so
   // cache by selection text: while the cursor sits in an unchanged sentence we
   // reuse the last question instead of re-calling the LLM on every keystroke.
-  private _lastSel = '';
-  private _lastQuestion: ToolQuestion | null = null;
+  private _lastSel: string | undefined = undefined;
+  // undefined = nothing cached; null = cached "abstained" (so we don't re-ask
+  // the LLM every keystroke on a sentence it already declined).
+  private _lastQuestion: ToolQuestion | null | undefined = undefined;
 
   constructor(cfg: ToolPromptSourceConfig) {
     this.cfg = cfg;
@@ -143,13 +148,23 @@ export class ToolPromptCueSource implements CueSource {
     const cur = typeof context.cursor === 'number' && context.cursor >= 0 ? context.cursor : text.length;
     const sel = sentences.find((s) => cur >= s.start && cur <= s.end) ?? sentences[sentences.length - 1];
 
+    // Conversation context — the distilled session (summary + decisions) so the
+    // question is GROUNDED in what the developer is working on, not just the
+    // bare sentence. Grounding both sharpens useful questions AND suppresses
+    // spam (a sentence that's vague in isolation is often fine given context).
+    const snapshot = context.sessionCommitments as SessionCommitmentsSnapshot | undefined;
+    const contextBlock = renderSessionContextForAsk(snapshot);
+
+    // Cache on selection + context: a context change (new decisions) re-asks
+    // even on an unchanged sentence, but sitting in one sentence reuses.
+    const cacheKey = `${sel.text} ${contextBlock}`;
     let q: ToolQuestion | null;
-    if (sel.text === this._lastSel && this._lastQuestion) {
-      q = this._lastQuestion;   // same sentence under cursor → reuse (no LLM call)
+    if (cacheKey === this._lastSel && this._lastQuestion !== undefined) {
+      q = this._lastQuestion;   // same sentence + context → reuse (no LLM call)
     } else {
-      try { q = await this.ask(sel.text, context.signal); }
+      try { q = await this.ask(sel.text, contextBlock, context.signal); }
       catch (e) { this.log(`ToolPrompt(${this.tool.id}): failed — ${(e as Error).message}`); return { results: [] }; }
-      this._lastSel = sel.text; this._lastQuestion = q;
+      this._lastSel = cacheKey; this._lastQuestion = q;
     }
     if (!q || !q.question || q.options.length === 0) return { results: [] };
 
@@ -197,14 +212,16 @@ export class ToolPromptCueSource implements CueSource {
     return Math.max(0, context.words.length - 1);
   }
 
-  private async ask(selection: string, signal?: AbortSignal): Promise<ToolQuestion | null> {
+  private async ask(selection: string, contextBlock: string, signal?: AbortSignal): Promise<ToolQuestion | null> {
     const raw = await dispatchChat(
       this.cfg.provider,
       this.cfg.httpAdapter,
       {
         model: this.cfg.model,
         messages: [
-          { role: 'system', content: this.tool.systemPrompt },
+          // Session context rides in the SYSTEM message (session-stable → cerebras
+          // prefix-caches it); the per-call selection is the USER message.
+          { role: 'system', content: `${this.tool.systemPrompt}${contextBlock}` },
           { role: 'user', content: `SELECTION: ${selection}` },
         ],
         maxTokens: 500,

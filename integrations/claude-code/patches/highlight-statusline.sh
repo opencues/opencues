@@ -23,8 +23,9 @@ if [ ! -t 0 ]; then _oc_stdin=$(cat 2>/dev/null); else _oc_stdin=""; fi
 _oc_kick_commitments() {
   [ -n "$_oc_stdin" ] || return 0
   _oc_home="${OPENCUES_HOME:-$HOME/.cues}"
-  # Cheap gate first — most users never enable this, so bail before any work.
-  grep -qiE '^session-contradiction-mode:[[:space:]]*on([[:space:]]|$)' "$_oc_home/OPENCUES.md" 2>/dev/null || return 0
+  # Cheap gate first — the distilled session feeds session-contradiction AND
+  # ask-cues, so kick when EITHER is on. Bail otherwise (most users have neither).
+  grep -qiE '^(session-contradiction-mode|ask-cues-mode):[[:space:]]*on([[:space:]]|$)' "$_oc_home/OPENCUES.md" 2>/dev/null || return 0
   _oc_tp=$(printf '%s' "$_oc_stdin" | grep -oE '"transcript_path"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')
   [ -n "$_oc_tp" ] || return 0
   # bash-level debounce — a SHORT spawn-gate (5s) so we don't launch node on
