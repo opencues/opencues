@@ -100,7 +100,15 @@ export class SessionContradictionSource implements CueSource {
 
     let flags: RawFlag[];
     try { flags = await this.match(text, snapshot, context.signal); }
-    catch (e) { this.log(`SessionContradiction: match failed — ${(e as Error).message}`); return { results: [] }; }
+    catch (e) {
+      const err = e as Error;
+      if (err?.name === 'AbortError' || /abort/i.test(err?.message ?? '')) {
+        this.log('SessionContradiction: superseded (newer keystroke)');
+      } else {
+        this.log(`SessionContradiction: match failed — ${err?.message}`);
+      }
+      return { results: [] };
+    }
 
     const validIds = new Set(snapshot.commitments.map((c) => c.id));
     const out: CueResult[] = [];

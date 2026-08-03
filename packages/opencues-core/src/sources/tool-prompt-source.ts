@@ -168,7 +168,18 @@ export class ToolPromptCueSource implements CueSource {
       q = this._lastQuestion;   // same sentence + context → reuse (no LLM call)
     } else {
       try { q = await this.ask(sel.text, contextBlock, context.signal); }
-      catch (e) { this.log(`ToolPrompt(${this.tool.id}): failed — ${(e as Error).message}`); return { results: [] }; }
+      catch (e) {
+        const err = e as Error;
+        // An abort is a superseded resolve (the user kept typing), NOT a
+        // failure — the bigger ask prompt just loses the race more often. Don't
+        // poison the cache; the next resolve retries and completes on a pause.
+        if (err?.name === 'AbortError' || /abort/i.test(err?.message ?? '')) {
+          this.log(`ToolPrompt(${this.tool.id}): superseded (newer keystroke) — will retry on pause`);
+        } else {
+          this.log(`ToolPrompt(${this.tool.id}): failed — ${err?.message}`);
+        }
+        return { results: [] };
+      }
       this._lastSel = cacheKey; this._lastQuestion = q;
     }
     if (!q || !q.question || q.options.length === 0) return { results: [] };
