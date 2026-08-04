@@ -287,7 +287,7 @@ export function boot(host: HostInfo): BootResult {
   // OpenCode has no CC-style statusline trigger — kick the producer on a
   // cadence. OpenCode stores its transcript in a SQLite DB; the Node CLI reads
   // it (`--format opencode --cwd`), not this Bun runtime. Both self-gate on mode.
-  const sessionCommitmentsHolder = buildSessionCommitmentsIngest(log);
+  const sessionCommitmentsHolder = buildSessionCommitmentsIngest(log, { cwd: host.cwd });
   startSessionCommitmentsKick(log, { locate: () => locateOpenCodeDb(), format: 'opencode', extraArgs: ['--cwd', host.cwd] });
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',

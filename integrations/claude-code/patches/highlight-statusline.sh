@@ -28,6 +28,11 @@ _oc_kick_commitments() {
   grep -qiE '^(session-contradiction-mode|ask-cues-mode):[[:space:]]*on([[:space:]]|$)' "$_oc_home/OPENCUES.md" 2>/dev/null || return 0
   _oc_tp=$(printf '%s' "$_oc_stdin" | grep -oE '"transcript_path"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')
   [ -n "$_oc_tp" ] || return 0
+  # Session cwd — scopes the distilled watchlist per-project so two CC sessions
+  # in different repos don't clobber a shared session-commitments.json. CC's
+  # statusline stdin carries workspace.current_dir (preferred) and/or cwd.
+  _oc_cwd=$(printf '%s' "$_oc_stdin" | grep -oE '"current_dir"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*"current_dir"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')
+  [ -n "$_oc_cwd" ] || _oc_cwd=$(printf '%s' "$_oc_stdin" | grep -oE '"cwd"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*"cwd"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')
   # bash-level debounce — a SHORT spawn-gate (5s) so we don't launch node on
   # every redraw during streaming. This is deliberately shorter than the
   # producer's own extract cadence so the two don't "beat" against each other
@@ -46,7 +51,11 @@ _oc_kick_commitments() {
   [ -z "$_oc_cli" ] && command -v opencues >/dev/null 2>&1 && _oc_cli="opencues"
   [ -n "$_oc_cli" ] || return 0
   # Detached fire-and-forget — quoted transcript path; output discarded.
-  ( $_oc_cli extract-commitments "$_oc_tp" --quiet >/dev/null 2>&1 & ) >/dev/null 2>&1
+  if [ -n "$_oc_cwd" ]; then
+    ( $_oc_cli extract-commitments "$_oc_tp" --cwd "$_oc_cwd" --quiet >/dev/null 2>&1 & ) >/dev/null 2>&1
+  else
+    ( $_oc_cli extract-commitments "$_oc_tp" --quiet >/dev/null 2>&1 & ) >/dev/null 2>&1
+  fi
 }
 _oc_kick_commitments 2>/dev/null
 

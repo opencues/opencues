@@ -224,7 +224,7 @@ export function boot(host: HostInfo): BootResult {
   // distil (it's a compose box), so there's no producer-kick here — but read
   // the shared watchlist so session-contradiction fires if another host wrote
   // one, and ask-cues works context-free either way.
-  const sessionCommitmentsHolder = buildSessionCommitmentsIngest(log);
+  const sessionCommitmentsHolder = buildSessionCommitmentsIngest(log, { cwd: host.cwd });
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',

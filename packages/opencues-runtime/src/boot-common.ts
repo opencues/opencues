@@ -886,7 +886,7 @@ export interface SessionCommitmentsHolder {
 
 export function buildSessionCommitmentsIngest(
   log: (level: LogLevel, msg: string) => void,
-  opts: { refreshMs?: number } = {},
+  opts: { refreshMs?: number; cwd?: string } = {},
 ): SessionCommitmentsHolder | undefined {
   if (typeof process === 'undefined' || !process.versions?.node) return undefined;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -896,10 +896,22 @@ export function buildSessionCommitmentsIngest(
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const osMod = require('node:os') as typeof import('node:os');
 
-  const snapshotPath = (): string => {
+  // Mirror of @opencues/core sessionCommitmentsKey — kept inline so the ingest
+  // stays a self-contained node-guarded fn (no cross-package require timing).
+  const scKey = (cwd: string | undefined): string =>
+    ((cwd || '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120)) || '_default';
+
+  const cuesDirOf = (): string => {
     const override = typeof process !== 'undefined' ? process.env['OPENCUES_HOME'] : undefined;
-    if (override && override.trim().length > 0) return pathMod.join(override, 'session-commitments.json');
-    return pathMod.join(osMod.homedir(), '.cues', 'session-commitments.json');
+    return override && override.trim().length > 0 ? override : pathMod.join(osMod.homedir(), '.cues');
+  };
+  const snapshotPath = (): string => {
+    const cuesDir = cuesDirOf();
+    // Per-cwd scoped file wins; fall back to the legacy flat file (tests, hand
+    // runs, and hosts with no cwd) so nothing breaks.
+    const scoped = pathMod.join(cuesDir, 'session-commitments', `${scKey(opts.cwd)}.json`);
+    if (opts.cwd) { try { if (fsMod.existsSync(scoped)) return scoped; } catch { /* fall back */ } }
+    return pathMod.join(cuesDir, 'session-commitments.json');
   };
 
   let lastMtimeMs = -1;

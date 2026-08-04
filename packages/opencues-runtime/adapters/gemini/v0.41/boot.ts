@@ -444,8 +444,8 @@ export function boot(host: HostInfo): BootResult {
   // since Gemini has no CC-style statusline trigger — run a producer-kick poller
   // that distils Gemini's own chat transcript on a cadence. Both self-gate on
   // the mode scalars.
-  const sessionCommitmentsHolder = buildSessionCommitmentsIngest(log);
-  startSessionCommitmentsKick(log, { locate: () => locateNewestGeminiChat(host.cwd), format: 'gemini' });
+  const sessionCommitmentsHolder = buildSessionCommitmentsIngest(log, { cwd: host.cwd });
+  startSessionCommitmentsKick(log, { locate: () => locateNewestGeminiChat(host.cwd), format: 'gemini', extraArgs: ['--cwd', host.cwd] });
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',

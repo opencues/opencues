@@ -105,6 +105,16 @@ module.exports = async function extractCommitments(argv, ctx) {
   if (!core || typeof core.extractTranscriptTurns !== 'function') {
     return done({ skipped: true, reason: '@opencues/core unavailable (run pnpm build)' });
   }
+  // Scope the watchlist + debounce state by cwd so concurrent sessions/hosts in
+  // different projects don't clobber each other (see sessionCommitmentsKey).
+  const scKey = typeof core.sessionCommitmentsKey === 'function' ? core.sessionCommitmentsKey(ocCwd) : '_default';
+  // Per-cwd files live under <cues>/session-commitments/<key>.{json,marker,lock}.
+  // When no cwd is known (--cwd omitted), fall back to the legacy flat files so
+  // hand runs + tests keep working.
+  const scDir = path.join(dir, 'session-commitments');
+  const outPath = ocCwd ? path.join(scDir, scKey + '.json') : path.join(dir, 'session-commitments.json');
+  const markerPath = ocCwd ? path.join(scDir, scKey + '.marker.json') : path.join(dir, '.session-commitments.marker.json');
+  const lockPath = ocCwd ? path.join(scDir, scKey + '.lock') : path.join(dir, '.session-commitments.lock');
 
   // Mode gate — don't spend LLM calls unless the user enabled the feature.
   if (!force) {
@@ -120,8 +130,7 @@ module.exports = async function extractCommitments(argv, ctx) {
     } catch { /* unreadable settings → treat as off */ return done({ skipped: true, reason: 'settings unreadable' }); }
   }
 
-  // Debounce marker.
-  const markerPath = path.join(dir, '.session-commitments.marker.json');
+  // Debounce marker (path scoped above).
   if (!force) {
     try {
       const m = JSON.parse(fs.readFileSync(markerPath, 'utf8'));
@@ -133,11 +142,10 @@ module.exports = async function extractCommitments(argv, ctx) {
     } catch { /* no/invalid marker → proceed */ }
   }
 
-  // Lock — best-effort, O_EXCL. A stale lock (dead kick) is reclaimed.
-  const lockPath = path.join(dir, '.session-commitments.lock');
+  // Lock — best-effort, O_EXCL. A stale lock (dead kick) is reclaimed (path scoped above).
   let locked = false;
   try {
-    try { fs.mkdirSync(dir, { recursive: true }); } catch { /* exists */ }
+    try { fs.mkdirSync(path.dirname(lockPath), { recursive: true }); } catch { /* exists */ }
     try {
       fs.writeFileSync(lockPath, String(process.pid), { flag: 'wx' });
       locked = true;
@@ -224,7 +232,6 @@ module.exports = async function extractCommitments(argv, ctx) {
     });
 
     // Atomic write of the snapshot.
-    const outPath = path.join(dir, 'session-commitments.json');
     const tmp = `${outPath}.tmp-${process.pid}`;
     fs.writeFileSync(tmp, JSON.stringify(snapshot, null, 2));
     fs.renameSync(tmp, outPath);

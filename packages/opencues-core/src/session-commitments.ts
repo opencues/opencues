@@ -76,6 +76,18 @@ export interface SessionCommitmentsSnapshot {
 
 /** Hard cap on watchlist size. Beyond this the matcher prompt bloats and the
  *  precision drops; the producer keeps the most load-bearing commitments. */
+/**
+ * Filesystem-safe key for a cwd, used to SCOPE the watchlist per project. One
+ * shared `session-commitments.json` let concurrent sessions/hosts in different
+ * directories clobber each other's watchlist (last writer wins); scoping the
+ * file by cwd fixes that. Empty cwd → `_default`. Pure (no deps) so the CLI
+ * producer and the runtime ingest derive the same key.
+ */
+export function sessionCommitmentsKey(cwd: string | undefined): string {
+  const k = (cwd || '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120);
+  return k || '_default';
+}
+
 export const MAX_COMMITMENTS = 24;
 /** Max characters of a single commitment statement — a terse decision, not a
  *  paragraph. Longer is dropped (a runaway extraction, not a commitment). */

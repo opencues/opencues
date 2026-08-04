@@ -5,6 +5,7 @@ import {
   extractGeminiTranscriptTurns,
   renderTranscriptForExtraction,
   renderSessionCommitmentsCatalog,
+  sessionCommitmentsKey,
   MAX_COMMITMENTS,
   MAX_STATEMENT_LEN,
 } from './session-commitments';
@@ -154,5 +155,37 @@ describe('renderSessionCommitmentsCatalog', () => {
     const out = renderSessionCommitmentsCatalog(snap, 'on');
     expect(out).toContain('SESSION COMMITMENTS');
     expect(out).toContain('- c1 [stack]: Runtime is Bun, not Node');
+  });
+});
+
+describe('sessionCommitmentsKey', () => {
+  it('slugifies a cwd path into a filesystem-safe key', () => {
+    expect(sessionCommitmentsKey('/home/wilfred/opencues')).toBe('home-wilfred-opencues');
+  });
+
+  it('maps distinct cwds to distinct keys (no cross-session clobber)', () => {
+    const a = sessionCommitmentsKey('/home/w/projectA');
+    const b = sessionCommitmentsKey('/home/w/projectB');
+    expect(a).not.toBe(b);
+  });
+
+  it('is stable for the same cwd', () => {
+    const p = '/tmp/some/repo';
+    expect(sessionCommitmentsKey(p)).toBe(sessionCommitmentsKey(p));
+  });
+
+  it('falls back to _default for empty/undefined cwd', () => {
+    expect(sessionCommitmentsKey(undefined)).toBe('_default');
+    expect(sessionCommitmentsKey('')).toBe('_default');
+    expect(sessionCommitmentsKey('///')).toBe('_default');
+  });
+
+  it('caps key length at 120 chars', () => {
+    const long = '/' + 'a'.repeat(500);
+    expect(sessionCommitmentsKey(long).length).toBeLessThanOrEqual(120);
+  });
+
+  it('collapses non-alphanumeric runs and trims edge separators', () => {
+    expect(sessionCommitmentsKey('/foo//bar__baz')).toBe('foo-bar-baz');
   });
 });

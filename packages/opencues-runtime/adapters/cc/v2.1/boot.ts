@@ -721,7 +721,7 @@ export function boot(host: HostInfo): BootResult {
   // extract-commitments`, kicked by the statusline). Live holder — refreshed
   // on a timer; the resolver reads it fresh each pass. Inert until the producer
   // writes the file (feature off / no transcript growth → empty → source silent).
-  const sessionCommitmentsHolder = buildSessionCommitmentsIngest(log);
+  const sessionCommitmentsHolder = buildSessionCommitmentsIngest(log, { cwd: host.cwd });
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
