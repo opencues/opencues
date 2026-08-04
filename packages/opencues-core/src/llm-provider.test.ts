@@ -426,6 +426,47 @@ describe('cerebras provider — OpenAI-shape, low-latency wafer-scale host', () 
   });
 });
 
+describe('kimi provider — Moonshot AI direct API (OpenAI-shape)', () => {
+  it('buildRequest: api.moonshot.ai URL + bearer auth + OpenAI body', () => {
+    const built = buildProviderRequest(
+      'kimi',
+      { model: 'kimi-k2-turbo-preview', messages: [{ role: 'user', content: 'hi' }], maxTokens: 256, temperature: 0 },
+      { apiKey: 'sk-moonshot-test' },
+    );
+    assert.strictEqual(built.url, 'https://api.moonshot.ai/v1/chat/completions');
+    assert.strictEqual(built.headers.Authorization, 'Bearer sk-moonshot-test');
+    const body = JSON.parse(built.body);
+    assert.strictEqual(body.model, 'kimi-k2-turbo-preview');
+    assert.strictEqual(body.max_tokens, 256);
+    assert.strictEqual(body.temperature, 0);
+  });
+
+  it('buildRequest: never emits reasoning_effort or seed (Moonshot documents neither)', () => {
+    const built = buildProviderRequest(
+      'kimi',
+      { model: 'kimi-k2-thinking', messages: [{ role: 'user', content: 'x' }], reasoningEffort: 'low', seed: 7 },
+      { apiKey: 'k' },
+    );
+    const body = JSON.parse(built.body);
+    assert.strictEqual(body.reasoning_effort, undefined);
+    assert.strictEqual(body.seed, undefined);
+  });
+
+  it('buildRequest: honours endpoint override (mainland .cn platform)', () => {
+    const built = buildProviderRequest(
+      'kimi',
+      { model: 'kimi-k2-turbo-preview', messages: [{ role: 'user', content: 'hi' }] },
+      { apiKey: 'k', endpoint: 'https://api.moonshot.cn/v1/chat/completions' },
+    );
+    assert.strictEqual(built.url, 'https://api.moonshot.cn/v1/chat/completions');
+  });
+
+  it('parseResponse: OpenAI-shape (choices[0].message.content)', () => {
+    const raw = JSON.stringify({ choices: [{ message: { content: 'moon' } }] });
+    assert.strictEqual(parseProviderResponse('kimi', raw), 'moon');
+  });
+});
+
 describe('anthropic provider — Messages API (different shape from OpenAI)', () => {
   it('buildRequest: /v1/messages URL, x-api-key header, anthropic-version, browser-access header', () => {
     const built = buildProviderRequest(

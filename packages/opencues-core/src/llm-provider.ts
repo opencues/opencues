@@ -22,9 +22,9 @@
 
 import { resolveReasoningEffort } from './model-thinking';
 
-export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'openai-subscription' | 'anthropic' | 'cerebras' | 'claude-code-cli' | 'opencode-zen' | 'ollama';
+export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'openai-subscription' | 'anthropic' | 'cerebras' | 'claude-code-cli' | 'opencode-zen' | 'ollama' | 'kimi';
 
-export const PROVIDER_IDS: readonly ProviderId[] = ['groq', 'openrouter', 'gemini', 'openai', 'openai-subscription', 'anthropic', 'cerebras', 'claude-code-cli', 'opencode-zen', 'ollama'];
+export const PROVIDER_IDS: readonly ProviderId[] = ['groq', 'openrouter', 'gemini', 'openai', 'openai-subscription', 'anthropic', 'cerebras', 'claude-code-cli', 'opencode-zen', 'ollama', 'kimi'];
 
 /**
  * Legacy provider-id aliases. User configs created before the rename
@@ -1568,6 +1568,69 @@ const OLLAMA: ProviderAdapter = {
   parseResponse: parseOllamaResponse,
 };
 
+/**
+ * kimi — Moonshot AI's Kimi models via their DIRECT API (not the
+ * OpenRouter/Groq-hosted copies of kimi-k2). OpenAI-compatible
+ * chat-completions surface at api.moonshot.ai.
+ *
+ * Endpoint notes:
+ *   - International platform: `https://api.moonshot.ai/v1/...`
+ *     (platform.moonshot.ai issues the keys).
+ *   - Mainland-China platform: `https://api.moonshot.cn/v1/...` —
+ *     SEPARATE account + key namespace. Users on the .cn platform set
+ *     `llm-endpoint:` (or a bucket/per-feature endpoint) to the .cn
+ *     URL; the adapter defaults to the international host.
+ *
+ * Model notes:
+ *   - `kimi-k2-turbo-preview` is the default: same weights as
+ *     kimi-k2-0905 on Moonshot's high-throughput serving tier —
+ *     the only tier fast enough for OpenCues' inline latency budgets.
+ *   - `kimi-k2-thinking` reasons implicitly (no `reasoning_effort`
+ *     knob on Moonshot's API) and is markedly slower — reachable for
+ *     auditors/agent surfaces via file edit, not a cue-path pick.
+ *   - Moonshot caps `temperature` at [0, 1] (values above 1 → 400).
+ *     OpenCues call sites pin 0, so no clamp is needed here.
+ *
+ * `capabilities` stays empty: `seed` / `prediction` are not documented
+ * on Moonshot's API, and unknown-field tolerance is not guaranteed —
+ * conservative default, same posture as OpenRouter. `reasoning_effort`
+ * is never emitted (no `includeReasoningEffort`, no
+ * `defaultReasoningEffort`, and `kimi-*` misses the reasoning-model
+ * name heuristic in buildOpenAIBody).
+ *
+ * Unbenched against the May 2026 sweep — appended LAST in
+ * PROVIDER_AUTO_ORDER so a lone MOONSHOT_API_KEY still auto-routes,
+ * but never outranks a benched provider.
+ */
+const KIMI: ProviderAdapter = {
+  id: 'kimi',
+  capabilities: {},
+  displayName: 'Kimi (Moonshot AI)',
+  defaultEndpoint: 'https://api.moonshot.ai/v1/chat/completions',
+  defaultModel: 'kimi-k2-turbo-preview',
+  // Validated shortlist for the fluid-config classifier. Other Moonshot
+  // names (moonshot-v1-*, kimi-latest) work via direct file edit.
+  knownModels: [
+    'kimi-k2-turbo-preview',
+    'kimi-k2-0905-preview',
+    'kimi-k2-thinking',
+  ],
+  envKeyName: 'MOONSHOT_API_KEY',
+  keyProbe: {
+    url: 'https://api.moonshot.ai/v1/models',
+    headers: (k) => ({ Authorization: `Bearer ${k}` }),
+    listField: 'data',
+  },
+  buildRequest(req, ctx) {
+    return {
+      url: ctx.endpoint ?? this.defaultEndpoint,
+      body: buildOpenAIBody(req, { provider: this.id, capabilities: this.capabilities, maxThinking: ctx.maxThinking }),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
+    };
+  },
+  parseResponse: parseOpenAIResponse,
+};
+
 const PROVIDERS: Readonly<Record<ProviderId, ProviderAdapter>> = {
   groq: GROQ,
   openrouter: OPENROUTER,
@@ -1579,6 +1642,7 @@ const PROVIDERS: Readonly<Record<ProviderId, ProviderAdapter>> = {
   'claude-code-cli': CLAUDE_CLI,
   'opencode-zen': OPENCODE_ZEN,
   ollama: OLLAMA,
+  kimi: KIMI,
 };
 
 /**
@@ -1601,6 +1665,9 @@ const PROVIDERS: Readonly<Record<ProviderId, ProviderAdapter>> = {
  *   leave nano as a per-feature override for cost-sensitive setups.
  * - OpenRouter intentionally excluded — it's a routing layer over
  *   other providers, not a "best for the job" pick on its own merits.
+ * - Kimi last: not yet in the benchmark sweep, so it never outranks a
+ *   benched provider — but a user whose ONLY key is MOONSHOT_API_KEY
+ *   still auto-routes instead of dead-ending.
  *
  * Override the auto-route with `llm-provider:` or a per-feature
  * `<feature>-provider:` in OPENCUES.md.
@@ -1611,6 +1678,7 @@ export const PROVIDER_AUTO_ORDER: readonly ProviderId[] = [
   'gemini',
   'anthropic',
   'openai',
+  'kimi',
 ];
 
 /**
@@ -2259,6 +2327,10 @@ const FALLBACK_PAIRS: Readonly<Record<ProviderId, ProviderId | undefined>> = {
   // local-private request OUT to a cloud provider would silently break the
   // privacy guarantee. No fallback by design.
   ollama: undefined,
+  // kimi-* model names exist only on Moonshot's own API (the groq/
+  // openrouter-hosted kimi-k2 copies use different names), so no peer
+  // can serve the same request without a model-name rewrite.
+  kimi: undefined,
 };
 
 /**
