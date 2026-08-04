@@ -57,12 +57,15 @@ const CTX = { summary: 'Building a cache layer for a Bun service; keeping it dep
   { id: 'c2', category: 'constraint', statement: 'Do not add new npm dependencies' },
   { id: 'c3', category: 'scope', statement: 'Only touching the cache module this session' },
 ] };
+// ask-cues' job is the OPEN, vague question grounded in context — NOT catching
+// contradictions with the context (that's session-contradiction's cue). So the
+// firing cases are vague-but-consistent sentences the context should sharpen.
 const CTX_CASES = [
-  { s: 'we should add redis to speed up the cache', ask: true, ground: true },       // contradicts no-deps
-  { s: "let me also refactor the auth module while I'm here", ask: true, ground: true }, // out of scope
-  { s: "let's pull in lodash for the utils", ask: true, ground: true },              // contradicts no-deps
-  { s: 'store the cache entries in a plain Map', ask: false },                       // consistent → silent
-  { s: 'the cache uses an LRU eviction policy', ask: false },                        // clear + on-scope → silent
+  { s: 'we should make the cache a lot faster', ask: true, ground: true },       // vague perf → grounds
+  { s: 'the eviction logic could be better', ask: true, ground: true },          // vague → grounds
+  { s: "let's make the cache more robust somehow", ask: true, ground: true },    // vague → grounds
+  { s: 'store the cache entries in a plain Map', ask: false },                   // impl detail → silent
+  { s: 'the cache uses an LRU eviction policy', ask: false },                    // clear → silent
 ];
 
 const JUDGE_SYS = `You are a strict writing editor evaluating an assistant that attaches an OPTIONAL inline question to a sentence a user is writing. It should raise a question ONLY for a genuine, useful fork — a vague/risky claim, an ambiguity, a real decision, or a tension with what the developer already decided (SESSION CONTEXT) — and STAY SILENT when the sentence is clear/fine or already consistent with the context. Over-asking is a failure.
