@@ -277,8 +277,13 @@ function readOpenCodeTurns(dbPath, cwd, maxMessages = 400) {
   let db;
   try { db = new DatabaseSync(dbPath, { readOnly: true }); } catch { return null; }
   try {
-    let sess = cwd ? db.prepare('SELECT id FROM session WHERE directory = ? ORDER BY time_updated DESC LIMIT 1').get(cwd) : null;
-    if (!sess) sess = db.prepare('SELECT id FROM session ORDER BY time_updated DESC LIMIT 1').get();
+    // When a cwd is given it is AUTHORITATIVE — only that project's newest
+    // session. Never fall back to a random other session (that would distil,
+    // and clobber the watchlist with, an unrelated conversation). The global
+    // fallback applies ONLY when no cwd was passed.
+    let sess = cwd
+      ? db.prepare('SELECT id FROM session WHERE directory = ? ORDER BY time_updated DESC LIMIT 1').get(cwd)
+      : db.prepare('SELECT id FROM session ORDER BY time_updated DESC LIMIT 1').get();
     if (!sess) return [];
     const msgs = db.prepare('SELECT id, data FROM message WHERE session_id = ? ORDER BY time_created DESC LIMIT ?').all(sess.id, maxMessages);
     msgs.reverse();
