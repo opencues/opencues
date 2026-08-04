@@ -394,7 +394,7 @@ When a v2 install fails or behaves wrong:
 
 1. **Apply with stderr captured:**
    ```bash
-   TWEAKCC_CC_INSTALLATION_PATH=$(find ~/claude-code-cues -name cli.js | head -1) \
+   TWEAKCC_CC_INSTALLATION_PATH=$(find ~/.opencues/forks/claude-code -name cli.js | head -1) \
      node ~/opencues/integrations/claude-code/tweakcc/dist/index.mjs --apply 2>&1 | tee /tmp/apply.log
    ```
 2. **Look for the "FAILED to find N critical seam(s)" message.** It names

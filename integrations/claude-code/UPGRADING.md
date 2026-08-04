@@ -25,11 +25,11 @@ distribution shape from cli.js to a native bun-compile binary in 2.1.113.
 the cli.js and writes the new `bin/claude.exe` into your fork's
 node_modules; tweakcc detects the shape and applies the right patch path.
 You don't need to do anything special. **However**, if you maintain a
-shell alias like `alias claude-cues='node ~/claude-code-cues/…/cli.js'`
+shell alias like `alias claude-cues='node ~/.opencues/forks/claude-code/…/cli.js'`
 (the pre-2.1.113 shape), update it after upgrade — cli.js is gone:
 
 ```bash
-alias claude-cues='~/claude-code-cues/node_modules/@anthropic-ai/claude-code/bin/claude.exe'
+alias claude-cues='~/.opencues/forks/claude-code/node_modules/@anthropic-ai/claude-code/bin/claude.exe'
 ```
 
 **Maintainer — you're validating a new upstream version and want to ship
@@ -81,7 +81,7 @@ older behavior.
 
 - Clean worktree of the OpenCues repo. Don't do this on a branch with
   unrelated work-in-progress.
-- The CC fork at `~/claude-code-cues/` (or `~/claude-code-cues-150/` for the
+- The CC fork at `~/.opencues/forks/claude-code/` (or `~/.opencues/forks/claude-code-150/` for the
   native-binary install). If neither exists, the install will create it.
 - tweakcc is pinned to an **exact commit** in `compat.json:tweakcc-pin`
   (currently `1545ff8` — upstream's "Prompts for 2.1.206" commit);
@@ -192,8 +192,8 @@ statusline, patch state). The pinned npm install of
 `@anthropic-ai/claude-code` stays in place — step 5 replaces it.
 
 If uninstall complains about a missing backup, the patch state has drifted.
-The safe recovery is `rm -rf ~/claude-code-cues` (or
-`~/claude-code-cues-150`) and let step 5 rebuild from scratch.
+The safe recovery is `rm -rf ~/.opencues/forks/claude-code` (or
+`~/.opencues/forks/claude-code-150`) and let step 5 rebuild from scratch.
 
 ### 5. Reinstall
 
@@ -247,7 +247,7 @@ If patch application fails:
 ### 6. Smoke check
 
 ```bash
-~/claude-code-cues-150/node_modules/@anthropic-ai/claude-code/bin/claude.exe
+~/.opencues/forks/claude-code-150/node_modules/@anthropic-ai/claude-code/bin/claude.exe
 # OR for pre-cutover: claude-cues
 ```
 
@@ -406,7 +406,7 @@ disable stays in place.
    can't ship silently.
 4. `bash scripts/check-tweakcc-pin.sh` + `bash scripts/pre-pr.sh`.
 
-Isolated-fork validation recipe (never touches `~/claude-code-cues`):
+Isolated-fork validation recipe (never touches `~/.opencues/forks/claude-code`):
 
 ```bash
 mkdir -p /tmp/cc-pin-test && cd /tmp/cc-pin-test

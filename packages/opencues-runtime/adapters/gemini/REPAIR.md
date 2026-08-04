@@ -43,7 +43,7 @@ Pinned by `boot.test.ts` "host.forceRender fires when runtime calls setText (Rea
 
 **Symptom:** Patched Gemini renders the input with a blue background band that the unpatched binary doesn't.
 
-**Why:** The fork at `~/gemini-cli-cues` ships its own `.gemini/settings.json` enabling `general.devtools: true` + many experimental flags. Earlier versions of `runGemini` launched gemini with `cwd: <fork>`, so Gemini picked up cwd-locally and overrode the user's `~/.gemini/settings.json`.
+**Why:** The fork at `~/.opencues/forks/gemini-cli` ships its own `.gemini/settings.json` enabling `general.devtools: true` + many experimental flags. Earlier versions of `runGemini` launched gemini with `cwd: <fork>`, so Gemini picked up cwd-locally and overrode the user's `~/.gemini/settings.json`.
 
 **Fix:** `runGemini` now launches without forcing cwd into the fork (drops the `{ cwd: fork }` option from `spawnSync`). The user's home settings.json governs.
 
@@ -96,14 +96,14 @@ React render path).
 ## Bumping the Gemini CLI pin
 
 1. Update `integrations/gemini-cli/pin.json` (version + sha).
-2. `rm -rf ~/gemini-cli-cues` (full clean-clone since pin changed).
+2. `rm -rf ~/.opencues/forks/gemini-cli` (full clean-clone since pin changed).
 3. `bash integrations/gemini-cli/patches/setup.sh` — patches will run; if any anchor string from upstream has moved, the script logs `WARN: ... anchor not found` and skips that injection.
 4. Verify all four anchors landed:
    ```bash
    grep -n "startOpenCues\|publishPromptAccess\|useOpenCuesTip\|useOpenCuesRenderTick" \
-     ~/gemini-cli-cues/packages/cli/src/ui/AppContainer.tsx \
-     ~/gemini-cli-cues/packages/cli/src/ui/components/InputPrompt.tsx \
-     ~/gemini-cli-cues/packages/cli/src/ui/components/Footer.tsx
+     ~/.opencues/forks/gemini-cli/packages/cli/src/ui/AppContainer.tsx \
+     ~/.opencues/forks/gemini-cli/packages/cli/src/ui/components/InputPrompt.tsx \
+     ~/.opencues/forks/gemini-cli/packages/cli/src/ui/components/Footer.tsx
    ```
 5. If anchors moved, edit `patch_app_container` / `patch_input_prompt` / `patch_footer` in `setup.sh` to use the new anchor strings — they're plain `str.replace`, not regex.
 6. Run the manual test pass above.

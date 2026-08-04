@@ -6,7 +6,7 @@ to know *exactly* what touches the system, what's contained, and what
 the user is asked to install.
 
 The high-level rule: **everything we own lives in `~/.opencues/` or
-`~/.cues/` (configs) or the host-specific fork dir (`~/claude-code-cues/`
+`~/.cues/` (configs) or the host-specific fork dir (`~/.opencues/forks/claude-code/`
 etc.). Everything else is either bundled per-platform via npm or
 prompted before being touched.**
 
@@ -58,10 +58,10 @@ prompted before being touched.**
 | **Bun** (for shell + opencode) | OpenCode is a Bun app; oc-edit / oc-editd use Bun | 2 (offered) | ✓ `~/.opencues/vendor/bun/` | ✓ `opencues uninstall shell` |
 | **tmux 3.2+** (for shell) | `oc-shell` slide-pane needs `display-popup` | 2 (prebuilt → build) | ✓ `~/.opencues/vendor/tmux/` | ✓ `opencues uninstall shell` |
 | **`VolCtl.exe`, `BrightCtl.exe`, `SpeakCtl.exe`** *(WSL)* | Native Windows binaries for volume/brightness/TTS (fastest path on WSL) | 2 | ✓ `~/.cues/blanks/*` (compiled by seed-configs) | ✗ (config files stay) |
-| **`@anthropic-ai/claude-code` pinned** | CC fork we patch | 2 | ✓ `~/claude-code-cues/` | ✓ `rm -rf ~/claude-code-cues` |
-| **`sst/opencode` pinned** | OC fork we patch | 2 | ✓ `~/opencode-cues/` | ✓ user `rm -rf` (intentionally left behind by uninstall — your checkout) |
-| **`google-gemini/gemini-cli` pinned** | Gemini fork we patch | 2 | ✓ `~/gemini-cli-cues/` | ✓ user `rm -rf` |
-| **tweakcc** | Patcher for CC's minified `cli.js` | 2 | ✓ `~/claude-code-cues/.cues/tweakcc/` | ✓ part of CC uninstall |
+| **`@anthropic-ai/claude-code` pinned** | CC fork we patch | 2 | ✓ `~/.opencues/forks/claude-code/` | ✓ `rm -rf ~/.opencues/forks/claude-code` |
+| **`sst/opencode` pinned** | OC fork we patch | 2 | ✓ `~/.opencues/forks/opencode/` | ✓ user `rm -rf` (intentionally left behind by uninstall — your checkout) |
+| **`google-gemini/gemini-cli` pinned** | Gemini fork we patch | 2 | ✓ `~/.opencues/forks/gemini-cli/` | ✓ user `rm -rf` |
+| **tweakcc** | Patcher for CC's minified `cli.js` | 2 | ✓ `~/.opencues/forks/claude-code/.cues/tweakcc/` | ✓ part of CC uninstall |
 | **bubblewrap** (`bwrap`) *(Linux)* | OS confiner for `sandbox: strict` blanks | 3 (offered Y/n) | ✗ system pkg-mgr | ✗ user removes |
 | **espeak-ng** or **spd-say** *(Linux)* | TTS for `voice-mode` | 3 (offered Y/n) | ✗ system pkg-mgr | ✗ user removes |
 | **brightnessctl** or **ddcutil** *(Linux)* | Backend for `brightness _` | 3 (offered Y/n) | ✗ system pkg-mgr | ✗ user removes |
@@ -147,7 +147,7 @@ opencues uninstall --all      # all hosts
 ```
 
 What goes:
-- ~/claude-code-cues/, ~/opencode-cues/, ~/gemini-cli-cues/ (fork trees that contain *our* node_modules + patches)
+- ~/.opencues/forks/claude-code/, ~/.opencues/forks/opencode/, ~/.opencues/forks/gemini-cli/ (fork trees that contain *our* node_modules + patches)
 - The patches on each fork's source files (reverted via `git checkout --`)
 - The fork's `node_modules/@opencues/` (we own this)
 - chrome `dist/` build output

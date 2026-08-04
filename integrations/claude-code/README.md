@@ -13,7 +13,7 @@
 | Version | 0.1.0 |
 | Compatible with | Claude Code 2.1.x — tested on 2.1.110 (cli.js shape) and 2.1.150 / 2.1.158 / 2.1.170 / 2.1.206 (native bun-binary shape, 2.1.113+ cutover). Patch source is the same for both; tweakcc 4.0.13+ handles `.bun` ELF extract/repack. |
 | Source | `integrations/claude-code/` |
-| Runtime | `@opencues/core`, `@opencues/runtime` (installed to `~/claude-code-cues/node_modules/@opencues/`) |
+| Runtime | `@opencues/core`, `@opencues/runtime` (installed to `~/.opencues/forks/claude-code/node_modules/@opencues/`) |
 
 ---
 
@@ -33,7 +33,7 @@ opencues install claude-code
 ```
 
 That clones a pinned `@anthropic-ai/claude-code` into
-`~/claude-code-cues/` and patches it in place. Your native `claude`
+`~/.opencues/forks/claude-code/` and patches it in place. Your native `claude`
 install is never touched.
 
 ### Custom fork location
@@ -53,7 +53,7 @@ The installer (`opencues install claude-code`) chains two scripts:
    - Compile colocated `.cs` → `.exe` (WSL only)
 
 2. **CC-specific setup.sh** (default behavior: nuke + rebuild from scratch)
-   - `npm install @anthropic-ai/claude-code` — pinned to exact version (2.1.110 for the cli.js fork at `~/claude-code-cues/`; 2.1.150+ for the native-binary fork at `~/claude-code-cues-150/`). See [UPGRADING.md](UPGRADING.md) for the cross-shape install dance.
+   - `npm install @anthropic-ai/claude-code` — pinned to exact version (2.1.110 for the cli.js fork at `~/.opencues/forks/claude-code/`; 2.1.150+ for the native-binary fork at `~/.opencues/forks/claude-code-150/`). See [UPGRADING.md](UPGRADING.md) for the cross-shape install dance.
    - Clones tweakcc into `<CC_FORK>/.cues/tweakcc/` (the patcher lives inside the fork)
    - Builds + installs `@opencues/{core,runtime}` into `<CC_FORK>/node_modules/@opencues/`
    - Installs `statusline.sh` into `<CC_FORK>/.cues/` (does NOT auto-edit `~/.claude/settings.json` — that's an explicit opt-in via `opencues statusline enable`)
@@ -166,10 +166,10 @@ that's safe).
 
 ## What gets installed where
 
-**Compact footprint: everything CC-specific lives inside the CC fork dir** (e.g. `~/claude-code-cues/`). One directory = one CC blast radius.
+**Compact footprint: everything CC-specific lives inside the CC fork dir** (e.g. `~/.opencues/forks/claude-code/`). One directory = one CC blast radius.
 
 ```
-~/claude-code-cues/                 (CC fork — npm-installed locally, single CC blast radius)
+~/.opencues/forks/claude-code/                 (CC fork — npm-installed locally, single CC blast radius)
 ├── package.json                    pin @anthropic-ai/claude-code: "2.1.110" or "2.1.150" (exact, no caret)
 ├── node_modules/
 │   ├── @anthropic-ai/claude-code/cli.js   patched in place
@@ -193,7 +193,7 @@ that's safe).
 ```
 
 **Compact, decoupled, predictable**:
-- Uninstalling CC (`rm -rf ~/claude-code-cues`) doesn't break OC — it reads `~/.cues/` independently
+- Uninstalling CC (`rm -rf ~/.opencues/forks/claude-code`) doesn't break OC — it reads `~/.cues/` independently
 - TTS works on OC even if CC was never installed (`~/.cues/scripts/speak.sh` is shared)
 - `require("@opencues/runtime")` from cli.js resolves via Node's standard upward `node_modules` walk — no symlinks
 - The statusline path in `~/.claude/settings.json` is absolute, so it works from every project you launch claude-cues in
@@ -213,7 +213,7 @@ These are runtime IPC files; OS rotates `/tmp/`.
 pnpm exec opencues uninstall claude-code
 ```
 
-Reverts `cli.js` from the backup in `~/claude-code-cues/.cues/patch-state/`, then removes `~/claude-code-cues/.cues/` entirely. Two operations, one dir to clean. Preview first with `--dry-run`.
+Reverts `cli.js` from the backup in `~/.opencues/forks/claude-code/.cues/patch-state/`, then removes `~/.opencues/forks/claude-code/.cues/` entirely. Two operations, one dir to clean. Preview first with `--dry-run`.
 
 ---
 

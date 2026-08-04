@@ -12,7 +12,7 @@ bump than for OC.
 ## Prerequisites
 
 - A clean worktree of the OpenCues repo.
-- The Gemini fork at `~/gemini-cli-cues/` (or wherever `--target` points).
+- The Gemini fork at `~/.opencues/forks/gemini-cli/` (or wherever `--target` points).
   If it doesn't exist, install will clone fresh and most of the dance below
   collapses.
 - `npm` on PATH (Gemini's build tool — pnpm won't work inside the fork).
@@ -38,7 +38,7 @@ The integration patches four files in the fork. Before bumping, confirm
 upstream hasn't moved or rewritten them:
 
 ```bash
-cd ~/gemini-cli-cues
+cd ~/.opencues/forks/gemini-cli
 git fetch origin <new-sha>
 git diff <old-sha>..<new-sha> -- \
   packages/cli/src/ui/AppContainer.tsx \
@@ -80,7 +80,7 @@ opencues uninstall gemini-cli
 
 Reverts the four patched files via `git checkout --`, deletes the
 `opencues.ts` bootstrap copy, and removes `node_modules/@opencues/*` from
-the fork. The fork itself (`~/gemini-cli-cues/`) stays in place.
+the fork. The fork itself (`~/.opencues/forks/gemini-cli/`) stays in place.
 
 **Important**: if uninstall doesn't list all four patched files in its
 plan, `bin/install.cjs`'s patched-files list is out of sync with
@@ -90,7 +90,7 @@ block step 5's `git checkout`.
 ### 5. Move the fork to the new SHA
 
 ```bash
-cd ~/gemini-cli-cues
+cd ~/.opencues/forks/gemini-cli
 git fetch origin <new-sha>
 git -c advice.detachedHead=false checkout <new-sha>
 # npm install runs automatically as part of step 6 — no need here
@@ -116,7 +116,7 @@ If any step fails:
 
 - **`npm install` fails:** Gemini may have added a dep that conflicts with
   the node version on PATH. Gemini requires Node 20+; check
-  `~/gemini-cli-cues/package.json` engines field.
+  `~/.opencues/forks/gemini-cli/package.json` engines field.
 - **Build fails with `Cannot find module '@opencues/core'`:** core's
   `dist/` is missing. setup.sh's build step orders core before runtime;
   if you've reordered, restore that.
@@ -161,9 +161,9 @@ Also grep the patched source to confirm injections landed:
 
 ```bash
 grep -n "startOpenCues\|publishPromptAccess\|useOpenCuesTip" \
-  ~/gemini-cli-cues/packages/cli/src/ui/AppContainer.tsx \
-  ~/gemini-cli-cues/packages/cli/src/ui/components/InputPrompt.tsx \
-  ~/gemini-cli-cues/packages/cli/src/ui/components/Footer.tsx
+  ~/.opencues/forks/gemini-cli/packages/cli/src/ui/AppContainer.tsx \
+  ~/.opencues/forks/gemini-cli/packages/cli/src/ui/components/InputPrompt.tsx \
+  ~/.opencues/forks/gemini-cli/packages/cli/src/ui/components/Footer.tsx
 ```
 
 A `WARN: ... anchor not found` in install output silently no-ops the

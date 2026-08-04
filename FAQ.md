@@ -90,7 +90,7 @@ Yes: `opencues uninstall <host>` (or `--all`). Each integration reverts its patc
 
 | Host | What uninstall does |
 |---|---|
-| `claude-code` | Revert `cli.js` from backup → `rm -rf ~/claude-code-cues/.cues/` |
+| `claude-code` | Revert `cli.js` from backup → `rm -rf ~/.opencues/forks/claude-code/.cues/` |
 | `opencode` | `git checkout --` on 3 patched TSX files → remove `<fork>/node_modules/@opencues/` → remove bootstrap |
 | `chrome` | Remove the Chrome extension's `dist/` in the repo; remove the `--target` deploy if one was used |
 
@@ -99,8 +99,8 @@ Yes: `opencues uninstall <host>` (or `--all`). Each integration reverts its patc
 By design:
 - **User configs** (`~/.cues/`) — your cues/blanks survive so re-install doesn't lose settings
 - **The OpenCues clone** (`~/opencues/`) — that's your repo, not an installer artefact
-- **Cloned forks** (`~/opencode-cues/`) — that's your host checkout, not OpenCues's to manage
-- **`claude-code-cues`** (your optional local Claude Code install) — same reasoning
+- **Cloned forks** (`~/.opencues/forks/opencode/`) — that's your host checkout, not OpenCues's to manage
+- **`.opencues/forks/claude-code`** (your optional local Claude Code install) — same reasoning
 
 ### How do I fully remove OpenCues from my machine?
 
@@ -110,7 +110,7 @@ See `README.md § Removing § Fully removing OpenCues`. Four steps:
 opencues uninstall --all
 rm -rf ~/.cues          # user configs
 rm -rf ~/opencues           # the repo
-rm -rf ~/opencode-cues ~/claude-code-cues    # cloned forks (only what you have)
+rm -rf ~/.opencues/forks/opencode ~/.opencues/forks/claude-code    # cloned forks (only what you have)
 ```
 
 ### Uninstall failed partway — what now?
@@ -125,9 +125,9 @@ The main failure mode is OpenCode's uninstall refusing to `git checkout` a dirty
 
 | Path | Owner | Purpose |
 |---|---|---|
-| `~/claude-code-cues/.cues/` | `@opencues/claude-code` | Everything CC needs — `core/`, `runtime/`, `scripts/`, `patch-state/`, `tips.json`, `statusline.sh`. Uninstall = `rm -rf` this dir + revert `cli.js`. |
-| `~/claude-code-cues/` | Your local Claude Code install (optional) | Where the `claude-cues` alias points. The auto-detect in `opencues install claude-code` looks here and at the standard native install path. |
-| `~/opencode-cues/` | OpenCode fork (cloned on install) | Patched fork; `~/opencode-cues/node_modules/@opencues/` contains our built libs; three TSX files are patched in place. |
+| `~/.opencues/forks/claude-code/.cues/` | `@opencues/claude-code` | Everything CC needs — `core/`, `runtime/`, `scripts/`, `patch-state/`, `tips.json`, `statusline.sh`. Uninstall = `rm -rf` this dir + revert `cli.js`. |
+| `~/.opencues/forks/claude-code/` | Your local Claude Code install (optional) | Where the `claude-cues` alias points. The auto-detect in `opencues install claude-code` looks here and at the standard native install path. |
+| `~/.opencues/forks/opencode/` | OpenCode fork (cloned on install) | Patched fork; `~/.opencues/forks/opencode/node_modules/@opencues/` contains our built libs; three TSX files are patched in place. |
 | `~/.cues/` | You (user configs) | Your cues/blanks + user-level `OPENCUES.md`. Shared by every host. |
 | `<cwd>/.cues/` | Your project | Project-level overrides for cues/blanks. |
 | `/tmp/opencues.log` | Runtime | Debug log from whichever host is actively running. |
@@ -147,9 +147,9 @@ Two reasons:
 
 See `integrations/opencode/README.md § Where things live`:
 
-- `~/opencode-cues/node_modules/@opencues/core/` — built `@opencues/core`
-- `~/opencode-cues/node_modules/@opencues/runtime/` — built `@opencues/runtime`
-- `~/opencode-cues/packages/opencode/src/cli/cmd/tui/opencues.ts` — bootstrap
+- `~/.opencues/forks/opencode/node_modules/@opencues/core/` — built `@opencues/core`
+- `~/.opencues/forks/opencode/node_modules/@opencues/runtime/` — built `@opencues/runtime`
+- `~/.opencues/forks/opencode/packages/opencode/src/cli/cmd/tui/opencues.ts` — bootstrap
 - `app.tsx`, `component/prompt/index.tsx`, `feature-plugins/home/footer.tsx` — patched in place (revertable via `git checkout`)
 
 ---
@@ -221,7 +221,7 @@ The installer's quiet mode shows the last 30 lines of `/tmp/opencues-install-oc.
 
 - **bun not on PATH** — the installer pre-flights this; install bun from https://bun.sh/
 - **pnpm not on PATH** — same, install pnpm from https://pnpm.io
-- **Fork path points at a non-opencode dir** — pass `--target /path/to/real/opencode/checkout` or delete `~/opencode-cues/` and re-run
+- **Fork path points at a non-opencode dir** — pass `--target /path/to/real/opencode/checkout` or delete `~/.opencues/forks/opencode/` and re-run
 
 Re-run with `OPENCUES_INSTALL_VERBOSE=1` to stream live.
 

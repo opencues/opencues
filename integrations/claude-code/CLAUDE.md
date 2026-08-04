@@ -31,7 +31,7 @@ two scripts:
    sync + 0-byte OPENCUES.md self-heal.
 2. **`patches/setup.sh`** — strictly CC-specific. Default: nuke +
    rebuild. Pinned `@anthropic-ai/claude-code` reinstalled into
-   `~/claude-code-cues/` + tweakcc cloned AND checked out at the exact
+   `~/.opencues/forks/claude-code/` + tweakcc cloned AND checked out at the exact
    commit in `compat.json:tweakcc-pin` inside `<CC_FORK>/.cues/tweakcc/`
    (never unpinned — issue #276) + `@opencues/{core,runtime}` built
    and installed under `<CC_FORK>/node_modules/@opencues/` + statusline
@@ -43,7 +43,7 @@ two scripts:
    install.
 
 **Compact footprint**: everything CC-specific lives inside
-`~/claude-code-cues/`. Uninstall is `rm -rf ~/claude-code-cues` +
+`~/.opencues/forks/claude-code/`. Uninstall is `rm -rf ~/.opencues/forks/claude-code` +
 tweakcc revert. Your native `claude` install stays untouched.
 
 ## How patching works
@@ -83,7 +83,7 @@ command**:
 opencues install claude-code
 ```
 
-It auto-detects every `~/claude-code-cues*` dir with a real CC binary
+It auto-detects every `~/.opencues/forks/claude-code*` dir with a real CC binary
 and patches each in sequence. Canonical first, then dev forks
 (`-150`, `-158`, `-170`, …) in name order. Healthy + fresh forks skip;
 stale ones rebuild. ~1m 5s per fork warm.
@@ -91,7 +91,7 @@ stale ones rebuild. ~1m 5s per fork warm.
 **Why the fan-out exists** (June 2026, PR following #117): PR #117
 bumped `@opencues/{runtime,core}`. The release pass rebuilt the
 canonical fork; the `-170` dev fork was forgotten. Direct launches of
-`~/claude-code-cues-170/.../claude.exe` ran the stale 0.3.0 bundle for
+`~/.opencues/forks/claude-code-170/.../claude.exe` ran the stale 0.3.0 bundle for
 hours, dropping every cue + blank silently. No warning, no test
 coverage (unit tests run source, not bundles), no doctor row. The
 install path now treats every CC fork on disk as a real install
@@ -101,8 +101,8 @@ structurally true.
 Direct setup.sh still works for single-fork iteration:
 
 ```bash
-# Single fork, explicit target (CI, one-off binaries outside ~/claude-code-cues*).
-OPENCUES_CC_TARGET=~/claude-code-cues-170/node_modules/@anthropic-ai/claude-code/bin/claude.exe \
+# Single fork, explicit target (CI, one-off binaries outside ~/.opencues/forks/claude-code*).
+OPENCUES_CC_TARGET=~/.opencues/forks/claude-code-170/node_modules/@anthropic-ai/claude-code/bin/claude.exe \
   integrations/claude-code/patches/setup.sh
 ```
 

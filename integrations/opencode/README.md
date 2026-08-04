@@ -41,11 +41,11 @@ opencues install opencode
 
 That's the whole install — one command, end to end. The installer will:
 
-1. **Clone** `sst/opencode` at the pinned SHA into `~/opencode-cues/` (or reuse an existing clone at `--target <path>`)
+1. **Clone** `sst/opencode` at the pinned SHA into `~/.opencues/forks/opencode/` (or reuse an existing clone at `--target <path>`)
 2. **Install fork dependencies** via `bun install` so the fork's own deps (e.g. `@opentui/solid/preload`) land
 3. **Build** `@opencues/core` + `@opencues/runtime` (turbo-cached)
 4. **Install** the built artefacts into the fork at `node_modules/@opencues/{core,runtime}/`
-5. **Patch** the fork in place: drops `opencues.ts` bootstrap + edits `app.tsx`, `component/prompt/index.tsx`, `feature-plugins/home/footer.tsx`, `feature-plugins/sidebar/footer.tsx` (all paths relative to `~/opencode-cues/packages/opencode/src/cli/cmd/tui/` — NOT files in the OpenCues repo)
+5. **Patch** the fork in place: drops `opencues.ts` bootstrap + edits `app.tsx`, `component/prompt/index.tsx`, `feature-plugins/home/footer.tsx`, `feature-plugins/sidebar/footer.tsx` (all paths relative to `~/.opencues/forks/opencode/packages/opencode/src/cli/cmd/tui/` — NOT files in the OpenCues repo)
 
 Re-runs are idempotent — unchanged patches skip, unchanged builds skip. First install is ~5 min (mostly `git clone` + `bun install`); re-runs are under 30s.
 
@@ -83,10 +83,10 @@ One command:
 opencues uninstall opencode
 ```
 
-This reverts the four patched TSX files via `git checkout --`, deletes the `opencues.ts` bootstrap, and removes `node_modules/@opencues/{core,runtime}/`. The fork itself (`~/opencode-cues/`) stays in place — it's your OpenCode checkout, not OpenCues's artefact. To remove it entirely:
+This reverts the four patched TSX files via `git checkout --`, deletes the `opencues.ts` bootstrap, and removes `node_modules/@opencues/{core,runtime}/`. The fork itself (`~/.opencues/forks/opencode/`) stays in place — it's your OpenCode checkout, not OpenCues's artefact. To remove it entirely:
 
 ```bash
-rm -rf ~/opencode-cues
+rm -rf ~/.opencues/forks/opencode
 ```
 
 ---
@@ -146,14 +146,14 @@ Idempotent — copies any file that doesn't already exist at the destination.
 
 | Path | Contents |
 |---|---|
-| `~/opencode-cues/` | Cloned OpenCode fork (~3 GB after `bun install`) |
-| `~/opencode-cues/node_modules/@opencues/core/` | Built `@opencues/core` |
-| `~/opencode-cues/node_modules/@opencues/runtime/` | Built `@opencues/runtime` |
-| `~/opencode-cues/packages/opencode/src/cli/cmd/tui/opencues.ts` | OpenCues bootstrap (the `opencuesBootstrap.ts` source, copied in) |
-| `~/opencode-cues/packages/opencode/src/cli/cmd/tui/app.tsx` | **Patched in place** — mounts the runtime + forwards keyboard events |
-| `~/opencode-cues/packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx` | **Patched in place** — publishes textarea ref + onContentChange handler |
-| `~/opencode-cues/packages/opencode/src/cli/cmd/tui/feature-plugins/home/footer.tsx` | **Patched in place** — renders OpenCues tip alongside MCP status |
-| `~/opencode-cues/packages/opencode/src/cli/cmd/tui/feature-plugins/sidebar/footer.tsx` | **Patched in place** — renders OpenCues tip in the sidebar slot |
+| `~/.opencues/forks/opencode/` | Cloned OpenCode fork (~3 GB after `bun install`) |
+| `~/.opencues/forks/opencode/node_modules/@opencues/core/` | Built `@opencues/core` |
+| `~/.opencues/forks/opencode/node_modules/@opencues/runtime/` | Built `@opencues/runtime` |
+| `~/.opencues/forks/opencode/packages/opencode/src/cli/cmd/tui/opencues.ts` | OpenCues bootstrap (the `opencuesBootstrap.ts` source, copied in) |
+| `~/.opencues/forks/opencode/packages/opencode/src/cli/cmd/tui/app.tsx` | **Patched in place** — mounts the runtime + forwards keyboard events |
+| `~/.opencues/forks/opencode/packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx` | **Patched in place** — publishes textarea ref + onContentChange handler |
+| `~/.opencues/forks/opencode/packages/opencode/src/cli/cmd/tui/feature-plugins/home/footer.tsx` | **Patched in place** — renders OpenCues tip alongside MCP status |
+| `~/.opencues/forks/opencode/packages/opencode/src/cli/cmd/tui/feature-plugins/sidebar/footer.tsx` | **Patched in place** — renders OpenCues tip in the sidebar slot |
 | `~/.cues/` | User-level configs (see Configuration above) |
 | `/tmp/opencues.log` | Runtime debug log (created on first launch) |
 | `/tmp/opencues-install-oc.log` | Installer log from the most recent install |

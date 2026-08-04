@@ -17,7 +17,7 @@ reintegration.
 | `../../packages/opencues-runtime/adapters/gemini/v0.41/adapter.ts` | `GeminiV041Adapter` — implements the runtime's `HostAdapter` contract using the `GeminiBindings` from boot.ts. |
 
 The four files patched in the fork (paths relative to the cloned
-`~/gemini-cli-cues/` tree — they are NOT files in the OpenCues repo):
+`~/.opencues/forks/gemini-cli/` tree — they are NOT files in the OpenCues repo):
 
 - `packages/cli/src/ui/AppContainer.tsx` — adds `useEffect(() => startOpenCues(...), [])` and `useKeypress(... KeypressPriority.Critical)` so we intercept keys before any other subscriber.
 - `packages/cli/src/ui/components/InputPrompt.tsx` — publishes `PromptInputAccess`, observes text+cursor, registers the render-kick (`useOpenCuesRenderTick`), pulls pending render state on every render via `consumePendingOpenCues`, decorates each visual line via `decorateOpenCuesLine`.
@@ -34,7 +34,7 @@ rebuild.
 `patches/setup.sh` runs these steps idempotently:
 
 1. **Clone** `google-gemini/gemini-cli` at the pinned sha into
-   `~/gemini-cli-cues` (skip if already present).
+   `~/.opencues/forks/gemini-cli` (skip if already present).
 2. **`npm install`** inside the fork so `npm run build` can resolve
    ink/react/etc.
 3. **Build** `@opencues/{runtime,core}` from this repo via pnpm.
@@ -78,9 +78,9 @@ landed:
 
 ```bash
 grep -n "startOpenCues\|publishPromptAccess\|useOpenCuesTip" \
-  ~/gemini-cli-cues/packages/cli/src/ui/AppContainer.tsx \
-  ~/gemini-cli-cues/packages/cli/src/ui/components/InputPrompt.tsx \
-  ~/gemini-cli-cues/packages/cli/src/ui/components/Footer.tsx
+  ~/.opencues/forks/gemini-cli/packages/cli/src/ui/AppContainer.tsx \
+  ~/.opencues/forks/gemini-cli/packages/cli/src/ui/components/InputPrompt.tsx \
+  ~/.opencues/forks/gemini-cli/packages/cli/src/ui/components/Footer.tsx
 ```
 
 ### Iteration loop
@@ -108,7 +108,7 @@ Otherwise the failing step prints the last 30 lines of
 `opencues uninstall gemini-cli` (or `bin/install.cjs uninstall`)
 removes `node_modules/@opencues/{core,runtime}`, deletes
 `packages/cli/src/ui/opencues.ts`, and `git restore`s the four
-patched files. Doesn't delete the fork itself — `rm -rf ~/gemini-cli-cues`
+patched files. Doesn't delete the fork itself — `rm -rf ~/.opencues/forks/gemini-cli`
 nukes everything.
 
 ## React/Ink quirks (this is the meat)

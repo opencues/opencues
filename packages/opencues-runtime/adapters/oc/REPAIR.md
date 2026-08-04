@@ -69,7 +69,7 @@ returns `consumed=false`. cueMap appears empty even though
 `~/.claude/claude-code-tips.json` exists.
 
 **Why:** the bootstrap passed `process.cwd()`, which is the OpenCode
-fork directory (`~/opencode-cues`). That's not where the user keeps
+fork directory (`~/.opencues/forks/opencode`). That's not where the user keeps
 their `CUES.md`, `controls/`, `cues/` folders. ConfigLoader loaded
 the tips JSON but missed all folder configs.
 

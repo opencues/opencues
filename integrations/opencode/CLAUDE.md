@@ -22,7 +22,7 @@ integration.
 | `../../packages/opencues-runtime/adapters/oc/REPAIR.md` | Version-bump playbook (8 host quirks documented) |
 
 The four files patched in the fork (paths relative to the cloned
-`~/opencode-cues/` tree — they are NOT files in the OpenCues repo):
+`~/.opencues/forks/opencode/` tree — they are NOT files in the OpenCues repo):
 
 - `packages/opencode/src/cli/cmd/tui/app.tsx` — entry; injects `opencues.ts` bootstrap call
 - `packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx` — publishes textarea ref + onContentChange handler
@@ -33,7 +33,7 @@ The four files patched in the fork (paths relative to the cloned
 
 `opencues install opencode` runs `bin/install.cjs`, which chains:
 
-1. **Clone** `sst/opencode` at the pinned SHA into `~/opencode-cues/`
+1. **Clone** `sst/opencode` at the pinned SHA into `~/.opencues/forks/opencode/`
    (or reuse an existing clone at `--target <path>`).
 2. **Install fork dependencies** via `bun install` so the fork's own
    deps (e.g. `@opentui/solid/preload`) land. **Bun is a hard prereq**
@@ -80,8 +80,8 @@ injections landed:
 
 ```bash
 grep -n "startOpenCues\|publishPromptAccess" \
-  ~/opencode-cues/packages/opencode/src/cli/cmd/tui/app.tsx \
-  ~/opencode-cues/packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx
+  ~/.opencues/forks/opencode/packages/opencode/src/cli/cmd/tui/app.tsx \
+  ~/.opencues/forks/opencode/packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx
 ```
 
 ## Iteration loop
