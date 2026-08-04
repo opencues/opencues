@@ -1,6 +1,6 @@
 # Install
 
-Per-host installation, what each install does, where things land, and how to recover when something fails. For a quick start, see [`README.md` § Quickstart](../README.md#quickstart) — or [`BETA-INSTALL.md`](../BETA-INSTALL.md) for the manual clone flow; this doc is the deep version. For a click-by-click, touch-counted walkthrough of all five integrations (useful when auditing install friction), see [`docs/install/walkthrough.md`](install/walkthrough.md).
+Per-host installation, what each install does, where things land, and how to recover when something fails. For a quick start, see [`README.md` § Quickstart](../README.md#quickstart); this doc is the deep version, including the manual clone flow (§ Install commands). For a click-by-click, touch-counted walkthrough of all five integrations (useful when auditing install friction), see [`docs/install/walkthrough.md`](install/walkthrough.md).
 
 ## Prerequisites
 
