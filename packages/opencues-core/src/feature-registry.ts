@@ -458,8 +458,8 @@ export const FEATURES: readonly FeatureSpec[] = [
     scalar: 'session-contradiction-mode',
     group: 'Cues',
     camelCase: 'sessionContradictionMode',
-    description: 'Watchlist contradiction cues — flags a draft that goes against a decision you made earlier in this Claude Code session (stack, constraints, memory/compaction, scope). A background producer distils the session transcript into a commitments watchlist; a fast model checks each draft against it.',
-    menuTip: 'Catch yourself contradicting the session: you agreed "runtime is Bun, not Node" earlier, then type "switch this to node". Two-stage — a slow producer builds the watchlist from the CC transcript, a fast model matches your draft against it. LLM-authored advisory (passive; Ctrl+Alt+↑ applies the reconciled rewrite). OFF by default. Claude Code only (needs the session transcript).',
+    description: 'Watchlist contradiction cues — flags a draft that goes against a decision you made earlier in this coding session (stack, constraints, memory/compaction, scope). A background producer distils the session transcript into a commitments watchlist; a fast model checks each draft against it. Works on hosts with a session transcript (Claude Code, OpenCode, Gemini CLI).',
+    menuTip: 'Catch yourself contradicting the session: you agreed "runtime is Bun, not Node" earlier, then type "switch this to node". Two-stage — a slow producer builds the watchlist from the session transcript, a fast model matches your draft against it. LLM-authored advisory (passive; Ctrl+Alt+↑ applies the reconciled rewrite). OFF by default. Needs a session transcript — Claude Code, OpenCode, or Gemini CLI (on Claude Code the OpenCues statusline must be enabled — it triggers the producer).',
     values: [
       { id: 'off', description: 'Disabled (default) — no session-commitment matching' },
       { id: 'on',  description: 'Enabled — a fast model flags a draft that contradicts an earlier session decision' },
