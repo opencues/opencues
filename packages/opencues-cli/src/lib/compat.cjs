@@ -16,6 +16,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const https = require('node:https');
+const { resolveForkDir } = require('./fork-paths.cjs');
 
 /** Load the compat manifest for a given integration folder name (e.g. 'claude-code'). */
 function loadCompat(repoRoot, host) {
@@ -134,7 +135,10 @@ function readNpmPin(home, compat) {
   if (compat['host-kind'] !== 'npm') return null;
   const loc = compat['pin-location'];
   if (!loc || loc.kind !== 'npm-package-json') return null;
-  const forkDir = (loc['fork-default'] || '').replace(/^~/, home);
+  // npm-fork pin read is CC-only in practice; the helper resolves the fork's
+  // real location (new ~/.opencues/forks/ + legacy fallback) so a mid-transition
+  // install's pin is still readable. (compat.json's fork-default is now informational.)
+  const forkDir = resolveForkDir('claude-code');
   const pkgPath = path.join(forkDir, loc['path-from-fork'] || 'package.json');
   if (!fs.existsSync(pkgPath)) return null;
   try {

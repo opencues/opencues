@@ -451,7 +451,7 @@ async function doUpgrade(host, toVersion, { force, dryRun, installedPin }, ctx) 
 function doUpgradeNpm(host, toVersion, compat, { dryRun }, ctx) {
   const HOME = os.homedir();
   const loc = compat['pin-location'];
-  const forkDir = (loc['fork-default'] || '').replace(/^~/, HOME);
+  const forkDir = resolveForkDir('claude-code');  // CC-only npm-fork pin; helper handles new + legacy locations
   const pkgPath = path.join(forkDir, loc['path-from-fork'] || 'package.json');
   if (!fs.existsSync(pkgPath)) {
     console.error(`opencues update: pin location not found at ${pkgPath}.`);
