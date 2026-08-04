@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — `kimi` provider: Moonshot AI's Kimi models via their direct API (`@opencues/core` 0.41.0 → 0.42.0, `@opencues/runtime` 0.28.21 → 0.28.22, `opencues` CLI 0.4.2 → 0.4.3)
+
+New `kimi` provider adapter talking to Moonshot AI's own OpenAI-compatible API (`api.moonshot.ai`) — distinct from the kimi-k2 copies hosted on Groq/OpenRouter, which use different model names. Catalogue + request shape verified against Moonshot's Aug-2026 docs: default model `kimi-k2.6` (thinking disabled for the inline latency floor; modern kimi models take `max_completion_tokens` and reject `temperature`), `kimi-k3` on the shortlist (always-thinking flagship, `reasoning_effort` coerced into its legal `low|high` set), legacy `moonshot-v1-*` still dispatches until its 2026-08-31 sunset; auth via `MOONSHOT_API_KEY` (works with `opencues set-key`); mainland-`.cn` platform reachable via an `llm-endpoint:` override. Valid in all three bucket scalars (menu-hidden until benched, like ollama/openrouter) and appended last to the auto-route order, so a lone Moonshot key auto-routes without outranking benched providers. No spec change — providers are reference-impl runtime knobs. Guide: `docs/guides/llm-providers.md` § Kimi.
+
 ## [0.4.2] - 2026-08-02
 
 Patch release: launch-readiness for the published `opencues` CLI — a user-facing npm README, Apache-2.0 reconciled across every package, and a time-bomb test fix. Highlights in the [GitHub Release](https://github.com/opencues/opencues/releases/tag/v0.4.2).
