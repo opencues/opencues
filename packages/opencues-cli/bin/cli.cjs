@@ -53,6 +53,7 @@ const COMMANDS = {
   cleanup:        () => require('../src/commands/cleanup.cjs'),
   'check-keys':   () => require('../src/commands/check-keys.cjs'),
   models:         () => require('../src/commands/models.cjs'),
+  usage:          () => require('../src/commands/usage.cjs'),
   update:         () => require('../src/commands/update.cjs'),
   statusline:     () => require('../src/commands/statusline.cjs'),
   debug:          () => require('../src/commands/debug.cjs'),

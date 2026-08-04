@@ -1035,6 +1035,50 @@ export function startSessionCommitmentsKick(
 }
 
 /**
+ * Aggregate LLM usage meter. Registers a process-global sink (`registerUsageSink`)
+ * that `@opencues/core`'s `dispatchChat` reports every call to, so EVERY source
+ * (word/sentence/session-contradiction/ask/contradiction cues + blanks) is
+ * counted with no per-source wiring. Snapshots per-provider/model totals to
+ * `/tmp/opencues-usage-<pid>.json` every few seconds so `opencues usage` can
+ * price them. Passive accounting — makes no LLM calls of its own, adds no token
+ * cost; the only overhead is a small JSON write when something changed. Node-only.
+ */
+export function startUsageMeter(
+  log: (level: LogLevel, msg: string) => void,
+  opts: { host: string; intervalMs?: number; filePath?: string },
+): { stop(): void } | undefined {
+  if (typeof process === 'undefined' || !process.versions?.node) return undefined;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const os = require('node:os') as typeof import('node:os');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require('node:path') as typeof import('node:path');
+  let core: { registerUsageSink?: (fn: (e: unknown) => void) => () => void; UsageMeter?: new () => { record(e: unknown): void; rows(): unknown[] } };
+  try { core = require('@opencues/core'); } catch { return undefined; }
+  if (typeof core.registerUsageSink !== 'function' || typeof core.UsageMeter !== 'function') return undefined;   // older bundle → no meter
+  const meter = new core.UsageMeter();
+  let dirty = false;
+  const off = core.registerUsageSink((e) => { meter.record(e); dirty = true; });
+  const startedAt = new Date().toISOString();
+  const file = opts.filePath || path.join(os.tmpdir(), `opencues-usage-${process.pid}.json`);
+  const flush = (): void => {
+    if (!dirty) return;
+    dirty = false;
+    try {
+      const snap = { host: opts.host, pid: process.pid, startedAt, updatedAt: new Date().toISOString(), rows: meter.rows() };
+      const tmp = `${file}.tmp-${process.pid}`;
+      fs.writeFileSync(tmp, JSON.stringify(snap));
+      fs.renameSync(tmp, file);
+    } catch { /* best effort — usage is observability, never load-bearing */ }
+  };
+  const timer = setInterval(flush, opts.intervalMs ?? 5000);
+  if (typeof (timer as { unref?: () => void }).unref === 'function') (timer as { unref: () => void }).unref();
+  log('info', `usage-meter: aggregating LLM usage → ${file}`);
+  return { stop: () => { clearInterval(timer); flush(); off(); } };
+}
+
+/**
  * Locate the newest Gemini CLI chat transcript on disk (Gemini writes to
  * `~/.gemini/tmp/<projectId>/chats/session-*.{jsonl,json}`). Returns the most
  * recently modified one within `maxAgeMs` (so a stale session isn't picked) —

@@ -22,7 +22,7 @@ import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
 import { applyDirectives } from '../../../src/render-directives';
-import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, buildSessionCommitmentsIngest, startSessionCommitmentsKick, locateNewestGeminiChat, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, buildSessionCommitmentsIngest, startSessionCommitmentsKick, startUsageMeter, locateNewestGeminiChat, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { startEventBridge } from '../../../src/event-bridge';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
@@ -446,6 +446,7 @@ export function boot(host: HostInfo): BootResult {
   // the mode scalars.
   const sessionCommitmentsHolder = buildSessionCommitmentsIngest(log, { cwd: host.cwd });
   startSessionCommitmentsKick(log, { locate: () => locateNewestGeminiChat(host.cwd), format: 'gemini', extraArgs: ['--cwd', host.cwd] });
+  startUsageMeter(log, { host: 'gemini-cli' });
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',

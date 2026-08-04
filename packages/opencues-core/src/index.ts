@@ -374,6 +374,19 @@ export {
   MAX_COMMITMENTS,
   MAX_STATEMENT_LEN,
 } from './session-commitments';
+
+export {
+  registerUsageSink,
+  hasUsageSinks,
+  reportUsage,
+  UsageMeter,
+  mergeSnapshots,
+  MODEL_PRICING,
+  priceFor,
+  estimateCost,
+  estimateRowCostUSD,
+} from './usage-meter';
+export type { UsageEvent, UsageTotals, UsageRow, UsageSnapshot, ModelPrice, RowCost, CostReport } from './usage-meter';
 export type {
   SessionContradictionMode,
   CommitmentCategory,

@@ -21,7 +21,7 @@ import { KataCoach } from '../../../src/modules/kata';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
-import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, buildSessionCommitmentsIngest, startSessionCommitmentsKick, locateOpenCodeDb, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, buildSessionCommitmentsIngest, startSessionCommitmentsKick, startUsageMeter, locateOpenCodeDb, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
   CommonHostInfo,
@@ -289,6 +289,7 @@ export function boot(host: HostInfo): BootResult {
   // it (`--format opencode --cwd`), not this Bun runtime. Both self-gate on mode.
   const sessionCommitmentsHolder = buildSessionCommitmentsIngest(log, { cwd: host.cwd });
   startSessionCommitmentsKick(log, { locate: () => locateOpenCodeDb(), format: 'opencode', extraArgs: ['--cwd', host.cwd] });
+  startUsageMeter(log, { host: 'opencode' });
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',

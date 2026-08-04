@@ -43,6 +43,7 @@
     "src/session-commitments.test.ts",
     "src/contradiction/session-contradiction-source.test.ts",
     "src/sources/tool-prompt-source.test.ts",
-    "src/sources/session-cue-source.test.ts"
+    "src/sources/session-cue-source.test.ts",
+    "src/usage-meter.test.ts"
   ]
 }
