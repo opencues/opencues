@@ -287,13 +287,19 @@ module.exports = async function extractCommitments(argv, ctx) {
   }
 };
 
-// Extraction reads the WHOLE transcript tail — a large context — every ~8s of
-// activity, so it should run on a cheap, big-context model, NOT burn the
-// realtime cues-bucket provider. Preference order:
-//   1. OPENCUES_EXTRACT_PROVIDER + OPENCUES_EXTRACT_MODEL (power-user override)
-//   2. Claude Haiku (anthropic/claude-haiku-4-5) when ANTHROPIC_API_KEY is set —
-//      cheap + fast on long context, and keeps the matcher's provider free.
-//   3. the cues bucket (whatever the user configured) as the fallback.
+// Extraction reads the transcript tail every ~8s of activity, so it wants a
+// fast, cheap model. The real-transcript benchmark
+// (tests/benchmarks/session-contradiction/RESULTS-real-transcripts.txt) settled
+// the model choice: on real, messy sessions the cues-bucket default (cerebras/
+// gemma) extracts in ~0.5s and never comes back empty, while Claude Haiku is
+// ~4× slower for a modest recall edge — not worth it for a background read. So
+// the cues bucket is now the DEFAULT; Haiku is a fallback / opt-in, not the
+// auto-route it used to be. Preference order:
+//   1. OPENCUES_EXTRACT_PROVIDER + OPENCUES_EXTRACT_MODEL (power-user override,
+//      e.g. set provider=anthropic to force Haiku for its recall edge).
+//   2. the cues bucket (whatever the user configured — cerebras by default).
+//   3. Claude Haiku (anthropic/claude-haiku-4-5) as a fallback when the cues
+//      bucket isn't resolvable but ANTHROPIC_API_KEY is set.
 const HAIKU_MODEL = 'claude-haiku-4-5-20251001';
 function resolveExtractionLLM(core, apiKeys, routing) {
   const key = (p) => (p && p.envKeyName ? apiKeys[p.envKeyName] : undefined);
@@ -303,13 +309,13 @@ function resolveExtractionLLM(core, apiKeys, routing) {
     const p = core.getProvider(ovP.toLowerCase());
     if (p) return { provider: p, model: ovM, apiKey: key(p), why: 'env-override' };
   }
-  if (apiKeys.ANTHROPIC_API_KEY) {
-    const p = core.getProvider('anthropic');
-    if (p) return { provider: p, model: ovM || HAIKU_MODEL, apiKey: apiKeys.ANTHROPIC_API_KEY, why: 'haiku' };
-  }
   const cues = routing && routing.cues;
   if (cues && cues.provider && cues.model && cues.keyPresent) {
     return { provider: cues.provider, model: cues.model, apiKey: key(cues.provider), why: 'cues-bucket' };
+  }
+  if (apiKeys.ANTHROPIC_API_KEY) {
+    const p = core.getProvider('anthropic');
+    if (p) return { provider: p, model: ovM || HAIKU_MODEL, apiKey: apiKeys.ANTHROPIC_API_KEY, why: 'haiku-fallback' };
   }
   return null;
 }
