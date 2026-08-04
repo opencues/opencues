@@ -219,7 +219,9 @@ module.exports = async function extractCommitments(argv, ctx) {
     try {
       const resp = await fetch(wire.url, { method: 'POST', headers: wire.headers, body: typeof wire.body === 'string' ? wire.body : JSON.stringify(wire.body) });
       if (!resp.ok) { return done({ skipped: true, reason: `LLM http ${resp.status} (${ex.provider.id}/${ex.model})` }); }
-      raw = core.parseProviderResponse(ex.provider.id, await resp.text());
+      const bodyText = await resp.text();
+      recordProducerUsage(ex.provider.id, ex.model, bodyText);   // out-of-process → `opencues usage`
+      raw = core.parseProviderResponse(ex.provider.id, bodyText);
     } catch (e) {
       return done({ skipped: true, reason: `LLM call failed: ${(e && e.message) || e}` });
     }
@@ -260,7 +262,7 @@ module.exports = async function extractCommitments(argv, ctx) {
             model: ex.model, maxTokens: 512,
           }, { apiKey: ex.apiKey });
           const swResp = await fetch(swWire.url, { method: 'POST', headers: swWire.headers, body: typeof swWire.body === 'string' ? swWire.body : JSON.stringify(swWire.body) });
-          if (swResp.ok) superseded = core.parseSupersededResult(core.parseProviderResponse(ex.provider.id, await swResp.text()));
+          if (swResp.ok) { const swBody = await swResp.text(); recordProducerUsage(ex.provider.id, ex.model, swBody); superseded = core.parseSupersededResult(core.parseProviderResponse(ex.provider.id, swBody)); }
         } catch { /* supersession is best-effort — fall back to pure preservation */ }
       }
       mergedCommitments = core.mergeSessionCommitments(priorCommitments, ext.commitments, superseded);
@@ -364,6 +366,38 @@ function readOpenCodeTurns(dbPath, cwd, maxMessages = 400) {
 function writeMarker(markerPath, transcriptPath, mtimeMs) {
   try { fs.writeFileSync(markerPath, JSON.stringify({ transcriptPath, mtimeMs, extractedAt: Date.now() })); }
   catch { /* marker is an optimization; a failed write just means we re-check next tick */ }
+}
+
+/**
+ * Record one producer LLM call's usage so `opencues usage` can count it. The
+ * producer is a separate short-lived process making raw fetch calls (not
+ * dispatchChat), so it can't reach the host's in-process UsageMeter. Instead it
+ * APPENDS one JSON line to /tmp/opencues-usage-producer.jsonl. Append is atomic
+ * for small writes on POSIX (O_APPEND, < PIPE_BUF), so concurrent producers
+ * across hosts/cwds never corrupt it and no lock is needed. `opencues usage`
+ * sums the lines into a synthetic "producer" host. Best-effort — usage
+ * accounting must never break the producer.
+ */
+function recordProducerUsage(providerId, model, bodyText) {
+  try {
+    const j = JSON.parse(bodyText);
+    let promptTokens = 0, cachedTokens = 0, completionTokens = 0;
+    if (providerId === 'anthropic') {
+      promptTokens = j.usage?.input_tokens || 0;
+      completionTokens = j.usage?.output_tokens || 0;
+      cachedTokens = j.usage?.cache_read_input_tokens || 0;
+    } else if (providerId === 'gemini') {
+      promptTokens = j.usageMetadata?.promptTokenCount || 0;
+      completionTokens = j.usageMetadata?.candidatesTokenCount || 0;
+    } else { // openai-compatible (cerebras, groq, openai, openrouter)
+      promptTokens = j.usage?.prompt_tokens || 0;
+      completionTokens = j.usage?.completion_tokens || 0;
+      cachedTokens = j.usage?.prompt_tokens_details?.cached_tokens || 0;
+    }
+    if (!promptTokens && !completionTokens) return;
+    const line = JSON.stringify({ providerId, model, promptTokens, cachedTokens, completionTokens }) + '\n';
+    fs.appendFileSync(path.join(os.tmpdir(), 'opencues-usage-producer.jsonl'), line);
+  } catch { /* best effort — never break the producer for accounting */ }
 }
 
 /** Fallback key bag when core has no buildBootApiKeys export. */

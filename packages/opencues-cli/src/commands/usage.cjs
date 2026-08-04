@@ -49,7 +49,34 @@ function readSnapshots(dir) {
     try { snaps.push({ file: path.join(dir, f), ...JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) }); }
     catch { /* skip corrupt/partial */ }
   }
+  const prod = readProducerJsonl(dir);
+  if (prod) snaps.push(prod);
   return snaps;
+}
+
+/** The session-contradiction producer is out-of-process, so it APPENDS one JSON
+ *  line per LLM call to opencues-usage-producer.jsonl. Sum those lines into a
+ *  synthetic "producer" host snapshot. */
+const PRODUCER_FILE = 'opencues-usage-producer.jsonl';
+function readProducerJsonl(dir) {
+  const file = path.join(dir, PRODUCER_FILE);
+  let text;
+  try { text = fs.readFileSync(file, 'utf8'); } catch { return null; }
+  const agg = new Map();
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    let r; try { r = JSON.parse(line); } catch { continue; }
+    if (!r || !r.providerId || !r.model) continue;
+    const key = `${r.providerId} ${r.model}`;
+    let row = agg.get(key);
+    if (!row) { row = { providerId: r.providerId, model: r.model, calls: 0, promptTokens: 0, cachedTokens: 0, completionTokens: 0 }; agg.set(key, row); }
+    row.calls += 1;
+    row.promptTokens += r.promptTokens || 0;
+    row.cachedTokens += r.cachedTokens || 0;
+    row.completionTokens += r.completionTokens || 0;
+  }
+  if (agg.size === 0) return null;
+  return { file, host: 'producer', pid: '—', rows: [...agg.values()] };
 }
 
 const fmtTok = (n) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
@@ -135,7 +162,8 @@ module.exports = function usage(argv, ctx) {
   console.log('  ' + bold(pad('TOTAL (estimated)', 34)) + brightWhite(bold(totalCostCell)));
   if (suffix) console.log('  ' + dim(`  ${suffix}`));
   console.log('');
-  console.log(dim('  Note: the session-contradiction producer runs out-of-process and is not yet counted.'));
+  const hasProducer = snaps.some((s) => s.host === 'producer');
+  if (hasProducer) console.log(dim('  Includes the out-of-process session-contradiction producer (host: producer).'));
   console.log(dim('  `opencues usage --reset` to start a fresh tally · `--json` for raw numbers.'));
   return 0;
 };
