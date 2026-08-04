@@ -957,6 +957,121 @@ export function buildSessionCommitmentsIngest(
   return holder;
 }
 
+/**
+ * Producer-kick poller for hosts that DON'T have CC's statusline trigger
+ * (Gemini). On a timer it locates the current session transcript, and when it
+ * has grown, fire-and-forgets `opencues extract-commitments <path> --format
+ * <fmt>` — the same distill the CC statusline kicks. The producer self-gates
+ * (mode off → exits) and self-debounces, so this only adds a cheap mode-check +
+ * an mtime gate so we don't spawn node while idle or disabled.
+ *
+ * Node-only (Gemini runs on Node). Lazy-requires so it never pulls Node
+ * built-ins into a Bun host at module scope. `locate()` returns the transcript
+ * path or null; `format` is the extract-commitments format. The CLI is resolved
+ * from `OPENCUES_CLI` (a `node /path/cli.cjs` string or a binary) else the
+ * `opencues` on PATH.
+ */
+export function startSessionCommitmentsKick(
+  log: (level: LogLevel, msg: string) => void,
+  opts: { locate: () => string | null; format: string; extraArgs?: string[]; cuesDir?: string; intervalMs?: number },
+): { stop(): void } | undefined {
+  if (typeof process === 'undefined' || !process.versions?.node) return undefined;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const cp = require('node:child_process') as typeof import('node:child_process');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require('node:path') as typeof import('node:path');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const os = require('node:os') as typeof import('node:os');
+  const cuesDir = opts.cuesDir || (process.env['OPENCUES_HOME']?.trim() || path.join(os.homedir(), '.cues'));  // BROWSER-SAFE-ALLOW: fn is Node-only, guarded at entry by process.versions.node
+
+  const enabled = (): boolean => {
+    try {
+      const md = fs.readFileSync(path.join(cuesDir, 'OPENCUES.md'), 'utf8');
+      return /^(session-contradiction-mode|ask-cues-mode):\s*on\b/im.test(md);
+    } catch { return false; }
+  };
+
+  let lastSrc = '', lastMtime = -1;
+  const kick = (): void => {
+    if (!enabled()) return;
+    let src: string | null = null;
+    try { src = opts.locate(); } catch { src = null; }
+    if (!src) return;
+    let mtime: number;
+    try { mtime = fs.statSync(src).mtimeMs; } catch { return; }
+    // SQLite WAL: the main .db mtime lags; the -wal file changes on every write.
+    // Harmless for CC/Gemini (no -wal → statSync throws → ignored).
+    try { const w = fs.statSync(src + '-wal').mtimeMs; if (w > mtime) mtime = w; } catch { /* no wal */ }
+    if (src === lastSrc && mtime === lastMtime) return;   // transcript unchanged → skip
+    lastSrc = src; lastMtime = mtime;
+    const cli = process.env['OPENCUES_CLI']?.trim() || 'opencues';  // BROWSER-SAFE-ALLOW: fn is Node-only, guarded at entry by process.versions.node
+    const parts = cli.split(/\s+/);
+    const argv = [...parts.slice(1), 'extract-commitments', src, '--format', opts.format, ...(opts.extraArgs ?? []), '--quiet'];
+    try {
+      const child = cp.spawn(parts[0], argv, { detached: true, stdio: 'ignore' });
+      child.on('error', () => { /* opencues not on PATH — best effort */ });
+      child.unref();
+    } catch { /* best effort */ }
+  };
+
+  const timer = setInterval(kick, opts.intervalMs ?? 6000);
+  if (typeof (timer as { unref?: () => void }).unref === 'function') (timer as { unref: () => void }).unref();
+  log('info', `session-commitments: producer-kick poller started (${opts.format})`);
+  return { stop: () => clearInterval(timer) };
+}
+
+/**
+ * Locate the newest Gemini CLI chat transcript on disk (Gemini writes to
+ * `~/.gemini/tmp/<projectId>/chats/session-*.{jsonl,json}`). Returns the most
+ * recently modified one within `maxAgeMs` (so a stale session isn't picked) —
+ * good enough for a single active session without replicating Gemini's
+ * project-id hashing. Node-only.
+ */
+export function locateNewestGeminiChat(maxAgeMs = 10 * 60_000): string | null {
+  if (typeof process === 'undefined' || !process.versions?.node) return null;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require('node:path') as typeof import('node:path');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const os = require('node:os') as typeof import('node:os');
+  const tmp = path.join(os.homedir(), '.gemini', 'tmp');
+  let best: { p: string; m: number } | null = null;
+  try {
+    for (const proj of fs.readdirSync(tmp)) {
+      const chats = path.join(tmp, proj, 'chats');
+      let files: string[]; try { files = fs.readdirSync(chats); } catch { continue; }
+      for (const f of files) {
+        if (!/^session-.*\.(jsonl|json)$/i.test(f)) continue;
+        const full = path.join(chats, f);
+        try { const st = fs.statSync(full); if (!best || st.mtimeMs > best.m) best = { p: full, m: st.mtimeMs }; } catch { /* skip */ }
+      }
+    }
+  } catch { return null; }
+  if (!best) return null;
+  if (Date.now() - best.m > maxAgeMs) return null;   // stale — no active session
+  return best.p;
+}
+
+/** Path to OpenCode's session SQLite DB, or null if absent. The producer reads
+ *  it (via node:sqlite in the Node CLI — OpenCode's own runtime is Bun and can't
+ *  use node:sqlite) with `--format opencode --cwd <dir>` to find the session by
+ *  its `directory` column. Node-only. */
+export function locateOpenCodeDb(): string | null {
+  if (typeof process === 'undefined' || !process.versions?.node) return null;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require('node:path') as typeof import('node:path');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const os = require('node:os') as typeof import('node:os');
+  const xdg = process.env['XDG_DATA_HOME']?.trim() || path.join(os.homedir(), '.local', 'share');  // BROWSER-SAFE-ALLOW: fn is Node-only, guarded at entry by process.versions.node
+  const db = path.join(xdg, 'opencode', 'opencode.db');
+  try { return fs.existsSync(db) ? db : null; } catch { return null; }
+}
+
 export const AI_CALLABLE_ARG_MAX = 200;
 
 /**

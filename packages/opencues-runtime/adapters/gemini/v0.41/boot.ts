@@ -22,7 +22,7 @@ import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
 import { applyDirectives } from '../../../src/render-directives';
-import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, buildSessionCommitmentsIngest, startSessionCommitmentsKick, locateNewestGeminiChat, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { startEventBridge } from '../../../src/event-bridge';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
@@ -440,6 +440,12 @@ export function boot(host: HostInfo): BootResult {
   // Resolver constructed even with no keys so MissingKeyFallbackSource
   // surfaces a visible in-buffer hint on `_` instead of silent no-op.
   const calendarContextHolder = buildCalendarContextIngest(log);
+  // Session-contradiction + ask-cues: read the shared watchlist snapshot, and —
+  // since Gemini has no CC-style statusline trigger — run a producer-kick poller
+  // that distils Gemini's own chat transcript on a cadence. Both self-gate on
+  // the mode scalars.
+  const sessionCommitmentsHolder = buildSessionCommitmentsIngest(log);
+  startSessionCommitmentsKick(log, { locate: () => locateNewestGeminiChat(), format: 'gemini' });
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
@@ -453,6 +459,7 @@ export function boot(host: HostInfo): BootResult {
     // ($OPENCUES_HOME first, then ~/.cues), refreshed on a timer. Live
     // holder — the resolver reads it fresh each pass. See boot-common.
     calendarContext: calendarContextHolder,
+    sessionCommitments: sessionCommitmentsHolder,
     externallySuppressed: (text: string) => kataCoach.shouldSuppressResolve(text),
   }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,
   buildBlankContextProvider(configLoader, host.blanks, log),

@@ -21,7 +21,7 @@ import { KataCoach } from '../../../src/modules/kata';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
-import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, buildSessionCommitmentsIngest, startSessionCommitmentsKick, locateOpenCodeDb, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
   CommonHostInfo,
@@ -283,6 +283,12 @@ export function boot(host: HostInfo): BootResult {
   // Resolver constructed even with no keys so MissingKeyFallbackSource
   // surfaces a visible in-buffer hint on `_` instead of silent no-op.
   const calendarContextHolder = buildCalendarContextIngest(log);
+  // Session-contradiction + ask-cues: read the shared watchlist, and — since
+  // OpenCode has no CC-style statusline trigger — kick the producer on a
+  // cadence. OpenCode stores its transcript in a SQLite DB; the Node CLI reads
+  // it (`--format opencode --cwd`), not this Bun runtime. Both self-gate on mode.
+  const sessionCommitmentsHolder = buildSessionCommitmentsIngest(log);
+  startSessionCommitmentsKick(log, { locate: () => locateOpenCodeDb(), format: 'opencode', extraArgs: ['--cwd', host.cwd] });
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
@@ -296,6 +302,7 @@ export function boot(host: HostInfo): BootResult {
     // ($OPENCUES_HOME first, then ~/.cues), refreshed on a timer. Live
     // holder — the resolver reads it fresh each pass. See boot-common.
     calendarContext: calendarContextHolder,
+    sessionCommitments: sessionCommitmentsHolder,
     externallySuppressed: (text: string) => kataCoach.shouldSuppressResolve(text),
   }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,
   // Blank-as-context provider — invoked per resolve when

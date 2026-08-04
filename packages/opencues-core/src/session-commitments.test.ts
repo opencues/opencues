@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildSessionCommitmentsSnapshot,
   extractTranscriptTurns,
+  extractGeminiTranscriptTurns,
   renderTranscriptForExtraction,
   renderSessionCommitmentsCatalog,
   MAX_COMMITMENTS,
@@ -97,6 +98,33 @@ describe('extractTranscriptTurns', () => {
     expect(joined).not.toContain('command-name');
     expect(joined).not.toContain('system-reminder');
     expect(joined).not.toContain('DO NOT respond');
+  });
+});
+
+describe('extractGeminiTranscriptTurns', () => {
+  it('parses JSONL, maps type:gemini→assistant, skips control + non-message lines', () => {
+    const jsonl = [
+      JSON.stringify({ sessionId: 'x', projectHash: 'y' }),                       // metadata → skip
+      JSON.stringify({ type: 'user', content: "let's use Deno" }),                // string content
+      JSON.stringify({ $set: { model: 'gemini-3' } }),                            // control → skip
+      JSON.stringify({ type: 'gemini', content: [{ text: 'Deno it is.' }] }),     // parts → assistant
+      JSON.stringify({ type: 'info', content: 'system note' }),                   // info → skip
+      JSON.stringify({ $rewindTo: 'abc' }),                                       // control → skip
+    ].join('\n');
+    expect(extractGeminiTranscriptTurns(jsonl)).toEqual([
+      { role: 'user', text: "let's use Deno" },
+      { role: 'assistant', text: 'Deno it is.' },
+    ]);
+  });
+  it('parses the older single-object {messages:[…]} form too', () => {
+    const obj = JSON.stringify({ sessionId: 's', messages: [
+      { type: 'user', content: 'hello' },
+      { type: 'gemini', content: 'hi there' },
+    ] });
+    expect(extractGeminiTranscriptTurns(obj)).toEqual([
+      { role: 'user', text: 'hello' },
+      { role: 'assistant', text: 'hi there' },
+    ]);
   });
 });
 

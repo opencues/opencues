@@ -359,6 +359,7 @@ export {
   buildSessionCommitmentsSnapshot,
   parseExtractionResult,
   extractTranscriptTurns,
+  extractGeminiTranscriptTurns,
   stripHarnessFraming,
   renderTranscriptForExtraction,
   renderSessionCommitmentsCatalog,

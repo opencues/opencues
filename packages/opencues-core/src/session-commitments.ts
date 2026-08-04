@@ -171,6 +171,58 @@ export function extractTranscriptTurns(jsonl: string): TranscriptTurn[] {
 }
 
 /**
+ * Parse a Gemini CLI conversation into plain user/assistant TEXT turns. Gemini
+ * writes either append-only JSONL (v0.41 `ChatRecordingService`) OR an older
+ * single-object `{ messages: [...] }` file — this handles both. Per-record
+ * shape: `{ type: "user"|"gemini"|"info"|"error"|..., content: PartListUnion }`,
+ * where the assistant role value is `"gemini"` (not `"assistant"`), content is a
+ * string or Gemini `{text}` parts, and control lines (`$rewindTo`, `$set`,
+ * bare `{sessionId,...}` metadata) are interleaved and must be skipped. Only
+ * user + gemini text is kept — same data-minimization as the CC parser.
+ */
+export function extractGeminiTranscriptTurns(input: string): TranscriptTurn[] {
+  const turns: TranscriptTurn[] = [];
+  if (!input) return turns;
+  const push = (rec: unknown): void => {
+    if (!rec || typeof rec !== 'object') return;
+    const r = rec as { type?: unknown; content?: unknown; $rewindTo?: unknown; $set?: unknown };
+    if ('$rewindTo' in r || '$set' in r) return;                 // control lines
+    if (r.type !== 'user' && r.type !== 'gemini') return;        // skip info/error/warning/metadata
+    const role: 'user' | 'assistant' = r.type === 'user' ? 'user' : 'assistant';
+    const text = stripHarnessFraming(geminiContentText(r.content));
+    if (text) turns.push({ role, text });
+  };
+  // Try whole-object form first (`{ messages: [...] }` / bare array).
+  const trimmed = input.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      const obj = JSON.parse(trimmed) as { messages?: unknown } | unknown[];
+      const arr = Array.isArray(obj) ? obj : Array.isArray((obj as { messages?: unknown }).messages) ? (obj as { messages: unknown[] }).messages : null;
+      if (arr) { for (const m of arr) push(m); return turns; }
+    } catch { /* fall through to JSONL */ }
+  }
+  // JSONL form — one record per line.
+  for (const line of input.split('\n')) {
+    const t = line.trim();
+    if (!t) continue;
+    try { push(JSON.parse(t)); } catch { /* skip malformed line */ }
+  }
+  return turns;
+}
+
+/** Extract text from a Gemini `content` (PartListUnion): string, `{text}`, or
+ *  an array of those. Non-text parts (function calls, etc.) are dropped. */
+function geminiContentText(content: unknown): string {
+  if (typeof content === 'string') return content.trim();
+  if (Array.isArray(content)) return content.map(geminiContentText).filter(Boolean).join('\n').trim();
+  if (content && typeof content === 'object') {
+    const c = content as { text?: unknown };
+    if (typeof c.text === 'string') return c.text.trim();
+  }
+  return '';
+}
+
+/**
  * Strip Claude Code harness framing that rides inside message content but isn't
  * the developer's prose: injected `<system-reminder>` context blocks, slash-
  * command scaffolding (`<command-name>` / `<command-message>` / `<command-args>`

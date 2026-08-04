@@ -70,7 +70,16 @@ module.exports = async function extractCommitments(argv, ctx) {
   const force = args.includes('--force');
   const json = args.includes('--json');
   const quiet = args.includes('--quiet');
-  const transcriptPath = args.find((a) => !a.startsWith('-'));
+  const valFlag = (name) => { const i = args.indexOf(name); return i >= 0 && i + 1 < args.length ? args[i + 1] : null; };
+  // --format cc|gemini (default cc) selects the transcript parser; --turns-file
+  // <path> supplies pre-parsed {turns:[{role,text}]} JSON (OpenCode reads its
+  // own conversation via the SDK and hands us turns directly). The positional
+  // arg is the transcript path — but must not swallow a valued-flag's value.
+  const format = (valFlag('--format') || 'cc').toLowerCase();
+  const turnsFile = valFlag('--turns-file');
+  const ocCwd = valFlag('--cwd');   // OpenCode: which session (session.directory)
+  const flagValues = new Set([format === 'cc' ? null : format, turnsFile, ocCwd].filter(Boolean));
+  const transcriptPath = args.find((a) => !a.startsWith('-') && !flagValues.has(a));
 
   const done = (obj, code = 0) => {
     if (json) console.log(JSON.stringify(obj));
@@ -78,15 +87,18 @@ module.exports = async function extractCommitments(argv, ctx) {
     return code;
   };
 
-  if (!transcriptPath) {
+  // The "source" we stat for debounce/mtime is the turns-file (OpenCode) or the
+  // transcript path (CC/Gemini).
+  const sourcePath = turnsFile || transcriptPath;
+  if (!sourcePath) {
     if (json) console.log(JSON.stringify({ ok: false, error: 'missing transcript path' }));
-    else console.error('opencues extract-commitments: usage: opencues extract-commitments <transcript_path>');
+    else console.error('opencues extract-commitments: usage: opencues extract-commitments <transcript_path> [--format cc|gemini] [--turns-file <path>]');
     return 2;
   }
 
   const dir = cuesDir();
   let transcriptStat;
-  try { transcriptStat = fs.statSync(transcriptPath); }
+  try { transcriptStat = fs.statSync(sourcePath); }
   catch { return done({ skipped: true, reason: 'transcript not found' }); }
 
   const core = loadCore(ctx);
@@ -114,7 +126,7 @@ module.exports = async function extractCommitments(argv, ctx) {
     try {
       const m = JSON.parse(fs.readFileSync(markerPath, 'utf8'));
       const now = Date.now();
-      const sameFile = m.transcriptPath === transcriptPath;
+      const sameFile = m.transcriptPath === sourcePath;
       const unchanged = sameFile && m.mtimeMs === transcriptStat.mtimeMs;
       const tooSoon = typeof m.extractedAt === 'number' && (now - m.extractedAt) < MIN_INTERVAL_MS;
       if (unchanged || (sameFile && tooSoon)) return done({ skipped: true, reason: unchanged ? 'transcript unchanged' : 'debounced' });
@@ -138,12 +150,31 @@ module.exports = async function extractCommitments(argv, ctx) {
       } catch { return done({ skipped: true, reason: 'lock contended' }); }
     }
 
-    // Parse the transcript tail → turns → bounded prompt input.
+    // Parse into {role,text} turns — per host format, or a pre-parsed turns-file.
     let turns;
-    try { turns = core.extractTranscriptTurns(readTail(transcriptPath, TAIL_BYTES).text); }
+    try {
+      if (turnsFile) {
+        // OpenCode: the plugin read its own conversation via the SDK and wrote
+        // {turns:[{role,text}]} — trust it, but normalize + drop empties.
+        const parsed = JSON.parse(fs.readFileSync(turnsFile, 'utf8'));
+        const raw = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.turns) ? parsed.turns : [];
+        turns = raw
+          .filter((t) => t && typeof t.text === 'string' && t.text.trim())
+          .map((t) => ({ role: t.role === 'assistant' ? 'assistant' : 'user', text: core.stripHarnessFraming(t.text) }))
+          .filter((t) => t.text);
+      } else if (format === 'opencode') {
+        // OpenCode stores messages in a SQLite DB; read it here in the Node CLI
+        // (node:sqlite) rather than in OpenCode's Bun runtime, which lacks it.
+        turns = readOpenCodeTurns(sourcePath, ocCwd);
+        if (turns === null) return done({ skipped: true, reason: 'opencode DB unreadable (node:sqlite unavailable? node<22)' });
+      } else {
+        const tail = readTail(sourcePath, TAIL_BYTES).text;
+        turns = format === 'gemini' ? core.extractGeminiTranscriptTurns(tail) : core.extractTranscriptTurns(tail);
+      }
+    }
     catch { return done({ skipped: true, reason: 'transcript unreadable' }); }
     if (!turns || turns.length === 0) {
-      writeMarker(markerPath, transcriptPath, transcriptStat.mtimeMs);
+      writeMarker(markerPath, sourcePath, transcriptStat.mtimeMs);
       return done({ skipped: true, reason: 'no text turns' });
     }
     const transcriptText = core.renderTranscriptForExtraction(turns);
@@ -189,7 +220,7 @@ module.exports = async function extractCommitments(argv, ctx) {
     const snapshot = core.buildSessionCommitmentsSnapshot(ext.commitments, {
       summary: ext.summary,
       ingestedAt: new Date().toISOString(),
-      sessionId: path.basename(transcriptPath).replace(/\.jsonl$/i, ''),
+      sessionId: path.basename(sourcePath).replace(/\.(jsonl|json)$/i, ''),
     });
 
     // Atomic write of the snapshot.
@@ -197,7 +228,7 @@ module.exports = async function extractCommitments(argv, ctx) {
     const tmp = `${outPath}.tmp-${process.pid}`;
     fs.writeFileSync(tmp, JSON.stringify(snapshot, null, 2));
     fs.renameSync(tmp, outPath);
-    writeMarker(markerPath, transcriptPath, transcriptStat.mtimeMs);
+    writeMarker(markerPath, sourcePath, transcriptStat.mtimeMs);
 
     if (!quiet && !json) console.log(`opencues: distilled ${snapshot.commitments.length} session commitment(s) (${ex.provider.id}/${ex.model})`);
     return done({ ok: true, count: snapshot.commitments.length, summary: snapshot.summary || '', provider: ex.provider.id, model: ex.model, source: ex.why, path: outPath });
@@ -231,6 +262,42 @@ function resolveExtractionLLM(core, apiKeys, routing) {
     return { provider: cues.provider, model: cues.model, apiKey: key(cues.provider), why: 'cues-bucket' };
   }
   return null;
+}
+
+/**
+ * Reconstruct {role,text} turns from OpenCode's SQLite DB. Finds the newest
+ * session for `cwd` (session.directory), reads its messages (role in
+ * message.data) + text parts (part.data type:"text"), dropping reasoning/tool
+ * parts. Read-only open so it's safe against the live WAL DB. Returns null when
+ * node:sqlite is unavailable (node < 22) or the DB can't be opened.
+ */
+function readOpenCodeTurns(dbPath, cwd, maxMessages = 400) {
+  let DatabaseSync;
+  try { ({ DatabaseSync } = require('node:sqlite')); } catch { return null; }
+  let db;
+  try { db = new DatabaseSync(dbPath, { readOnly: true }); } catch { return null; }
+  try {
+    let sess = cwd ? db.prepare('SELECT id FROM session WHERE directory = ? ORDER BY time_updated DESC LIMIT 1').get(cwd) : null;
+    if (!sess) sess = db.prepare('SELECT id FROM session ORDER BY time_updated DESC LIMIT 1').get();
+    if (!sess) return [];
+    const msgs = db.prepare('SELECT id, data FROM message WHERE session_id = ? ORDER BY time_created DESC LIMIT ?').all(sess.id, maxMessages);
+    msgs.reverse();
+    const partStmt = db.prepare('SELECT data FROM part WHERE message_id = ? ORDER BY time_created');
+    const turns = [];
+    for (const m of msgs) {
+      let role;
+      try { role = JSON.parse(m.data).role; } catch { continue; }
+      if (role !== 'user' && role !== 'assistant') continue;
+      const texts = [];
+      for (const p of partStmt.all(m.id)) {
+        try { const d = JSON.parse(p.data); if (d.type === 'text' && typeof d.text === 'string' && d.text.trim()) texts.push(d.text.trim()); } catch { /* skip part */ }
+      }
+      const text = texts.join('\n').trim();
+      if (text) turns.push({ role, text });
+    }
+    return turns;
+  } catch { return null; }
+  finally { try { db.close(); } catch { /* already closed */ } }
 }
 
 function writeMarker(markerPath, transcriptPath, mtimeMs) {
