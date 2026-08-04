@@ -22,8 +22,8 @@
 ### Prerequisites
 
 You need the `opencues` CLI on PATH. If you haven't set that up yet,
-follow [`BETA-INSTALL.md` § Bootstrap the `opencues` CLI](../../BETA-INSTALL.md#3-bootstrap-the-opencues-cli)
-— that covers Node, pnpm, the clone, and the shell alias. The rest of
+follow [`docs/install.md`](../../docs/install.md)
+— that covers Node, pnpm, the clone, and getting `opencues` on PATH. The rest of
 this guide assumes `opencues` runs.
 
 ### Install command
