@@ -384,6 +384,7 @@ export {
   ToolPromptCueSource,
   parseToolQuestion,
   renderSingleLineTip,
+  renderAmbientForAsk,
   SINGLE_LINE_TIP_MAX,
   ASK_USER_QUESTION_SYSTEM,
   TOOL_PROMPTS,

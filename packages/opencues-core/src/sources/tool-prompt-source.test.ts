@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ToolPromptCueSource, parseToolQuestion, renderSingleLineTip } from './tool-prompt-source';
+import { ToolPromptCueSource, parseToolQuestion, renderSingleLineTip, renderAmbientForAsk } from './tool-prompt-source';
 import { getProvider } from '../llm-provider';
 import type { CueContext, HttpAdapter } from '../types';
 
@@ -23,6 +23,31 @@ describe('renderSingleLineTip', () => {
     expect(tip.length).toBeLessThanOrEqual(96);
     expect(tip).toContain('…');           // question was truncated
     expect(tip).toContain('▸ keepme');    // the option label survives
+  });
+});
+
+describe('renderAmbientForAsk', () => {
+  it('renders page/field metadata as an untrusted grounding block (Chrome context)', () => {
+    const out = renderAmbientForAsk({ label: 'PR description', pageTitle: 'Add dashboard · PR #482', app: 'github.com' } as never);
+    expect(out).toContain('PAGE CONTEXT');
+    expect(out).toContain('UNTRUSTED');
+    expect(out).toContain('Add dashboard · PR #482');
+    expect(out).toContain('PR description');
+  });
+  it('is empty when there is no ambient or no useful fields', () => {
+    expect(renderAmbientForAsk(undefined)).toBe('');
+    expect(renderAmbientForAsk({ inputType: 'text' } as never)).toBe('');
+  });
+});
+
+describe('ToolPromptCueSource + ambient', () => {
+  it('folds ambient page context into the ask call (Chrome grounding)', async () => {
+    let sysSeen = '';
+    const capture: HttpAdapter = { post: async (_u, body) => { try { sysSeen = JSON.parse(body as string).messages[0].content; } catch { /* */ } return JSON.stringify({ choices: [{ message: { content: JSON.stringify({ header: 'Evidence', question: 'q?', options: [{ label: 'A', apply: 'x' }] }) } }] }); } };
+    const src = new ToolPromptCueSource({ ...base, httpAdapter: capture });
+    await src.getCues({ text: 'the dashboard is way better', words: ['the', 'dashboard', 'is', 'way', 'better'], cursor: 27, ambient: { pageTitle: 'PR #482', label: 'Description' } as never });
+    expect(sysSeen).toContain('PAGE CONTEXT');
+    expect(sysSeen).toContain('PR #482');
   });
 });
 
