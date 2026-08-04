@@ -24,8 +24,9 @@ const PKG_DIR = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(PKG_DIR, '../..');
 const pkg = JSON.parse(fs.readFileSync(path.join(PKG_DIR, 'package.json'), 'utf8'));
 
+const { forkDir } = require(path.join(REPO_ROOT, 'packages/opencues-cli/src/lib/fork-paths.cjs'));
 const HOME = os.homedir();
-const DEFAULT_FORK = path.join(HOME, 'gemini-cli-cues');
+const DEFAULT_FORK = forkDir('gemini-cli');
 
 // All paths relative to the gemini-cli fork dir. Single source of truth
 // for blast radius — install + uninstall + dry-run all read from here.
@@ -282,7 +283,7 @@ function printHelp() {
   console.log('  help                Show this message');
   console.log('');
   console.log('Flags:');
-  console.log('  --target <path>     Path to gemini-cli fork (default: $HOME/gemini-cli-cues)');
+  console.log('  --target <path>     Path to gemini-cli fork (default: ~/.opencues/forks/gemini-cli)');
   console.log('  --clean             Legacy alias — every install already runs from clean patched state (no-op)');
   console.log('  --dry-run           Print the plan; do not execute');
   console.log('  --help              Show this message');

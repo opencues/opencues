@@ -166,7 +166,7 @@ if [ -n "${OPENCUES_CC_TARGET:-}" ]; then
   esac
   unset _TARGET_BASENAME
 else
-  CC_FORK_DIR="$HOME/claude-code-cues"
+  CC_FORK_DIR="$HOME/.opencues/forks/claude-code"
 fi
 # Resolve the canonical CC pin from compat.json (single source of truth).
 # Falls back gracefully if compat.json is unreadable so a one-off setup.sh

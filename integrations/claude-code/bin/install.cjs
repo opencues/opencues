@@ -27,6 +27,7 @@ const { targetExistsWithContent } = require('./seed-helpers.cjs');
 
 const PKG_DIR = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(PKG_DIR, '../..');
+const { forkDir, enumerateForkDirs } = require(path.join(REPO_ROOT, 'packages/opencues-cli/src/lib/fork-paths.cjs'));
 const pkg = JSON.parse(fs.readFileSync(path.join(PKG_DIR, 'package.json'), 'utf8'));
 
 // Bundled-srcHash drift probe used by the no-op-if-healthy gate.
@@ -168,7 +169,7 @@ function doInstall() {
       : path.resolve(path.dirname(target), '..', '..', '..', '..');
     forks = [{ root, target, shape }];
   } else {
-    const canonicalRoot = path.join(HOME, 'claude-code-cues');
+    const canonicalRoot = forkDir('claude-code');
     ensureCanonicalForkExists(canonicalRoot);
     const canonical = inferForkShape(canonicalRoot);
     if (!canonical) {
@@ -279,8 +280,8 @@ function doInstall() {
     if (fs.existsSync(userSettings)) {
       const data = JSON.parse(fs.readFileSync(userSettings, 'utf8'));
       const cmd = data?.statusLine?.command;
-      if (typeof cmd === 'string' && (cmd.includes('claude-code-cues') || cmd.endsWith('/statusline.sh'))) {
-        return; // already enabled
+      if (typeof cmd === 'string' && cmd.endsWith('/statusline.sh')) {
+        return; // already enabled (covers new ~/.opencues/forks + legacy layouts)
       }
     }
     const oc = launchCommand();
@@ -516,9 +517,7 @@ function detectOpenCuesStatusLine(settingsFile) {
   catch { return null; }
   const cmd = data?.statusLine?.command;
   if (typeof cmd !== 'string') return null;
-  const isOurs = cmd.includes('claude-code-cues') ||
-                 cmd.includes('claude-code-cues-150') ||
-                 cmd.includes('.claude/highlight-statusline.sh') ||
+  const isOurs = cmd.includes('.claude/highlight-statusline.sh') ||
                  cmd.includes('.claude/opencues/statusline.sh') ||
                  (cmd.endsWith('/statusline.sh') && cmd.includes('/.cues/'));
   return isOurs ? cmd : null;
@@ -579,11 +578,11 @@ function listActionFileBasenames() {
 // touched one fork at a time). For install, prefer detectAllForks().
 function tryAutoDetectCli() {
   // Common locations. Order: standard npm install → claude-cues local install.
-  const candidates = [
-    path.join(CLAUDE_DIR, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'),
-    path.join(HOME, 'claude-code-cues', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'),
-    path.join(HOME, 'claude-code-cues-150', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe'),
-  ];
+  const candidates = [path.join(CLAUDE_DIR, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js')];
+  for (const root of enumerateForkDirs('claude-code')) {
+    candidates.push(path.join(root, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'));
+    candidates.push(path.join(root, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe'));
+  }
   for (const c of candidates) if (fs.existsSync(c)) return c;
   return null;
 }
@@ -618,13 +617,11 @@ function detectAllForks() {
     if (!seen.has(root)) { out.push({ root, target: legacyCli, shape: 'cli.js' }); seen.add(root); }
   }
 
-  // (2) + (3) + (4): walk ~/claude-code-cues* dirs. Each one has either
-  // a cli.js or a bin/claude.exe in its node_modules.
+  // (2) + (3) + (4): walk every CC fork dir (new ~/.opencues/forks/ layout +
+  // legacy ~/claude-code-cues* layout). Each one has either a cli.js or a
+  // bin/claude.exe in its node_modules.
   try {
-    for (const entry of fs.readdirSync(HOME, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      if (!entry.name.startsWith('claude-code-cues')) continue;
-      const root = path.join(HOME, entry.name);
+    for (const root of enumerateForkDirs('claude-code')) {
       if (seen.has(root)) continue;
       const cliJs = path.join(root, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
       const nativeBin = path.join(root, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
@@ -969,7 +966,7 @@ function printHelp() {
   console.log('  --help              Show this message');
   console.log('');
   console.log('Blast radius (compact footprint — everything inside the CC fork dir):');
-  console.log('    <CC_FORK>/                e.g. ~/claude-code-cues/');
+  console.log('    <CC_FORK>/                e.g. ~/.opencues/forks/claude-code/');
   console.log('      ├── node_modules/');
   console.log('      │   ├── @anthropic-ai/claude-code/cli.js   (patched in place,');
   console.log('      │   │                                       revertable via uninstall)');

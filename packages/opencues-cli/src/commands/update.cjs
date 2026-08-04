@@ -21,6 +21,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const compatLib = require('../lib/compat.cjs');
+const { resolveForkDir, supportDir } = require('../lib/fork-paths.cjs');
 const { tag, step, bold, dim, banner, tree, G, cliVersion, brightWhite } = require('../lib/style.cjs');
 
 const HOST_ALIASES = {
@@ -528,9 +529,9 @@ async function doUpgradeGit(host, toVersion, compat, { dryRun }, ctx) {
 function resolveInstallRoot(host, ctx) {
   const HOME = os.homedir();
   switch (host) {
-    case 'claude-code': return path.join(HOME, 'claude-code-cues', '.cues');
-    case 'opencode':    return path.join(HOME, 'opencode-cues', '.opencues');
-    case 'gemini-cli':  return path.join(HOME, 'gemini-cli-cues', '.opencues');
+    case 'claude-code': return supportDir('claude-code', resolveForkDir('claude-code'));
+    case 'opencode':    return supportDir('opencode', resolveForkDir('opencode'));
+    case 'gemini-cli':  return supportDir('gemini-cli', resolveForkDir('gemini-cli'));
     case 'shell':       return path.join(ctx.REPO_ROOT, 'integrations/shell/node_modules/@opencues');
     case 'chrome':      return path.join(ctx.REPO_ROOT, 'integrations/chrome/dist');
     default: return null;
@@ -630,9 +631,9 @@ async function detectRunningHosts(targets) {
   // Map host → pattern to look for in `ps -o pid,command -A`.
   // Patterns are loose — they catch the typical launch shape.
   const PATTERNS = {
-    'claude-code': /claude-code\/cli\.js|claude-cues|claude-code-cues/,
-    'opencode':    /opencode-cues|bun.*opencode/,
-    'gemini-cli':  /gemini-cli-cues|packages\/cli\/dist\/index\.js/,
+    'claude-code': /claude-code\/cli\.js|claude-cues|forks\/claude-code/,
+    'opencode':    /opencode-cues|forks\/opencode|bun.*opencode/,  // FORK-PATH-ALLOW: match a still-running legacy fork during transition
+    'gemini-cli':  /gemini-cli-cues|forks\/gemini-cli|packages\/cli\/dist\/index\.js/,  // FORK-PATH-ALLOW: match a still-running legacy fork during transition
     'shell':       /oc-edit|oc-editd|oc-shell/,
     'chrome':      null,  // chrome processes are too generic to detect reliably
   };
@@ -666,7 +667,7 @@ function detectInstalled(HOME, REPO_ROOT) {
   // them on a single `opencues update claude-code` run — so we only
   // need ONE row here per logical host, not one per fork. The fan-out
   // happens inside the host installer, not in this enumeration.
-  const ccFork = path.join(HOME, 'claude-code-cues');
+  const ccFork = resolveForkDir('claude-code');
   if (fs.existsSync(path.join(ccFork, 'node_modules/@opencues/runtime'))) {
     let evidence = `${ccFork}/node_modules/@opencues/runtime exists`;
     try {
@@ -680,14 +681,14 @@ function detectInstalled(HOME, REPO_ROOT) {
   } else if (fs.existsSync(path.join(HOME, '.claude/opencues/runtime'))) {
     out.push({ host: 'claude-code', folder: 'claude-code', evidence: '~/.claude/opencues/runtime exists (legacy)' });
   }
-  const ocFork = path.join(HOME, 'opencode-cues');
+  const ocFork = resolveForkDir('opencode');
   if (fs.existsSync(path.join(ocFork, 'node_modules/@opencues/runtime'))) {
     out.push({ host: 'opencode', folder: 'opencode', evidence: `${ocFork}/node_modules/@opencues/runtime exists` });
   }
   if (fs.existsSync(path.join(REPO_ROOT, 'integrations/chrome/dist/content.js'))) {
     out.push({ host: 'chrome', folder: 'chrome', evidence: 'integrations/chrome/dist/content.js exists' });
   }
-  const geminiFork = path.join(HOME, 'gemini-cli-cues');
+  const geminiFork = resolveForkDir('gemini-cli');
   if (fs.existsSync(path.join(geminiFork, 'node_modules/@opencues/runtime'))) {
     out.push({ host: 'gemini-cli', folder: 'gemini-cli', evidence: `${geminiFork}/node_modules/@opencues/runtime exists` });
   }
@@ -713,7 +714,7 @@ function printHelp() {
   console.log('            and how it relates to our tested / compat-range / known-incompatible lists.');
   console.log('            Read-only. Without <host>: checks all four. With <host>: just that one.');
   console.log('');
-  console.log('  --to <version> — rewrite the host pin (e.g. ~/claude-code-cues/package.json) to');
+  console.log('  --to <version> — rewrite the host pin (e.g. ~/.opencues/forks/claude-code/package.json) to');
   console.log('            <version>, then run the host installer. Refuses known-incompatible versions;');
   console.log('            warns + needs --force for "in compat-range but untested". npm-kind hosts');
   console.log('            (CC) only — for git-pinned hosts (OC), edit the SHA in setup.sh manually.');
