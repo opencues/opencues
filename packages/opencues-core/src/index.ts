@@ -380,6 +380,8 @@ export type {
 // Tool-prompt cues — populate cues from a well-known tool system-prompt
 // (AskUserQuestion first): question → tip, options → cyclable alternatives on
 // the selected span. A generic, pluggable primitive. See tool-prompt-source.ts.
+export { SessionCueSource } from './sources/session-cue-source';
+export type { SessionCueSourceConfig } from './sources/session-cue-source';
 export {
   ToolPromptCueSource,
   parseToolQuestion,

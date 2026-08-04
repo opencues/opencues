@@ -30,8 +30,7 @@ import { TransformBlankSource, type TransformBlankSourceConfig } from './transfo
 import { ConfigIntentSource, type ConfigIntentSourceConfig } from './config-intent-source';
 import { SentenceCueSource, type SentenceCueSourceConfig } from './sentence-cue-source';
 import { ContradictionLlmSource } from '../contradiction/contradiction-llm-source';
-import { SessionContradictionSource } from '../contradiction/session-contradiction-source';
-import { ToolPromptCueSource } from './tool-prompt-source';
+import { SessionCueSource } from './session-cue-source';
 import { BankHolidayProvider } from '../contradiction/bank-holidays';
 import { WeatherProvider } from '../contradiction/weather';
 import { TflProvider } from '../contradiction/tfl';
@@ -545,43 +544,29 @@ export function buildSourcesFromConfig(
   // the sentence-cues LLM tier like the deterministic engine. Same
   // temporal-dead-zone constraint as the block above — MUST come after
   // resolveFor is defined. If no LLM resolves, the cue simply doesn't run.
-  if (options.enableSessionContradiction) {
+  // Session cue — the UNIFIED context-aware cue: session-contradiction (⚠) and
+  // ask-cues (❓) fused into ONE source that runs contradiction-first and
+  // short-circuits (no ask call when a contradiction fires), so they no longer
+  // overlap or evict each other. Per-type gating from the two scalars. Reuses
+  // the sentence-cues LLM tier. If no LLM resolves, it simply doesn't run.
+  if (options.enableSessionContradiction || options.enableAskCues) {
     const scLlm = resolveFor(options.sentenceCues);
     if (scLlm) {
-      options.log?.(`buildSources: session-contradiction → LLM engine (${scLlm.provider.id}/${scLlm.model})`);
-      sources.push(new SessionContradictionSource({
+      const which = [options.enableSessionContradiction && 'contradiction', options.enableAskCues && 'ask'].filter(Boolean).join('+');
+      options.log?.(`buildSources: session-cue [${which}] → LLM engine (${scLlm.provider.id}/${scLlm.model})`);
+      sources.push(new SessionCueSource({
         httpAdapter: withFallback(options.httpAdapter, scLlm.fallback),
         provider: scLlm.provider,
         endpoint: scLlm.endpoint,
         apiKey: scLlm.apiKey,
         model: scLlm.model,
         maxThinking: options.maxThinking,
+        enableContradiction: !!options.enableSessionContradiction,
+        enableAsk: !!options.enableAskCues,
         log: (m) => options.log?.(m),
       }));
     } else {
-      options.log?.('buildSources: session-contradiction → SKIPPED (no LLM resolvable — no key / trainsOnInput provider)');
-    }
-  }
-
-  // AskUserQuestion (tool-prompt) cue — populates a cue on the sentence at the
-  // cursor from the well-known AskUserQuestion tool prompt. Reuses the
-  // sentence-cues LLM tier. Same temporal-dead-zone constraint as above (after
-  // resolveFor). If no LLM resolves, it simply doesn't run.
-  if (options.enableAskCues) {
-    const aqLlm = resolveFor(options.sentenceCues);
-    if (aqLlm) {
-      options.log?.(`buildSources: ask-cues → LLM engine (${aqLlm.provider.id}/${aqLlm.model})`);
-      sources.push(new ToolPromptCueSource({
-        httpAdapter: withFallback(options.httpAdapter, aqLlm.fallback),
-        provider: aqLlm.provider,
-        endpoint: aqLlm.endpoint,
-        apiKey: aqLlm.apiKey,
-        model: aqLlm.model,
-        maxThinking: options.maxThinking,
-        log: (m) => options.log?.(m),
-      }));
-    } else {
-      options.log?.('buildSources: ask-cues → SKIPPED (no LLM resolvable — no key / trainsOnInput provider)');
+      options.log?.('buildSources: session-cue → SKIPPED (no LLM resolvable — no key / trainsOnInput provider)');
     }
   }
 

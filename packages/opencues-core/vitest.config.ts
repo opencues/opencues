@@ -33,6 +33,7 @@ export default defineConfig({
       'src/session-commitments.test.ts',
       'src/contradiction/session-contradiction-source.test.ts',
       'src/sources/tool-prompt-source.test.ts',
+      'src/sources/session-cue-source.test.ts',
     ],
     // Never discover into git worktrees (`.claude/worktrees/`) — stale repo
     // copies with unbuilt dist; their test copies pollute the run.
