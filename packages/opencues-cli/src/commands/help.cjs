@@ -288,7 +288,7 @@ const PROVIDER_DEFAULT_MODEL = {
   'openai-subscription': 'gpt-5.4-mini',
   'opencode-zen': 'big-pickle',
   ollama:     'gemma4:e2b',
-  kimi:       'kimi-k2-turbo-preview',
+  kimi:       'kimi-k2.6',
 };
 // Strip cosmetic prefixes/suffixes for display ('openai/foo' → 'foo',
 // 'foo:free' → 'foo'). Keeps the meaningful model identity, trims chrome.

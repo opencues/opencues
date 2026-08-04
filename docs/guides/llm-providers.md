@@ -23,7 +23,7 @@ different provider/model for each LLM-driven feature.
 | **claude-code-cli** *(subscription, alias `claude-cli`)* | `claude` login | `haiku` | Claude's subscription via local subprocess |
 | **opencode-zen** *(blanks-only, free)* | none | `free` (routes to `nemotron-3-super-free`) | OpenCode's free model pool — **trains on input**, so it's exposed only to the `blanks` bucket (the `_` keystroke is the consent gate). See [Free mode](#free-mode-no-api-key) below. |
 | **ollama** *(local)* | none (optional `OLLAMA_API_KEY`) | `gemma4:e2b` | Native `/api/chat`, fully offline — see below |
-| **kimi** | `MOONSHOT_API_KEY` | `kimi-k2-turbo-preview` | Moonshot AI's direct API, OpenAI-compat HTTP — see [Kimi](#kimi-direct-moonshot-ai-api) below |
+| **kimi** | `MOONSHOT_API_KEY` | `kimi-k2.6` | Moonshot AI's direct API, OpenAI-compat HTTP — see [Kimi](#kimi-direct-moonshot-ai-api) below |
 
 The two subscription providers (`openai-subscription` and
 `claude-code-cli`) use your existing AI plan — no per-token billing.
@@ -546,28 +546,33 @@ names and route through those providers instead).
 
 ### Setup
 
-1. Create a key at [platform.moonshot.ai](https://platform.moonshot.ai)
-   (Console → API Keys).
+1. Create a key at [platform.kimi.ai](https://platform.kimi.ai)
+   (Console → API Keys; the old platform.moonshot.ai redirects there).
 2. `opencues set-key` (pick **kimi**), or export `MOONSHOT_API_KEY`.
 3. Select it — globally (`llm-provider: kimi`) or per bucket
    (`blanks-llm-provider: kimi`).
 
 ```yaml
 blanks-llm-provider: kimi
-blanks-llm-model: kimi-k2-turbo-preview
+blanks-llm-model: kimi-k2.6
 ```
 
 ### Models
 
 | Model | Notes |
 |---|---|
-| `kimi-k2-turbo-preview` *(default)* | kimi-k2 weights on Moonshot's high-throughput serving tier — the only tier fast enough for OpenCues' inline latency budgets |
-| `kimi-k2-0905-preview` | same weights, standard (slower, cheaper) serving |
-| `kimi-k2-thinking` | reasoning variant — thinks implicitly (no `reasoning_effort` knob), markedly slower; suited to auditors/agent-rewrite via file edit, not cue paths |
+| `kimi-k2.6` *(default)* | current multimodal chat tier (256k context); the only current model whose thinking can be **disabled**, which the adapter does unconditionally for the inline latency floor. $0.95/$4.00 per 1M in/out, $0.16 cache-hit input (Aug 2026) |
+| `kimi-k3` | always-thinking flagship (1M context). The adapter coerces `reasoning_effort` into the model's legal `low`\|`high` set (the server default `max` would blow every OpenCues latency budget) — suited to auditors/agent-rewrite, not cue paths |
 
-Other Moonshot names (`kimi-latest`, `moonshot-v1-*`) work via direct
+The `kimi-k2.7-code` family (mandatory thinking, code-tuned) and the
+legacy `moonshot-v1-*` family (**sunsets 2026-08-31**) work via direct
 OPENCUES.md edit; the shortlist above is what the fluid-config
-classifier may pick.
+classifier may pick. The older `kimi-k2-*-preview` series was
+discontinued 2026-05-25 — those names now 404.
+
+Request-shape note: modern `kimi-*` models take `max_completion_tokens`
+and reject `temperature` (the adapter handles both); legacy
+`moonshot-v1-*` keeps the plain OpenAI shape.
 
 ### Footguns
 

@@ -1570,33 +1570,45 @@ const OLLAMA: ProviderAdapter = {
 
 /**
  * kimi — Moonshot AI's Kimi models via their DIRECT API (not the
- * OpenRouter/Groq-hosted copies of kimi-k2). OpenAI-compatible
- * chat-completions surface at api.moonshot.ai.
+ * OpenRouter/Groq-hosted kimi copies, which use different model names).
+ * OpenAI-compatible chat-completions surface at api.moonshot.ai.
+ * Catalogue + request-shape verified against platform.kimi.ai docs
+ * 2026-08-04 (platform.moonshot.ai now redirects there; the API host
+ * is unchanged — probed live, 401 envelope is OpenAI-shaped).
  *
  * Endpoint notes:
  *   - International platform: `https://api.moonshot.ai/v1/...`
- *     (platform.moonshot.ai issues the keys).
+ *     (platform.kimi.ai issues the keys).
  *   - Mainland-China platform: `https://api.moonshot.cn/v1/...` —
  *     SEPARATE account + key namespace. Users on the .cn platform set
  *     `llm-endpoint:` (or a bucket/per-feature endpoint) to the .cn
  *     URL; the adapter defaults to the international host.
  *
- * Model notes:
- *   - `kimi-k2-turbo-preview` is the default: same weights as
- *     kimi-k2-0905 on Moonshot's high-throughput serving tier —
- *     the only tier fast enough for OpenCues' inline latency budgets.
- *   - `kimi-k2-thinking` reasons implicitly (no `reasoning_effort`
- *     knob on Moonshot's API) and is markedly slower — reachable for
- *     auditors/agent surfaces via file edit, not a cue-path pick.
- *   - Moonshot caps `temperature` at [0, 1] (values above 1 → 400).
- *     OpenCues call sites pin 0, so no clamp is needed here.
+ * Request-shape quirks (modern `kimi-*` models, per the API docs):
+ *   - `max_completion_tokens`, NOT `max_tokens` — same rename OpenAI
+ *     made for gpt-5/o-series, so `useCompletionTokensName` covers it.
+ *   - `temperature` is NOT accepted (legacy moonshot-v1 only, range
+ *     0–1). `useCompletionTokensName` also strips it, mirroring the
+ *     OpenAI gpt-5 correlation.
+ *   - Thinking control is PER-FAMILY: `kimi-k3` always thinks and
+ *     takes `reasoning_effort: low|high|max` (default `max` — would
+ *     blow every OpenCues latency budget, so we coerce to low/high);
+ *     `kimi-k2.5`/`kimi-k2.6` take `thinking: { type: enabled|disabled }`;
+ *     `kimi-k2.7-code` REQUIRES thinking (field omitted, server
+ *     default stands). Like Ollama's `think: false`, k2.5/k2.6 get
+ *     thinking disabled unconditionally — OpenCues' blank/cue paths
+ *     want the direct answer, so `ctx.maxThinking` is deliberately
+ *     ignored here.
+ *   - Legacy `moonshot-v1-*` keeps the plain OpenAI shape (max_tokens
+ *     + temperature) but the family sunsets 2026-08-31 — supported for
+ *     the transition, not advertised.
  *
- * `capabilities` stays empty: `seed` / `prediction` are not documented
- * on Moonshot's API, and unknown-field tolerance is not guaranteed —
- * conservative default, same posture as OpenRouter. `reasoning_effort`
- * is never emitted (no `includeReasoningEffort`, no
- * `defaultReasoningEffort`, and `kimi-*` misses the reasoning-model
- * name heuristic in buildOpenAIBody).
+ * The kimi-k2-* preview series (`kimi-k2-0905-preview`,
+ * `kimi-k2-turbo-preview`, `kimi-k2-thinking`) was DISCONTINUED
+ * 2026-05-25 — don't resurrect those names.
+ *
+ * `capabilities` stays empty: `seed` / `prediction` aren't documented
+ * on Moonshot's API — conservative default, same posture as OpenRouter.
  *
  * Unbenched against the May 2026 sweep — appended LAST in
  * PROVIDER_AUTO_ORDER so a lone MOONSHOT_API_KEY still auto-routes,
@@ -1607,13 +1619,18 @@ const KIMI: ProviderAdapter = {
   capabilities: {},
   displayName: 'Kimi (Moonshot AI)',
   defaultEndpoint: 'https://api.moonshot.ai/v1/chat/completions',
-  defaultModel: 'kimi-k2-turbo-preview',
-  // Validated shortlist for the fluid-config classifier. Other Moonshot
-  // names (moonshot-v1-*, kimi-latest) work via direct file edit.
+  // kimi-k2.6 — current multimodal chat tier (256k context) and the
+  // only current model whose thinking can be DISABLED, which is what
+  // OpenCues' inline latency budgets need. $0.95/$4.00 per 1M in/out
+  // with $0.16 cache-hit input (Aug 2026).
+  defaultModel: 'kimi-k2.6',
+  // Validated shortlist for the fluid-config classifier. kimi-k3 is
+  // the always-thinking flagship (auditors/agent surfaces, not cue
+  // paths). The k2.7-code family + sunsetting moonshot-v1-* work via
+  // direct file edit.
   knownModels: [
-    'kimi-k2-turbo-preview',
-    'kimi-k2-0905-preview',
-    'kimi-k2-thinking',
+    'kimi-k2.6',
+    'kimi-k3',
   ],
   envKeyName: 'MOONSHOT_API_KEY',
   keyProbe: {
@@ -1622,9 +1639,29 @@ const KIMI: ProviderAdapter = {
     listField: 'data',
   },
   buildRequest(req, ctx) {
+    const isLegacyMoonshot = /^moonshot-v1/i.test(req.model);
+    const isK3 = /^kimi-k3/i.test(req.model);
+    const base = buildOpenAIBody(req, {
+      // Modern kimi models: max_completion_tokens + no temperature —
+      // the same pairing as OpenAI gpt-5, so the one flag covers both.
+      useCompletionTokensName: !isLegacyMoonshot,
+      provider: this.id,
+      capabilities: this.capabilities,
+      maxThinking: ctx.maxThinking,
+    });
+    const body = JSON.parse(base) as Record<string, unknown>;
+    if (isK3) {
+      // k3 always thinks; only low|high|max are legal and the server
+      // default is `max`. Coerce OpenCues' levels into the legal set,
+      // flooring at `low` (medium/none don't exist on this API).
+      body.reasoning_effort = req.reasoningEffort === 'high' ? 'high' : 'low';
+    } else if (/^kimi-k2\.[56]/i.test(req.model)) {
+      // Answer-latency floor (same rationale as Ollama's think:false).
+      body.thinking = { type: 'disabled' };
+    }
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(req, { provider: this.id, capabilities: this.capabilities, maxThinking: ctx.maxThinking }),
+      body: JSON.stringify(body),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
     };
   },
