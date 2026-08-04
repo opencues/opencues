@@ -25,7 +25,7 @@ import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
-import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, buildSessionCommitmentsIngest, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
   CommonHostInfo,
@@ -220,6 +220,11 @@ export function boot(host: HostInfo): BootResult {
   // Resolver constructed even with no keys so MissingKeyFallbackSource
   // surfaces a visible in-buffer hint on `_` instead of silent no-op.
   const calendarContextHolder = buildCalendarContextIngest(log);
+  // Session-contradiction + ask-cues: shell has no conversation transcript to
+  // distil (it's a compose box), so there's no producer-kick here — but read
+  // the shared watchlist so session-contradiction fires if another host wrote
+  // one, and ask-cues works context-free either way.
+  const sessionCommitmentsHolder = buildSessionCommitmentsIngest(log);
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
@@ -233,6 +238,7 @@ export function boot(host: HostInfo): BootResult {
     // ($OPENCUES_HOME first, then ~/.cues), refreshed on a timer. Live
     // holder — the resolver reads it fresh each pass. See boot-common.
     calendarContext: calendarContextHolder,
+    sessionCommitments: sessionCommitmentsHolder,
     externallySuppressed: (text: string) => kataCoach.shouldSuppressResolve(text),
   }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,
   buildBlankContextProvider(configLoader, host.blanks, log),
