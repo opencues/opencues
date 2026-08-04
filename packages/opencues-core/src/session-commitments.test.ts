@@ -189,3 +189,78 @@ describe('sessionCommitmentsKey', () => {
     expect(sessionCommitmentsKey('/foo//bar__baz')).toBe('foo-bar-baz');
   });
 });
+
+import {
+  mergeSessionCommitments,
+  normalizeCommitmentStatement,
+  parseSupersededResult,
+} from './session-commitments';
+
+describe('mergeSessionCommitments (incremental distillation)', () => {
+  const c = (statement: string, category = 'decision') => ({ category, statement });
+
+  it('preserves prior decisions that fell out of the fresh tail (the recall fix)', () => {
+    const prior = [c('Runtime is Bun, not Node'), c('Do not add new npm dependencies')];
+    const fresh = [c('Ship behind an off-by-default flag')];   // tail only saw recent turns
+    const m = mergeSessionCommitments(prior, fresh, []);
+    const stmts = m.map((x) => x.statement);
+    expect(stmts).toContain('Runtime is Bun, not Node');       // early decision survives
+    expect(stmts).toContain('Do not add new npm dependencies');
+    expect(stmts).toContain('Ship behind an off-by-default flag');
+    expect(m).toHaveLength(3);
+  });
+
+  it('dedups restatements (fresh phrasing wins) so accumulation does not bloat', () => {
+    const prior = [c('Use Bun.')];
+    const fresh = [c('Use Bun', 'stack')];
+    const m = mergeSessionCommitments(prior, fresh, []);
+    expect(m).toHaveLength(1);
+    expect(m[0].category).toBe('stack');   // fresh wins on the dup
+  });
+
+  it('drops a superseded prior decision so the matcher cannot false-alarm on the new one', () => {
+    const prior = [c('Use Postgres for the store'), c('Log to stdout')];
+    const fresh = [c('Switch the store to SQLite')];
+    const m = mergeSessionCommitments(prior, fresh, ['Use Postgres for the store']);
+    const stmts = m.map((x) => x.statement);
+    expect(stmts).not.toContain('Use Postgres for the store');  // superseded → gone
+    expect(stmts).toContain('Switch the store to SQLite');       // replacement kept
+    expect(stmts).toContain('Log to stdout');                    // unrelated preserved
+  });
+
+  it('supersession matching is normalization-tolerant', () => {
+    const prior = [c('Use Postgres for the store.')];
+    const fresh = [c('Move to SQLite')];
+    const m = mergeSessionCommitments(prior, fresh, ['use postgres for the store']);
+    expect(m.map((x) => x.statement)).not.toContain('Use Postgres for the store.');
+  });
+
+  it('an empty fresh tick preserves the whole prior watchlist (no wipe)', () => {
+    const prior = [c('Runtime is Bun, not Node'), c('Only touch the cache module')];
+    expect(mergeSessionCommitments(prior, [], [])).toHaveLength(2);
+  });
+
+  it('caps at MAX_COMMITMENTS, keeping fresh (newest) first', () => {
+    const prior = Array.from({ length: 24 }, (_, i) => c(`old decision ${i}`));
+    const fresh = [c('brand new decision')];
+    const m = mergeSessionCommitments(prior, fresh, []);
+    expect(m.length).toBe(24);
+    expect(m[0].statement).toBe('brand new decision');   // fresh survives the cap
+  });
+});
+
+describe('normalizeCommitmentStatement', () => {
+  it('collapses case/punctuation/whitespace', () => {
+    expect(normalizeCommitmentStatement('Use  Bun, not Node.')).toBe('use bun not node');
+    expect(normalizeCommitmentStatement('use bun not node')).toBe('use bun not node');
+  });
+});
+
+describe('parseSupersededResult', () => {
+  it('parses {superseded:[…]} and bare arrays; tolerates junk', () => {
+    expect(parseSupersededResult('{"superseded":["a","b"]}')).toEqual(['a', 'b']);
+    expect(parseSupersededResult('here: ["x"]')).toEqual(['x']);
+    expect(parseSupersededResult('no json')).toEqual([]);
+    expect(parseSupersededResult('')).toEqual([]);
+  });
+});

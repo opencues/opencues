@@ -225,10 +225,53 @@ module.exports = async function extractCommitments(argv, ctx) {
     }
 
     const ext = core.parseExtractionResult(raw);
-    const snapshot = core.buildSessionCommitmentsSnapshot(ext.commitments, {
-      summary: ext.summary,
+    const currentSessionId = path.basename(sourcePath).replace(/\.(jsonl|json)$/i, '');
+
+    // ── Incremental distillation ──────────────────────────────────────────
+    // The tail read only sees recent turns, so early decisions age out of every
+    // fresh distillation. ACCUMULATE: merge the fresh tail decisions into the
+    // watchlist we already built THIS session, dropping only what a newer
+    // decision supersedes. Preservation is deterministic (mergeSessionCommitments);
+    // supersession is its own small LLM call so a revised decision ("switch to X")
+    // doesn't leave a stale entry that would false-alarm the matcher. Reset on a
+    // new session (different transcript) — the watchlist is per-session, not
+    // cross-session. See RESULTS-real-transcripts.txt for why this matters.
+    let mergedCommitments = ext.commitments;
+    let mergedSummary = ext.summary;
+    let priorSnapshot = null;
+    try {
+      if (fs.existsSync(outPath)) priorSnapshot = JSON.parse(fs.readFileSync(outPath, 'utf8'));
+    } catch { priorSnapshot = null; }
+    const priorCommitments = priorSnapshot && Array.isArray(priorSnapshot.commitments) ? priorSnapshot.commitments : [];
+    const sameSession = priorSnapshot && priorSnapshot.sessionId === currentSessionId;
+    if (sameSession && priorCommitments.length > 0) {
+      let superseded = [];
+      // Only pay for the supersession call when there's something fresh that
+      // could replace a prior decision; a no-new-decisions tick just re-affirms.
+      if (Array.isArray(ext.commitments) && ext.commitments.length > 0) {
+        try {
+          const priorList = priorCommitments.map((c) => `- ${c.statement}`).join('\n');
+          const freshList = ext.commitments.map((c) => `- ${c.statement}`).join('\n');
+          const swWire = core.buildProviderRequest(ex.provider.id, {
+            messages: [
+              { role: 'system', content: core.SESSION_COMMITMENTS_SUPERSEDE_SYSTEM },
+              { role: 'user', content: `PRIOR:\n${priorList}\n\nFRESH:\n${freshList}` },
+            ],
+            model: ex.model, maxTokens: 512,
+          }, { apiKey: ex.apiKey });
+          const swResp = await fetch(swWire.url, { method: 'POST', headers: swWire.headers, body: typeof swWire.body === 'string' ? swWire.body : JSON.stringify(swWire.body) });
+          if (swResp.ok) superseded = core.parseSupersededResult(core.parseProviderResponse(ex.provider.id, await swResp.text()));
+        } catch { /* supersession is best-effort — fall back to pure preservation */ }
+      }
+      mergedCommitments = core.mergeSessionCommitments(priorCommitments, ext.commitments, superseded);
+      // Keep the freshest summary; fall back to the prior one on an empty tick.
+      mergedSummary = ext.summary || priorSnapshot.summary;
+    }
+
+    const snapshot = core.buildSessionCommitmentsSnapshot(mergedCommitments, {
+      summary: mergedSummary,
       ingestedAt: new Date().toISOString(),
-      sessionId: path.basename(sourcePath).replace(/\.(jsonl|json)$/i, ''),
+      sessionId: currentSessionId,
     });
 
     // Atomic write of the snapshot.

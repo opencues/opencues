@@ -142,6 +142,91 @@ export function parseExtractionResult(raw: string): { summary?: string; commitme
   return { commitments: [] };
 }
 
+// ── Incremental distillation ──────────────────────────────────────────────
+// The producer reads only the last 256KB TAIL of a session, so in a long,
+// tool-heavy coding session only the most-recent prose turns survive and early
+// decisions age out of every re-distillation — the recall boundary the
+// real-transcript bench surfaced (RESULTS-real-transcripts.txt). Incremental
+// distillation fixes it: the accumulated watchlist is PRESERVED across ticks and
+// each fresh tail-distillation is MERGED in, so a decision made early keeps
+// guarding even after it scrolls out of the tail.
+//
+// The merge is split by trust of judgement, per the project's "content judgement
+// → model; safety/data-loss invariant → deterministic floor" rule:
+//   • PRESERVATION + dedup + cap  → deterministic (`mergeSessionCommitments`), so
+//     accumulation can NEVER silently lose a decision.
+//   • SUPERSESSION (did a newer decision REPLACE an older one — "actually switch
+//     to X") → its OWN small LLM call (`SESSION_COMMITMENTS_SUPERSEDE_SYSTEM`),
+//     NOT folded into the extraction prompt (overloading it regresses extraction
+//     — see the SUMMON-in-classifier lesson). The model only names which PRIOR
+//     statements to DROP; it cannot cause a silent loss.
+// Without supersession handling, naive accumulation would keep both "use
+// Postgres" and a later "use SQLite" — the matcher would then FALSE-ALARM on a
+// draft that follows the current (SQLite) decision. Precision was the feature's
+// best property (~100% on real transcripts); the supersession call protects it.
+
+/** Normalize a statement for dedup: lowercase, strip punctuation, collapse
+ *  whitespace. Restatements ("use Bun." / "Use Bun") collapse to one. */
+export function normalizeCommitmentStatement(s: string): string {
+  return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/**
+ * Deterministically merge an accumulated PRIOR watchlist with a FRESH
+ * tail-distillation, dropping any prior statement the caller marked SUPERSEDED.
+ * Preservation is guaranteed: a prior decision survives unless it is explicitly
+ * superseded or duplicated. Fresh wins on a dup (keeps the newest phrasing +
+ * category). Cap keeps the most-recently-affirmed (fresh first, then prior) so a
+ * runaway watchlist can't grow unbounded — early decisions only drop past the
+ * cap, not for being old.
+ */
+export function mergeSessionCommitments(
+  prior: ReadonlyArray<{ category?: string; statement?: string }>,
+  fresh: ReadonlyArray<{ category?: string; statement?: string }>,
+  superseded: ReadonlyArray<string> = [],
+): Array<{ category?: string; statement?: string }> {
+  const dropped = new Set(superseded.map(normalizeCommitmentStatement).filter(Boolean));
+  const seen = new Set<string>();
+  const out: Array<{ category?: string; statement?: string }> = [];
+  // Fresh first (newest wins on dup + survives the cap), then surviving prior.
+  for (const c of [...fresh, ...prior]) {
+    if (!c || typeof c.statement !== 'string') continue;
+    const norm = normalizeCommitmentStatement(c.statement);
+    if (!norm || dropped.has(norm) || seen.has(norm)) continue;
+    seen.add(norm);
+    out.push({ category: c.category, statement: c.statement });
+    if (out.length >= MAX_COMMITMENTS) break;
+  }
+  return out;
+}
+
+/** Parse the supersession call's reply into the list of PRIOR statements a newer
+ *  decision has replaced. Tolerant: accepts a bare array or `{superseded:[…]}`. */
+export function parseSupersededResult(raw: string): string[] {
+  if (!raw) return [];
+  const obj = raw.match(/\{[\s\S]*\}/);
+  if (obj) {
+    try { const o = JSON.parse(obj[0]) as { superseded?: unknown }; if (Array.isArray(o.superseded)) return o.superseded.filter((x): x is string => typeof x === 'string'); } catch { /* array below */ }
+  }
+  const arr = raw.match(/\[[\s\S]*\]/);
+  if (arr) {
+    try { const a = JSON.parse(arr[0]); if (Array.isArray(a)) return a.filter((x): x is string => typeof x === 'string'); } catch { /* none */ }
+  }
+  return [];
+}
+
+/** Its OWN focused call (not folded into extraction). Given the PRIOR watchlist
+ *  and the FRESH tail decisions, name only the PRIOR statements a FRESH decision
+ *  REPLACES on the same topic. Preservation stays deterministic; this decides
+ *  only what to drop. */
+export const SESSION_COMMITMENTS_SUPERSEDE_SYSTEM = `You maintain a developer's running list of session decisions. You are given the PRIOR decisions recorded earlier and the FRESH decisions the developer is making right now.
+
+Your ONLY job: find PRIOR decisions that a FRESH decision REPLACES or REVERSES on the SAME topic — e.g. PRIOR "Use Postgres for the store" and FRESH "switch the store to SQLite"; PRIOR "single-threaded worker" and FRESH "move the worker to a thread pool". These are the ones to drop, because keeping both would make the list self-contradictory.
+
+Do NOT drop a prior decision just because it isn't repeated in FRESH — silence is not reversal. Only drop on a genuine same-topic replacement/reversal.
+
+Return ONLY JSON: {"superseded": ["<exact PRIOR statement to drop>", …]}  (empty array if none).`;
+
 /** One text turn extracted from the transcript for the producer to reason over. */
 export interface TranscriptTurn {
   readonly role: 'user' | 'assistant';

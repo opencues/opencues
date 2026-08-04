@@ -50,7 +50,29 @@ session transcript into a terse **commitments watchlist**:
    Precision over recall; secrets/code forbidden by the prompt. Routes to
    **Claude Haiku** when `ANTHROPIC_API_KEY` is set (cheap large-context read;
    `OPENCUES_EXTRACT_PROVIDER`/`_MODEL` override), else the cues bucket.
-3. **Write** the watchlist, **scoped per working directory** so two sessions in
+3. **Merge — incremental distillation.** The tail read only ever sees the most
+   RECENT turns, so in a long, tool-heavy coding session early decisions age out
+   of every fresh distillation (the recall boundary the real-transcript bench
+   surfaced — `tests/benchmarks/session-contradiction/RESULTS-real-transcripts.txt`).
+   So the fresh tail decisions are MERGED into the watchlist already built THIS
+   session rather than overwriting it. The merge is split by trust of judgement:
+   - **Preservation + dedup + cap → deterministic** (`mergeSessionCommitments`):
+     a prior decision survives unless it's explicitly superseded or a duplicate;
+     accumulation can never *silently* lose a decision. An empty-tail tick
+     preserves the whole watchlist (no wipe).
+   - **Supersession → its own small LLM call** (`SESSION_COMMITMENTS_SUPERSEDE_SYSTEM`),
+     NOT folded into the extraction prompt (overloading it regresses extraction —
+     the SUMMON-in-classifier lesson). Given the prior + fresh lists it names only
+     the prior statements a newer decision REPLACES ("actually switch to X"), so a
+     revised decision doesn't leave a stale entry that would *false-alarm* the
+     matcher — precision was the feature's best property (~100% on real
+     transcripts) and this protects it. Only runs when there's fresh content.
+
+   The watchlist is **per-session**: it accumulates within a session but RESETS on
+   a new session (the snapshot's `sessionId` = the transcript basename; a mismatch
+   starts fresh). If `@opencues/core` lacks the merge fn (older bundle), the
+   producer degrades to the previous overwrite behaviour.
+4. **Write** the watchlist, **scoped per working directory** so two sessions in
    different repos (or two hosts) never clobber a shared file:
    `<cues>/session-commitments/<key>.json` where `key = sessionCommitmentsKey(cwd)`
    (slug of the cwd; `session-commitments.ts`). With no `--cwd`, it falls back to
@@ -161,8 +183,10 @@ one), so it's fenced:
 ## Where to touch
 
 - `session-commitments.ts` — types, per-host transcript parsers, extraction
-  prompt, catalog render, snapshot builder, and `sessionCommitmentsKey(cwd)` (the
-  scoping slug). All pure + unit-tested (`session-commitments.test.ts`).
+  prompt, catalog render, snapshot builder, `sessionCommitmentsKey(cwd)` (the
+  scoping slug), and the incremental-merge primitives (`mergeSessionCommitments`
+  + `SESSION_COMMITMENTS_SUPERSEDE_SYSTEM` + `parseSupersededResult`). All pure +
+  unit-tested (`session-commitments.test.ts`).
 - `session-contradiction-source.ts` — the matcher + its prompt + grounding
   (`session-contradiction-source.test.ts`).
 - `session-cue-source.ts` — the fused contradiction-first wrapper (with ask-cues).
@@ -189,5 +213,15 @@ one), so it's fenced:
   alarm on a developer's draft is worse than a miss.
 - **No dehydration** of the watchlist (see egress note above).
 - **Deliberate-revision ambiguity.** "actually, switch to X" is a real change,
-  not a contradiction; the prompt tries to distinguish it but can't always.
-  Passive rendering makes a false flag cheap to ignore.
+  not a contradiction. Two things handle it: the incremental supersession pass
+  removes the replaced decision from the watchlist (so the matcher no longer
+  guards the old choice), and passive rendering makes any residual false flag
+  cheap to ignore. The supersession call is model-judged, so a subtle revision
+  can still slip through — bounded by the passive render.
+- **Tail-window recall (mitigated, not eliminated).** The producer reads only the
+  last 256 KB of the transcript, and in a tool-heavy session that's just the most
+  recent prose turns. Incremental distillation (Stage A step 3) preserves earlier
+  decisions across ticks *once they've been seen*, so recall is no longer purely
+  recency-biased — but a decision that scrolled out of the tail **before the
+  feature was enabled**, or one that only ever appeared in a code diff / tool
+  result (never in prose), is still never captured.
