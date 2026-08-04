@@ -80,15 +80,23 @@ session transcript into a terse **commitments watchlist**:
    debounce marker + lock are scoped the same way. `buildSessionCommitmentsSnapshot`
    normalizes + caps at `MAX_COMMITMENTS` and assigns stable `c<N>` ids.
 
-Trigger (host-specific):
-- **Claude Code** — the statusline (`highlight-statusline.sh`) receives CC's
-  `{transcript_path, workspace.current_dir, …}` JSON on stdin every turn. When
-  the feature is on and a 5 s bash spawn-gate has elapsed, it fire-and-forgets
-  the producer, passing the session's `current_dir`/`cwd` through as `--cwd`.
-- **OpenCode / Gemini CLI** — no statusline, so the boot band runs a
-  `startSessionCommitmentsKick` poller (`boot-common.ts`) that watches the
-  host's own transcript (OpenCode's SQLite `-wal`, Gemini's chat JSONL, both
-  cwd-scoped) and kicks the producer with the right `--format` + `--cwd host.cwd`.
+Trigger: **every host kicks the producer from its boot band** via
+`startSessionCommitmentsKick` (`boot-common.ts`), a mode-gated poller that
+watches the host's own transcript and fire-and-forgets the producer with the
+right `--format` + `--cwd host.cwd` when it changes. Each host supplies a
+locator: `locateNewestCCTranscript` (CC — newest `.jsonl` under
+`~/.claude/projects/<cwd-slug>/`), `locateNewestGeminiChat` (Gemini's chat
+JSONL), `locateOpenCodeDb` (OpenCode's SQLite, whose `-wal` mtime is the change
+signal). This means the feature **does not depend on any opt-in UI** — it works
+out of the box once the mode is on.
+- **Claude Code additionally** kicks from the statusline
+  (`highlight-statusline.sh`), which receives CC's `{transcript_path,
+  workspace.current_dir, …}` JSON on stdin every turn — a belt-and-braces path
+  for when the statusline is enabled. A double kick is harmless: the producer
+  self-debounces + locks, so at most one runs. (Before the boot poller, the
+  statusline was CC's *only* trigger, so session-contradiction was silently
+  inert whenever the opt-in statusline was off — the default. The boot poller
+  closed that gap by construction.)
 
 The producer *also* self-gates (both modes off → exit) and self-debounces (a
 scoped marker records the transcript mtime + last-run time) with an 8 s batch
@@ -195,8 +203,10 @@ one), so it's fenced:
 - `highlight-statusline.sh` `_oc_kick_commitments` + `setup.sh` bake step — the CC
   trigger (extracts `current_dir`/`cwd`, passes `--cwd`).
 - `boot-common.ts` — `buildSessionCommitmentsIngest({cwd})` (scoped ingest) +
-  `startSessionCommitmentsKick` (OC/Gemini poller) + `locateNewestGeminiChat` /
-  `locateOpenCodeDb`; wired in all four boot bands.
+  `startSessionCommitmentsKick` (the producer poller, wired in ALL boot bands
+  incl. CC) + the per-host locators `locateNewestCCTranscript` /
+  `locateNewestGeminiChat` / `locateOpenCodeDb` (unit-tested in
+  `boot-common.cc-transcript-locator.test.ts`).
 - `resolver.ts` (`sessionCommitments` option + `CueContext` forward),
   `build-sources.ts` (`enableSessionContradiction`/`enableAskCues` → `SessionCueSource`),
   `feature-registry.ts` + `config-loader.ts` (the scalars).

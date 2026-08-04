@@ -1086,6 +1086,38 @@ export function locateNewestGeminiChat(cwd?: string, maxAgeMs = 10 * 60_000): st
   return best.p;
 }
 
+/**
+ * Locate the newest Claude Code session transcript for `cwd`. CC writes each
+ * session to `~/.claude/projects/<cwd-slug>/<sessionId>.jsonl`, where the slug
+ * is the cwd with every non-alphanumeric char replaced by `-` (e.g.
+ * `/home/u/proj` → `-home-u-proj`). Returns the most-recently-modified TOP-LEVEL
+ * `.jsonl` in that project dir within `maxAgeMs` (subagent shards live in
+ * per-session subdirs and are skipped — non-recursive read). This lets the CC
+ * boot band kick the producer directly, the same way OpenCode/Gemini do, so
+ * session-contradiction / ask-cues no longer depend on the (opt-in) statusline
+ * trigger. Node-only. */
+export function locateNewestCCTranscript(cwd?: string, maxAgeMs = 10 * 60_000): string | null {
+  if (typeof process === 'undefined' || !process.versions?.node) return null;
+  if (!cwd) return null;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require('node:path') as typeof import('node:path');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const os = require('node:os') as typeof import('node:os');
+  const slug = cwd.replace(/[^a-zA-Z0-9]/g, '-');
+  const projDir = path.join(os.homedir(), '.claude', 'projects', slug);
+  let best: { p: string; m: number } | null = null;
+  let files: string[]; try { files = fs.readdirSync(projDir); } catch { return null; }
+  for (const f of files) {
+    if (!/\.jsonl$/i.test(f)) continue;              // top-level session files only
+    const full = path.join(projDir, f);
+    try { const st = fs.statSync(full); if (st.isFile() && (!best || st.mtimeMs > best.m)) best = { p: full, m: st.mtimeMs }; } catch { /* skip */ }
+  }
+  if (!best || Date.now() - best.m > maxAgeMs) return null;   // none active
+  return best.p;
+}
+
 /** Path to OpenCode's session SQLite DB, or null if absent. The producer reads
  *  it (via node:sqlite in the Node CLI — OpenCode's own runtime is Bun and can't
  *  use node:sqlite) with `--format opencode --cwd <dir>` to find the session by

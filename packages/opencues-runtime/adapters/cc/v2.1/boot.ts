@@ -36,7 +36,7 @@ import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { UndoJournal } from '../../../src/state/undo-journal';
 import { applyDirectives } from '../../../src/render-directives';
-import { buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, buildSessionCommitmentsIngest, buildCyclingProviderProbe, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, buildSessionCommitmentsIngest, startSessionCommitmentsKick, locateNewestCCTranscript, buildCyclingProviderProbe, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { buildBlankWeaver } from '../../../src/modules/blank-weave';
 import { startEventBridge } from '../../../src/event-bridge';
 import type {
@@ -716,12 +716,18 @@ export function boot(host: HostInfo): BootResult {
   // Resolver is constructed even with no keys so the MissingKeyFallbackSource
   // can substitute a visible in-buffer hint on `_` instead of silent no-op.
   const calendarContextHolder = buildCalendarContextIngest(log);
-  // Session-contradiction: CC-only. Native read of the shared
-  // session-commitments.json watchlist (produced by `opencues
-  // extract-commitments`, kicked by the statusline). Live holder — refreshed
-  // on a timer; the resolver reads it fresh each pass. Inert until the producer
-  // writes the file (feature off / no transcript growth → empty → source silent).
+  // Session-contradiction / ask-cues: native read of the per-cwd
+  // session-commitments watchlist (produced by `opencues extract-commitments`).
+  // Live holder — refreshed on a timer; the resolver reads it fresh each pass.
+  // Inert until the producer writes the file (feature off / no transcript growth
+  // → empty → source silent).
   const sessionCommitmentsHolder = buildSessionCommitmentsIngest(log, { cwd: host.cwd });
+  // Kick the producer from the boot band — the same mechanism OpenCode/Gemini
+  // use — so the feature no longer depends on the opt-in statusline trigger. The
+  // locator finds this session's transcript under ~/.claude/projects/<slug>/.
+  // Self-gates on the mode scalars; harmless double-kick if the statusline is
+  // also enabled (the producer self-debounces + locks).
+  startSessionCommitmentsKick(log, { locate: () => locateNewestCCTranscript(host.cwd), format: 'cc', extraArgs: ['--cwd', host.cwd] });
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',

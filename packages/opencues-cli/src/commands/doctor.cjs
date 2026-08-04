@@ -552,36 +552,11 @@ module.exports = async function doctor(argv, ctx) {
         }
       }
     } catch { /* cc-statusline lib unavailable — non-fatal */ }
-
-    // ── Producer-trigger prerequisite ───────────────────────────────
-    // session-contradiction / ask-cues on CC depend on the OpenCues
-    // statusline: it's what fires the Stage-A producer that builds the
-    // watchlist. If the mode is on but our statusline isn't active at
-    // any level, the watchlist never builds and the cue is SILENTLY
-    // inert on CC — the exact "wired but never fires" gap the feature
-    // is otherwise robust against. (OpenCode / Gemini trigger the
-    // producer from their boot band, so they're unaffected.)
-    if (fs.existsSync(ccFork)) {
-      try {
-        const modeScalars = readOpencuesScalars(path.join(userConfigDir, 'OPENCUES.md'));
-        const scOn = String(modeScalars['session-contradiction-mode'] || '').toLowerCase() === 'on';
-        const askOn = String(modeScalars['ask-cues-mode'] || '').toLowerCase() === 'on';
-        if (scOn || askOn) {
-          const ccsl = require('../lib/cc-statusline.cjs');
-          const projInfo = ccsl.inspect('project');
-          const ours = ccsl.inspect('user').state === 'opencues-ours'
-            || (fs.existsSync(projInfo.file) && projInfo.state === 'opencues-ours');
-          if (!ours) {
-            const which = [scOn && 'session-contradiction-mode', askOn && 'ask-cues-mode'].filter(Boolean).join(' + ');
-            findings.push({
-              sev: 'warn',
-              msg: `${which} is on, but on Claude Code the background producer that builds the watchlist is triggered by the OpenCues statusline — which isn't enabled. On CC these cues will stay silently inert until you enable it. (OpenCode / Gemini CLI trigger the producer at boot and are unaffected.)`,
-              fix: 'opencues statusline enable   # the statusline fires the Stage-A producer',
-            });
-          }
-        }
-      } catch { /* non-fatal */ }
-    }
+    // (No statusline-dependency warning for session-contradiction / ask-cues:
+    // the CC boot band now kicks the producer itself via a transcript poller —
+    // startSessionCommitmentsKick + locateNewestCCTranscript — the same way
+    // OpenCode/Gemini do, so the feature no longer depends on the opt-in
+    // statusline. The statusline stays a pure tip-rendering opt-in.)
     s.render();
   }
   // Stale pre-compact-footprint install still on disk?
