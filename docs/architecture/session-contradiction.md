@@ -1,11 +1,12 @@
 # Session-contradiction cues — architecture
 
 Canonical reference for the `session-contradiction-mode` feature — the
-Claude-Code-only "you're contradicting a decision you made earlier in this
-session" cue. Read this before touching
-`packages/opencues-core/src/session-commitments.ts`,
+"you're contradicting a decision you made earlier in this session" cue, on any
+host with a session transcript (Claude Code, OpenCode, Gemini CLI). Read this
+before touching `packages/opencues-core/src/session-commitments.ts`,
 `packages/opencues-core/src/contradiction/session-contradiction-source.ts`,
-the `extract-commitments` CLI, or the statusline kick. User-facing summary:
+`packages/opencues-core/src/sources/session-cue-source.ts` (the fused wrapper),
+the `extract-commitments` CLI, or the host kick triggers. User-facing summary:
 `docs/features/session-contradiction.md`.
 
 ## Two engines, one word
@@ -18,7 +19,7 @@ There are two unrelated "contradiction" features. Don't conflate them:
 | Correction | DATA (real weekday, arithmetic, weather) — can't hallucinate | LLM-generated (grounded, but authored) |
 | Domain | real-world facts (dates, journeys, weather) | CC-developer decisions (stack, memory/compaction, scope) |
 | Context needed | just the buffer + clock | the session transcript |
-| Hosts | every host | Claude Code only (needs the transcript) |
+| Hosts | every host | any host with a transcript (Claude Code, OpenCode, Gemini CLI) |
 
 They share the passive sentence-cue **render rail** (priority 87/88) and nothing
 else.
@@ -30,31 +31,47 @@ it checks the draft against a pre-built list.
 
 ### Stage A — the producer (slow, background)
 
-`opencues extract-commitments <transcript_path>`
-(`packages/opencues-cli/src/commands/extract-commitments.cjs`) distils the CC
+`opencues extract-commitments <transcript_path> [--format cc|gemini|opencode] [--cwd <dir>]`
+(`packages/opencues-cli/src/commands/extract-commitments.cjs`) distils the host
 session transcript into a terse **commitments watchlist**:
 
 1. **Read** the transcript tail (last 256 KB) and parse it to plain user +
-   assistant TEXT turns (`extractTranscriptTurns` in
-   `session-commitments.ts`). tool_use / tool_result / thinking / image blocks
-   are dropped — that's the data-minimization boundary (secrets and large
-   payloads live there, decisions don't).
-2. **Extract** with one cues-bucket LLM call
-   (`SESSION_COMMITMENTS_EXTRACT_SYSTEM`) → a JSON array of
-   `{category, statement}` — decisions/constraints across
-   `stack | architecture | constraint | memory | scope | decision`. Precision
-   over recall; secrets/code forbidden by the prompt.
-3. **Write** `~/.cues/session-commitments.json`
-   (`buildSessionCommitmentsSnapshot` normalizes + caps at `MAX_COMMITMENTS`,
-   assigns stable `c<N>` ids).
+   assistant TEXT turns. Each host has its own parser, selected by `--format`:
+   `extractTranscriptTurns` (CC JSONL), `extractGeminiTranscriptTurns` (Gemini
+   JSONL / legacy single-object), and `readOpenCodeTurns` (OpenCode's SQLite
+   store via `node:sqlite`, cwd-authoritative). All in `session-commitments.ts`
+   / the producer. tool_use / tool_result / thinking / image blocks are dropped
+   — that's the data-minimization boundary (secrets and large payloads live
+   there, decisions don't).
+2. **Extract** with one LLM call (`SESSION_COMMITMENTS_EXTRACT_SYSTEM`) → a
+   `{summary, commitments:[{category, statement}]}` object — decisions/constraints
+   across `stack | architecture | constraint | memory | scope | decision`, plus a
+   one-line session `summary` (the latter grounds the sibling ask-cues source).
+   Precision over recall; secrets/code forbidden by the prompt. Routes to
+   **Claude Haiku** when `ANTHROPIC_API_KEY` is set (cheap large-context read;
+   `OPENCUES_EXTRACT_PROVIDER`/`_MODEL` override), else the cues bucket.
+3. **Write** the watchlist, **scoped per working directory** so two sessions in
+   different repos (or two hosts) never clobber a shared file:
+   `<cues>/session-commitments/<key>.json` where `key = sessionCommitmentsKey(cwd)`
+   (slug of the cwd; `session-commitments.ts`). With no `--cwd`, it falls back to
+   the legacy flat `<cues>/session-commitments.json` (hand runs, tests). The
+   debounce marker + lock are scoped the same way. `buildSessionCommitmentsSnapshot`
+   normalizes + caps at `MAX_COMMITMENTS` and assigns stable `c<N>` ids.
 
-Trigger: the CC statusline (`highlight-statusline.sh`) receives CC's
-`{transcript_path, …}` JSON on stdin every turn. When the feature is on and a
-short bash-level 5 s spawn-gate has elapsed, it fire-and-forgets the producer.
-The producer *also* self-gates (mode off → exit) and self-debounces (a marker
-records the transcript mtime + last-run time) with an 8 s batch floor, so a
-burst of turns yields at most one LLM call per ~8 s. A lock file guards
-concurrent kicks.
+Trigger (host-specific):
+- **Claude Code** — the statusline (`highlight-statusline.sh`) receives CC's
+  `{transcript_path, workspace.current_dir, …}` JSON on stdin every turn. When
+  the feature is on and a 5 s bash spawn-gate has elapsed, it fire-and-forgets
+  the producer, passing the session's `current_dir`/`cwd` through as `--cwd`.
+- **OpenCode / Gemini CLI** — no statusline, so the boot band runs a
+  `startSessionCommitmentsKick` poller (`boot-common.ts`) that watches the
+  host's own transcript (OpenCode's SQLite `-wal`, Gemini's chat JSONL, both
+  cwd-scoped) and kicks the producer with the right `--format` + `--cwd host.cwd`.
+
+The producer *also* self-gates (both modes off → exit) and self-debounces (a
+scoped marker records the transcript mtime + last-run time) with an 8 s batch
+floor, so a burst of turns yields at most one LLM call per ~8 s. A scoped lock
+file guards concurrent kicks.
 
 **Cadence tuning (measured).** Three intervals compose: the statusline
 spawn-gate (5 s), the producer batch floor (8 s — the effective watchlist
@@ -86,13 +103,17 @@ prefix-caches it); the draft is the USER message.
 
 ## Ingest — live holder, re-read without restart
 
-The CC boot band (`adapters/cc/v2.1/boot.ts`) calls
-`buildSessionCommitmentsIngest` (`boot-common.ts`) — an mtime-gated 4 s
-re-read of `session-commitments.json` into a live holder passed to the
-`Resolver` as `options.sessionCommitments`. The resolver forwards it (gated by
-`session-contradiction-mode`) onto every `CueContext` as `sessionCommitments`,
-so a re-ingest applies without a host restart. Missing file → empty holder →
-the source stays silent (the documented inert mode).
+Every boot band (`adapters/{cc/v2.1,oc/v1.14,gemini/v0.41,shell/v1}/boot.ts`)
+calls `buildSessionCommitmentsIngest(log, { cwd: host.cwd })` (`boot-common.ts`)
+— an mtime-gated 4 s re-read of the watchlist into a live holder passed to the
+`Resolver` as `options.sessionCommitments`. The ingest resolves the same scoped
+path the producer writes (`<cues>/session-commitments/<key>.json` for the boot
+cwd), falling back to the flat file when the scoped one is absent; a path change
+between polls (flat → scoped once the first watchlist lands) is handled by
+tracking `lastPath` alongside `lastMtimeMs`. The resolver forwards the holder
+(gated by `session-contradiction-mode`) onto every `CueContext` as
+`sessionCommitments`, so a re-ingest applies without a host restart. Missing
+file → empty holder → the source stays silent (the documented inert mode).
 
 ## Rendering — a passive sentence-cue at priority 88
 
@@ -103,6 +124,15 @@ passive cue evicts `more-formal` at 85 on overlap). The resolver registers a
 passive DynDef at `currentIndex: 0` — the buffer keeps the user's draft; the
 `⚠` tip surfaces (inline or secondary, per `inline-cues-mode`) and
 `Ctrl+Alt+↑` swaps in the reconciled rewrite. **Never auto-splices.**
+
+**Fused with ask-cues** (`sources/session-cue-source.ts`): both this matcher and
+the ask-cues source (`ToolPromptCueSource`, `❓`) consume the same distilled
+session and compete for the sentence under the cursor, so they're wrapped in one
+`SessionCueSource` (priority 88) that runs **contradiction-first**: if the
+contradiction matcher emits a flag, ask-cues is skipped for that pass; otherwise
+ask-cues runs. This removes the earlier duplication where ask-cues had its own
+contradiction-catching exception. `build-sources.ts` constructs the fused source
+whenever `enableSessionContradiction || enableAskCues`, passing per-half flags.
 
 ## Grounding + safety invariants
 
@@ -130,25 +160,30 @@ one), so it's fenced:
 
 ## Where to touch
 
-- `session-commitments.ts` — types, transcript parser, extraction prompt,
-  catalog render, snapshot builder. All pure + unit-tested
-  (`session-commitments.test.ts`).
+- `session-commitments.ts` — types, per-host transcript parsers, extraction
+  prompt, catalog render, snapshot builder, and `sessionCommitmentsKey(cwd)` (the
+  scoping slug). All pure + unit-tested (`session-commitments.test.ts`).
 - `session-contradiction-source.ts` — the matcher + its prompt + grounding
   (`session-contradiction-source.test.ts`).
-- `extract-commitments.cjs` — the producer (gate → debounce → lock → parse →
-  wire call → write).
-- `highlight-statusline.sh` `_oc_kick_commitments` + `setup.sh` bake step — the
-  trigger.
-- `boot-common.ts:buildSessionCommitmentsIngest` + `adapters/cc/v2.1/boot.ts` —
-  the ingest.
+- `session-cue-source.ts` — the fused contradiction-first wrapper (with ask-cues).
+- `extract-commitments.cjs` — the producer (gate → scoped debounce → scoped lock
+  → per-format parse → wire call → scoped write).
+- `highlight-statusline.sh` `_oc_kick_commitments` + `setup.sh` bake step — the CC
+  trigger (extracts `current_dir`/`cwd`, passes `--cwd`).
+- `boot-common.ts` — `buildSessionCommitmentsIngest({cwd})` (scoped ingest) +
+  `startSessionCommitmentsKick` (OC/Gemini poller) + `locateNewestGeminiChat` /
+  `locateOpenCodeDb`; wired in all four boot bands.
 - `resolver.ts` (`sessionCommitments` option + `CueContext` forward),
-  `build-sources.ts` (`enableSessionContradiction` construction),
-  `feature-registry.ts` + `config-loader.ts` (the scalar).
+  `build-sources.ts` (`enableSessionContradiction`/`enableAskCues` → `SessionCueSource`),
+  `feature-registry.ts` + `config-loader.ts` (the scalars).
 
 ## Known v1 limitations
 
-- **CC only.** Other hosts have no producer, so the holder stays empty and the
-  source is inert. A future host with transcript access wires the same ingest.
+- **Transcript hosts only.** Works on Claude Code, OpenCode, and Gemini CLI
+  (each has a session transcript + a producer path). Shell and Chrome have no
+  conversation transcript, so the contradiction holder stays empty and the
+  source is inert there — the sibling ask-cues source still works on those hosts,
+  grounded on page/field ambient instead of the session.
 - **Precision-tuned.** The matcher flags at most 3 sentences and errs toward
   silence; a subtle contradiction can be missed. That's deliberate — a false
   alarm on a developer's draft is worse than a miss.

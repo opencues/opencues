@@ -1,7 +1,7 @@
 # Session-contradiction cues
 
 Session-contradiction cues catch when your draft message **goes against a
-decision you already made earlier in the same Claude Code session** — you
+decision you already made earlier in the same coding session** — you
 agreed "runtime is Bun, not Node," then start typing "let's switch this to
 node"; you scoped the work to the cache module, then reach for the auth code;
 you said "no new dependencies," then ask to pull in a package.
@@ -10,8 +10,8 @@ They surface as a passive `⚠` cue tip on the offending sentence, exactly like
 the other passive cues; the buffer is **never rewritten without your
 keystroke**, and `Ctrl+Alt+↑` swaps in a reconciled rewrite if you want it.
 
-**OFF by default. Claude Code only.** Enable with
-`session-contradiction-mode: on`.
+**OFF by default.** Works on any host with a session transcript — **Claude
+Code, OpenCode, and Gemini CLI**. Enable with `session-contradiction-mode: on`.
 
 ## How it works — two stages
 
@@ -52,12 +52,13 @@ It errs toward silence — a false alarm on your draft is worse than a missed on
 
 ## Privacy + safety
 
-- **Off by default; enabling it is the consent.** Claude Code only (it needs the
-  session transcript).
-- **Data-minimized.** Only your and Claude's prose feeds the watchlist producer;
-  tool inputs/outputs, file contents, and thinking blocks are dropped before
-  anything is sent. The watchlist itself is terse decisions, never code or
-  secrets.
+- **Off by default; enabling it is the consent.** Available on hosts with a
+  session transcript (Claude Code, OpenCode, Gemini CLI).
+- **Data-minimized.** Only your and the assistant's prose feeds the watchlist
+  producer; tool inputs/outputs, file contents, and thinking blocks are dropped
+  before anything is sent. The watchlist itself is terse decisions, never code or
+  secrets. It's scoped per project directory, so different repos keep separate
+  watchlists.
 - **A separate provider.** The distilled decisions go to your configured cues
   provider (the same one that already handles your prose cues), which is a
   different provider than the Claude model you're chatting with. If that matters

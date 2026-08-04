@@ -29,12 +29,15 @@ AskUserQuestion is the first plugged-in tool prompt (`TOOL_PROMPTS.ask`);
 others can be added as one registry entry, and session-contradiction is
 expressible as another.
 
-## Grounded in your session, not just the sentence
+## Grounded in your context, not just the sentence
 
 The question isn't reasoned from the bare sentence — it's grounded in **what
-you're actually working on**. The same producer that feeds session-contradiction
-distils your Claude Code session into a one-line summary + your decisions, and
-ask-cues reads that as context. So it:
+you're actually working on**, using whatever context the host has. On the coding
+hosts (Claude Code, OpenCode, Gemini CLI) the same producer that feeds
+session-contradiction distils your session into a one-line summary + your
+decisions, and ask-cues reads that. In the browser (Chrome), where there's no
+session, it grounds on the **page and field** you're typing into instead. Either
+way it:
 
 - **catches tensions with your decisions** — with "no new dependencies" on
   record, "we should add redis to speed up the cache" becomes *"Add Redis even
