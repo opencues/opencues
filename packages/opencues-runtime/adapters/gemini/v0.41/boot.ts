@@ -445,7 +445,7 @@ export function boot(host: HostInfo): BootResult {
   // that distils Gemini's own chat transcript on a cadence. Both self-gate on
   // the mode scalars.
   const sessionCommitmentsHolder = buildSessionCommitmentsIngest(log);
-  startSessionCommitmentsKick(log, { locate: () => locateNewestGeminiChat(), format: 'gemini' });
+  startSessionCommitmentsKick(log, { locate: () => locateNewestGeminiChat(host.cwd), format: 'gemini' });
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',

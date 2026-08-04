@@ -1029,7 +1029,7 @@ export function startSessionCommitmentsKick(
  * good enough for a single active session without replicating Gemini's
  * project-id hashing. Node-only.
  */
-export function locateNewestGeminiChat(maxAgeMs = 10 * 60_000): string | null {
+export function locateNewestGeminiChat(cwd?: string, maxAgeMs = 10 * 60_000): string | null {
   if (typeof process === 'undefined' || !process.versions?.node) return null;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const fs = require('node:fs') as typeof import('node:fs');
@@ -1038,20 +1038,39 @@ export function locateNewestGeminiChat(maxAgeMs = 10 * 60_000): string | null {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const os = require('node:os') as typeof import('node:os');
   const tmp = path.join(os.homedir(), '.gemini', 'tmp');
+
+  const newestIn = (chatsDir: string): { p: string; m: number } | null => {
+    let out: { p: string; m: number } | null = null;
+    let files: string[]; try { files = fs.readdirSync(chatsDir); } catch { return null; }
+    for (const f of files) {
+      if (!/^session-.*\.(jsonl|json)$/i.test(f)) continue;
+      const full = path.join(chatsDir, f);
+      try { const st = fs.statSync(full); if (!out || st.mtimeMs > out.m) out = { p: full, m: st.mtimeMs }; } catch { /* skip */ }
+    }
+    return out;
+  };
+
+  // Prefer the project dir for THIS cwd — Gemini names it `getShortId(cwd)`,
+  // which is ~`basename(cwd)`, with a sha256(cwd) fallback. Scope to those
+  // first so a more-recently-touched OTHER project can't hijack the context.
+  if (cwd) {
+    const scoped: string[] = [path.basename(cwd)];
+    try { scoped.push(require('node:crypto').createHash('sha256').update(cwd).digest('hex')); } catch { /* no crypto */ }
+    for (const proj of scoped) {
+      const best = newestIn(path.join(tmp, proj, 'chats'));
+      if (best && Date.now() - best.m <= maxAgeMs) return best.p;
+    }
+  }
+
+  // Fallback: newest chat across all projects (single-active-session heuristic).
   let best: { p: string; m: number } | null = null;
   try {
     for (const proj of fs.readdirSync(tmp)) {
-      const chats = path.join(tmp, proj, 'chats');
-      let files: string[]; try { files = fs.readdirSync(chats); } catch { continue; }
-      for (const f of files) {
-        if (!/^session-.*\.(jsonl|json)$/i.test(f)) continue;
-        const full = path.join(chats, f);
-        try { const st = fs.statSync(full); if (!best || st.mtimeMs > best.m) best = { p: full, m: st.mtimeMs }; } catch { /* skip */ }
-      }
+      const b = newestIn(path.join(tmp, proj, 'chats'));
+      if (b && (!best || b.m > best.m)) best = b;
     }
   } catch { return null; }
-  if (!best) return null;
-  if (Date.now() - best.m > maxAgeMs) return null;   // stale — no active session
+  if (!best || Date.now() - best.m > maxAgeMs) return null;   // none active
   return best.p;
 }
 
