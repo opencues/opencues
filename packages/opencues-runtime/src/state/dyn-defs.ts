@@ -100,10 +100,17 @@ function splitNoteEmoji(s: string): { emoji?: string; rest: string } {
  *  transform, the revert-to-original preview). Falls back to the current
  *  alternative only when there's nothing else to cycle to. Ellipsised. */
 function previewTwoWords(def: WordDef): string {
-  const alt = upcomingAlternatives(def, 1)[0]
+  return snippetWords(
+    upcomingAlternatives(def, 1)[0]
     || def.alternatives[def.currentIndex]
     || def.alternatives[def.alternatives.length - 1]
-    || '';
+    || '',
+  );
+}
+
+/** First ≤2 words of a string, ellipsised — a compact snippet that identifies a
+ *  long alternative (a whole-sentence transform/fluid result) without spilling. */
+function snippetWords(alt: string): string {
   const words = alt.split(/\s+/).filter(Boolean);
   const head = words.slice(0, 2).join(' ');
   return words.length > 2 ? `${head}…` : head;
@@ -136,10 +143,13 @@ export function inlineNoteText(def: WordDef): string | undefined {
 
   if (def.alternatives.length <= 1) return undefined;
 
-  // IMPROVEMENTS — number FIRST, no emoji, then ` | ` then the label/preview.
+  // IMPROVEMENTS — number FIRST, no emoji, then ` | ` then the destinations.
+  // Like spelling: list EACH alternative you can cycle TO, pipe-separated, but
+  // each snippeted (transform/fluid alternatives can be whole sentences) so a
+  // couple words identify it. Rotates with currentIndex.
   if (def.blankName === 'transform-blank' || def.blankName === 'fluid-blank') {
-    const preview = previewTwoWords(def);
-    return preview ? `${n} | ${preview}` : `${n}`;
+    const parts = upcomingAlternatives(def, 3).map(snippetWords).filter(Boolean);
+    return parts.length ? `${n} | ${parts.join(' | ')}` : `${n}`;
   }
   if (isSentenceCueDef(def)) {
     const name = def.blankName!.slice('sentence-cue:'.length);
