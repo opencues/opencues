@@ -1514,16 +1514,19 @@ describe('_-cycle — bare `_` inside a painted cue note rotates the cue', () =>
     expect(adapter.setTextCalls).toEqual([]); // no cycle
   });
 
-  it('does NOT consume `_` for a def without a cueTip (only note-bearing cues)', async () => {
+  it('does NOT consume `_` for a NON-note-bearing def (single alternative, nothing to cycle)', async () => {
+    // A more-formal sentence cue WITH alternatives is now note-bearing (it shows
+    // `N | Improve formality` and is `_`-cycleable) — so the non-consume case is
+    // a def with nothing to offer: a single alternative → inlineNoteText returns
+    // undefined → not note-bearing → `_` falls through to the normal blank path.
     const { adapter, dynDefs } = await setup('thanks a lot.');
     dynDefs.set(0, {
       originalWord: 'thanks a lot.',
-      alternatives: ['thanks a lot.', 'Thank you.'],
+      alternatives: ['thanks a lot.'], // only the original → nothing to cycle → no note
       currentIndex: 0,
       spanStart: 0,
       spanEnd: 13,
       blankName: 'sentence-cue:more-formal',
-      // no cueTip → no note → no `_`-cycle
     });
     adapter.setCursorOffset(5);
     expect(adapter.fireKey('_')).toBe(false);

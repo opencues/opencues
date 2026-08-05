@@ -886,13 +886,13 @@ describe('journey — transform span survives trailing edits, then `_` reverts i
 
     // Step 2 — the note still paints with the caret inside the span.
     let out = dim.compute({ text: buf + ' ', cursor: 5, externalHighlights: [] });
-    expect(out?.inlineNote?.text).toBe('transform');
+    expect(out?.inlineNote?.text).toBe('2 | hey buddy…');
 
     // Step 3 — user deletes the char after the span (the exact live repro).
     adapter.pushTextNoKeystroke(buf, buf.length);
     expect(dynDefs.get(0)).toBeDefined();              // still alive — no die/reattach
     out = dim.compute({ text: buf, cursor: 5, externalHighlights: [] });
-    expect(out?.inlineNote?.text).toBe('transform');
+    expect(out?.inlineNote?.text).toBe('2 | hey buddy…');
 
     // Step 4 — caret PAST the span (in the tail): `_` is a normal blank again.
     adapter.setCursorOffset(buf.length);

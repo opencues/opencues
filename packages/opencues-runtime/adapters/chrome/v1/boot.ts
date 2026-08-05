@@ -80,6 +80,12 @@ export interface HostInfo extends CommonHostInfo {
    */
   worldDataFetch?(url: string): Promise<{ ok: boolean; json(): Promise<unknown> }>;
   /**
+   * Live page location for the page-scoped community-rules tier (Tier 5d —
+   * subreddit rules). A getter, not a snapshot, so SPA navigation between
+   * subreddits is seen without a reload. Absent → the tier stays silent.
+   */
+  pageLocation?(): { origin: string; pathname: string } | null;
+  /**
    * Ingested calendar-context snapshot (calendar). The bootstrap reads the shared
    * `~/.cues/calendar.json` (produced OpenCues-side by `opencues calendar
    * sync`) from the synced config bundle and builds this via
@@ -455,6 +461,8 @@ export function boot(host: HostInfo): BootResult {
       // SW-routed GET for contradiction world-data (bank holidays, weather) —
       // page CSP blocks a content-script one. Absent → provider uses global fetch.
       worldDataFetch: host.worldDataFetch,
+      // Live page location for the community-rules tier (subreddit rules).
+      pageLocation: host.pageLocation,
       // Chrome-specific user-facing message — points the user at the
       // extension popup, where the API-key inputs live.
       missingKeyFallbackMessage: hasAnyKey ? undefined : '[OpenCues: no API key — open the extension popup]',

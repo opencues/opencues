@@ -64,22 +64,138 @@ function isSentenceCueDef(def: WordDef): boolean {
  * spans are note-bearing. The blank labels are PLACEHOLDERS — the indicator
  * text/style is deliberately deferred (see docs/architecture/inline-cue-cycle.md).
  */
+// ── Inline-note format (2026-08 redesign) ──────────────────────────────────
+//
+// One rule: an EMOJI leads a note that is a NOTIFICATION (something's flagged —
+// a factual conflict ⚠/🧢, a clarifying question ❓, a spelling error ✍️); a
+// cycleable IMPROVEMENT (a formality lift, a transform result, a lookup answer)
+// carries NO emoji, just a leading number + a label. Every cycleable note shows
+// a COUNTDOWN number (options remaining, N→1) followed by ` | ` — for a
+// notification the emoji leads (`⚠ 6 | msg`), for an improvement the number
+// leads (`3 | Improve formality`).
+// The right-aligned `(underscore to cycle)` affordance is added by the host
+// renderer (it needs the session cycle state — see hasCycledEver()).
+
+/** Emoji that lead a NOTIFICATION note. `✍️` carries a VS16 selector. */
+const NOTE_EMOJIS = ['⚠', '🧢', '❓', '✍️', '⚠️'];
+
+/** Short label shown for a cycleable sentence cue instead of a preview. Keyed
+ *  by the cue name (the `sentence-cue:<name>` blankName suffix). */
+const SENTENCE_CUE_LABELS: Record<string, string> = {
+  'more-formal': 'Improve formality',
+};
+
+/** Split a leading note emoji off a cueTip, if present. */
+function splitNoteEmoji(s: string): { emoji?: string; rest: string } {
+  for (const e of NOTE_EMOJIS) {
+    if (s.startsWith(e)) return { emoji: e === '⚠️' ? '⚠' : e, rest: s.slice(e.length).trimStart() };
+  }
+  return { rest: s };
+}
+
+/** Up-to-2-word preview of the alternative the def would cycle TO next — the
+ *  DESTINATION, not the current buffer text. A transform/fluid note that
+ *  previewed `alternatives[currentIndex]` just mirrored what's already on
+ *  screen; the useful thing is "press `_` → you get THIS" (e.g. after a
+ *  transform, the revert-to-original preview). Falls back to the current
+ *  alternative only when there's nothing else to cycle to. Ellipsised. */
+function previewTwoWords(def: WordDef): string {
+  return snippetWords(
+    upcomingAlternatives(def, 1)[0]
+    || def.alternatives[def.currentIndex]
+    || def.alternatives[def.alternatives.length - 1]
+    || '',
+  );
+}
+
+/** First ≤2 words of a string, ellipsised — a compact snippet that identifies a
+ *  long alternative (a whole-sentence transform/fluid result) without spilling. */
+function snippetWords(alt: string): string {
+  const words = alt.split(/\s+/).filter(Boolean);
+  const head = words.slice(0, 2).join(' ');
+  return words.length > 2 ? `${head}…` : head;
+}
+
+/**
+ * How many cycle stops REMAIN from the current position — the countdown number
+ * shown in the inline note. Starts at the total (alternatives.length) at the
+ * original and decrements as the user cycles, flooring at 1 on the last stop
+ * (cycling once more wraps back to the original). Never 0.
+ */
+export function inlineNoteCount(def: WordDef): number {
+  return Math.max(1, def.alternatives.length - def.currentIndex);
+}
+
 export function inlineNoteText(def: WordDef): string | undefined {
-  if (def.cueTip) return def.cueTip;
+  const n = inlineNoteCount(def);
+
+  // NOTIFICATION — carries a cueTip whose first glyph is the type emoji
+  // (contradiction/calendar ⚠/🧢, ask-cues ❓). A CYCLEABLE notification
+  // (contradiction's reconciled value, ask-cues options) gets the countdown;
+  // a pure ADVISORY with nothing to cycle to (calendar conflict, alternatives
+  // = [original]) shows just the emoji + message — no number, no pipe.
+  if (def.cueTip) {
+    const { emoji, rest } = splitNoteEmoji(def.cueTip);
+    const em = emoji ?? '⚠';
+    const msg = rest.replace(/\s*[·▸]\s*/g, ' | ');
+    return def.alternatives.length > 1 ? `${em} ${n} | ${msg}` : `${em} ${msg}`;
+  }
+
   if (def.alternatives.length <= 1) return undefined;
-  if (def.blankName === 'transform-blank') return 'transform';
-  if (def.blankName === 'fluid-blank') return 'lookup';
-  // Plain word-cue (no blankName, no cueTip) — this includes spelling. Its note
-  // IS its suggestions: the alternatives (excluding the original at index 0) the
-  // def ALREADY carries from resolve (`resolver.ts` word-cue registration). No
-  // fetch, no separate tip channel — the suggestions ARE the tip. Capped so a
-  // long list doesn't overflow the one-line note.
+
+  // IMPROVEMENTS — number FIRST, no emoji, then ` | ` then the destinations.
+  // Like spelling: list EACH alternative you can cycle TO, pipe-separated, but
+  // each snippeted (transform/fluid alternatives can be whole sentences) so a
+  // couple words identify it. Rotates with currentIndex.
+  if (def.blankName === 'transform-blank' || def.blankName === 'fluid-blank') {
+    const parts = upcomingAlternatives(def, 3).map(snippetWords).filter(Boolean);
+    return parts.length ? `${n} | ${parts.join(' | ')}` : `${n}`;
+  }
+  if (isSentenceCueDef(def)) {
+    const name = def.blankName!.slice('sentence-cue:'.length);
+    const label = SENTENCE_CUE_LABELS[name] ?? previewTwoWords(def);
+    return label ? `${n} | ${label}` : `${n}`;
+  }
+
+  // SPELLING (plain word-cue, no blankName) — a NOTIFICATION (an error): lead
+  // with ✍️ + the countdown, list the options you can still cycle TO,
+  // pipe-separated. The list ROTATES with currentIndex — cycling drops the one
+  // you're on and advances the rest, wrapping through EVERY stop INCLUDING the
+  // original (you can cycle back to it), so the note always shows where the
+  // next presses lead.
   if (!def.blankName) {
-    const suggestions = def.alternatives.slice(1).filter(Boolean);
-    if (suggestions.length > 0) return suggestions.slice(0, 3).join(' · ');
+    const upcoming = upcomingAlternatives(def, 3);
+    if (upcoming.length > 0) return `✍️ ${n} | ${upcoming.join(' | ')}`;
   }
   return undefined;
 }
+
+/**
+ * The alternatives a def can still cycle TO from the current position, in cycle
+ * order (wrapping), EXCLUDING only the one currently in the buffer. Includes the
+ * original (index 0) — it's a real cycle stop you can return to. Rotates as
+ * `currentIndex` advances so the note tracks the cycle. Capped at `max`.
+ */
+function upcomingAlternatives(def: WordDef, max: number): string[] {
+  const alts = def.alternatives.filter(Boolean);
+  if (alts.length <= 1) return [];
+  const cur = def.currentIndex;
+  const out: string[] = [];
+  for (let i = 1; i < alts.length; i++) out.push(alts[(cur + i) % alts.length]);
+  return out.slice(0, max);
+}
+
+// ── First-cycle affordance state ───────────────────────────────────────────
+// The `(underscore to cycle)` hint shows until the user cycles ANY note once —
+// then they've learned the gesture and it drops off everywhere for the rest of
+// the session. Session-scoped (in-memory); a fresh host process shows it again.
+let _hasCycledEver = false;
+/** True once the user has cycled at least one inline note this session. */
+export function hasCycledEver(): boolean { return _hasCycledEver; }
+/** Record that the user cycled a note (called from Cycling on every step). */
+export function markCycledEver(): void { _hasCycledEver = true; }
+/** Test hook — reset the session affordance flag. */
+export function _resetCycledEverForTests(): void { _hasCycledEver = false; }
 
 function altWordsOf(def: WordDef): string[] {
   const cache = def as WordDef & { _altWordsCache?: { idx: number; words: string[] } };

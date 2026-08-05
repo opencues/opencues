@@ -18,6 +18,7 @@
 
 import { normalizeLine } from './tfl';
 import { geocodePlace, haversineKm, estimateJourneyMinutes, type JourneyMode, type FetchLike } from './journey';
+import type { CommunityRulesSnapshot } from './reddit-rules';
 
 export interface Contradiction {
   /** Word index of the first flagged word (inclusive). */
@@ -542,6 +543,40 @@ export async function verifyJourneyClaim(
     quote: claim.quote,
     tip: `that's about a ${est}-minute ${mode}, not ${claim.statedMinutes}`,
     check: 'journey',
+  };
+}
+
+/** Tier 5d — a dedicated judge call flagged the sentence as conflicting with a
+ *  community rule (subreddit rules). NOT part of the extract `Claim` union: the
+ *  conflict judgement comes from its own LLM call (COMMUNITY_RULE_JUDGE_SYSTEM),
+ *  never the extract prompt — overloading one prompt with a second job
+ *  measurably regresses the first (see docs/architecture/contradiction-cues.md). */
+export interface CommunityRuleClaim {
+  readonly type: 'community_rule_conflict';
+  /** 1-based rule number from the RULES list shown to the judge. */
+  readonly rule: number;
+  readonly quote: string;
+}
+
+/** Deterministic half of Tier 5d. The judge's only powers are to pick a rule
+ *  NUMBER and quote a verbatim phrase; this verifier grounds the quote in the
+ *  live sentence and resolves the number against the CACHED rules snapshot —
+ *  the tip is built from cache data (community label + rule name), never from
+ *  model output, so a hallucinated rule or quote can't become a cue. */
+export function verifyCommunityRuleClaim(
+  claim: CommunityRuleClaim,
+  sentence: string,
+  rules: CommunityRulesSnapshot | null | undefined,
+): VerifiedContradiction | null {
+  if (!rules || rules.rules.length === 0) return null;
+  if (typeof claim.quote !== 'string' || claim.quote.length === 0 || !sentence.includes(claim.quote)) return null;
+  if (!Number.isInteger(claim.rule)) return null;
+  const rule = rules.rules.find((r) => r.index === claim.rule);
+  if (!rule) return null;   // number outside the posted rules → hallucinated, silent
+  return {
+    quote: claim.quote,
+    tip: `may conflict with ${rules.community} rule ${rule.index}: “${rule.name}”`,
+    check: 'community-rule',
   };
 }
 

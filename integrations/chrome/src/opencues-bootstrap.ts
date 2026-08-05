@@ -2860,6 +2860,14 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
       });
       return { ok: !!reply?.ok, json: async () => JSON.parse(reply?.text ?? 'null') };
     },
+    // Tier 5d — live page location for the page-scoped community-rules tier
+    // (subreddit rules). A getter, not a snapshot, so SPA navigation between
+    // subreddits is seen without a reload. The provider's rules.json fetch is
+    // same-origin from the content script (rides the page session; allowed by
+    // reddit's `connect-src 'self'` CSP) — no SW hop, unlike worldDataFetch.
+    pageLocation: () => (typeof location !== 'undefined'
+      ? { origin: location.origin, pathname: location.pathname }
+      : null),
     // CE.8 — blankInvoke routes blank-fill + cycle script calls to
     // the chrome blanks registry above (volume / stocks / weather /
     // hackernews / prompt-improver). Returns null for unknown

@@ -33,6 +33,7 @@ import { ContradictionLlmSource } from '../contradiction/contradiction-llm-sourc
 import { BankHolidayProvider } from '../contradiction/bank-holidays';
 import { WeatherProvider } from '../contradiction/weather';
 import { TflProvider } from '../contradiction/tfl';
+import { RedditRulesProvider } from '../contradiction/reddit-rules';
 
 // World-data caches for contradiction cues, PERSISTED across resolver rebuilds
 // (buildSourcesFromConfig is called on every config reload; a fresh provider
@@ -42,12 +43,14 @@ import { TflProvider } from '../contradiction/tfl';
 let _bankHolidayProvider: BankHolidayProvider | null = null;
 const _weatherProviders = new Map<string, WeatherProvider>();
 let _tflProvider: TflProvider | null = null;
+let _redditRulesProvider: RedditRulesProvider | null = null;
 
 /** Test hook — drop the persisted world-data providers so a suite starts clean. */
 export function _resetContradictionProvidersForTesting(): void {
   _bankHolidayProvider = null;
   _weatherProviders.clear();
   _tflProvider = null;
+  _redditRulesProvider = null;
 }
 import { resolveLLM, getProvider, withFallback, withFreePool, type ResolvedLLM } from '../llm-provider';
 import { probeProviderReachable } from '../provider-probe';
@@ -225,6 +228,13 @@ export interface BuildSourcesOptions {
    *  a city name ("Manchester") OR "lat,lon". Omitted → auto-detected from the
    *  host timezone. A city name is geocoded by the provider. */
   weatherLocation?: string;
+  /** Tier 5d — live page-location getter (origin + pathname) for page-scoped
+   *  community-rules lookups (subreddit rules). Chrome's content script passes
+   *  `location`; native hosts have no page → omit → tier silent. The provider's
+   *  fetch is deliberately the content-script GLOBAL fetch, not worldDataFetch:
+   *  on a reddit page it's a same-origin request riding the page session
+   *  (allowed by reddit's `connect-src 'self'` CSP — no SW hop needed). */
+  pageLocation?: () => { origin: string; pathname: string } | null;
   /** Enable RoutedWordSourceGroup (word-cues on plain text). When false,
    * NO word-cue LLM calls fire — words are not navigable as alternatives.
    * Domain blanks/fluid-blank still work. Defaults to false;
@@ -517,6 +527,12 @@ export function buildSourcesFromConfig(
       }
       // Tier 5b — TfL line-disruption status (London; location-independent).
       const tfl = (_tflProvider ??= new TflProvider({ fetchImpl: options.worldDataFetch, log: (m) => options.log?.(m) }));
+      // Tier 5d — reddit community rules, keyed off the LIVE page location
+      // (only constructed when the host has a page — chrome). Default fetch on
+      // purpose: same-origin content-script GET, not the SW-routed worldDataFetch.
+      const communityRules = options.pageLocation
+        ? (_redditRulesProvider ??= new RedditRulesProvider({ getLocation: options.pageLocation, log: (m) => options.log?.(m) }))
+        : undefined;
       sources.push(new ContradictionLlmSource({
         httpAdapter: withFallback(options.httpAdapter, cxLlm.fallback),
         provider: cxLlm.provider,
@@ -526,6 +542,7 @@ export function buildSourcesFromConfig(
         bankHolidays,
         weather,
         tfl,
+        communityRules,                           // Tier 5d — page-scoped subreddit rules
         worldDataFetch: options.worldDataFetch,   // Tier 5c — per-query journey geocoding
         log: (m) => options.log?.(m),
       }));

@@ -223,7 +223,8 @@ describe('applyDirectives — inlineNote splice (per-line, gemini/CC)', () => {
     expect(out).toContain('\n');
     // the connector + formatted advisory land on that new line
     expect(out).toContain('↳');
-    expect(out).toContain('⚠ - the 19th is a Friday');
+    // Terminal splice pads the double-width emoji with an extra space.
+    expect(out).toContain('⚠  the 19th is a Friday');
   });
 
   it('no inlineNote → line unchanged (no spurious newline)', () => {

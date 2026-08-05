@@ -437,10 +437,10 @@ export const FEATURES: readonly FeatureSpec[] = [
     group: 'Cues',
     camelCase: 'sentenceCuesMode',
     description: 'Sentence-scope cues — whole-sentence alternatives via `scope: sentence` cue declarations',
-    menuTip: 'Whole-sentence alternative rewrites (e.g. more-formal). Highlights span the sentence; sentence-scope wins over overlapping word-cues.',
+    menuTip: 'Whole-sentence alternative rewrites (e.g. more-formal, which is allow-listed to LinkedIn + web email). Highlights span the sentence; sentence-scope wins over overlapping word-cues. ON by default; each cue self-scopes via on-site / on-field, so nothing fires on casual surfaces it opts out of.',
     values: [
-      { id: 'off', description: 'Disabled (default) — every `scope: sentence` cue is filtered at build time' },
-      { id: 'on',  description: 'Enabled — sentence cues fire on prose buffers, suppressing any word-cues for words inside the sentence span' },
+      { id: 'on',  description: 'Default — sentence cues fire on prose buffers (subject to each cue\'s own on-site/on-field scoping), suppressing word-cues for words inside the sentence span' },
+      { id: 'off', description: 'Disabled — every `scope: sentence` cue is filtered at build time' },
     ],
   },
   {
@@ -448,10 +448,10 @@ export const FEATURES: readonly FeatureSpec[] = [
     group: 'Cues',
     camelCase: 'contradictionCuesMode',
     description: 'Deterministic fact-check cues — flags a stale/wrong claim you typed against the buffer + clock (weekday-date mismatch, split-the-bill math)',
-    menuTip: 'Catch your own mistakes as you type: "Thursday the 24th" when the 24th is a Friday; "$120 among 4, $25 each" when it\'s $30. No LLM, no network — pure date/number arithmetic. Tier 0 of the contradiction-cue layer. OFF by default.',
+    menuTip: 'Catch your own mistakes as you type: "Thursday the 24th" when the 24th is a Friday; "$120 among 4, $25 each" when it\'s $30. An LLM parses each sentence into a claim; the runtime computes the correction from data (clock, arithmetic, world-data) — so a cue can\'t hallucinate a false contradiction. ON by default; passive (never edits your buffer).',
     values: [
-      { id: 'off', description: 'Disabled (default) — no contradiction fact-checking' },
-      { id: 'on',  description: 'Enabled — buffer + clock contradiction cues fire on prose (weekday-date, split-the-bill)' },
+      { id: 'on',  description: 'Default — contradiction cues fire on prose (weekday-date, split-the-bill, and data-wired tiers)' },
+      { id: 'off', description: 'Disabled — no contradiction fact-checking' },
     ],
   },
   {
