@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — calendar-conflict cue is now auto-implied by `calendar-context-mode` (core 0.41.0 → 0.41.1, runtime 0.28.21 → 0.28.22)
+
+The shipped calendar-conflict cue (`defaults/cues/calendar/CUE.md`, `scope: sentence`, `uses-calendar-context: true`) flags a sentence that proposes a day/time you're already booked ("let's meet October 1st" when Oct 1 is busy → appends a terse `— heads up: <event> …`). It was gated behind `sentence-cues-mode`, a *separately named* toggle from the `calendar-context-mode` a user actually turns on to get calendar reasoning — so enabling calendar context did nothing until you also discovered the second switch. It didn't fire even for the author. Now a `uses-calendar-context` sentence cue is **auto-implied by `calendar-context-mode: on`**: `buildSourcesFromConfig` gains an `enableCalendarContext` option (wired from the resolver, same polarity as the resolve-time calendar snapshot), and a calendar-aware sentence cue bypasses the `sentence-cues-mode` gate. The source still self-inerts when there's no calendar feed, so this is a no-op until you add one (`opencues calendar add`). Every *other* sentence-scope cue stays behind `sentence-cues-mode`. Verified against a real feed on `cerebras/gpt-oss-120b` and `cerebras/gemma-4-31b` (flags all conflicting events, hydrates real titles locally, cedes on free days + non-scheduling prose). Pinned by 4 new gating cases in `build-sources.test.ts`.
+
+### Changed — `more-formal` sentence cue scoped off the coding/agent CLIs
+
+The shipped `more-formal` cue (`scope: sentence` — background "make this more formal" rewrites) now declares `not-on-host: claude-code, gemini-cli, opencode`. Those hosts are for terse instructions to a model, not prose you'd want formalized, so a background formality rewrite there is noise. The cue keeps running on the prose-first surfaces (chrome text fields, the shell editor). Discover-time host filter (`inferHostCompat`) drops it on the three CLI hosts; the calendar-conflict cue is unaffected.
+
 ## [0.4.2] - 2026-08-02
 
 Patch release: launch-readiness for the published `opencues` CLI — a user-facing npm README, Apache-2.0 reconciled across every package, and a time-bomb test fix. Highlights in the [GitHub Release](https://github.com/opencues/opencues/releases/tag/v0.4.2).

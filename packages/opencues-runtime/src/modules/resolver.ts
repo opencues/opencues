@@ -833,6 +833,12 @@ export class Resolver {
       // installs whose OPENCUES.md pre-dates the scalar (no line at all).
       enableUndoActions: settings.get('undo-mode') !== 'off',
       enableSentenceCues: settings.get('sentence-cues-mode') === 'on',
+      // Auto-imply the calendar-conflict sentence-cue from calendar-context-mode
+      // (same polarity as the resolve-time calendarContext gate below): turning
+      // on calendar reasoning surfaces conflict warnings without also flipping
+      // the separately-named sentence-cues-mode. The cue self-inerts with no
+      // feed, so this is a no-op until the user adds a calendar.
+      enableCalendarContext: this.configLoader.opencuesState.calendarContextMode !== 'off',
       enableContradictionCues: settings.get('contradiction-cues-mode') === 'on',
       worldDataFetch: this.options.worldDataFetch,
       weatherLocation: settings.get('weather-location'),
