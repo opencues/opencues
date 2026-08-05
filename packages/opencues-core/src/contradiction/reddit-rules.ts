@@ -103,7 +103,13 @@ export class RedditRulesProvider {
 
   constructor(opts: RedditRulesProviderOptions = {}) {
     this.getLocation = opts.getLocation;
-    this.fetchImpl = opts.fetchImpl ?? (typeof fetch !== 'undefined' ? (fetch as unknown as FetchLike) : undefined);
+    // MUST bind to the global: in a browser, `window.fetch` invoked with any
+    // other `this` (e.g. called as `this.fetchImpl(url)`) throws "Illegal
+    // invocation". Node's fetch is lenient about `this`, so an unbound ref
+    // passed Node tests but died in the chrome content script — the classic
+    // green-in-Node / dead-in-chrome trap.
+    this.fetchImpl = opts.fetchImpl
+      ?? (typeof fetch !== 'undefined' ? (fetch.bind(globalThis) as unknown as FetchLike) : undefined);
     this.ttlMs = opts.ttlMs ?? 6 * 60 * 60 * 1000;
     this.errorTtlMs = opts.errorTtlMs ?? 10 * 60 * 1000;
     this.log = opts.log ?? (() => {});
