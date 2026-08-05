@@ -672,9 +672,10 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
       blankName: 'transform-blank',
     });
     const out = dimRender.compute({ text: buf, cursor: 2, externalHighlights: [] });
-    // New format: number-first improvement note with a ≤2-word preview of the
-    // current alternative (the buffer text). One word here (spaceless CJK).
-    expect(out?.inlineNote?.text).toBe('2 | 日本語です');
+    // New format: number-first improvement note previewing the DESTINATION
+    // (the alternative you'd cycle TO — the history step 'thanks a lot'), not
+    // the current buffer text.
+    expect(out?.inlineNote?.text).toBe('2 | thanks a…');
     expect(out?.inlineNote?.spanStart).toBe(0);
   });
 

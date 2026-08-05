@@ -93,10 +93,17 @@ function splitNoteEmoji(s: string): { emoji?: string; rest: string } {
   return { rest: s };
 }
 
-/** Up-to-2-word preview of the def's CURRENT alternative (the one that would
- *  be — or already is — in the buffer), ellipsised. */
+/** Up-to-2-word preview of the alternative the def would cycle TO next — the
+ *  DESTINATION, not the current buffer text. A transform/fluid note that
+ *  previewed `alternatives[currentIndex]` just mirrored what's already on
+ *  screen; the useful thing is "press `_` → you get THIS" (e.g. after a
+ *  transform, the revert-to-original preview). Falls back to the current
+ *  alternative only when there's nothing else to cycle to. Ellipsised. */
 function previewTwoWords(def: WordDef): string {
-  const alt = def.alternatives[def.currentIndex] || def.alternatives[def.alternatives.length - 1] || '';
+  const alt = upcomingAlternatives(def, 1)[0]
+    || def.alternatives[def.currentIndex]
+    || def.alternatives[def.alternatives.length - 1]
+    || '';
   const words = alt.split(/\s+/).filter(Boolean);
   const head = words.slice(0, 2).join(' ');
   return words.length > 2 ? `${head}…` : head;
