@@ -21,13 +21,18 @@ There is exactly one presentation, degrading gracefully:
   signal that "there's more here" — no content, just presence. It works on
   every host that can paint a dim range.
 - **Cursor-gated reveal.** When the text cursor moves *into* the span, its
-  note appears inline (gray). Move out, or edit, and it vanishes. The note is
-  **the useful reveal for that kind of span** — a passive cue shows its advisory,
-  a word-cue (incl. spelling) shows its suggestions, a filled blank shows its
-  tip, a settings selector-satellite shows the tip for the part the caret is on.
-  It is **display-only** — the note text is spliced into what the host *paints*,
-  never into the buffer you submit, so it can never be sent. A long note **wraps**
-  onto multiple lines and pushes the content below down to make room.
+  note appears inline (gray). Move out, or edit, and it vanishes. The note reads
+  in one **vocabulary**: an **emoji leads a notification** — something is flagged
+  (`⚠` a factual / scheduling conflict, `✍️` a spelling error) — while **no emoji
+  means a cycleable improvement** (a formality lift, a transform result, a lookup
+  answer — nothing wrong, just a better option). A **countdown number** shows how
+  many options remain (`⚠ 3 | the 19th is a Friday`, or `2 | Improve formality`),
+  and a right-aligned **`(underscore to cycle)`** hint appears until your first
+  cycle, then drops off. A pure advisory with nothing to cycle to (a calendar
+  conflict) shows just the emoji and message — no number, no hint. The note is
+  **display-only** — spliced into what the host *paints*, never into the buffer
+  you submit, so it can never be sent. A long note **wraps** onto multiple lines
+  and pushes the content below down to make room.
 - **Press `_` to cycle.** With the caret inside a revealed span, a plain `_`
   rotates that span forward (the discoverable complement to Ctrl+Alt+↑). Move
   past it (type a space) or edit it, and `_` goes back to its normal blank

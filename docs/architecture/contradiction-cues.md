@@ -42,8 +42,11 @@ of the system uses.
 
 ## The tiers — one scalar, data-gated activation
 
-`contradiction-cues-mode: on` (off by default) enables the source. The
-tiers are **not** separate scalars; they activate by cache availability:
+`contradiction-cues-mode` gates the source. **ON by default** — the
+resolver gate is `!== 'off'`, so only an explicit `contradiction-cues-mode:
+off` disables it (a contradiction cue is passive + advisory, so it belongs
+on out of the box; same polarity as `sentence-cues-mode`). The tiers are
+**not** separate scalars; they activate by cache availability:
 
 | Tier | Verifier | Cache (host-wired) | Egress host |
 |---|---|---|---|
@@ -70,14 +73,34 @@ Tier-5 ship).
 ## Rendering — a sentence-cue at priority 87
 
 A verified contradiction is emitted as a **passive sentence-cue**
-(`scope: sentence` shape): `alternatives: [originalSentence, corrected]`,
-a char-range span, priority **87** (above `more-formal` 85, below
-`BlankSource` 95 / `TransformBlank` 93). The resolver registers a passive
-DynDef at `currentIndex: 0` — the buffer keeps the original; `Ctrl+Alt+↑`
-inside the sentence swaps in the correction via the word-cue
-`applyAltCycle` path. **Never auto-splices** (the May 2026 auto-rewrite
+(`scope: sentence` shape): a char-range span, priority **87** (above
+`more-formal` 85, below `BlankSource` 95 / `TransformBlank` 93). The resolver
+registers a passive DynDef at `currentIndex: 0` — the buffer keeps the original;
+`Ctrl+Alt+↑` (or a bare `_` in the painted note) swaps in the correction via the
+word-cue `applyAltCycle` path. **Never auto-splices** (the May 2026 auto-rewrite
 prototype was retired after the chrome agentic verification showed prose
 being rewritten without consent — same lesson as sentence-cues).
+
+### Cycleable (a correction) vs passive (a verdict-only advisory)
+
+The `alternatives` array shape decides how the inline note reads (see
+`inline-cues.md` § The note vocabulary):
+
+- A verifier that computes a **correction** emits
+  `alternatives: [originalSentence, corrected]` (length 2) — a **cycleable**
+  notification, `⚠ N | <correction>`. Tier 0's weekday-date and bill-split
+  checks are this shape (the runtime knows the right weekday / the right
+  per-head amount, so there's something to cycle to).
+- A verifier that can only render a **verdict** — nothing computable to splice
+  in — emits `alternatives: [originalSentence]` (length 1), a **passive**
+  advisory: `⚠ <message>`, no countdown, no `_`-cycle. The weather / journey /
+  transit tiers and the Tier-5d subreddit-rule flag are verdict-only ("it will
+  rain then", "that walk is longer than 5 minutes", "may conflict with rule 3")
+  — the tip is the whole point, there's no single corrected sentence to offer.
+
+The emoji is always `⚠` today: every wired verifier produces a computable fact,
+so the `🧢` (LLM-judged lie) glyph in the note vocabulary stays dormant on this
+path.
 
 The calendar-conflict cue (`defaults/cues/calendar/CUE.md`, priority 90)
 is a sibling on the same passive-sentence-cue rail but reasons over the
@@ -115,7 +138,12 @@ holds the line everywhere else:
   **content-script global fetch** — same-origin on reddit (rides the
   page session, allowed by reddit's `connect-src 'self'` CSP), so
   deliberately NOT the SW-routed `worldDataFetch`. TTL 6 h per
-  subreddit, 10 min negative cache on failure.
+  subreddit, 10 min negative cache on failure. **Bind `fetch` to
+  `globalThis`** when falling back to the global (`fetch.bind(globalThis)`):
+  an unbound `fetch` reference throws `TypeError: Illegal invocation` in
+  chrome because the browser's `fetch` requires its `this` to be the window /
+  global — the July 2026 chrome-only Tier-5d bug. Native hosts pass a real
+  adapter and never hit the fallback.
 - **Untrusted text.** Rule text is community-controlled. It is
   sanitized + length-capped at provider parse time, is presented to the
   judge as DATA with an explicit never-follow-instructions rule, and can

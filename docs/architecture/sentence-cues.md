@@ -39,6 +39,14 @@ Priority **85 by default** — higher than typical word cues from
 `defaults/cues/` (which are usually 60-80). Authors can override per
 cue with `priority:` in frontmatter.
 
+> **ON by default (2026-08).** The resolver gate is `enableSentenceCues =
+> settings.get('sentence-cues-mode') !== 'off'` — only an explicit
+> `sentence-cues-mode: off` disables it. Sentence cues are passive (no splice
+> without a keystroke) and each shipped cue self-scopes (`on-site` / `on-field`),
+> so on-by-default is safe. The shipped `more-formal` cue, for example, only
+> fires on professional-writing surfaces (see below), so turning the mode on
+> doesn't formalize prose everywhere.
+
 Sentence-cue results don't claim `_` slots; they claim multi-word
 prose spans. They don't compete with BlankSource / ConfigIntent /
 TransformBlank / FluidBlank — those four all gate on `_` presence.
@@ -199,6 +207,20 @@ the live char range derived from the current alt's word count; Down
 to `N-1` reverts. At `currentIndex=0` the buffer matches `alternatives[0]`
 (the original sentence) so no splice is needed.
 
+### Passive advisory cues register a length-1 span
+
+A plain rewrite cue (`more-formal`) emits `alternatives: [original, ...rewrites]`
+(cycleable). But an **advisory** sentence-cue — the calendar-conflict cue, and
+any other cue whose job is to flag rather than rewrite — emits
+`alternatives: [span.text]` (length 1): there is nothing to cycle to, only a
+`⚠` heads-up carried on `cueTip`. It still registers a passive DynDef with the
+**full char span** so the caret-in-span reveal (and the always-on dim) fire; the
+inline note renders as a passive `⚠ <message>` with no countdown and no
+`(underscore to cycle)` hint (see `inline-cues.md` § The note vocabulary). This
+is why `sentence-cue-source.ts` sets `alternatives` conditionally on
+`usesCalendarContext` — cycling a heads-up INTO the buffer would splice the
+advisory text into the user's prose, so advisory cues withhold the second state.
+
 ### Why passive (was agent-like in the May 2026 prototype)
 
 Earlier builds of the sentence-cue branch auto-spliced `alternatives[1]`
@@ -298,6 +320,31 @@ across all providers before shipping.**
 
 ---
 
+## The shipped `more-formal` cue — scoping + inline-note label
+
+`defaults/cues/more-formal/CUE.md` is the canonical `scope: sentence` cue. Two
+things about how it behaves out of the box:
+
+- **It's scoped to professional-writing surfaces.** Formality is only wanted
+  where you'd write formal prose, so the cue self-scopes:
+  `not-on-host: claude-code, gemini-cli, opencode` (the coding/agent CLIs are for
+  terse model instructions, not formalizable prose) and an **allow-list**
+  `on-site: [linkedin.com, *.linkedin.com, mail.google.com, outlook.live.com,
+  outlook.office.com, outlook.office365.com, mail.proton.me, mail.yahoo.com]`
+  (LinkedIn + web email). Everywhere else on the web — reddit, forums, chat — it
+  stays off; casual registers don't want a background formalizer. Non-chrome
+  hosts have no URL, so `on-site` doesn't gate them (the shell editor keeps
+  formality; the CLI hosts are excluded by `not-on-host`). This scoping is what
+  makes `sentence-cues-mode` on-by-default safe.
+- **Its inline note reads `N | Improve formality`, not a `cueTip`.** `more-formal`
+  is a cycleable IMPROVEMENT, so its note is emoji-free and number-led. The label
+  `Improve formality` comes from the `SENTENCE_CUE_LABELS` map in `dyn-defs.ts`
+  (keyed by cue name), NOT from a `cueTip`. The source **does not** set an
+  advisory `cueTip` for plain rewrite cues — defaulting it to the cue name made
+  every rewrite read as a spurious `⚠ N | more-formal` notification (the bug the
+  advisory-vs-improvement split fixed). A `cueTip` is set only for genuine
+  advisories (the calendar-conflict `⚠` heads-up).
+
 ## Per-feature LLM routing
 
 The runtime threads a `sentenceCues` `FeatureLLMSetting` through
@@ -334,4 +381,4 @@ Without overrides, sentence cues inherit the global `llm-provider:`
 
 ---
 
-*Last updated: 2026-05-18.*
+*Last updated: 2026-08-05.*

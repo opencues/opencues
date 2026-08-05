@@ -4,7 +4,10 @@
 > (`packages/opencues-runtime/src/modules/cycling.ts`) on branch
 > `feat/inline-cues`; verified on a live CC host (rotate forward + wrap +
 > consume; blank path intact off-cue). Chrome inherits it automatically
-> (same runtime, `inline-note` capability). Indicator style still deferred.
+> (same runtime, `inline-note` capability). The note format is now specified
+> (the emoji / countdown / `(underscore to cycle)` hint vocabulary — see
+> `inline-cues.md` § The note vocabulary), so the note DOES advertise `_`:
+> the hint rides every cycleable note until the user's first cycle this session.
 > Companion to `docs/architecture/inline-cues.md` (the note itself).
 
 ## The mechanic
@@ -81,7 +84,7 @@ gained notes they gained `_`-cycle for free:
 |---|---|---|---|
 | **Sentence-cue** | ✅ `cueTip` | ✅ (rotate rewrites) | ✅ |
 | **Contradiction cue** | ✅ `cueTip` | ✅ (**accept the fix**) | ✅ |
-| **Transform / fluid blank span** | ✅ (`↳ transform` / `↳ lookup`) | ✅ (**walks the transform HISTORY**) | ✅ |
+| **Transform / fluid blank span** | ✅ (`↳ N | <dest> | <dest>` — its destinations) | ✅ (**walks the transform HISTORY**) | ✅ |
 | **Word-cue (incl. spelling)** | ✅ (its suggestions) | ✅ (rotate suggestions) | ✅ |
 | **List / script blank (volume…), filled** | ✅ (its tip / options) | ✅ (rotate values, `SpanFillState`) | ✅ |
 | **Selector/satellite (settings)** | ✅ (cursor-aware tip) | ✅ (cursor-aware: names on selector, values on satellite) | ✅ |
@@ -111,12 +114,12 @@ mechanic is more than a convenience.
 
 ## Open questions
 
-1. **Indicator style — DEFERRED.** How (or whether) the note advertises `_` is
-   polish, not part of the mechanic. The prototype uses the note **as-is**
-   (`↳ <cueTip>`) as the affordance — the goal first is to build the mechanic
-   and feel it; the indicator (presence-only / state counter `(1/3)` / explicit
-   `· _` hint) gets decided after we know how the rotation feels. Current lean
-   remains the **state counter**, but it's not blocking.
+1. **Indicator style — SETTLED (2026-08).** The note now advertises `_` on two
+   axes: a **countdown** (`inlineNoteCount(def)` — options remaining, `N → 1`,
+   wrapping — the state-counter lean, realised) and a right-aligned
+   **`(underscore to cycle)` hint** that rides until the user's first cycle this
+   session (`hasCycledEver()` / `markCycledEver()`), then drops off. Full
+   vocabulary in `inline-cues.md` § The note vocabulary.
 2. **Scope boundary (settled → widened July 2026).** The original v1 was
    note-bearing cues only (sentence + contradiction). With the uniform note
    model every gray span carries a note, so `_`-cycle now covers word-cues,
@@ -137,8 +140,8 @@ drift. A def is note-bearing when it:
   >1 alternative. Those accumulate a **walkable history** in `alternatives` via
   `findChainableLlmDef` (translate → 日本語, make formal → …), so `_` **steps
   back through your transformations** — a rotation that GROWS with use, richer
-  than a cue's fixed set. Labels (`transform` / `lookup`) are placeholders;
-  indicator text still deferred, **or**
+  than a cue's fixed set. The note previews the **destinations** it steps to
+  (`N | <dest> | <dest>`, each ≤2-word-snippeted), **or**
 - is a **plain word-cue** (no blankName, no cueTip) with >1 alternative — `_`
   rotates its suggestions (incl. spelling corrections).
 

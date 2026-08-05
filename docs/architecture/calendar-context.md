@@ -106,12 +106,17 @@ events read as "today" after midnight.
 - **Cue (proactive):** the shipped `defaults/cues/calendar/CUE.md`
   (`scope: sentence`, `uses-calendar-context: true`, `priority: 90`) reads each
   sentence; if it claims availability that contradicts the calendar it flags a
-  heads-up appended to the sentence — `I'm free at 3pm today` → *"— heads up:
-  Dentist is 3:00pm–3:45pm"* — and surfaces the same advisory on the **status
-  line** (via `def.cueTip`), so no cycling keystroke is needed to see it. It's a
-  suggestion, not a rewrite; cycle away / ignore it to dismiss. Priority 90 sits
-  above default cues (e.g. the formalizer at 85) so a calendar conflict wins the
-  word claim.
+  heads-up — `I'm free at 3pm today` → *"— heads up: Dentist is 3:00pm–3:45pm"*.
+  The cue is a **passive advisory, not a cycleable alternative.** The source
+  extracts the LLM's appended heads-up into a `⚠` `def.cueTip` and emits
+  `alternatives: [originalSentence]` (length 1) — so there is nothing to cycle
+  TO, only the flag. (Cycling a heads-up INTO the buffer would splice the
+  advisory text into the user's message — the whole reason it's withheld.) It
+  reveals as a passive `⚠ <message>` inline note (no countdown, no
+  `(underscore to cycle)` hint — see `inline-cues.md` § The note vocabulary) and
+  on the **status line**, so no keystroke is needed to see it; ignore it to
+  dismiss. Priority 90 sits above default cues (e.g. the formalizer at 85) so a
+  calendar conflict wins the sentence claim.
 
 ### Model routing
 
@@ -237,9 +242,10 @@ calendar producer; solve them per source.
   token without any title leaving the machine. Same shape as identity-context's
   tolerant matching, applied OUTBOUND (query term → token). The `raw`-mode
   alternative (inline titles) is rejected by default — it sends PII.
-- **The conflict cue also requires `sentence-cues-mode: on`** today (it rides the
-  sentence-cue build gate). Decoupling it so `calendar-context-mode: on` is sufficient
-  is a follow-up.
+- **The conflict cue also requires `sentence-cues-mode`** to be on (it rides the
+  sentence-cue build gate). That mode is now **on by default** (`!== 'off'`, 2026-08),
+  so in practice both gates are open unless the user explicitly disabled one.
+  Decoupling it so `calendar-context-mode: on` is sufficient on its own is a follow-up.
 - **Segmenter / RRULE** — simple daily/weekly recurrence is handled; exotic
   RRULEs are approximated.
 

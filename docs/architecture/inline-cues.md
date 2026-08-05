@@ -34,8 +34,11 @@ Two visible parts, both display-only (never in the submit buffer):
 The runtime does not paint. It emits **one directive** and every host renders it
 in whatever way its surface allows:
 
-- **`RenderDirectives.inlineNote?: { spanStart, spanEnd, text }`** (`adapter.ts`)
-  — spans in the host's painted (`ctx.text`) coordinate space.
+- **`RenderDirectives.inlineNote?: { spanStart, spanEnd, text, hint? }`**
+  (`adapter.ts`) — spans in the host's painted (`ctx.text`) coordinate space.
+  `text` is the fully-formatted note (emoji / countdown / message — see § The
+  note vocabulary); `hint` is the optional right-aligned `(underscore to cycle)`
+  affordance, present only until the user's first cycle this session.
 - **`DimRender.compute`** (`dim-render.ts`) emits `inlineNote` only when
   `inline-cues-mode: inline`, the host advertises the `inline-note` capability,
   and `ctx.cursor` sits inside a **live passive-cue def** (a def with `cueTip`
@@ -64,38 +67,90 @@ painted on *any* span with something to cycle or reveal. The **inline note**
 
 The single decider is **`inlineNoteText(def)`** (`state/dyn-defs.ts`) — the
 shared source of truth used by BOTH `DimRender` (paints the note) and `Cycling`
-(the `_`-step), so they can never disagree on "has a note":
+(the `_`-step), so they can never disagree on "has a note". Since the 2026-08
+redesign it returns a fully-formatted string in **one vocabulary** (see § The
+note vocabulary below), not a placeholder label:
 
 ```
-def.cueTip present         → note = cueTip       (an advisory)
-transform-blank, >1 alt    → note = "transform"  (walkable edit history)
-fluid-blank, >1 alt        → note = "lookup"     (walkable history)
-plain word-cue, >1 alt     → note = suggestions  (alternatives[1..] joined — incl. spelling)
-otherwise                  → undefined           (dim only, no note)
+def.cueTip present, >1 alt   → "<emoji> <N> | <message>"   (cycleable notification)
+def.cueTip present, 1 alt    → "<emoji> <message>"         (passive advisory — no countdown)
+transform / fluid, >1 alt    → "<N> | <dest> | <dest>"     (destinations, each ≤2 words)
+sentence-cue, >1 alt         → "<N> | <label>"             (e.g. "Improve formality")
+plain word-cue, >1 alt       → "✍️ <N> | <dest> | <dest>"  (spelling — destinations)
+otherwise                    → undefined                   (dim only, no note)
 ```
 
 | Span type | Produced by / config | Dimmed? | Inline note? | Note text |
 |---|---|---|---|---|
-| **Word-cue** (incl. spelling) | `### alternatives` / spelling sources | ✅ | ✅ | its **suggestions** — `alternatives[1..]` (e.g. `receive`, or `lawyer · counsel`) |
-| **Sentence-cue** | `scope: sentence` cue + `sentence-cues-mode: on` | ✅ | ✅ | `cueTip` — the cue's advisory (e.g. `more-formal`) |
-| **Contradiction-cue** | `contradiction-cues-mode: on` | ✅ | ✅ | `cueTip` — the computed correction |
-| **Transform-blank** (after a rewrite, >1 alt) | `<body> fix typos _` | ✅ | ✅ | `transform` (its edit history) |
-| **Fluid-blank** (after a lookup, >1 alt) | `weather in paris _` | ✅ | ✅ | `lookup` (its history) |
-| **List / script blank** (filled) | blanks (`SpanFillState`) | ✅ | ✅ | its `tip` (e.g. `system volume`), else its cycle options (`alternatives[1..]`) |
+| **Word-cue** (incl. spelling) | `### alternatives` / spelling sources | ✅ | ✅ | `✍️ N | <dest> | <dest>` — a NOTIFICATION (a spelling error) leading with `✍️` + the countdown, then the **destinations** you can cycle to (e.g. `✍️ 2 | received | receiver`) |
+| **Sentence-cue** (`more-formal`) | `scope: sentence` cue + `sentence-cues-mode` | ✅ | ✅ | `N | Improve formality` — a cycleable IMPROVEMENT (no emoji); the label comes from `SENTENCE_CUE_LABELS`, not a `cueTip` |
+| **Contradiction-cue** (fixable) | `contradiction-cues-mode` | ✅ | ✅ | `⚠ N | <correction>` — `cueTip` with the computed correction; cycleable to accept the fix |
+| **Passive advisory** (calendar conflict, subreddit-rule flag, weather/journey/arithmetic verdict) | contradiction / calendar cues, 1 alt | ✅ | ✅ | `⚠ <message>` — emoji + message only, **no countdown, no hint** (nothing to cycle to) |
+| **Transform-blank** (after a rewrite, >1 alt) | `<body> fix typos _` | ✅ | ✅ | `N | <dest> | <dest>` — the destinations in its walkable edit history, each snippeted to ≤2 words |
+| **Fluid-blank** (after a lookup, >1 alt) | `weather in paris _` | ✅ | ✅ | `N | <dest> | <dest>` — same, its lookup history |
+| **List / script blank** (filled) | blanks (`SpanFillState`) | ✅ | ✅ | `N | <dest> | <dest>` — the values it can still cycle to (short, so no snippeting) |
 | **Selector-satellite** | settings blank (`SelectorSatelliteState`) | ✅ | ✅ | **cursor-position-aware** — caret on the selector (setting name) shows the setting's own `def.tip`; caret on the satellite (value) shows that value's `def.valueTips` entry (mirrors the statusline's per-part tip logic) |
 
 So the rule is: **anything whose useful reveal is otherwise hidden gets a note** —
 passive cues show their advisory (`cueTip`, set at DynDef registration in
-`resolver.ts`), `_`-blanks show their history, **word-cues (including spelling)
-show their suggestions** (the alternatives the resolver already registered on the
-def, read straight off it — no fetch, no separate tip channel), **filled
-list/script blanks** show their tip, and **selector-satellite** shows the tip for
-the part the caret is on (setting tip on the selector, value tip on the satellite —
-the same per-part split the statusline uses, `statusline.ts:282`).
+`resolver.ts`), `_`-blanks and word-cues show the **destinations** they'd cycle
+to (`upcomingAlternatives(def)` — read straight off the def, no fetch), filled
+list/script blanks show their cycle values, and selector-satellite shows the tip
+for the part the caret is on (setting tip on the selector, value tip on the
+satellite — the same per-part split the statusline uses, `statusline.ts:282`).
 `SpanFillState` and `SelectorSatelliteState` aren't DynDefs, so the note loop
 handles them explicitly (after the DynDef pass) — no auto-select there, since
 those carry their own highlight/dim model. Every cyclable span now behaves
 consistently: it dims, and (in inline mode) reveals what's behind it.
+
+### The note vocabulary
+
+Since the 2026-08 redesign every note reads in ONE grammar, so a glance tells
+you whether something is *wrong* or just *improvable*:
+
+- **An emoji leads a NOTIFICATION** — something is flagged. `⚠` a
+  factual / scheduling conflict (every contradiction tier today is a computable
+  fact, so it's always `⚠`); `🧢` an LLM-judged lie (**wired but dormant** — the
+  contradiction parse never emits it yet, so it never shows in practice); `❓` a
+  clarifying question (ask-cues, on a different branch); `✍️` a spelling error.
+- **No emoji = a cycleable IMPROVEMENT** — nothing is wrong, there's just a
+  better option: a formality lift, a transform result, a fluid lookup answer, a
+  list-blank value.
+- **A countdown number** — options remaining. Computed as
+  `inlineNoteCount(def) = max(1, alternatives.length − currentIndex)`: it starts
+  at the total, counts `N → 1` as you cycle, and wraps. It sits **after** the
+  emoji for a notification (`⚠ 6 | msg`) and **leads** for an improvement
+  (`3 | Improve formality`).
+- **The `(underscore to cycle)` hint** — the optional `hint` field, painted
+  right-aligned. It rides until the user's FIRST cycle of any note this session
+  (module flag `hasCycledEver()` / `markCycledEver()` in `dyn-defs.ts`, flipped
+  in `Cycling.applyAltCycle`), then drops off everywhere. Shown only on a
+  cycleable def (`alternatives.length > 1`).
+
+**Cycleable vs passive.** A notification with a real fix to cycle to is
+cycleable — it gets the countdown (`⚠ N | correction`; spelling
+`✍️ N | received | receiver`). A pure ADVISORY with nothing to cycle to (a
+calendar conflict, a subreddit-rule flag, a weather / journey / arithmetic
+contradiction verdict) is PASSIVE — emoji + message only, no number, no hint.
+The mechanism is the source's `alternatives` array: an advisory emits
+`alternatives: [quote]` (length 1); a fixable emits `[quote, correction]`. The
+length-1 case is exactly the `def.cueTip present, 1 alt` branch above.
+
+**Destinations, not the current text.** Spelling, transform / fluid, and
+list-blank notes list the alternatives you can cycle **TO** — `_` previews the
+DESTINATION ("press `_` → you get THIS"), never a mirror of the current buffer.
+`upcomingAlternatives(def)` rotates with `currentIndex`, wrapping through every
+stop INCLUDING the original, excluding only the one currently in the buffer.
+Transform / fluid results can be whole sentences, so each destination is
+snippeted to ≤2 words (`snippetWords`); list-blank values are short and shown
+whole.
+
+**`more-formal` shows a label, not a `cueTip`.** Its improvement note reads
+`N | Improve formality` — the override label comes from the `SENTENCE_CUE_LABELS`
+map in `dyn-defs.ts`. The source no longer sets an advisory `cueTip` for plain
+rewrite cues (defaulting to the cue name made every rewrite read as a spurious
+`⚠ N | <name>` notification — the bug that motivated the split); a `cueTip` is
+now set ONLY for genuine advisories (the calendar-conflict `⚠` heads-up).
 
 **All of these must hold for the note to actually show** (`dim-render.ts`):
 1. `inline-cues-mode: inline` (default) — `secondary` sends the same advisory to
@@ -111,10 +166,12 @@ capability), and `supportsCycling()` isn't `false` (on a no-cycling field — a
 chrome plain `<input>` — cue-map dims are suppressed so dim never falsely
 advertises cyclability).
 
-> **Note text is still placeholder for `_` blanks.** `inlineNoteText` returns the
-> literal `"transform"` / `"lookup"` for history-bearing blanks (the indicator
-> text/style was deliberately deferred). Sentence/contradiction cues show a real
-> advisory. Improving the blank labels is an isolated change in that one function.
+> **The note format is fully specified (2026-08).** `inlineNoteText` no longer
+> returns placeholder labels — history-bearing blanks show their destinations
+> (`upcomingAlternatives`, ≤2-word snippets), cues show their advisory or their
+> `SENTENCE_CUE_LABELS` label, all under the one emoji / countdown / hint
+> vocabulary above. It's the single formatter; changing the note style is still
+> an isolated edit to that one function.
 
 ## The hard part — a real pushed-down line, not an overlay
 
@@ -131,7 +188,16 @@ work. Each host's mechanism, and *why* it can't just reuse the previous one:
 | **OpenCode** | OpenTUI + SolidJS, textarea is one native renderable | The note is a **flow `<text>` sibling** rendered after the textarea, driven by the `opencuesInlineNote` Solid signal (content-sized, grows the input by a row). | OpenTUI draws the textarea's buffer lines monolithically in a Zig/FFI layer — no per-line element and no display-line primitive to splice into. A sibling flow element is the SolidJS-native way to reserve the row. |
 | **shell** (`oc-edit`) | OpenTUI + SolidJS, **we own the whole app incl. submit** | **Buffer injection**: a `\n` + non-breaking-space marker (`INJ_MARK`, ` `) is spliced into the textarea buffer at the span's line end to open a *real* blank row; the note text paints as an absolute overlay box in it. The marker is stripped from every read / cursor / write / **submit** path (`getText`/`getCursor`/`getCleanBufferText`). | Same OpenTUI constraint as OpenCode, but shell owns its submit path, so it can safely inject into the buffer and guarantee the marker never ships. (A `\n`-only line was tried first — the auto-select highlight spilled onto the next visible cell; NBSP gives the injected line a real cell so the boundary lands on it.) |
 | **Gemini CLI** | React / Ink, virtualized line list with `fixedItemHeight` | A dedicated **`opencuesNote` item** is appended to `scrollableData`; the list height (`Math.min(viewportHeight, scrollableData.length)`) grows by one. `getOpencuesInlineNote(text, cursor)` (→ `BootResult.getInlineNote`) formats it. | Each visual line is a fixed-height (1-row) `<Box height={1}>`, so a line **cannot grow to two rows** — an embedded `\n` clips. The note has to be its OWN list item. |
-| **chrome** | DOM contenteditable / input, no host render loop | The note is a `position: fixed` overlay `<div>` anchored at the span's `rect.bottom`. Push-down is surface-specific (see next section). | CSS Custom Highlight styles ranges but can't add text; a real DOM node is reverted by managed editors and can leak into submit. So the note is an overlay and the *room* for it is opened by whichever push-down the surface allows. |
+| **chrome** | DOM contenteditable / input, no host render loop | The note is a `position: fixed` overlay `<div>` anchored at the span's `rect.bottom` — for a span crossing hard line breaks (a multi-paragraph transform result, a `<br>`-wrapped sentence) it anchors below the **LAST** line (`ranges[ranges.length − 1]`, not `ranges[0]`) so the note sits under the whole span. Push-down is surface-specific (see next section). | CSS Custom Highlight styles ranges but can't add text; a real DOM node is reverted by managed editors and can leak into submit. So the note is an overlay and the *room* for it is opened by whichever push-down the surface allows. |
+
+**Emoji padding is terminal-only.** `inlineNoteText` puts a single space after a
+notification's leading emoji (`⚠ 6 | …`). In a terminal the emoji glyphs
+(`⚠ 🧢 ❓ ✍️`) render **two cells wide**, so `render-directives.ts` pads one extra
+space (`padTerminalWideEmoji` → `↳ ⚠  6 | …`) to clear the glyph. Chrome's
+`runtime-renderer.ts` overlay paints the glyph at its natural width and does NOT
+go through that painter, so it's unaffected by the pad. Both surfaces share the
+`↳` connector + the note text via the exported `inlineNoteDisplayText`, so the
+plain-text reads identically.
 
 ## Chrome push-down — three surfaces, three safe levers
 
