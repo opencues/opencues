@@ -22,8 +22,8 @@
 ### Prerequisites
 
 You need the `opencues` CLI on PATH. If you haven't set that up yet,
-follow [`BETA-INSTALL.md` § Bootstrap the `opencues` CLI](../../BETA-INSTALL.md#3-bootstrap-the-opencues-cli)
-— that covers Node, pnpm, the clone, and the shell alias.
+follow [`docs/install.md`](../../docs/install.md)
+— that covers Node, pnpm, the clone, and getting `opencues` on PATH.
 
 This integration also needs **npm** (Gemini CLI's build tool) — it
 ships with Node.js, so if you've installed Node you're set.
@@ -36,7 +36,7 @@ opencues install gemini-cli
 
 That's the whole install — one command, end to end. The installer will:
 
-1. **Clone** `google-gemini/gemini-cli` at the pinned SHA into `~/gemini-cli-cues/` (or reuse an existing clone at `--target <path>`)
+1. **Clone** `google-gemini/gemini-cli` at the pinned SHA into `~/.opencues/forks/gemini-cli/` (or reuse an existing clone at `--target <path>`)
 2. **Install fork dependencies** via `npm install` so the fork's own deps (Ink, React, etc.) land
 3. **Build** `@opencues/core` + `@opencues/runtime` (turbo-cached)
 4. **Install** the built artefacts into the fork at `node_modules/@opencues/{core,runtime}/`
@@ -79,10 +79,10 @@ One command:
 opencues uninstall gemini-cli
 ```
 
-This reverts the three patched TSX/TS files via `git checkout --`, deletes the `opencues.ts` bootstrap, and removes `node_modules/@opencues/{core,runtime}/`. The fork itself (`~/gemini-cli-cues/`) stays in place — it's your Gemini CLI checkout, not OpenCues's artefact. To remove it entirely:
+This reverts the three patched TSX/TS files via `git checkout --`, deletes the `opencues.ts` bootstrap, and removes `node_modules/@opencues/{core,runtime}/`. The fork itself (`~/.opencues/forks/gemini-cli/`) stays in place — it's your Gemini CLI checkout, not OpenCues's artefact. To remove it entirely:
 
 ```bash
-rm -rf ~/gemini-cli-cues
+rm -rf ~/.opencues/forks/gemini-cli
 ```
 
 ---
@@ -143,13 +143,13 @@ Idempotent — copies any file that doesn't already exist at the destination.
 
 | Path | Contents |
 |---|---|
-| `~/gemini-cli-cues/` | Cloned Gemini CLI fork (~1.5 GB after `npm install` + build) |
-| `~/gemini-cli-cues/node_modules/@opencues/core/` | Built `@opencues/core` |
-| `~/gemini-cli-cues/node_modules/@opencues/runtime/` | Built `@opencues/runtime` |
-| `~/gemini-cli-cues/packages/cli/src/ui/opencues.ts` | OpenCues bootstrap (the `opencuesBootstrap.ts` source, copied in) |
-| `~/gemini-cli-cues/packages/cli/src/ui/AppContainer.tsx` | **Patched in place** — mounts the runtime + subscribes to KeypressContext |
-| `~/gemini-cli-cues/packages/cli/src/ui/components/InputPrompt.tsx` | **Patched in place** — publishes TextBuffer access + decorates per-visual-line rendering |
-| `~/gemini-cli-cues/packages/cli/src/ui/components/Footer.tsx` | **Patched in place** — renders OpenCues tip alongside other footer indicators |
+| `~/.opencues/forks/gemini-cli/` | Cloned Gemini CLI fork (~1.5 GB after `npm install` + build) |
+| `~/.opencues/forks/gemini-cli/node_modules/@opencues/core/` | Built `@opencues/core` |
+| `~/.opencues/forks/gemini-cli/node_modules/@opencues/runtime/` | Built `@opencues/runtime` |
+| `~/.opencues/forks/gemini-cli/packages/cli/src/ui/opencues.ts` | OpenCues bootstrap (the `opencuesBootstrap.ts` source, copied in) |
+| `~/.opencues/forks/gemini-cli/packages/cli/src/ui/AppContainer.tsx` | **Patched in place** — mounts the runtime + subscribes to KeypressContext |
+| `~/.opencues/forks/gemini-cli/packages/cli/src/ui/components/InputPrompt.tsx` | **Patched in place** — publishes TextBuffer access + decorates per-visual-line rendering |
+| `~/.opencues/forks/gemini-cli/packages/cli/src/ui/components/Footer.tsx` | **Patched in place** — renders OpenCues tip alongside other footer indicators |
 | `~/.cues/` | User-level configs (see Configuration above) |
 | `/tmp/opencues.log` | Runtime debug log (created on first launch) |
 | `/tmp/opencues-install-gemini.log` | Installer log from the most recent install |

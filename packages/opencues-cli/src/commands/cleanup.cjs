@@ -51,8 +51,10 @@ const HOST_MATCHERS = {
     '/.opencues/vendor/tmux/bin/tmux -L opencues-',
   ],
   'claude-code': [
-    // Patched fork — claude-cues / claude-cues-150 / claude-cues-158.
-    'claude-code-cues/cli.js',
+    // Patched fork — new ~/.opencues/forks/claude-code layout + legacy
+    // ~/claude-code-cues* layout (both carry .../claude-code/cli.js).
+    'forks/claude-code.*/cli\\.js',
+    'claude-code-cues/cli.js',   // FORK-PATH-ALLOW: match a still-running legacy fork during transition
   ],
 };
 

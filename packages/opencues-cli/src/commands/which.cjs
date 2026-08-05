@@ -7,12 +7,16 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
+const { resolveForkDir } = require('../lib/fork-paths.cjs');
 const { fileLink, bold, dim, green, G } = require('../lib/style.cjs');
 
 module.exports = function which(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
 
   const HOME = os.homedir();
+  const ccFork = resolveForkDir('claude-code');
+  const ocFork = resolveForkDir('opencode');
+  const geminiFork = resolveForkDir('gemini-cli');
   const sections = [
     ['Configuration search paths (in priority order)', [
       ['$OPENCUES_HOME (env)',      process.env.OPENCUES_HOME || '(unset)'],
@@ -22,13 +26,13 @@ module.exports = function which(argv, ctx) {
                                      path.join(ctx.REPO_ROOT, 'defaults')],
     ]],
     ['CC install state (compact footprint — everything inside the fork)', [
-      ['Fork dir',                   path.join(HOME, 'claude-code-cues')],
-      ['Patched cli.js',             path.join(HOME, 'claude-code-cues', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js')],
-      ['Built core',                 path.join(HOME, 'claude-code-cues', 'node_modules', '@opencues', 'core')],
-      ['Built runtime',              path.join(HOME, 'claude-code-cues', 'node_modules', '@opencues', 'runtime')],
-      ['Statusline script',          path.join(HOME, 'claude-code-cues', '.opencues', 'statusline.sh')],
-      ['tweakcc clone',              path.join(HOME, 'claude-code-cues', '.opencues', 'tweakcc')],
-      ['tweakcc state + cli backup', path.join(HOME, 'claude-code-cues', '.opencues', 'patch-state')],
+      ['Fork dir',                   ccFork],
+      ['Patched cli.js',             path.join(ccFork, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js')],
+      ['Built core',                 path.join(ccFork, 'node_modules', '@opencues', 'core')],
+      ['Built runtime',              path.join(ccFork, 'node_modules', '@opencues', 'runtime')],
+      ['Statusline script',          path.join(ccFork, '.opencues', 'statusline.sh')],
+      ['tweakcc clone',              path.join(ccFork, '.opencues', 'tweakcc')],
+      ['tweakcc state + cli backup', path.join(ccFork, '.opencues', 'patch-state')],
     ]],
     ['Shared user-level (used by CC + OC + Gemini CLI)', [
       ['TTS script',                 path.join(HOME, '.cues', 'scripts', 'speak.sh')],
@@ -39,7 +43,7 @@ module.exports = function which(argv, ctx) {
       ['Cue master (frontmatter only — ignore list, project meta)',  path.join(HOME, '.cues', 'CUES.md')],
     ]],
     ['OC install state (per fork)', [
-      ['Default fork dir',           path.join(HOME, 'opencode-cues')],
+      ['Default fork dir',           ocFork],
       ['(actual fork install lives at <fork>/node_modules/@opencues/{core,runtime}/ + 3 patched .tsx files)', ''],
     ]],
     ['Chrome state', [
@@ -49,10 +53,10 @@ module.exports = function which(argv, ctx) {
       ['(other deploy targets are wherever you passed --target; chrome reload state lives in Chrome itself)', ''],
     ]],
     ['Gemini CLI install state (per fork)', [
-      ['Default fork dir',           path.join(HOME, 'gemini-cli-cues')],
-      ['Built core',                 path.join(HOME, 'gemini-cli-cues', 'node_modules', '@opencues', 'core')],
-      ['Built runtime',              path.join(HOME, 'gemini-cli-cues', 'node_modules', '@opencues', 'runtime')],
-      ['Bootstrap (copied)',         path.join(HOME, 'gemini-cli-cues', 'packages', 'cli', 'src', 'ui', 'opencues.ts')],
+      ['Default fork dir',           geminiFork],
+      ['Built core',                 path.join(geminiFork, 'node_modules', '@opencues', 'core')],
+      ['Built runtime',              path.join(geminiFork, 'node_modules', '@opencues', 'runtime')],
+      ['Bootstrap (copied)',         path.join(geminiFork, 'packages', 'cli', 'src', 'ui', 'opencues.ts')],
       ['(also: 4 patched source files in packages/cli/src/ui/ — AppContainer.tsx, components/InputPrompt.tsx, components/Footer.tsx, esbuild.config.js)', ''],
     ]],
     ['Runtime IPC files (created when CC/OC/Gemini actually runs)', [

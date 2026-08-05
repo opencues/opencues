@@ -43,7 +43,7 @@ The `_localCueMap` is rebuilt from scratch on every reload (not merged), so dele
 
 - **opencues-core module** — loaded once at process start via `require()`, not reloadable
 - **HTTPS connection pool** — `NodeHttpAdapter` is independent of config
-- **TTS speed/script path** — set at patch-generation time from `~/claude-code-cues/.cues/patch-state/config.json`
+- **TTS speed/script path** — set at patch-generation time from `~/.opencues/forks/claude-code/.cues/patch-state/config.json`
 - **Patch code** — the injected JavaScript in `cli.js` is fixed at setup time
 
 ---

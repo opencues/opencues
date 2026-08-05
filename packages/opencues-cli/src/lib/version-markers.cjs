@@ -21,6 +21,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
+const { resolveForkDir, supportDir, forkDir, enumerateForkDirs } = require('./fork-paths.cjs');
 
 const FILENAME = 'version.json';
 
@@ -227,11 +228,10 @@ function markerIsNewer(marker, source) {
 //
 // Returns: [{ host, root, drift }] for every root that exists on disk.
 function enumerateInstalledHosts(ctx) {
-  const HOME = os.homedir();
   const candidates = [
-    { host: 'claude-code',       root: path.join(HOME, 'claude-code-cues', '.cues') },
-    { host: 'opencode',          root: path.join(HOME, 'opencode-cues', '.opencues') },
-    { host: 'gemini-cli',        root: path.join(HOME, 'gemini-cli-cues', '.opencues') },
+    { host: 'claude-code',       root: supportDir('claude-code', resolveForkDir('claude-code')) },
+    { host: 'opencode',          root: supportDir('opencode', resolveForkDir('opencode')) },
+    { host: 'gemini-cli',        root: supportDir('gemini-cli', resolveForkDir('gemini-cli')) },
     { host: 'shell',             root: path.join(ctx.REPO_ROOT, 'integrations/shell/node_modules/@opencues') },
     { host: 'chrome',            root: path.join(ctx.REPO_ROOT, 'integrations/chrome/dist') },
   ];
@@ -247,23 +247,15 @@ function enumerateInstalledHosts(ctx) {
   return results;
 }
 
-// Detect "dev relic" CC fork dirs — anything matching ~/claude-code-cues*
-// other than the canonical ~/claude-code-cues/. These are leftovers
-// from when we maintained parallel forks per-shape; the product is now
-// single-fork (upgrade in place). Surface these so doctor can suggest
-// the user delete them.
+// Detect "dev relic" / stale CC fork dirs — every CC fork on disk (across the
+// new ~/.opencues/forks/ layout AND the legacy ~/claude-code-cues* layout)
+// other than the canonical new-location fork. Two populations: per-shape dev
+// forks (`-150`, `-170`) and — post-consolidation — a leftover legacy
+// ~/claude-code-cues from before the move. doctor surfaces these so the user
+// can delete them (the legacy one after a reinstall lands the new fork).
 function detectExtraCCForks() {
-  const HOME = os.homedir();
-  const out = [];
-  try {
-    for (const entry of fs.readdirSync(HOME, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      if (!entry.name.startsWith('claude-code-cues')) continue;
-      if (entry.name === 'claude-code-cues') continue; // the canonical one
-      out.push(path.join(HOME, entry.name));
-    }
-  } catch { /* HOME unreadable — silent */ }
-  return out;
+  const canonical = forkDir('claude-code');
+  return enumerateForkDirs('claude-code').filter((dir) => dir !== canonical);
 }
 
 // Enumerate EVERY CC fork on disk that's a legit install (canonical +
@@ -283,16 +275,8 @@ function detectExtraCCForks() {
 // for genuinely orphaned dirs (no CC binary at all); anything with a
 // real binary is rebuilt instead.
 function enumerateCCForks() {
-  const HOME = os.homedir();
   const out = [];
-  let entries;
-  try {
-    entries = fs.readdirSync(HOME, { withFileTypes: true });
-  } catch { return out; }
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    if (!entry.name.startsWith('claude-code-cues')) continue;
-    const root = path.join(HOME, entry.name);
+  for (const root of enumerateForkDirs('claude-code')) {
     const cliJs = path.join(root, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
     const nativeBin = path.join(root, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
     if (fs.existsSync(cliJs)) {
@@ -303,8 +287,9 @@ function enumerateCCForks() {
     // Dirs with no binary at all are skipped here — detectExtraCCForks
     // covers the "orphan dir to delete" surface.
   }
-  // Canonical first if present; rest sorted for stable output.
-  const canonical = out.find(f => f.root === path.join(HOME, 'claude-code-cues'));
+  // Canonical (new location) first if present; rest sorted for stable output.
+  const canonicalRoot = forkDir('claude-code');
+  const canonical = out.find(f => f.root === canonicalRoot);
   const others = out.filter(f => f !== canonical).sort((a, b) => a.root.localeCompare(b.root));
   return canonical ? [canonical, ...others] : others;
 }

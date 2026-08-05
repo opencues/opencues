@@ -480,11 +480,27 @@ export class SentenceCueSource implements CueSource {
       // have to Ctrl+Alt+Up to read a heads-up. Extract the flag the LLM
       // appended (`… — heads up: <conflict>`) and surface it as the cueTip; the
       // status bar renders it passively when the cursor is on the sentence.
-      let tip: string = this.sourceConfig.name;
+      // cueTip is an ADVISORY (a notification) ONLY. A calendar-conflict cue
+      // extracts the LLM's appended heads-up as a `⚠` tip. A plain rewrite cue
+      // (e.g. more-formal) is a cycleable IMPROVEMENT, not a notification —
+      // leave cueTip undefined so its inline note renders emoji-free as
+      // `N | <label>` (inlineNoteText's improvement branch, e.g.
+      // "Improve formality"). Defaulting to the cue NAME here made every
+      // rewrite cue read as a `⚠ N | <name>` notification — the bug.
+      let tip: string | undefined;
       if (this.sourceConfig.usesCalendarContext) {
         const m = alts[0]?.match(/heads up:\s*(.+)$/i) ?? alts[0]?.match(/—\s*(.+)$/);
         if (m && m[1]) tip = `⚠ ${m[1].trim().replace(/[.\s]+$/, '')}`;
       }
+      // A calendar-conflict cue is a pure ADVISORY (⚠ heads-up) — passive, NOT
+      // cycleable. Its `alts[0]` is the sentence with the heads-up appended;
+      // cycling into it would splice the advisory INTO the user's message.
+      // Emit only the original sentence so it shows the ⚠ note with no 2nd
+      // state. A plain rewrite cue (more-formal) keeps the [original, ...rewrites]
+      // shape so Ctrl+Alt+Up swaps in each rewrite.
+      const alternatives = this.sourceConfig.usesCalendarContext
+        ? [span.text]
+        : [span.text, ...alts];
       results.push({
         wordIndex: span.firstWordIndex,
         word: context.words[span.firstWordIndex] ?? span.text.split(/\s+/)[0],
@@ -492,7 +508,7 @@ export class SentenceCueSource implements CueSource {
         // swaps the sentence; Down to alt[0] restores. Same shape
         // TransformBlank emits today; resolver's multi-word substitution
         // branch handles both.
-        alternatives: [span.text, ...alts],
+        alternatives,
         source: this.id,
         priority: this.priority,
         spanStart: span.start,

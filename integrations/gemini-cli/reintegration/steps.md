@@ -135,7 +135,7 @@ Statusline, TTS, AgentRewrite, etc.) get imported verbatim from
 
 ## Fork strategy
 
-**Hybrid** (same as CC + OC): the fork lives at `$HOME/gemini-cli-cues/`
+**Hybrid** (same as CC + OC): the fork lives at `$HOME/.opencues/forks/gemini-cli/`
 (gitignored from the user's perspective), our patches live at
 `integrations/gemini-cli/patches/`. Setup script clones + applies.
 

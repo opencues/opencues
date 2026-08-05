@@ -41,7 +41,7 @@ What the installer does, in order:
 | 1 | Cross-platform preflight — detect missing tools, print warnings | none unless TTY |
 | 2 | (If TTY) offer to `sudo apt install …` any system tools you skipped | optional [Y/n] |
 | 3 | `seed-configs --silent` — copies defaults into `~/.cues/`, compiles WSL `.exe` shims | none |
-| 4 | `npm install @anthropic-ai/claude-code` pinned (2.1.110 / 2.1.150) into `~/claude-code-cues/` | none |
+| 4 | `npm install @anthropic-ai/claude-code` pinned (2.1.110 / 2.1.150) into `~/.opencues/forks/claude-code/` | none |
 | 5 | Clones `tweakcc` into `<fork>/.cues/tweakcc/` | none |
 | 6 | Builds `@opencues/{core,runtime}` + installs into fork | none |
 | 7 | Installs `statusline.sh` into `<fork>/.cues/` | none |
@@ -57,7 +57,7 @@ claude-cues   # launch the patched fork; native `claude` untouched
 
 **Time**: ~1m 5s warm, ~3-4 min cold.
 
-**Seams**: none. The fork is fully contained at `~/claude-code-cues/`; uninstall is `rm -rf` of that dir plus a tweakcc revert.
+**Seams**: none. The fork is fully contained at `~/.opencues/forks/claude-code/`; uninstall is `rm -rf` of that dir plus a tweakcc revert.
 
 ---
 
@@ -72,7 +72,7 @@ opencues install opencode
 | 1 | Preflight — detects missing system tools + missing **bun** | none unless TTY |
 | 2 | (If TTY + bun missing) offer to install bun into `~/.opencues/vendor/bun/` | optional [Y/n] |
 | 3 | `seed-configs --silent` | none |
-| 4 | `git clone sst/opencode` pinned SHA → `~/opencode-cues/` | none |
+| 4 | `git clone sst/opencode` pinned SHA → `~/.opencues/forks/opencode/` | none |
 | 5 | `bun install` inside the fork (uses vendored bun if installed) | none |
 | 6 | Builds `@opencues/{core,runtime}` + installs into fork | none |
 | 7 | Patches 4 TSX files via anchor-based replace | none |
@@ -86,7 +86,7 @@ opencues run opencode
 
 **Time**: ~5 min cold (mostly `git clone` + `bun install`), <30s warm re-runs.
 
-**Seams**: none — bun's contained-install path closes the only previous seam. The `~/opencode-cues/` fork itself stays after `opencues uninstall opencode` (it's your checkout of an external repo — same model as cloning any source repo to hack on).
+**Seams**: none — bun's contained-install path closes the only previous seam. The `~/.opencues/forks/opencode/` fork itself stays after `opencues uninstall opencode` (it's your checkout of an external repo — same model as cloning any source repo to hack on).
 
 ---
 
@@ -101,7 +101,7 @@ opencues install gemini-cli
 | 1 | Preflight | none unless TTY |
 | 2 | (If TTY) sudo-install offer for any system gaps | optional [Y/n] |
 | 3 | `seed-configs --silent` | none |
-| 4 | `git clone google-gemini/gemini-cli` pinned SHA → `~/gemini-cli-cues/` | none |
+| 4 | `git clone google-gemini/gemini-cli` pinned SHA → `~/.opencues/forks/gemini-cli/` | none |
 | 5 | `npm install` inside the fork (ships with Node — no separate dep) | none |
 | 6 | Builds + installs `@opencues/{core,runtime}` into fork | none |
 | 7 | Patches 3 TSX + esbuild config via anchor-based replace | none |

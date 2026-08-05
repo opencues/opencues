@@ -148,10 +148,19 @@ describe('CLI inspection commands — rename-rot regression suite', () => {
 
   it('which: configuration search paths land on ~/.cues/, not ~/.opencues/', () => {
     which([], ctx);
-    const out = logs.join('\n');
+    const out = stripAnsi(logs.join('\n'));
     expect(out).toContain(path.join(tmpHome, '.cues'));
-    // Pre-fix: also reported ~/.opencues/ (legacy stub, false-positive).
-    expect(out).not.toContain(path.join(tmpHome, '.opencues'));
+    // The rename-rot bug this guards is CONFIG resolution pointing at
+    // ~/.opencues/ instead of ~/.cues/. Since the July 2026 fork
+    // consolidation, ~/.opencues/forks/ IS the legitimate fork/deploy home,
+    // so the install-state sections rightly print ~/.opencues/forks/…. Scope
+    // the negative to the "Configuration search paths" section, which must
+    // still be pure ~/.cues/.
+    const configSection = out.slice(
+      out.indexOf('Configuration search paths'),
+      out.indexOf('CC install state'),
+    );
+    expect(configSection).not.toContain(path.join(tmpHome, '.opencues'));
     // Master-config row points at canonical OPENCUES.md.
     expect(out).toContain('OPENCUES.md');
   });
@@ -161,9 +170,17 @@ describe('CLI inspection commands — rename-rot regression suite', () => {
   it('doctor: Configs section uses ~/.cues/, not ~/.opencues/', () => {
     process.chdir(tmpHome); // doctor checks process.cwd() too
     doctor([], ctx);
-    const out = logs.join('\n');
+    const out = stripAnsi(logs.join('\n'));
     expect(out).toContain(path.join(tmpHome, '.cues'));
-    expect(out).not.toContain(path.join(tmpHome, '.opencues'));
+    // Fork consolidation (July 2026) moved host forks into ~/.opencues/forks/,
+    // so the per-host install sections legitimately print ~/.opencues/…. The
+    // guard is that the "Configs" section (config search paths) stays on
+    // ~/.cues/ — scope the negative to it, up to the first per-host section.
+    const configsSection = out.slice(
+      out.indexOf('Configs'),
+      out.indexOf('Claude Code (cc)'),
+    );
+    expect(configsSection).not.toContain(path.join(tmpHome, '.opencues'));
   });
 
   // ── new: scaffolds with canonical CUE.md / BLANK.md filenames ──────

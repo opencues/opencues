@@ -117,6 +117,10 @@ export interface ResolverOptions {
    *  weather). Chrome passes a service-worker-routed fetch (page-CSP blocks a
    *  content-script one); native hosts omit it → the provider uses global fetch. */
   readonly worldDataFetch?: (url: string) => Promise<{ ok: boolean; json: () => Promise<unknown> }>;
+  /** Tier 5d — live page-location getter for page-scoped community rules
+   *  (subreddit rules). Chrome passes a `location` getter; native hosts omit
+   *  (no page) → the tier stays silent. */
+  readonly pageLocation?: () => { origin: string; pathname: string } | null;
   /** Same â inject the resolver build directly (mostly for testing). */
   readonly resolverFactory?: (cuesConfig: unknown, blanksConfig: unknown, opts: unknown) => unknown;
   /**
@@ -845,11 +849,34 @@ export class Resolver {
       // Deliberate `!== 'off'` polarity: undo-mode defaults ON even on
       // installs whose OPENCUES.md pre-dates the scalar (no line at all).
       enableUndoActions: settings.get('undo-mode') !== 'off',
-      enableSentenceCues: settings.get('sentence-cues-mode') === 'on',
-      enableContradictionCues: settings.get('contradiction-cues-mode') === 'on',
+      // ON by default (`!== 'off'`): sentence cues are passive + advisory like
+      // contradiction. The only shipped non-calendar sentence cue is
+      // `more-formal`, which is allow-listed (`on-site:`) to LinkedIn + web
+      // email — so on-by-default surfaces formality exactly where it's wanted
+      // and nowhere casual (it can't leak onto reddit/forums/chat). Only an
+      // explicit `sentence-cues-mode: off` disables the class.
+      enableSentenceCues: settings.get('sentence-cues-mode') !== 'off',
+      // Auto-imply the calendar-conflict sentence-cue from calendar-context-mode
+      // (same polarity as the resolve-time calendarContext gate below): turning
+      // on calendar reasoning surfaces conflict warnings without also flipping
+      // the separately-named sentence-cues-mode. The cue self-inerts with no
+      // feed, so this is a no-op until the user adds a calendar.
+      enableCalendarContext: this.configLoader.opencuesState.calendarContextMode !== 'off',
+      // ON by default (`!== 'off'`): a contradiction cue is passive and
+      // advisory — it never touches the buffer without a keystroke — so it
+      // belongs on out of the box like spelling, not behind a toggle a user
+      // has to discover. Only an explicit `contradiction-cues-mode: off`
+      // disables it. (Absent OR on → enabled.) Cost: one cues-bucket LLM
+      // parse per settled sentence, cheap on cerebras's prefix cache.
+      enableContradictionCues: settings.get('contradiction-cues-mode') !== 'off',
+      // Session cues stay OPT-IN (`=== 'on'`, off by default): they run an
+      // LLM producer over the session transcript + a per-tick matcher — the
+      // heavier, less-universal features the user deliberately kept off the
+      // on-by-default set.
       enableSessionContradiction: settings.get('session-contradiction-mode') === 'on',
       enableAskCues: settings.get('ask-cues-mode') === 'on',
       worldDataFetch: this.options.worldDataFetch,
+      pageLocation: this.options.pageLocation,
       weatherLocation: settings.get('weather-location'),
       enableWordCues: settings.get('word-cues-mode') === 'on',
       // `max-thinking` (default on). Threaded into every LLM source's
@@ -2106,7 +2133,14 @@ export class Resolver {
       // user's prose was rewritten in the background without any
       // keystroke. Sentence-cues are CUES, not agents; the user must
       // explicitly cycle to apply.
-      if (isSentenceCue && r.alternatives.length >= 2 && isMultiWordSpan) {
+      // `>= 1`, not `>= 2`: a PASSIVE ADVISORY sentence-cue (calendar conflict,
+      // a contradiction with no in-place fix) emits alternatives = [original]
+      // alone — it carries its message in the cueTip, nothing to cycle to. It
+      // still must register here with its full char span so the note + dim
+      // cover the WHOLE flagged sentence; failing this gate dropped it to the
+      // single-word word-cue path (only the first word painted). Cycling a
+      // 1-alt def is a no-op (applyAltCycle bails), so it stays passive.
+      if (isSentenceCue && r.alternatives.length >= 1 && isMultiWordSpan) {
         const originalSentence = r.alternatives[0];
         const liveText = this.adapter.getText();
         const start = r.spanStart!;

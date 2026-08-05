@@ -1,6 +1,6 @@
 {
   "name": "@opencues/gemini-cli",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "license": "Apache-2.0",
   "private": true,
   "description": "OpenCues for Gemini CLI — native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",

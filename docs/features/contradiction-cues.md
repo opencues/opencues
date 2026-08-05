@@ -15,7 +15,11 @@ never invents the fix, so a cue can't hallucinate a false contradiction
 from thin air — it can only flag a claim the arithmetic/clock/cache
 actually disproves.
 
-**OFF by default.** Enable with `contradiction-cues-mode: on`.
+**ON by default.** Only an explicit `contradiction-cues-mode: off` turns it
+off — a contradiction cue is passive and advisory (it never rewrites your
+buffer), so it belongs on out of the box. Tier 0 works with no network; the
+higher tiers stay silent until their world-data cache is wired, so having the
+mode on never forces a network call.
 
 ## The tiers
 
@@ -32,6 +36,7 @@ otherwise — so turning the mode on never *requires* a network call.
 | **5** | an outdoor, weather-dependent plan vs the forecast | open-meteo precipitation cache | "picnic in the park on Saturday" when rain is forecast |
 | **5b** | a London transit plan vs live disruption | TfL line-status | "let's take the Jubilee line tomorrow" during a Jubilee suspension |
 | **5c** | a wildly-underestimated journey time | photon geocode + distance | "5 minute walk from East Finchley to Muswell Hill" |
+| **5d** | a draft that conflicts with the subreddit's posted rules (chrome, on reddit) | the subreddit's own `about/rules.json`, fetched same-origin | drafting an off-topic post on r/ClaudeAI ("Be relevant") |
 
 Tier 0 is pure date/number arithmetic — instant, private, no network.
 The higher tiers each make one live call through a **hardcoded** egress
@@ -39,12 +44,12 @@ host (GOV.UK / open-meteo / TfL / komoot), never an LLM-chosen one, and
 the value sent outward is grounded in what you actually typed (see
 Privacy).
 
-## Turn it on
+## Turn it off
 
-In `~/.cues/OPENCUES.md`:
+It's on by default. To disable, in `~/.cues/OPENCUES.md`:
 
 ```yaml
-contradiction-cues-mode: on
+contradiction-cues-mode: off
 ```
 
 or cycle it in-editor via `opencues settings _`. It hot-reloads within
@@ -60,12 +65,16 @@ tier, that tier simply never fires — Tier 0 keeps working regardless.
 A contradiction cue is a **sentence-cue** (priority 87 — it sits just
 above `more-formal` at 85, so a contradiction on a sentence wins over a
 formality rewrite of the same span). It's **passive**: the flagged
-sentence gets a cue tip on the status line describing the mismatch and,
-where meaningful, offering the corrected value as an alternative. With your
-caret on the flagged sentence, swap it in with a bare **`_`** (the primary,
-discoverable gesture) or `Ctrl+Alt+↑` (the power path). Nothing is spliced into
-your buffer until you press the key. A correct sentence produces **no** cue — silence is the
-precision rule; a wrong cue is worse than no cue.
+sentence gets a `⚠` note (inline where the host can paint it, else on the
+status line) describing the mismatch. When the runtime can compute a fix
+(a weekday-date or bill-split), the note is cycleable — `⚠ 1 | <correction>`
+— and with your caret on the sentence you swap it in with a bare **`_`** (the
+primary, discoverable gesture) or `Ctrl+Alt+↑` (the power path). When the tier
+can only render a verdict (weather / journey / transit / subreddit rules), the
+note is a plain advisory — `⚠ <message>`, nothing to cycle to. Either way
+nothing is spliced into your buffer until you press the key. A correct sentence
+produces **no** cue — silence is the precision rule; a wrong cue is worse than
+no cue.
 
 ## Privacy — what reaches the LLM, what leaves the machine
 
@@ -93,6 +102,14 @@ precision rule; a wrong cue is worse than no cue.
 - **Region.** Tier 0.5 (GOV.UK) and Tier 5b (TfL) are UK/London-specific
   today; Tier 0 and Tier 5 are location-agnostic (weather keys off your
   system-timezone city).
+- **Tier 5d is the one LLM-judged tier.** "Does this draft fit the
+  subreddit's rules" has no arithmetic to compute, so the conflict call
+  is the model's — a declared exception to "data, never generation".
+  The tip text itself is still data (the cached rule's number + name,
+  fetched from the subreddit's own rules endpoint), a hallucinated rule
+  number is dropped, and the tip is phrased as "may conflict with…".
+  Chrome-only (it needs a page to know the community); native hosts
+  never fire it.
 - The `docs/architecture/contradiction-cues.md` companion covers the
   source class, the parse→verify split, the tier caches, and the
   grounding invariants — read it before touching

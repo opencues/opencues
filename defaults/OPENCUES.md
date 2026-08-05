@@ -121,6 +121,15 @@ blank-context-mode: safe
 # See packages/opencues-core/src/sources/build-sources.ts for what each gates.
 word-cues-mode: on
 transform-blank-mode: on
+# contradiction-cues-mode — ON by default. Passive fact-check cues (weekday-date
+# mismatch, split-the-bill math, and data-wired tiers) that flag a wrong claim
+# you typed; they never edit the buffer. Set to `off` to disable.
+contradiction-cues-mode: on
+# sentence-cues-mode — ON by default. Whole-sentence cues (e.g. more-formal,
+# which is allow-listed to LinkedIn + web email via on-site). Each cue self-
+# scopes, so nothing fires on casual surfaces it opts out of. Set to `off` to
+# disable the class.
+sentence-cues-mode: on
 
 # integration-weave-mode — let a blank with `integration-weave: true` weave
 # its `integration:` output into the surrounding prose with one LLM call,
@@ -248,7 +257,7 @@ defaults:
 
 ```yaml
 tts-rate: 2
-tts-script: ~/claude-code-cues/.cues/scripts/speak.sh
+tts-script: ~/.opencues/forks/claude-code/.cues/scripts/speak.sh
 ```
 
 ---

@@ -6,6 +6,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { resolveForkDir } = require('../lib/fork-paths.cjs');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const compatLib = require('../lib/compat.cjs');
@@ -463,7 +464,7 @@ module.exports = async function doctor(argv, ctx) {
   }
 
   // ── CC install ────────────────────────────────────────────────────────
-  const ccFork = path.join(HOME, 'claude-code-cues');
+  const ccFork = resolveForkDir('claude-code');
   const ccSupport = path.join(ccFork, '.cues');
   const ccCore = path.join(ccFork, 'node_modules/@opencues/core');
   const ccRuntime = path.join(ccFork, 'node_modules/@opencues/runtime');
@@ -577,7 +578,7 @@ module.exports = async function doctor(argv, ctx) {
   // (no CC binary anywhere) as info ("safe to remove").
   try {
     const { enumerateCCForks, detectExtraCCForks, checkDrift } = require('../lib/version-markers.cjs');
-    const canonicalCC = path.join(HOME, 'claude-code-cues');
+    const canonicalCC = resolveForkDir('claude-code');
     const allForks = enumerateCCForks();
     // Forks with a real CC binary → drift check.
     for (const fork of allForks) {
@@ -631,7 +632,7 @@ module.exports = async function doctor(argv, ctx) {
   {
     const s = section('OpenCode (oc)', 'patched OpenCode fork + installed runtime');
     reportPinStatus(s, 'opencode', ctx, HOME, findings);
-    const ocFork = path.join(HOME, 'opencode-cues');
+    const ocFork = resolveForkDir('opencode');
     if (fs.existsSync(ocFork)) {
       s.ok(`fork at ${ocFork}`, true);
       s.ok(`fork/node_modules/@opencues/runtime`, fs.existsSync(path.join(ocFork, 'node_modules/@opencues/runtime')));
@@ -813,7 +814,7 @@ module.exports = async function doctor(argv, ctx) {
   {
     const s = section('Gemini CLI', 'patched Gemini CLI fork + installed runtime');
     reportPinStatus(s, 'gemini-cli', ctx, HOME, findings);
-    const geminiFork = path.join(HOME, 'gemini-cli-cues');
+    const geminiFork = resolveForkDir('gemini-cli');
     if (fs.existsSync(geminiFork)) {
       s.ok(`fork at ${geminiFork}`, true);
       s.ok(`fork/node_modules/@opencues/runtime`, fs.existsSync(path.join(geminiFork, 'node_modules/@opencues/runtime')));

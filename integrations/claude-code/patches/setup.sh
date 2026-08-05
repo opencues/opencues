@@ -166,7 +166,7 @@ if [ -n "${OPENCUES_CC_TARGET:-}" ]; then
   esac
   unset _TARGET_BASENAME
 else
-  CC_FORK_DIR="$HOME/claude-code-cues"
+  CC_FORK_DIR="$HOME/.opencues/forks/claude-code"
 fi
 # Resolve the canonical CC pin from compat.json (single source of truth).
 # Falls back gracefully if compat.json is unreadable so a one-off setup.sh
@@ -506,10 +506,16 @@ sedi "s|^OPENCUES_CLI_BAKED=.*|OPENCUES_CLI_BAKED=\"node $REPO_ROOT/packages/ope
 # write, and refusing to do it would leave the user's statusline
 # broken. Same sed-based logic the legacy install used.
 SETTINGS_JSON="$HOME/.claude/settings.json"
-if [ -f "$SETTINGS_JSON" ] && grep -qE "highlight-statusline\.sh|\.claude/opencues/statusline\.sh" "$SETTINGS_JSON" 2>/dev/null; then
+# Also migrate a statusLine pointing at a LEGACY-fork statusline path
+# ($HOME/claude-code-cues*/.cues/statusline.sh) — after the fork relocation to
+# ~/.opencues/forks/, that path is deleted, so a migrating user's statusline
+# would break. Rewriting it is the same corrective in-place edit (a stale
+# opencues path that moved), not a fresh write.
+if [ -f "$SETTINGS_JSON" ] && grep -qE "highlight-statusline\.sh|\.claude/opencues/statusline\.sh|claude-code-cues[^\"]*statusline\.sh" "$SETTINGS_JSON" 2>/dev/null; then
   cp "$SETTINGS_JSON" "$SETTINGS_JSON.bak.cues-statusline"
   sedi "s|$HOME/.claude/highlight-statusline.sh|$OC_INSTALL_ROOT/statusline.sh|g" "$SETTINGS_JSON"
   sedi "s|$HOME/.claude/opencues/statusline.sh|$OC_INSTALL_ROOT/statusline.sh|g" "$SETTINGS_JSON"
+  sedi "s|$HOME/claude-code-cues[^\"]*statusline.sh|$OC_INSTALL_ROOT/statusline.sh|g" "$SETTINGS_JSON"
   echo "Migrated stale statusLine.command in $SETTINGS_JSON → $OC_INSTALL_ROOT/statusline.sh"
 fi
 end_step

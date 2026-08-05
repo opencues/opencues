@@ -12,7 +12,7 @@
 
 import type { HostAdapter, KeyEvent, ProcessHandle, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
-import { DynDefs, inlineNoteText, type WordDef } from '../state/dyn-defs';
+import { DynDefs, inlineNoteText, markCycledEver, type WordDef } from '../state/dyn-defs';
 import type { ConfigLoader, BlankEntry } from './config-loader';
 import { splitWords } from './navigation';
 import { resolveNavKeymap } from './nav-keymap';
@@ -928,6 +928,10 @@ export class Cycling {
   private applyAltCycle(event: KeyEvent, def: WordDef, direction: 1 | -1, wordIndex: number, path: 'static-alts' | 'list-blank'): boolean {
     const len = def.alternatives.length;
     if (len <= 1) return false;
+
+    // The user is cycling a note — retire the `(underscore to cycle)` hint for
+    // the rest of the session (they've learned the gesture).
+    markCycledEver();
 
     // Compute the char range to REPLACE from live word positions, not
     // from def.spanStart/spanEnd — those can drift across multi-word

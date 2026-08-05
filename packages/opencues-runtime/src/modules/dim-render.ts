@@ -10,7 +10,7 @@
 import type { HostAdapter, InlineNote, Range, RenderContext, RenderDirectives, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs, WordDef } from '../state/dyn-defs';
-import { inlineNoteText } from '../state/dyn-defs';
+import { inlineNoteText, hasCycledEver } from '../state/dyn-defs';
 import type { ConfigLoader } from './config-loader';
 import type { SpanFillState } from '../state/span-fill';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
@@ -371,7 +371,12 @@ export class DimRender {
         const s = toCtx ? toCtx.start(def.spanStart) : def.spanStart;
         const e = toCtx ? toCtx.end(def.spanEnd) : def.spanEnd;
         if (ctx.cursor >= s && ctx.cursor <= e) {
-          inlineNote = { spanStart: s, spanEnd: e, text: noteText };
+          // The `(underscore to cycle)` affordance rides until the user has
+          // cycled any note once this session — and only on a CYCLEABLE def
+          // (>1 alternative); a pure advisory (calendar conflict) has nothing
+          // to cycle, so no hint.
+          const cycleable = def.alternatives.length > 1;
+          inlineNote = { spanStart: s, spanEnd: e, text: noteText, hint: (cycleable && !hasCycledEver()) ? '(underscore to cycle)' : undefined };
           // Auto-select: the note-bearing span the caret is in promotes from dim
           // to the active highlight — the "you're on this, `_` engages it" state,
           // for cues AND transform/fluid blanks alike (consistent affordance).
@@ -387,21 +392,29 @@ export class DimRender {
       // options; for selector-satellite, the current setting name (its value is
       // already in the buffer, so this labels WHAT the span controls). No
       // auto-select here — these carry their own highlight/dim model.
+      // List/script blank (volume, brightness, weather, …) — a cycleable
+      // IMPROVEMENT. Same model as transform/spelling: `N | dest | dest`, the
+      // values you can still cycle TO (rotating with currentAltIndex, wrapping,
+      // excluding the one in the buffer). No emoji, no label — the current value
+      // is already visible in the field. Values are short, so no snippeting.
       const noteFromSpanText = (
-        tip: string | undefined, alts: readonly string[],
+        alts: readonly string[], currentAltIndex: number,
       ): string | undefined => {
-        if (tip) return tip;
-        const sug = alts.slice(1).filter(Boolean);
-        return sug.length > 0 ? sug.slice(0, 3).join(' · ') : undefined;
+        const list = alts.filter(Boolean);
+        if (list.length <= 1) return undefined;
+        const n = Math.max(1, list.length - currentAltIndex);
+        const dests: string[] = [];
+        for (let i = 1; i < list.length; i++) dests.push(list[(currentAltIndex + i) % list.length]);
+        return dests.length > 0 ? `${n} | ${dests.slice(0, 3).join(' | ')}` : undefined;
       };
       if (!inlineNote && span) {
         const sw = words[span.index];
         const ew = words[span.index + spanLen - 1];
-        const noteText = noteFromSpanText(span.tip, span.alternatives);
+        const noteText = noteFromSpanText(span.alternatives, span.currentAltIndex);
         if (sw && ew && noteText) {
           const s = toCtx ? toCtx.start(sw.start) : sw.start;
           const e = toCtx ? toCtx.end(ew.end) : ew.end;
-          if (ctx.cursor >= s && ctx.cursor <= e) inlineNote = { spanStart: s, spanEnd: e, text: noteText };
+          if (ctx.cursor >= s && ctx.cursor <= e) inlineNote = { spanStart: s, spanEnd: e, text: noteText, hint: hasCycledEver() ? undefined : '(underscore to cycle)' };
         }
       }
       // Selector-satellite: the note is CURSOR-POSITION-AWARE, exactly like the

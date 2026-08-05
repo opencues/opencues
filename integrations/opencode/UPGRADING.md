@@ -10,7 +10,7 @@ future bump should follow.
 - A clean worktree of the OpenCues repo. Don't do this on a branch with
   unrelated work-in-progress; the fork-side state changes are easier to
   reason about in isolation.
-- The OpenCode fork at `~/opencode-cues/` (or wherever `--target` points).
+- The OpenCode fork at `~/.opencues/forks/opencode/` (or wherever `--target` points).
   If it doesn't exist, install will clone fresh and most of the dance
   below collapses.
 
@@ -35,7 +35,7 @@ The integration patches four files in the fork. Before bumping, confirm
 upstream hasn't moved or rewritten them:
 
 ```bash
-cd ~/opencode-cues
+cd ~/.opencues/forks/opencode
 git fetch origin <new-sha>
 git diff <old-sha>..<new-sha> -- \
   packages/opencode/src/cli/cmd/tui/app.tsx \
@@ -91,7 +91,7 @@ edits will block step 5's `git checkout`.
 ### 5. Move the fork to the new SHA
 
 ```bash
-cd ~/opencode-cues
+cd ~/.opencues/forks/opencode
 git fetch origin <new-sha>
 git -c advice.detachedHead=false checkout <new-sha>
 # bun install runs automatically as part of step 6 — no need here
@@ -112,7 +112,7 @@ new SHA), build core + runtime, copy artefacts into the fork's
 `node_modules/`, apply patches. If any step fails:
 
 - **`bun install` fails:** upstream may have added a dep that conflicts
-  with the bun version on PATH. Check `~/opencode-cues/package.json` for
+  with the bun version on PATH. Check `~/.opencues/forks/opencode/package.json` for
   any `engines` constraints or new build-time tools. The runtime side is
   not at fault.
 - **Build fails with `Cannot find module '@opencues/core'`:** core's

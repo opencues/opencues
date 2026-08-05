@@ -28,20 +28,20 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const { enumerateForkDirs, supportDir } = require('./fork-paths.cjs');
 
 // Resolve the absolute path to the statusline.sh script we want to
-// register. Walks the standard fork-install locations. Returns null
-// if no CC fork is installed (caller should tell the user to install
-// first).
+// register. Walks every CC fork on disk (new ~/.opencues/forks/ layout +
+// legacy ~/claude-code-cues*), returning the first fork's statusline.sh.
+// Returns null if no CC fork is installed (caller should tell the user to
+// install first).
 function resolveStatuslineScript() {
   const HOME = os.homedir();
-  const candidates = [
-    path.join(HOME, 'claude-code-cues', '.cues', 'statusline.sh'),
-    path.join(HOME, 'claude-code-cues-150', '.cues', 'statusline.sh'),
-    // Legacy layout — kept so users on pre-compact-footprint installs
-    // can still enable. Mirror the rules in setup.sh.
-    path.join(HOME, '.claude', 'opencues', 'statusline.sh'),
-  ];
+  const candidates = enumerateForkDirs('claude-code').map((dir) =>
+    path.join(supportDir('claude-code', dir), 'statusline.sh'),
+  );
+  // Pre-compact-footprint legacy layout — mirror the rules in setup.sh.
+  candidates.push(path.join(HOME, '.claude', 'opencues', 'statusline.sh'));
   for (const c of candidates) {
     if (fs.existsSync(c)) return c;
   }
@@ -50,12 +50,13 @@ function resolveStatuslineScript() {
 
 // Returns true if `cmd` looks like any opencues statusline path —
 // current install root OR historic layouts. Used to recognise our
-// own writes without false-positives on user customisations.
+// own writes without false-positives on user customisations. Covers both
+// the new fork layout (`~/.opencues/forks/claude-code/.cues/statusline.sh`)
+// and the legacy one (`~/claude-code-cues/.cues/statusline.sh`) via the
+// `/.cues/statusline.sh` shape both share.
 function isOpenCuesPath(cmd) {
   if (typeof cmd !== 'string') return false;
-  return cmd.includes('claude-code-cues') ||
-         cmd.includes('claude-code-cues-150') ||
-         cmd.includes('.claude/highlight-statusline.sh') ||
+  return cmd.includes('.claude/highlight-statusline.sh') ||
          cmd.includes('.claude/opencues/statusline.sh') ||
          (cmd.endsWith('/statusline.sh') && cmd.includes('/.cues/'));
 }

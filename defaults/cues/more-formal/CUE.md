@@ -8,6 +8,21 @@ description: Sentence-scope cue — rewrites each sentence to be more formal
 # "make it more formal" is nonsensical. Runs everywhere else (multi-line
 # editors, comment boxes) unchanged. See on-field / not-on-field in the spec.
 not-on-field: single-line
+# Host scoping — the coding/agent CLIs (Claude Code, Gemini CLI, OpenCode) are
+# for terse instructions to a model, not prose you'd want formalized; a
+# background "make this more formal" rewrite is noise there. Keep this cue on
+# the prose-first surfaces (chrome text fields, the shell editor) and off the
+# CLI hosts. The calendar-conflict cue (a different CUE.md) is unaffected.
+not-on-host: claude-code, gemini-cli, opencode
+# Site scoping (chrome) — formality is a PROFESSIONAL-WRITING cue, so allow-list
+# it to the surfaces where "make this more formal" is actually wanted: LinkedIn
+# and web email. Everywhere else on the web (reddit, forums, chat, casual
+# comment boxes) it stays off — those registers are deliberately casual and a
+# background formalizing rewrite reads as noise. An allow-list (not a per-site
+# deny-list) so new casual sites are off by default; extend this list to add a
+# professional surface. Non-chrome hosts have no URL, so on-site doesn't gate
+# them (shell keeps formality; the CLI hosts are excluded by not-on-host above).
+on-site: [linkedin.com, *.linkedin.com, mail.google.com, outlook.live.com, outlook.office.com, outlook.office365.com, mail.proton.me, mail.yahoo.com]
 ---
 
 Rewrite each sentence in the buffer to be MORE FORMAL. Preserve

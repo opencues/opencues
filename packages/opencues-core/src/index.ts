@@ -86,7 +86,8 @@ export {
 } from './sources/sentence-cue-source';
 
 export { ContradictionCueSource, type ContradictionCueSourceOptions } from './contradiction/contradiction-cue-source';
-export { ContradictionLlmSource, parseClaims, CONTRADICTION_EXTRACT_SYSTEM, type ContradictionLlmSourceConfig } from './contradiction/contradiction-llm-source';
+export { ContradictionLlmSource, parseClaims, CONTRADICTION_EXTRACT_SYSTEM, COMMUNITY_RULE_JUDGE_SYSTEM, type ContradictionLlmSourceConfig } from './contradiction/contradiction-llm-source';
+export { RedditRulesProvider, sanitizeRuleText, subredditFromLocation, type RedditRulesProviderOptions, type CommunityRule, type CommunityRulesSnapshot, type PageLocation } from './contradiction/reddit-rules';
 export { BankHolidayProvider, type BankHolidayProviderOptions, type BankHolidayRegion } from './contradiction/bank-holidays';
 export { WeatherProvider, type WeatherProviderOptions } from './contradiction/weather';
 export { TflProvider, type TflProviderOptions, normalizeLine } from './contradiction/tfl';
@@ -97,8 +98,10 @@ export {
   TIER0_CHECKS,
   verifyClaim,
   verifyJourneyClaim,
+  verifyCommunityRuleClaim,
   safeEvalArithmetic,
   type Claim,
+  type CommunityRuleClaim,
   type WorkdayOnHolidayClaim,
   type OutdoorPlanWeatherClaim,
   type TubeLinePlanClaim,

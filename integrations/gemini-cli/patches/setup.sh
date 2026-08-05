@@ -7,7 +7,7 @@
 # re-cloning.
 #
 # Usage: ./setup.sh [gemini-cli-dir] [--clean]
-#   default gemini-cli-dir: $HOME/gemini-cli-cues
+#   default gemini-cli-dir: $HOME/.opencues/forks/gemini-cli
 #   --clean: legacy alias — every install already runs from a clean
 #            patched state (we re-apply patches on top of git-restored
 #            sources), so the flag is a no-op kept for symmetry with
@@ -29,7 +29,7 @@ for arg in "$@"; do
     GEMINI_DIR="$arg"
   fi
 done
-GEMINI_DIR="${GEMINI_DIR:-$HOME/gemini-cli-cues}"
+GEMINI_DIR="${GEMINI_DIR:-$HOME/.opencues/forks/gemini-cli}"
 # Pin sourced from pin.json (structured) instead of inline vars, so
 # `opencues update gemini-cli --to <version>` can rewrite it without
 # regex'ing this script.

@@ -9,9 +9,15 @@ Where word cues offer per-word synonyms ("ultrathink" → "deepen
 analysis"), sentence cues rewrite the whole sentence ("thanks a
 bunch." → "Thank you very much.").
 
-OFF by default. Opt-in via `sentence-cues-mode: on` in `~/.cues/OPENCUES.md`.
+**ON by default** — only an explicit `sentence-cues-mode: off` in
+`~/.cues/OPENCUES.md` disables it. Sentence cues are passive (nothing is
+rewritten without your keystroke) and each shipped cue self-scopes, so it's
+safe to leave on.
 
-The first shipped sentence cue is **`more-formal`** — see below.
+The first shipped sentence cue is **`more-formal`** — see below. It's
+allow-listed to professional-writing surfaces (LinkedIn + web email) and off
+the coding CLIs, so with the mode on by default it still doesn't formalize your
+prose everywhere.
 
 ---
 
@@ -42,19 +48,18 @@ just at sentence granularity.
 
 ---
 
-## How to turn it on
+## How to turn it off
 
-Edit `~/.cues/OPENCUES.md` frontmatter:
+It's on by default. To disable, edit `~/.cues/OPENCUES.md` frontmatter:
 
 ```yaml
-sentence-cues-mode: on
+sentence-cues-mode: off
 ```
 
-Then make sure at least one cue with `scope: sentence` is shipped.
-The default install ships `~/.cues/cues/more-formal/CUE.md` —
-seed-configs copies it on first run.
+The default install ships at least one `scope: sentence` cue —
+`~/.cues/cues/more-formal/CUE.md`, copied by seed-configs on first run.
 
-Off again is the same with `off`.
+Back on again is the same with `on` (or removing the line — on is the default).
 
 ---
 

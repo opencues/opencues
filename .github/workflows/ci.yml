@@ -122,6 +122,20 @@ jobs:
       - name: Run legacy-names lint
         run: bash scripts/lint-legacy-names.sh
 
+  fork-paths:
+    name: fork-paths lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    # Catches fork-relocation drift — code constructing a legacy
+    # ~/<host>-cues path instead of going through
+    # packages/opencues-cli/src/lib/fork-paths.cjs (forkDir/resolveForkDir/
+    # enumerateForkDirs). See scripts/lint-fork-paths.sh.
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run fork-paths lint
+        run: bash scripts/lint-fork-paths.sh
+
   runtime-browser-safe:
     name: runtime browser-safe lint
     runs-on: ubuntu-latest

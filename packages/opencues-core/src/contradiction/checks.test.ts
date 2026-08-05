@@ -639,3 +639,45 @@ describe('verifyJourneyClaim (Tier 5c, async geocode)', () => {
     assert.equal(geocoded, false, 'geocoder must not be called for an oversized place name');
   });
 });
+
+describe('verifyCommunityRuleClaim (Tier 5d, subreddit rules)', () => {
+  const SNAPSHOT = {
+    community: 'r/ClaudeAI',
+    rules: [
+      { index: 1, name: 'Be respectful', description: 'No personal attacks.' },
+      { index: 2, name: 'Be relevant', description: 'Stay relevant to Claude and Claude Code.' },
+    ],
+  };
+  const claim = (rule: number, quote: string) => ({ type: 'community_rule_conflict' as const, rule, quote });
+
+  it('fires with a tip built from the CACHED rule data (community + rule name)', async () => {
+    const { verifyCommunityRuleClaim } = await import('./checks');
+    const v = verifyCommunityRuleClaim(claim(2, 'my favourite pizza recipes'), 'check out my favourite pizza recipes', SNAPSHOT);
+    assert.ok(v);
+    assert.equal(v!.quote, 'my favourite pizza recipes');
+    assert.equal(v!.check, 'community-rule');
+    assert.match(v!.tip, /r\/ClaudeAI rule 2/);
+    assert.match(v!.tip, /Be relevant/);
+    assert.equal(v!.correction, undefined, 'a rule conflict has no deterministic correction');
+  });
+
+  it('GROUNDING: silent when the quote is not a verbatim substring of the sentence', async () => {
+    const { verifyCommunityRuleClaim } = await import('./checks');
+    assert.equal(verifyCommunityRuleClaim(claim(2, 'pizza recipes galore'), 'check out my favourite pizza recipes', SNAPSHOT), null);
+    assert.equal(verifyCommunityRuleClaim(claim(2, ''), 'anything', SNAPSHOT), null);
+  });
+
+  it('SECURITY: a hallucinated rule number never becomes a cue', async () => {
+    const { verifyCommunityRuleClaim } = await import('./checks');
+    assert.equal(verifyCommunityRuleClaim(claim(7, 'pizza'), 'pizza', SNAPSHOT), null);
+    assert.equal(verifyCommunityRuleClaim(claim(0, 'pizza'), 'pizza', SNAPSHOT), null);
+    assert.equal(verifyCommunityRuleClaim(claim(1.5, 'pizza'), 'pizza', SNAPSHOT), null);
+  });
+
+  it('silent with no snapshot or an empty rules list', async () => {
+    const { verifyCommunityRuleClaim } = await import('./checks');
+    assert.equal(verifyCommunityRuleClaim(claim(1, 'pizza'), 'pizza', null), null);
+    assert.equal(verifyCommunityRuleClaim(claim(1, 'pizza'), 'pizza', undefined), null);
+    assert.equal(verifyCommunityRuleClaim(claim(1, 'pizza'), 'pizza', { community: 'r/x', rules: [] }), null);
+  });
+});

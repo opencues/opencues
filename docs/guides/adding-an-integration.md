@@ -94,7 +94,7 @@ Each phase should produce something visibly working before adding the next.
 
 OpenCues has 4 hosts; consistency makes them all easier to reason about:
 
-- Fork directory: `~/<host>-cues/` (e.g. `~/gemini-cli-cues`)
+- Fork directory: `~/<host>-cues/` (e.g. `~/.opencues/forks/gemini-cli`)
 - Status file: `/tmp/opencues-status-<pid>.json`
 - Cursor state file: `/tmp/opencues-cursor-state-<pid>.json`
 - Log file (shared): `/tmp/opencues.log`

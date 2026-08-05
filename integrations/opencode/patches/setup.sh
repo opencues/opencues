@@ -6,7 +6,7 @@
 # Idempotent: re-runs sync the latest patch + rebuild without re-cloning.
 #
 # Usage: ./setup.sh [opencode-dir]
-#   default opencode-dir: $HOME/opencode-cues
+#   default opencode-dir: $HOME/.opencues/forks/opencode
 #
 # Set OPENCUES_INSTALL_VERBOSE=1 to stream every command's output.
 # Default is quiet — only progress lines + errors. Full log lives at
@@ -16,7 +16,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OPENCUES_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-OPENCODE_DIR="${1:-$HOME/opencode-cues}"
+OPENCODE_DIR="${1:-$HOME/.opencues/forks/opencode}"
 # Pin sourced from pin.json (structured) instead of inline vars, so
 # `opencues update opencode --to <version>` can rewrite it without
 # regex'ing this script. Mirrors CC's npm pin pattern.
