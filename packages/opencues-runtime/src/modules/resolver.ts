@@ -2094,7 +2094,14 @@ export class Resolver {
       // user's prose was rewritten in the background without any
       // keystroke. Sentence-cues are CUES, not agents; the user must
       // explicitly cycle to apply.
-      if (isSentenceCue && r.alternatives.length >= 2 && isMultiWordSpan) {
+      // `>= 1`, not `>= 2`: a PASSIVE ADVISORY sentence-cue (calendar conflict,
+      // a contradiction with no in-place fix) emits alternatives = [original]
+      // alone — it carries its message in the cueTip, nothing to cycle to. It
+      // still must register here with its full char span so the note + dim
+      // cover the WHOLE flagged sentence; failing this gate dropped it to the
+      // single-word word-cue path (only the first word painted). Cycling a
+      // 1-alt def is a no-op (applyAltCycle bails), so it stays passive.
+      if (isSentenceCue && r.alternatives.length >= 1 && isMultiWordSpan) {
         const originalSentence = r.alternatives[0];
         const liveText = this.adapter.getText();
         const start = r.spanStart!;
