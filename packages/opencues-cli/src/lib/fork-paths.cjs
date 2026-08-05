@@ -113,6 +113,45 @@ function enumerateForkDirs(host) {
   return [...found];
 }
 
+/**
+ * Migrate a legacy top-level fork (`~/<host>-cues`) to the new
+ * `~/.opencues/forks/<host>` location. Called at the START of an install so the
+ * old dir never lingers as a multi-GB orphan (the whole point of the move):
+ *   • new dir absent  → RENAME legacy → new (instant on the same fs; preserves
+ *     the checkout so the install doesn't re-clone gigabytes).
+ *   • new dir present → the legacy is a stale orphan (already reinstalled) →
+ *     REMOVE it.
+ * Best-effort + logged; never throws into the installer. Returns a short status
+ * string (or null when there was nothing to do).
+ */
+function migrateLegacyFork(host, log) {
+  const legacy = legacyForkDir(host);
+  if (!legacy) return null;
+  let legacyExists = false;
+  try { legacyExists = fs.existsSync(legacy); } catch { /* unreadable */ }
+  if (!legacyExists) return null;
+  const neu = forkDir(host);
+  try {
+    if (!fs.existsSync(neu)) {
+      fs.mkdirSync(path.dirname(neu), { recursive: true });
+      fs.renameSync(legacy, neu);
+      const msg = `migrated fork ${legacy} → ${neu}`;
+      if (log) log(msg);
+      return msg;
+    }
+    fs.rmSync(legacy, { recursive: true, force: true });
+    const msg = `removed legacy fork orphan ${legacy}`;
+    if (log) log(msg);
+    return msg;
+  } catch (e) {
+    // A cross-device rename (legacy + new on different filesystems) or a
+    // permission issue — degrade to leaving the legacy in place; doctor still
+    // flags it. Never break the install for a cleanup.
+    if (log) log(`legacy-fork migration skipped for ${host}: ${(e && e.message) || e}`);
+    return null;
+  }
+}
+
 module.exports = {
   FORK_HOSTS,
   SUPPORT_SUBDIR,
@@ -125,4 +164,5 @@ module.exports = {
   resolveForkDir,
   legacyForkExists,
   enumerateForkDirs,
+  migrateLegacyFork,
 };

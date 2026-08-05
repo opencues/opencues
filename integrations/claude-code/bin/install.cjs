@@ -27,7 +27,7 @@ const { targetExistsWithContent } = require('./seed-helpers.cjs');
 
 const PKG_DIR = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(PKG_DIR, '../..');
-const { forkDir, enumerateForkDirs } = require(path.join(REPO_ROOT, 'packages/opencues-cli/src/lib/fork-paths.cjs'));
+const { forkDir, enumerateForkDirs, migrateLegacyFork } = require(path.join(REPO_ROOT, 'packages/opencues-cli/src/lib/fork-paths.cjs'));
 const pkg = JSON.parse(fs.readFileSync(path.join(PKG_DIR, 'package.json'), 'utf8'));
 
 // Bundled-srcHash drift probe used by the no-op-if-healthy gate.
@@ -141,6 +141,7 @@ if (command === 'install') {
 // --- INSTALL --------------------------------------------------------------
 
 function doInstall() {
+  migrateLegacyFork('claude-code', (m) => console.log('  ▸ ' + m));
   // Multi-fork model (June 2026). The canonical fork at
   // ~/claude-code-cues/ is the user-facing default — `opencues install
   // claude-code` always bootstraps + patches it. But if extra forks

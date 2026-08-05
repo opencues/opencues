@@ -97,3 +97,30 @@ test('enumerateForkDirs is empty when nothing is installed', () => {
   const { enumerateForkDirs } = fp();
   assert.deepStrictEqual(fp().enumerateForkDirs('claude-code'), []);
 });
+
+test('migrateLegacyFork: RENAMEs legacy → new when new is absent (no re-clone)', () => {
+  const legacy = mkforkdir('claude-code-cues');
+  fs.writeFileSync(path.join(legacy, 'marker.txt'), 'keep me');   // checkout content to preserve
+  const { migrateLegacyFork, forkDir, legacyForkDir } = fp();
+  const msg = migrateLegacyFork('claude-code');
+  assert.match(msg, /migrated/);
+  assert.strictEqual(fs.existsSync(legacyForkDir('claude-code')), false);       // legacy gone
+  assert.strictEqual(fs.existsSync(forkDir('claude-code')), true);              // new exists
+  assert.strictEqual(fs.readFileSync(path.join(forkDir('claude-code'), 'marker.txt'), 'utf8'), 'keep me'); // content moved, not lost
+});
+
+test('migrateLegacyFork: REMOVEs legacy orphan when new already exists', () => {
+  mkforkdir('opencode-cues');                    // legacy
+  const neu = mkforkdir('.opencues/forks/opencode');
+  fs.writeFileSync(path.join(neu, 'new.txt'), 'fresh');
+  const { migrateLegacyFork, legacyForkDir, forkDir } = fp();
+  const msg = migrateLegacyFork('opencode');
+  assert.match(msg, /removed legacy fork orphan/);
+  assert.strictEqual(fs.existsSync(legacyForkDir('opencode')), false);          // orphan removed
+  assert.strictEqual(fs.existsSync(path.join(forkDir('opencode'), 'new.txt')), true); // new untouched
+});
+
+test('migrateLegacyFork: no-op when there is no legacy dir', () => {
+  const { migrateLegacyFork } = fp();
+  assert.strictEqual(migrateLegacyFork('gemini-cli'), null);
+});

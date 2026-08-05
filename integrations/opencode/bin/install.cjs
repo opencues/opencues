@@ -24,7 +24,7 @@ const PKG_DIR = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(PKG_DIR, '../..');
 const pkg = JSON.parse(fs.readFileSync(path.join(PKG_DIR, 'package.json'), 'utf8'));
 
-const { forkDir } = require(path.join(REPO_ROOT, 'packages/opencues-cli/src/lib/fork-paths.cjs'));
+const { forkDir, migrateLegacyFork } = require(path.join(REPO_ROOT, 'packages/opencues-cli/src/lib/fork-paths.cjs'));
 const HOME = os.homedir();
 const DEFAULT_FORK = forkDir('opencode');
 
@@ -84,6 +84,7 @@ if (command === 'install') {
 // --- INSTALL --------------------------------------------------------------
 
 function doInstall() {
+  migrateLegacyFork('opencode', (m) => console.log('  ▸ ' + m));
   const fork = args.target || DEFAULT_FORK;
   const paths = pathsForFork(fork);
 
