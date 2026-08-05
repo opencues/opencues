@@ -16,7 +16,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const https = require('node:https');
-const { resolveForkDir } = require('./fork-paths.cjs');
 
 /** Load the compat manifest for a given integration folder name (e.g. 'claude-code'). */
 function loadCompat(repoRoot, host) {
@@ -135,10 +134,14 @@ function readNpmPin(home, compat) {
   if (compat['host-kind'] !== 'npm') return null;
   const loc = compat['pin-location'];
   if (!loc || loc.kind !== 'npm-package-json') return null;
-  // npm-fork pin read is CC-only in practice; the helper resolves the fork's
-  // real location (new ~/.opencues/forks/ + legacy fallback) so a mid-transition
-  // install's pin is still readable. (compat.json's fork-default is now informational.)
-  const forkDir = resolveForkDir('claude-code');
+  // Fork location comes from the compat's `fork-default` (the installer keeps it
+  // pointed at ~/.opencues/forks/claude-code post-consolidation), expanded
+  // against the passed-in `home`. Kept injectable — NO internal os.homedir() —
+  // so every path in this helper is caller-supplied and the tests stay hermetic
+  // (see the module header). A legacy-location install mid-transition reads
+  // null here and callers fall back; migrateLegacyFork closes that window at
+  // the next `opencues install`.
+  const forkDir = (loc['fork-default'] || '').replace(/^~(?=$|[/\\])/, home || '');
   const pkgPath = path.join(forkDir, loc['path-from-fork'] || 'package.json');
   if (!fs.existsSync(pkgPath)) return null;
   try {
