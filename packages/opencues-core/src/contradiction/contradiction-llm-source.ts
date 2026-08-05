@@ -209,7 +209,12 @@ export class ContradictionLlmSource implements CueSource {
           out.push({
             wordIndex: wordIndexAt(so),
             word: context.words[wordIndexAt(so)] ?? '',
-            alternatives: [v.quote, v.correction ?? v.quote],
+            // Cycleable ONLY when there's a real in-place fix to swap to
+            // (weekday-date, split-the-bill). A pure advisory with no
+            // correction (community-rule / weather / journey / arithmetic)
+            // emits [quote] alone → passive ⚠ note, not a no-op cycle to the
+            // same text. Mirrors the calendar-conflict passive-advisory shape.
+            alternatives: v.correction && v.correction !== v.quote ? [v.quote, v.correction] : [v.quote],
             source: `sentence-cue:contradiction-${v.check}`,
             priority: this.priority,
             spanStart: so,
