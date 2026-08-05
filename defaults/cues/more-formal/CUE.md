@@ -14,6 +14,11 @@ not-on-field: single-line
 # the prose-first surfaces (chrome text fields, the shell editor) and off the
 # CLI hosts. The calendar-conflict cue (a different CUE.md) is unaffected.
 not-on-host: claude-code, gemini-cli, opencode
+# Site scoping — reddit's register is deliberately casual (formalizing a
+# comment reads as noise there), and the contradiction rail's subreddit-rules
+# tier (priority 87) owns reddit sentence spans — it would evict this cue's 85
+# on every overlap anyway. Wildcard covers www./old./sh. and the bare domain.
+not-on-site: [*.reddit.com]
 ---
 
 Rewrite each sentence in the buffer to be MORE FORMAL. Preserve
