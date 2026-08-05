@@ -492,6 +492,15 @@ export class SentenceCueSource implements CueSource {
         const m = alts[0]?.match(/heads up:\s*(.+)$/i) ?? alts[0]?.match(/—\s*(.+)$/);
         if (m && m[1]) tip = `⚠ ${m[1].trim().replace(/[.\s]+$/, '')}`;
       }
+      // A calendar-conflict cue is a pure ADVISORY (⚠ heads-up) — passive, NOT
+      // cycleable. Its `alts[0]` is the sentence with the heads-up appended;
+      // cycling into it would splice the advisory INTO the user's message.
+      // Emit only the original sentence so it shows the ⚠ note with no 2nd
+      // state. A plain rewrite cue (more-formal) keeps the [original, ...rewrites]
+      // shape so Ctrl+Alt+Up swaps in each rewrite.
+      const alternatives = this.sourceConfig.usesCalendarContext
+        ? [span.text]
+        : [span.text, ...alts];
       results.push({
         wordIndex: span.firstWordIndex,
         word: context.words[span.firstWordIndex] ?? span.text.split(/\s+/)[0],
@@ -499,7 +508,7 @@ export class SentenceCueSource implements CueSource {
         // swaps the sentence; Down to alt[0] restores. Same shape
         // TransformBlank emits today; resolver's multi-word substitution
         // branch handles both.
-        alternatives: [span.text, ...alts],
+        alternatives,
         source: this.id,
         priority: this.priority,
         spanStart: span.start,

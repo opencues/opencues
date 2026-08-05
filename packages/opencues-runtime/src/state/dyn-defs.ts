@@ -116,13 +116,15 @@ export function inlineNoteText(def: WordDef): string | undefined {
   const n = inlineNoteCount(def);
 
   // NOTIFICATION — carries a cueTip whose first glyph is the type emoji
-  // (contradiction/calendar ⚠/🧢, ask-cues ❓). Inject the countdown after the
-  // emoji and normalise any option separators (· ▸) to ` | `.
+  // (contradiction/calendar ⚠/🧢, ask-cues ❓). A CYCLEABLE notification
+  // (contradiction's reconciled value, ask-cues options) gets the countdown;
+  // a pure ADVISORY with nothing to cycle to (calendar conflict, alternatives
+  // = [original]) shows just the emoji + message — no number, no pipe.
   if (def.cueTip) {
     const { emoji, rest } = splitNoteEmoji(def.cueTip);
     const em = emoji ?? '⚠';
     const msg = rest.replace(/\s*[·▸]\s*/g, ' | ');
-    return `${em} ${n} | ${msg}`;
+    return def.alternatives.length > 1 ? `${em} ${n} | ${msg}` : `${em} ${msg}`;
   }
 
   if (def.alternatives.length <= 1) return undefined;
@@ -139,12 +141,32 @@ export function inlineNoteText(def: WordDef): string | undefined {
   }
 
   // SPELLING (plain word-cue, no blankName) — a NOTIFICATION (an error): lead
-  // with ✍️ + the countdown, list the corrections pipe-separated.
+  // with ✍️ + the countdown, list the corrections you can still cycle TO,
+  // pipe-separated. The list ROTATES with currentIndex (the correction you're
+  // on drops out, the next leads) so cycling visibly advances it — never shows
+  // the original misspelling as a "correction".
   if (!def.blankName) {
-    const suggestions = def.alternatives.slice(1).filter(Boolean);
-    if (suggestions.length > 0) return `✍️ ${n} | ${suggestions.slice(0, 3).join(' | ')}`;
+    const upcoming = upcomingCorrections(def, 3);
+    if (upcoming.length > 0) return `✍️ ${n} | ${upcoming.join(' | ')}`;
   }
   return undefined;
+}
+
+/**
+ * The corrections a word-cue can still cycle TO, in cycle order from the
+ * current position, EXCLUDING the one currently in the buffer and the original
+ * (index 0). On the original: all corrections in order. On a correction: the
+ * others, wrapping so the immediate-next leads. Rotates as `currentIndex`
+ * advances, so the note tracks the cycle. Capped at `max`.
+ */
+function upcomingCorrections(def: WordDef, max: number): string[] {
+  const corrections = def.alternatives.slice(1).filter(Boolean);
+  if (corrections.length === 0) return [];
+  const cur = def.currentIndex - 1; // -1 when the buffer holds the original
+  if (cur < 0) return corrections.slice(0, max);
+  const out: string[] = [];
+  for (let i = 1; i < corrections.length; i++) out.push(corrections[(cur + i) % corrections.length]);
+  return out.slice(0, max);
 }
 
 // ── First-cycle affordance state ───────────────────────────────────────────

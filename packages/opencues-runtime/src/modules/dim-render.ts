@@ -372,8 +372,11 @@ export class DimRender {
         const e = toCtx ? toCtx.end(def.spanEnd) : def.spanEnd;
         if (ctx.cursor >= s && ctx.cursor <= e) {
           // The `(underscore to cycle)` affordance rides until the user has
-          // cycled any note once this session, then drops off everywhere.
-          inlineNote = { spanStart: s, spanEnd: e, text: noteText, hint: hasCycledEver() ? undefined : '(underscore to cycle)' };
+          // cycled any note once this session — and only on a CYCLEABLE def
+          // (>1 alternative); a pure advisory (calendar conflict) has nothing
+          // to cycle, so no hint.
+          const cycleable = def.alternatives.length > 1;
+          inlineNote = { spanStart: s, spanEnd: e, text: noteText, hint: (cycleable && !hasCycledEver()) ? '(underscore to cycle)' : undefined };
           // Auto-select: the note-bearing span the caret is in promotes from dim
           // to the active highlight — the "you're on this, `_` engages it" state,
           // for cues AND transform/fluid blanks alike (consistent affordance).
