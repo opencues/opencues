@@ -392,17 +392,25 @@ export class DimRender {
       // options; for selector-satellite, the current setting name (its value is
       // already in the buffer, so this labels WHAT the span controls). No
       // auto-select here — these carry their own highlight/dim model.
+      // List/script blank (volume, brightness, weather, …) — a cycleable
+      // IMPROVEMENT. Same model as transform/spelling: `N | dest | dest`, the
+      // values you can still cycle TO (rotating with currentAltIndex, wrapping,
+      // excluding the one in the buffer). No emoji, no label — the current value
+      // is already visible in the field. Values are short, so no snippeting.
       const noteFromSpanText = (
-        tip: string | undefined, alts: readonly string[],
+        alts: readonly string[], currentAltIndex: number,
       ): string | undefined => {
-        if (tip) return tip;
-        const sug = alts.slice(1).filter(Boolean);
-        return sug.length > 0 ? sug.slice(0, 3).join(' · ') : undefined;
+        const list = alts.filter(Boolean);
+        if (list.length <= 1) return undefined;
+        const n = Math.max(1, list.length - currentAltIndex);
+        const dests: string[] = [];
+        for (let i = 1; i < list.length; i++) dests.push(list[(currentAltIndex + i) % list.length]);
+        return dests.length > 0 ? `${n} | ${dests.slice(0, 3).join(' | ')}` : undefined;
       };
       if (!inlineNote && span) {
         const sw = words[span.index];
         const ew = words[span.index + spanLen - 1];
-        const noteText = noteFromSpanText(span.tip, span.alternatives);
+        const noteText = noteFromSpanText(span.alternatives, span.currentAltIndex);
         if (sw && ew && noteText) {
           const s = toCtx ? toCtx.start(sw.start) : sw.start;
           const e = toCtx ? toCtx.end(ew.end) : ew.end;

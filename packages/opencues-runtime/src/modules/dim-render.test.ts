@@ -733,7 +733,9 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     spanFill.set({ index: 2, alternatives: ['40%', '60%', '80%'], currentAltIndex: 0, spanLength: 1, tip: 'system volume' }, buf);
     const dim = new DimRender(adapter, hlState, dynDefs, undefined, spanFill);
     const out = dim.compute({ text: buf, cursor: 12, externalHighlights: [] }); // inside "40%"
-    expect(out?.inlineNote?.text).toBe('system volume');
+    // New model: list-blank note lists the cycle DESTINATIONS `N | v | v`
+    // (the tip-label is dropped — the current value is in the buffer).
+    expect(out?.inlineNote?.text).toBe('3 | 60% | 80%');
   });
 
   it('SpanFillState with NO tip emits a note = its cycle options', async () => {
@@ -747,7 +749,7 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     spanFill.set({ index: 2, alternatives: ['40%', '60%', '80%'], currentAltIndex: 0, spanLength: 1 }, buf); // no tip
     const dim = new DimRender(adapter, hlState, dynDefs, undefined, spanFill);
     const out = dim.compute({ text: buf, cursor: 12, externalHighlights: [] });
-    expect(out?.inlineNote?.text).toBe('60% · 80%'); // alternatives[1..]
+    expect(out?.inlineNote?.text).toBe('3 | 60% | 80%'); // N | destinations
   });
 
   it('SelectorSatelliteState note is cursor-aware: setting tip on the selector, value tip on the satellite', async () => {
