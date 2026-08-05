@@ -829,38 +829,39 @@ function validateFork(fork) {
 
 // Best-effort stale-alias detector. Greps the common shell rc files
 // (~/.bashrc, ~/.zshrc, ~/.bash_aliases, ~/.config/fish/config.fish)
-// for an `alias claude-cues=…` line that points at a cli.js path. If
-// we installed a native-binary shape, the cli.js path is dead and
-// running `claude-cues` after upgrade fails with "Cannot find
-// module". Print one info block with the correct line + the file
-// they need to edit. No write — that's invasive.
+// for an `alias claude-cues=…` line that's now dead. Two ways it goes
+// stale: (1) a cli.js path when we installed a native-binary shape, or
+// (2) a LEGACY-fork path (~/claude-code-cues*) after the fork relocated
+// to ~/.opencues/forks/ — that dir is deleted, so `claude-cues` fails.
+// Print one info block with the correct line + the file to edit. No
+// write — editing a user's shell rc is invasive.
 function warnStaleClaudeCuesAlias(fork) {
-  if (fork.shape !== 'native') return; // cli.js fork — old alias still works
   const candidates = [
     path.join(HOME, '.bashrc'),
     path.join(HOME, '.zshrc'),
     path.join(HOME, '.bash_aliases'),
     path.join(HOME, '.config', 'fish', 'config.fish'),
   ];
+  const correctBin = path.join(fork.root, 'node_modules', '@anthropic-ai', 'claude-code', fork.shape === 'native' ? 'bin' : '', fork.shape === 'native' ? 'claude.exe' : 'cli.js');
   const stale = [];
-  // Match: alias claude-cues=… that mentions cli.js. Allows quotes +
-  // bash/zsh/fish variants. Doesn't match an alias pointing at
-  // bin/claude.exe (already correct).
-  const re = /alias\s+claude-cues\s*[= ].*cli\.js/;
+  // Match an `alias claude-cues=…` that mentions a cli.js path (shape
+  // drift) OR a legacy ~/claude-code-cues fork path (location drift) —
+  // but NOT one already pointing at the current fork.root.
+  const re = /alias\s+claude-cues\s*[= ].*(cli\.js|claude-code-cues)/;   // FORK-PATH-ALLOW: detect a stale legacy-fork alias to warn the user
   for (const f of candidates) {
     if (!fs.existsSync(f)) continue;
     try {
       const lines = fs.readFileSync(f, 'utf8').split('\n');
       for (let i = 0; i < lines.length; i++) {
-        if (re.test(lines[i])) stale.push({ file: f, lineNo: i + 1, line: lines[i].trim() });
+        if (re.test(lines[i]) && !lines[i].includes(fork.root)) stale.push({ file: f, lineNo: i + 1, line: lines[i].trim() });
       }
     } catch { /* fail-silent */ }
   }
   if (stale.length === 0) return;
-  const correct = `alias claude-cues='${path.join(fork.root, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe')}'`;
+  const correct = `alias claude-cues='${correctBin}'`;
   console.log('');
-  console.log('\x1b[33mNote:\x1b[0m your shell config has a `claude-cues` alias pointing at the pre-2.1.113 cli.js path,');
-  console.log('which no longer exists after the upgrade to a native-binary CC version. Update it to:');
+  console.log('\x1b[33mNote:\x1b[0m your shell config has a `claude-cues` alias pointing at a path that no longer');
+  console.log('exists (the CC fork moved to ~/.opencues/forks/, or the cli.js→native shape changed). Update it to:');
   console.log('');
   console.log(`  ${correct}`);
   console.log('');
