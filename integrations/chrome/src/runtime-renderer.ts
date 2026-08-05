@@ -440,7 +440,12 @@ function renderInlineNote(
 ): void {
   const ranges = plainOffsetsToDomRanges(target, [{ start: note.spanStart, end: note.spanEnd }]);
   if (ranges.length === 0) { clearInlineNote(); return; }
-  const range = ranges[0];
+  // Anchor to the LAST segment, not the first: a span crossing hard line
+  // breaks (a multi-paragraph transform result, a wrapped sentence with a
+  // <br>) yields one range PER line, and the note must sit below the WHOLE
+  // span — not under its first line, in the middle of the text. A single-line
+  // / soft-wrapped span is one segment, so this is unchanged there.
+  const range = ranges[ranges.length - 1];
   let rect: DOMRect;
   try { rect = range.getBoundingClientRect(); } catch { clearInlineNote(); return; }
   if (rect.width === 0 && rect.height === 0) { clearInlineNote(); return; }
