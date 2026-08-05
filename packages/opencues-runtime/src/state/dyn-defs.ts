@@ -141,31 +141,30 @@ export function inlineNoteText(def: WordDef): string | undefined {
   }
 
   // SPELLING (plain word-cue, no blankName) — a NOTIFICATION (an error): lead
-  // with ✍️ + the countdown, list the corrections you can still cycle TO,
-  // pipe-separated. The list ROTATES with currentIndex (the correction you're
-  // on drops out, the next leads) so cycling visibly advances it — never shows
-  // the original misspelling as a "correction".
+  // with ✍️ + the countdown, list the options you can still cycle TO,
+  // pipe-separated. The list ROTATES with currentIndex — cycling drops the one
+  // you're on and advances the rest, wrapping through EVERY stop INCLUDING the
+  // original (you can cycle back to it), so the note always shows where the
+  // next presses lead.
   if (!def.blankName) {
-    const upcoming = upcomingCorrections(def, 3);
+    const upcoming = upcomingAlternatives(def, 3);
     if (upcoming.length > 0) return `✍️ ${n} | ${upcoming.join(' | ')}`;
   }
   return undefined;
 }
 
 /**
- * The corrections a word-cue can still cycle TO, in cycle order from the
- * current position, EXCLUDING the one currently in the buffer and the original
- * (index 0). On the original: all corrections in order. On a correction: the
- * others, wrapping so the immediate-next leads. Rotates as `currentIndex`
- * advances, so the note tracks the cycle. Capped at `max`.
+ * The alternatives a def can still cycle TO from the current position, in cycle
+ * order (wrapping), EXCLUDING only the one currently in the buffer. Includes the
+ * original (index 0) — it's a real cycle stop you can return to. Rotates as
+ * `currentIndex` advances so the note tracks the cycle. Capped at `max`.
  */
-function upcomingCorrections(def: WordDef, max: number): string[] {
-  const corrections = def.alternatives.slice(1).filter(Boolean);
-  if (corrections.length === 0) return [];
-  const cur = def.currentIndex - 1; // -1 when the buffer holds the original
-  if (cur < 0) return corrections.slice(0, max);
+function upcomingAlternatives(def: WordDef, max: number): string[] {
+  const alts = def.alternatives.filter(Boolean);
+  if (alts.length <= 1) return [];
+  const cur = def.currentIndex;
   const out: string[] = [];
-  for (let i = 1; i < corrections.length; i++) out.push(corrections[(cur + i) % corrections.length]);
+  for (let i = 1; i < alts.length; i++) out.push(alts[(cur + i) % alts.length]);
   return out.slice(0, max);
 }
 
