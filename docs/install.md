@@ -116,7 +116,7 @@ Every `opencues install <host>` is one command, end-to-end — no manual `bun in
 
 | Host | Steps the installer runs | Runnable with `opencues run <host>`? |
 |---|---|---|
-| `claude-code` | `seed-configs` (shared `~/.cues/`) + nuke-and-rebuild from scratch inside `~/claude-code-cues/` (clone tweakcc, build runtime + core, patch cli.js, verify). ~1m warm install. tweakcc is just our patcher — every stock tweakcc patch is disabled, only OpenCues v2 wiring lands. | ✓ (runs `claude-cues`) |
+| `claude-code` | `seed-configs` (shared `~/.cues/`) + nuke-and-rebuild from scratch inside `~/.opencues/forks/claude-code/` (clone tweakcc, build runtime + core, patch cli.js, verify). ~1m warm install. tweakcc is just our patcher — every stock tweakcc patch is disabled, only OpenCues v2 wiring lands. | ✓ (runs `claude-cues`) |
 | `opencode` | Clone the fork + `bun install` fork deps + build our runtime + install into fork's `node_modules/@opencues/` + patch 4 TSX files | ✓ |
 | `chrome` | Build MV3 extension + copy `dist/` to `--target` if provided | ✗ — load unpacked at `chrome://extensions` yourself |
 | `chrome-host` | Drop a local native-messaging host + register it with Chrome (manifest + WSL `.bat` shim + HKCU registry on Windows). Requires `--extension-id <id>` from `chrome://extensions`. After install, edits to `~/.cues/` push into every open tab in ~300ms — no rebuild, no refresh. | ✗ — Chrome spawns the host on demand |
@@ -127,9 +127,9 @@ Every `opencues install <host>` is one command, end-to-end — no manual `bun in
 
 | Path | Purpose |
 |---|---|
-| `~/claude-code-cues/` | Everything `@opencues/claude-code` owns lives inside this CC fork: `node_modules/@opencues/{core,runtime}/` (runtime), `.cues/{statusline.sh,scripts/,patch-state/}` (support files), and the patched `cli.js`. Uninstall is `rm -rf` of this dir + tweakcc revert. |
-| `~/opencode-cues/` | OpenCode fork the integration clones + patches |
-| `~/gemini-cli-cues/` | Gemini CLI fork the integration clones + patches. `node_modules/@opencues/{core,runtime}/` + `packages/cli/src/ui/opencues.ts` (bootstrap) + 4 patched source files. |
+| `~/.opencues/forks/claude-code/` | Everything `@opencues/claude-code` owns lives inside this CC fork: `node_modules/@opencues/{core,runtime}/` (runtime), `.cues/{statusline.sh,scripts/,patch-state/}` (support files), and the patched `cli.js`. Uninstall is `rm -rf` of this dir + tweakcc revert. |
+| `~/.opencues/forks/opencode/` | OpenCode fork the integration clones + patches |
+| `~/.opencues/forks/gemini-cli/` | Gemini CLI fork the integration clones + patches. `node_modules/@opencues/{core,runtime}/` + `packages/cli/src/ui/opencues.ts` (bootstrap) + 4 patched source files. |
 | `~/.opencues/vendor/{bun,tmux}/` | Shell integration's contained bun/tmux copies, when you opt into vendoring instead of a system install. |
 | `~/.cues/` | User-level configs — `OPENCUES.md` (runtime settings) plus the three master files (`CUES.md`, `BLANKS.md`, `AUDITORS.md`) and their per-source folders. Read by every host. |
 | `<cwd>/.cues/` | Project-level config overrides. Read by native hosts (claude-code, opencode, gemini-cli) automatically via cwd. Chrome with `chrome-host` installed reads `~/.cues/` live (or `$OPENCUES_HOME` if set); without the host, only the extension's bake-time defaults apply. |
@@ -146,7 +146,7 @@ If `opencues install <host>` exits non-zero, it's usually one of these:
 |---|---|---|
 | `pnpm: command not found` | pnpm isn't on PATH | `corepack enable pnpm` (Node 16+ ships it) or `npm install -g pnpm` |
 | `claude-cues: command not found` after a successful install | Your shell hasn't picked up `~/.local/bin/` (or wherever pnpm linked the bin) | Open a fresh shell, or `export PATH="$HOME/.local/bin:$PATH"` |
-| Install hangs at `Cloning into ~/claude-code-cues...` | Slow git clone or proxy issue — installer fetches the upstream fork | Wait it out (first install pulls ~50MB); set `https_proxy` if behind a corporate proxy |
+| Install hangs at `Cloning into ~/.opencues/forks/claude-code...` | Slow git clone or proxy issue — installer fetches the upstream fork | Wait it out (first install pulls ~50MB); set `https_proxy` if behind a corporate proxy |
 | `GROQ_API_KEY not set` warning at the end | Key isn't visible to the install shell | `opencues set-key groq <key>` (writes `~/.cues/.env`, no shell config needed) and re-run install |
 | Linux: Ctrl+Alt+arrow switches workspace instead of cycling cues | Your DE owns those keys | See the next section |
 | `claude-cues` launches but typing does nothing visible | Runtime didn't boot, or `voice-mode: inactive` and you expected TTS | `tail /tmp/opencues.log` for the boot lines; `opencues doctor` cross-checks every install boundary |
@@ -196,7 +196,7 @@ Work through these in order:
 1. **Did you restart the host editor?** Patches only take effect after a restart.
 2. **Is the API key visible to the host process?** `export GROQ_API_KEY=...` in a one-off terminal doesn't survive — the host needs it in `~/.bashrc` (and a fresh session since adding it), OR write it via `opencues set-key groq <key>` so `~/.cues/.env` carries it.
 3. **Did install finish?** `pnpm exec opencues doctor` shows what's missing.
-4. **Check the runtime loaded:** `ls ~/claude-code-cues/node_modules/@opencues/runtime/dist/` should list dist files.
+4. **Check the runtime loaded:** `ls ~/.opencues/forks/claude-code/node_modules/@opencues/runtime/dist/` should list dist files.
 5. **Enable debug logging:** `pnpm exec opencues debug on`, then `pnpm exec opencues logs --tail`.
 
 ### Syntax error after patching cli.js
@@ -210,16 +210,16 @@ pnpm exec opencues install claude-code
 If you need to manually revert (e.g. the tweakcc backup is the only good copy):
 
 ```bash
-cp ~/claude-code-cues/.cues/patch-state/cli.js.backup \
-   ~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js
+cp ~/.opencues/forks/claude-code/.cues/patch-state/cli.js.backup \
+   ~/.opencues/forks/claude-code/node_modules/@anthropic-ai/claude-code/cli.js
 ```
 
 ### Install fails at `FATAL: tweakcc dist contains no opencues v2 code`
 
-setup.sh's verification gates caught a real problem — tweakcc patched but opencues didn't land. Most likely a CC version drift (your `~/claude-code-cues/package.json` has a non-exact pin like `^2.1.110` allowing npm to upgrade to a version with a different cli.js layout). Fix:
+setup.sh's verification gates caught a real problem — tweakcc patched but opencues didn't land. Most likely a CC version drift (your `~/.opencues/forks/claude-code/package.json` has a non-exact pin like `^2.1.110` allowing npm to upgrade to a version with a different cli.js layout). Fix:
 
 ```bash
-cat > ~/claude-code-cues/package.json << 'EOF'
+cat > ~/.opencues/forks/claude-code/package.json << 'EOF'
 {
   "dependencies": {
     "@anthropic-ai/claude-code": "2.1.110"
@@ -292,7 +292,7 @@ Per-integration upgrade runbooks (for upstream Claude Code / OpenCode / Gemini v
 `uninstall` reverts the patches each integration applied to its host. It does **not** touch your user configs, the cloned OpenCues repo, or (for OpenCode/Gemini) the upstream fork itself — those stay put so you can re-install without losing settings.
 
 ```bash
-pnpm exec opencues uninstall claude-code   # reverts cli.js + removes ~/claude-code-cues/{node_modules/@opencues,.cues}/
+pnpm exec opencues uninstall claude-code   # reverts cli.js + removes ~/.opencues/forks/claude-code/{node_modules/@opencues,.cues}/
 pnpm exec opencues uninstall opencode      # git checkout 4 patched files + removes fork node_modules entries
 pnpm exec opencues uninstall gemini-cli    # same shape as opencode
 pnpm exec opencues uninstall chrome        # removes integrations/chrome/dist + (if --target was used) the deploy
@@ -318,7 +318,7 @@ rm -rf ~/opencues
 
 # 4. Remove the cloned editor forks (these stay in place because they're
 #    your checkouts of upstream editors, not ours)
-rm -rf ~/opencode-cues ~/gemini-cli-cues ~/claude-code-cues
+rm -rf ~/.opencues/forks/opencode ~/.opencues/forks/gemini-cli ~/.opencues/forks/claude-code
 ```
 
 ### If uninstall partially fails

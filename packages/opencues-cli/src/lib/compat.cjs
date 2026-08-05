@@ -134,7 +134,14 @@ function readNpmPin(home, compat) {
   if (compat['host-kind'] !== 'npm') return null;
   const loc = compat['pin-location'];
   if (!loc || loc.kind !== 'npm-package-json') return null;
-  const forkDir = (loc['fork-default'] || '').replace(/^~/, home);
+  // Fork location comes from the compat's `fork-default` (the installer keeps it
+  // pointed at ~/.opencues/forks/claude-code post-consolidation), expanded
+  // against the passed-in `home`. Kept injectable — NO internal os.homedir() —
+  // so every path in this helper is caller-supplied and the tests stay hermetic
+  // (see the module header). A legacy-location install mid-transition reads
+  // null here and callers fall back; migrateLegacyFork closes that window at
+  // the next `opencues install`.
+  const forkDir = (loc['fork-default'] || '').replace(/^~(?=$|[/\\])/, home || '');
   const pkgPath = path.join(forkDir, loc['path-from-fork'] || 'package.json');
   if (!fs.existsSync(pkgPath)) return null;
   try {

@@ -15,6 +15,7 @@ const style = require('../lib/style.cjs');
 const prompt = require('../lib/prompt.cjs');
 const { pickHost } = require('../lib/pick-host.cjs');
 const { pickNavCombo } = require('../lib/nav-combo.cjs');
+const { resolveForkDir } = require('../lib/fork-paths.cjs');
 
 // Print the brand banner + a host/command/cwd tree + a one-line
 // keybinding hint, then yield stdio to the spawned process. Output
@@ -383,7 +384,7 @@ function runCC(passthrough, ctx) {
     return;
   }
 
-  const forkRoot = path.join(os.homedir(), 'claude-code-cues');
+  const forkRoot = resolveForkDir('claude-code');
   const nativeBin = path.join(forkRoot, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
   const cliJs    = path.join(forkRoot, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
 
@@ -439,7 +440,7 @@ function runOC(passthrough, fullArgv, ctx) {
   const targetIdx = fullArgv.indexOf('--target');
   const fork = (targetIdx >= 0 && fullArgv[targetIdx + 1])
     || process.env.OPENCODE_CUES_DIR
-    || path.join(os.homedir(), 'opencode-cues');
+    || resolveForkDir('opencode');
 
   if (!fs.existsSync(path.join(fork, 'packages', 'opencode'))) {
     console.error(`${style.tag('err')} ${fork} doesn't look like an opencode checkout.`);
@@ -523,7 +524,7 @@ function runGemini(passthrough, fullArgv, ctx) {
   const targetIdx = fullArgv.indexOf('--target');
   const fork = (targetIdx >= 0 && fullArgv[targetIdx + 1])
     || process.env.GEMINI_CLI_CUES_DIR
-    || path.join(os.homedir(), 'gemini-cli-cues');
+    || resolveForkDir('gemini-cli');
 
   if (!fs.existsSync(path.join(fork, 'packages', 'cli'))) {
     console.error(`${style.tag('err')} ${fork} doesn't look like a gemini-cli checkout.`);
@@ -652,12 +653,12 @@ function printHelp() {
   console.log('  claude-code   exec the patched CC binary (claude-cues or claude)');
   console.log('  opencode      cd into the fork dir + bun run dev');
   console.log('  chrome        print Chrome reload instructions (no programmatic launch)');
-  console.log('  gemini-cli    node packages/cli/dist/index.js inside the fork (default: $HOME/gemini-cli-cues)');
+  console.log('  gemini-cli    node packages/cli/dist/index.js inside the fork (default: ~/.opencues/forks/gemini-cli)');
   console.log('  shell         integrations/shell/bin/oc-shell  (wraps $SHELL in tmux; Alt+Shift+↑ for the input box)');
   console.log('');
   console.log('Opencues-owned flags (consumed by `opencues run`, NOT forwarded):');
   console.log('  --bin <name>      (claude-code only) override which binary to exec');
-  console.log('  --target <path>   (opencode/gemini-cli) fork dir (defaults: $HOME/opencode-cues, $HOME/gemini-cli-cues)');
+  console.log('  --target <path>   (opencode/gemini-cli) fork dir (defaults: ~/.opencues/forks/{opencode,gemini-cli})');
   console.log('  --skip-banner     suppress the launch banner entirely (no alt-screen, no dwell, straight to spawn)');
   console.log('');
   console.log('Examples:');

@@ -81,6 +81,7 @@ step "windows config-server security invariants" node integrations/windows/tests
 # reference outside the migration allowlist must either go away      # LEGACY-NAME-ALLOW: aggregator comment
 # or carry a LEGACY-NAME-ALLOW marker on the same line.
 step "legacy-names lint" bash scripts/lint-legacy-names.sh
+step "fork-paths lint" bash scripts/lint-fork-paths.sh
 
 # Catches runtime/core code that's silently dead in chrome's content script
 # (unguarded `process`, unmarked NodeHttpAdapter) — the class the esbuild

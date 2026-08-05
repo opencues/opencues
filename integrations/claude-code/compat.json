@@ -9,7 +9,7 @@
     "kind": "npm-package-json",
     "path-from-fork": "package.json",
     "field": "dependencies.@anthropic-ai/claude-code",
-    "fork-default": "~/claude-code-cues"
+    "fork-default": "~/.opencues/forks/claude-code"
   },
   "tested": ["2.1.110", "2.1.150", "2.1.158", "2.1.170", "2.1.206"],
   "compat-range": "2.1.x",

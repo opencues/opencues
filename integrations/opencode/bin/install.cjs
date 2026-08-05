@@ -24,8 +24,9 @@ const PKG_DIR = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(PKG_DIR, '../..');
 const pkg = JSON.parse(fs.readFileSync(path.join(PKG_DIR, 'package.json'), 'utf8'));
 
+const { forkDir, migrateLegacyFork } = require(path.join(REPO_ROOT, 'packages/opencues-cli/src/lib/fork-paths.cjs'));
 const HOME = os.homedir();
-const DEFAULT_FORK = path.join(HOME, 'opencode-cues');
+const DEFAULT_FORK = forkDir('opencode');
 
 // All paths relative to the opencode fork dir. Single source of truth
 // for blast radius — install + uninstall + dry-run all read from here.
@@ -83,6 +84,7 @@ if (command === 'install') {
 // --- INSTALL --------------------------------------------------------------
 
 function doInstall() {
+  migrateLegacyFork('opencode', (m) => console.log('  ▸ ' + m));
   const fork = args.target || DEFAULT_FORK;
   const paths = pathsForFork(fork);
 
@@ -332,7 +334,7 @@ function printHelp() {
   console.log('  help                Show this message');
   console.log('');
   console.log('Flags:');
-  console.log('  --target <path>     Path to opencode fork (default: $HOME/opencode-cues)');
+  console.log('  --target <path>     Path to opencode fork (default: ~/.opencues/forks/opencode)');
   console.log('  --dry-run           Print the plan; do not execute');
   console.log('  --help              Show this message');
   console.log('');

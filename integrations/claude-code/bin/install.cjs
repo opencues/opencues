@@ -27,6 +27,7 @@ const { targetExistsWithContent } = require('./seed-helpers.cjs');
 
 const PKG_DIR = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(PKG_DIR, '../..');
+const { forkDir, enumerateForkDirs, migrateLegacyFork } = require(path.join(REPO_ROOT, 'packages/opencues-cli/src/lib/fork-paths.cjs'));
 const pkg = JSON.parse(fs.readFileSync(path.join(PKG_DIR, 'package.json'), 'utf8'));
 
 // Bundled-srcHash drift probe used by the no-op-if-healthy gate.
@@ -140,6 +141,7 @@ if (command === 'install') {
 // --- INSTALL --------------------------------------------------------------
 
 function doInstall() {
+  migrateLegacyFork('claude-code', (m) => console.log('  ▸ ' + m));
   // Multi-fork model (June 2026). The canonical fork at
   // ~/claude-code-cues/ is the user-facing default — `opencues install
   // claude-code` always bootstraps + patches it. But if extra forks
@@ -168,7 +170,7 @@ function doInstall() {
       : path.resolve(path.dirname(target), '..', '..', '..', '..');
     forks = [{ root, target, shape }];
   } else {
-    const canonicalRoot = path.join(HOME, 'claude-code-cues');
+    const canonicalRoot = forkDir('claude-code');
     ensureCanonicalForkExists(canonicalRoot);
     const canonical = inferForkShape(canonicalRoot);
     if (!canonical) {
@@ -279,8 +281,8 @@ function doInstall() {
     if (fs.existsSync(userSettings)) {
       const data = JSON.parse(fs.readFileSync(userSettings, 'utf8'));
       const cmd = data?.statusLine?.command;
-      if (typeof cmd === 'string' && (cmd.includes('claude-code-cues') || cmd.endsWith('/statusline.sh'))) {
-        return; // already enabled
+      if (typeof cmd === 'string' && cmd.endsWith('/statusline.sh')) {
+        return; // already enabled (covers new ~/.opencues/forks + legacy layouts)
       }
     }
     const oc = launchCommand();
@@ -516,9 +518,7 @@ function detectOpenCuesStatusLine(settingsFile) {
   catch { return null; }
   const cmd = data?.statusLine?.command;
   if (typeof cmd !== 'string') return null;
-  const isOurs = cmd.includes('claude-code-cues') ||
-                 cmd.includes('claude-code-cues-150') ||
-                 cmd.includes('.claude/highlight-statusline.sh') ||
+  const isOurs = cmd.includes('.claude/highlight-statusline.sh') ||
                  cmd.includes('.claude/opencues/statusline.sh') ||
                  (cmd.endsWith('/statusline.sh') && cmd.includes('/.cues/'));
   return isOurs ? cmd : null;
@@ -579,11 +579,11 @@ function listActionFileBasenames() {
 // touched one fork at a time). For install, prefer detectAllForks().
 function tryAutoDetectCli() {
   // Common locations. Order: standard npm install → claude-cues local install.
-  const candidates = [
-    path.join(CLAUDE_DIR, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'),
-    path.join(HOME, 'claude-code-cues', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'),
-    path.join(HOME, 'claude-code-cues-150', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe'),
-  ];
+  const candidates = [path.join(CLAUDE_DIR, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js')];
+  for (const root of enumerateForkDirs('claude-code')) {
+    candidates.push(path.join(root, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'));
+    candidates.push(path.join(root, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe'));
+  }
   for (const c of candidates) if (fs.existsSync(c)) return c;
   return null;
 }
@@ -618,13 +618,11 @@ function detectAllForks() {
     if (!seen.has(root)) { out.push({ root, target: legacyCli, shape: 'cli.js' }); seen.add(root); }
   }
 
-  // (2) + (3) + (4): walk ~/claude-code-cues* dirs. Each one has either
-  // a cli.js or a bin/claude.exe in its node_modules.
+  // (2) + (3) + (4): walk every CC fork dir (new ~/.opencues/forks/ layout +
+  // legacy ~/claude-code-cues* layout). Each one has either a cli.js or a
+  // bin/claude.exe in its node_modules.
   try {
-    for (const entry of fs.readdirSync(HOME, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      if (!entry.name.startsWith('claude-code-cues')) continue;
-      const root = path.join(HOME, entry.name);
+    for (const root of enumerateForkDirs('claude-code')) {
       if (seen.has(root)) continue;
       const cliJs = path.join(root, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
       const nativeBin = path.join(root, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
@@ -831,38 +829,39 @@ function validateFork(fork) {
 
 // Best-effort stale-alias detector. Greps the common shell rc files
 // (~/.bashrc, ~/.zshrc, ~/.bash_aliases, ~/.config/fish/config.fish)
-// for an `alias claude-cues=…` line that points at a cli.js path. If
-// we installed a native-binary shape, the cli.js path is dead and
-// running `claude-cues` after upgrade fails with "Cannot find
-// module". Print one info block with the correct line + the file
-// they need to edit. No write — that's invasive.
+// for an `alias claude-cues=…` line that's now dead. Two ways it goes
+// stale: (1) a cli.js path when we installed a native-binary shape, or
+// (2) a LEGACY-fork path (~/claude-code-cues*) after the fork relocated
+// to ~/.opencues/forks/ — that dir is deleted, so `claude-cues` fails.
+// Print one info block with the correct line + the file to edit. No
+// write — editing a user's shell rc is invasive.
 function warnStaleClaudeCuesAlias(fork) {
-  if (fork.shape !== 'native') return; // cli.js fork — old alias still works
   const candidates = [
     path.join(HOME, '.bashrc'),
     path.join(HOME, '.zshrc'),
     path.join(HOME, '.bash_aliases'),
     path.join(HOME, '.config', 'fish', 'config.fish'),
   ];
+  const correctBin = path.join(fork.root, 'node_modules', '@anthropic-ai', 'claude-code', fork.shape === 'native' ? 'bin' : '', fork.shape === 'native' ? 'claude.exe' : 'cli.js');
   const stale = [];
-  // Match: alias claude-cues=… that mentions cli.js. Allows quotes +
-  // bash/zsh/fish variants. Doesn't match an alias pointing at
-  // bin/claude.exe (already correct).
-  const re = /alias\s+claude-cues\s*[= ].*cli\.js/;
+  // Match an `alias claude-cues=…` that mentions a cli.js path (shape
+  // drift) OR a legacy ~/claude-code-cues fork path (location drift) —
+  // but NOT one already pointing at the current fork.root.
+  const re = /alias\s+claude-cues\s*[= ].*(cli\.js|claude-code-cues)/;   // FORK-PATH-ALLOW: detect a stale legacy-fork alias to warn the user
   for (const f of candidates) {
     if (!fs.existsSync(f)) continue;
     try {
       const lines = fs.readFileSync(f, 'utf8').split('\n');
       for (let i = 0; i < lines.length; i++) {
-        if (re.test(lines[i])) stale.push({ file: f, lineNo: i + 1, line: lines[i].trim() });
+        if (re.test(lines[i]) && !lines[i].includes(fork.root)) stale.push({ file: f, lineNo: i + 1, line: lines[i].trim() });
       }
     } catch { /* fail-silent */ }
   }
   if (stale.length === 0) return;
-  const correct = `alias claude-cues='${path.join(fork.root, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe')}'`;
+  const correct = `alias claude-cues='${correctBin}'`;
   console.log('');
-  console.log('\x1b[33mNote:\x1b[0m your shell config has a `claude-cues` alias pointing at the pre-2.1.113 cli.js path,');
-  console.log('which no longer exists after the upgrade to a native-binary CC version. Update it to:');
+  console.log('\x1b[33mNote:\x1b[0m your shell config has a `claude-cues` alias pointing at a path that no longer');
+  console.log('exists (the CC fork moved to ~/.opencues/forks/, or the cli.js→native shape changed). Update it to:');
   console.log('');
   console.log(`  ${correct}`);
   console.log('');
@@ -969,7 +968,7 @@ function printHelp() {
   console.log('  --help              Show this message');
   console.log('');
   console.log('Blast radius (compact footprint — everything inside the CC fork dir):');
-  console.log('    <CC_FORK>/                e.g. ~/claude-code-cues/');
+  console.log('    <CC_FORK>/                e.g. ~/.opencues/forks/claude-code/');
   console.log('      ├── node_modules/');
   console.log('      │   ├── @anthropic-ai/claude-code/cli.js   (patched in place,');
   console.log('      │   │                                       revertable via uninstall)');
