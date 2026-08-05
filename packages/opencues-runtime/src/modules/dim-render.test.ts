@@ -1,8 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeEach } from 'vitest';
 import { DimRender } from './dim-render';
 import { Navigation, splitWords } from './navigation';
 import { HighlightState } from '../state/highlight-state';
-import { DynDefs } from '../state/dyn-defs';
+import { DynDefs, _resetCycledEverForTests } from '../state/dyn-defs';
+
+// The `(underscore to cycle)` affordance is a SESSION-scoped module flag that a
+// real cycle flips true. Other test files (cycling*) cycle and leak that flag
+// into a shared worker, so reset it before every test → the hint is present and
+// these note assertions are deterministic.
+beforeEach(() => { _resetCycledEverForTests(); });
 import { SpanFillState } from '../state/span-fill';
 import { MockAdapter, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
 import { applyDirectives } from '../render-directives';
@@ -324,7 +330,7 @@ blankScript: ./vol.sh
       blankName: 'sentence-cue:more-formal',
     });
     const dim = new DimRender(adapter, hlState, dynDefs, loader);
-    const out = dim.compute({ text: buffer, cursor: 0, externalHighlights: [] });
+    const out = dim.compute({ text: buffer, cursor: -1, externalHighlights: [] }); // -1 = no caret → no auto-select, pure dim coverage
     // All THREE paragraphs get a dim range — none left un-highlighted.
     expect(out?.dimRanges).toEqual([
       { start: 0, end: para1.length },
@@ -386,7 +392,7 @@ blankScript: ./vol.sh
     const dim = new DimRender(adapter, hlState, dynDefs, loader);
     // compute is handed the WRAPPED text. Ranges are computed in logical coords
     // then MAPPED to ctx (wrapped) coords so the host paints them correctly.
-    const out = dim.compute({ text: wrapped, cursor: 0, externalHighlights: [] });
+    const out = dim.compute({ text: wrapped, cursor: -1, externalHighlights: [] }); // -1 = no caret → no auto-select
     // p1 is entirely before the wrap → unchanged. The wrap newline sits inside
     // p2 (at wrapPos), so p2's END shifts +1 in ctx coords; its start (before
     // the wrap) is unchanged.
@@ -432,7 +438,7 @@ blankScript: ./vol.sh
       blankName: 'sentence-cue:more-formal',
     });
     const dim = new DimRender(adapter, hlState, dynDefs, loader);
-    const out = dim.compute({ text: buffer, cursor: 0, externalHighlights: [] });
+    const out = dim.compute({ text: buffer, cursor: -1, externalHighlights: [] }); // -1 = no caret → no auto-select
     // BOTH sentence spans dim — the synthetic-keyed one via the dedicated pass.
     expect(out?.dimRanges).toEqual([
       { start: 0, end: s1.length },
@@ -600,7 +606,8 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     expect(out?.inlineNote).toEqual({
       spanStart: 11,
       spanEnd: 19,
-      text: "⚠ the 19th is a Friday, not Saturday",
+      text: "⚠ 1 | the 19th is a Friday, not Saturday",
+      hint: "(underscore to cycle)",
     });
     // Auto-select: the span the caret is in renders in the selected/highlight
     // colour, not dim.
@@ -622,11 +629,10 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
       spanStart: 4,
       spanEnd: 10,
       blankName: 'sentence-cue:more-formal',
-      cueTip: 'more-formal',
     });
     const directives = dimRender.compute({ text: buf, cursor: 5, externalHighlights: [] });
     const visible = applyDirectives(buf, directives).replace(/\x1b\[[0-9;]*m/g, '');
-    expect(visible).toContain('formal\n     ↳ more-formal'); // 5 spaces (cells)
+    expect(visible).toContain('formal\n     ↳ 2 | Improve formality'); // 5 spaces (cells)
     expect(visible).not.toContain('formal\n  ↳'); // NOT the 2-space code-point pad
   });
 
@@ -666,7 +672,9 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
       blankName: 'transform-blank',
     });
     const out = dimRender.compute({ text: buf, cursor: 2, externalHighlights: [] });
-    expect(out?.inlineNote?.text).toBe('transform');
+    // New format: number-first improvement note with a ≤2-word preview of the
+    // current alternative (the buffer text). One word here (spaceless CJK).
+    expect(out?.inlineNote?.text).toBe('2 | 日本語です');
     expect(out?.inlineNote?.spanStart).toBe(0);
   });
 
@@ -674,7 +682,7 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     const { dynDefs, dimRender } = setup(BUFFER);
     seedContradictionDef(dynDefs);
     const out = dimRender.compute({ text: BUFFER, cursor: 19, externalHighlights: [] });
-    expect(out?.inlineNote?.text).toBe("⚠ the 19th is a Friday, not Saturday");
+    expect(out?.inlineNote?.text).toBe("⚠ 1 | the 19th is a Friday, not Saturday");
   });
 
   it('does NOT emit the note when the cursor is outside the span', () => {
@@ -695,9 +703,9 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
       spanEnd: 12,
     });
     const out = dimRender.compute({ text: 'the attorney filed', cursor: 6, externalHighlights: [] });
-    // A word-cue (incl. spelling) has no cueTip, but its note IS its suggestions
-    // (alternatives excluding the original) — no separate tip channel, no fetch.
-    expect(out?.inlineNote?.text).toBe('lawyer · counsel');
+    // A word-cue (incl. spelling) is a NOTIFICATION (an error) — ✍️ + countdown,
+    // pipe-separated suggestions (alternatives excluding the original).
+    expect(out?.inlineNote?.text).toBe('✍️ 3 | lawyer | counsel');
   });
 
   it('does NOT emit a note for a single-alternative def (nothing to suggest)', () => {
@@ -820,8 +828,8 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     expect(visible.startsWith(BUFFER)).toBe(true);
     // Message aligns under the span (col 11); "↳ " (2 cols) hangs in the margin,
     // so the line is padded to col-2 = 9 before the connector.
-    expect(visible).toContain('\n' + ' '.repeat(9) + '↳ ⚠ - the 19th is a Friday, not Saturday');
-    expect(painted).toContain('\x1b[2m↳ ⚠ - the 19th is a Friday, not Saturday\x1b[22m');
+    expect(visible).toContain('\n' + ' '.repeat(9) + '↳ ⚠ 1 | the 19th is a Friday, not Saturday');
+    expect(painted).toContain('\x1b[2m↳ ⚠ 1 | the 19th is a Friday, not Saturday   (underscore to cycle)\x1b[22m');
   });
 
   it('no leading indent when the span starts at column 0 (even with a first-line indent)', () => {
@@ -839,7 +847,7 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     const directives = dimRender.compute({ text: buf0, cursor: 3, externalHighlights: [] });
     // col 0 + promptPad 2 - "↳ "(2) = 0 → arrow sits at the left edge, no indent.
     const visible = applyDirectives(buf0, directives, 2).replace(/\x1b\[[0-9;]*m/g, '');
-    expect(visible).toContain('\n↳ ⚠ - the 19th is a Friday');
+    expect(visible).toContain('\n↳ ⚠ 1 | the 19th is a Friday');
     expect(visible).not.toContain('\n ↳'); // no leading space before the arrow
   });
 
@@ -850,7 +858,7 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     // firstLineIndent = 4 → note pad = (col-2) + 4 = 9 + 4 = 13. The span is on
     // line 1 (lineStart 0), so the prompt offset applies.
     const visible = applyDirectives(BUFFER, directives, 4).replace(/\x1b\[[0-9;]*m/g, '');
-    expect(visible).toContain('\n' + ' '.repeat(13) + '↳ ⚠ - the 19th is a Friday, not Saturday');
+    expect(visible).toContain('\n' + ' '.repeat(13) + '↳ ⚠ 1 | the 19th is a Friday, not Saturday');
   });
 
   it('does NOT add the first-line indent when the span is on a later line', () => {
@@ -870,7 +878,7 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     // Even with a large firstLineIndent, a line-2 span gets NO prompt pad:
     // col = 21 - 16 = 5 → pad = col-2 = 3, unchanged.
     const visible = applyDirectives(multiline, directives, 8).replace(/\x1b\[[0-9;]*m/g, '');
-    expect(visible).toContain('saturday now\n   ↳ ⚠ - the 19th is a Friday');
+    expect(visible).toContain('saturday now\n   ↳ ⚠ 1 | the 19th is a Friday');
   });
 
   it('places the pill under the SPAN\'s line, not below the whole buffer (long buffer)', () => {
@@ -891,7 +899,7 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     const directives = dimRender.compute({ text: multiline, cursor: 8, externalHighlights: [] });
     const visible = applyDirectives(multiline, directives).replace(/\x1b\[[0-9;]*m/g, '');
     // span at col 5 → message aligns under it, "↳ " hangs left → pad = 3.
-    expect(visible).toContain('saturday\n   ↳ ⚠ - the 19th is a Friday\nmore text');
+    expect(visible).toContain('saturday\n   ↳ ⚠ 1 | the 19th is a Friday   (underscore to cycle)\nmore text');
     // Not dangling after the last line.
     expect(visible.endsWith('even more')).toBe(true);
   });
@@ -922,7 +930,7 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     // Right-side text preserved on the line; note below, message under col 8.
     expect(visible.startsWith('meet on saturday at 6pm')).toBe(true);
     // col 8 → pad = 8 - 2 = 6; "↳ " then message → ⚠ lands at col 8 (under 's').
-    expect(visible).toContain('at 6pm\n      ↳ ⚠ - the 19th is a Friday');
+    expect(visible).toContain('at 6pm\n      ↳ ⚠ 1 | the 19th is a Friday');
   });
 
   it('MID-LINE span with a following line — note inserts between, right-side text preserved', () => {
@@ -933,7 +941,7 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     const visible = applyDirectives(buf, directives).replace(/\x1b\[[0-9;]*m/g, '');
     // Note lands between the span's line and the next; "at 6pm" stays on line 1,
     // "see you there" stays on its own line, message aligned under col 8.
-    expect(visible).toContain('at 6pm\n      ↳ ⚠ - the 19th is a Friday\nsee you there');
+    expect(visible).toContain('at 6pm\n      ↳ ⚠ 1 | the 19th is a Friday   (underscore to cycle)\nsee you there');
   });
 
   it('MID-LINE span on the prompted first line — prompt indent + column both apply', () => {
@@ -943,6 +951,6 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     // firstLineIndent 2 (CC prompt) → pad = col 8 + 2 - "↳ "(2) = 8, so the
     // message sits under the span's on-screen column (prompt 2 + col 8 = 10).
     const visible = applyDirectives(MIDLINE, directives, 2).replace(/\x1b\[[0-9;]*m/g, '');
-    expect(visible).toContain('at 6pm\n        ↳ ⚠ - the 19th is a Friday');
+    expect(visible).toContain('at 6pm\n        ↳ ⚠ 1 | the 19th is a Friday');
   });
 });

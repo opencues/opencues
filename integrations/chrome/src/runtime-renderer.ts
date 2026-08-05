@@ -435,7 +435,7 @@ function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): 
 
 function renderInlineNote(
   target: HTMLElement,
-  note: { spanStart: number; spanEnd: number; text: string },
+  note: { spanStart: number; spanEnd: number; text: string; hint?: string },
   pushMode: PushMode,
 ): void {
   const ranges = plainOffsetsToDomRanges(target, [{ start: note.spanStart, end: note.spanEnd }]);
@@ -445,7 +445,18 @@ function renderInlineNote(
   try { rect = range.getBoundingClientRect(); } catch { clearInlineNote(); return; }
   if (rect.width === 0 && rect.height === 0) { clearInlineNote(); return; }
   const el = ensureNoteEl();
-  el.textContent = inlineNoteDisplayText(note.text);
+  // Note = message (LLM-derived → plain text node, never innerHTML) + the
+  // `(underscore to cycle)` affordance hint, painted dimmer and trailing on the
+  // right. The hint is present only until the user's first cycle this session
+  // (dim-render drops it via hasCycledEver()).
+  el.textContent = '';
+  el.appendChild(document.createTextNode(inlineNoteDisplayText(note.text)));
+  if (note.hint) {
+    const h = document.createElement('span');
+    h.textContent = `   ${note.hint}`;
+    h.style.cssText = 'opacity:0.62;font-style:italic';
+    el.appendChild(h);
+  }
   el.style.display = 'block'; // ensure it's laid out so we can measure it below
   // Inherit the field's typography so the note reads as part of the text line.
   let lineHeightPx = rect.height;

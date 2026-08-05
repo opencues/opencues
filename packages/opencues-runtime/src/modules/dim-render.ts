@@ -10,7 +10,7 @@
 import type { HostAdapter, InlineNote, Range, RenderContext, RenderDirectives, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs, WordDef } from '../state/dyn-defs';
-import { inlineNoteText } from '../state/dyn-defs';
+import { inlineNoteText, hasCycledEver } from '../state/dyn-defs';
 import type { ConfigLoader } from './config-loader';
 import type { SpanFillState } from '../state/span-fill';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
@@ -371,7 +371,9 @@ export class DimRender {
         const s = toCtx ? toCtx.start(def.spanStart) : def.spanStart;
         const e = toCtx ? toCtx.end(def.spanEnd) : def.spanEnd;
         if (ctx.cursor >= s && ctx.cursor <= e) {
-          inlineNote = { spanStart: s, spanEnd: e, text: noteText };
+          // The `(underscore to cycle)` affordance rides until the user has
+          // cycled any note once this session, then drops off everywhere.
+          inlineNote = { spanStart: s, spanEnd: e, text: noteText, hint: hasCycledEver() ? undefined : '(underscore to cycle)' };
           // Auto-select: the note-bearing span the caret is in promotes from dim
           // to the active highlight — the "you're on this, `_` engages it" state,
           // for cues AND transform/fluid blanks alike (consistent affordance).
@@ -401,7 +403,7 @@ export class DimRender {
         if (sw && ew && noteText) {
           const s = toCtx ? toCtx.start(sw.start) : sw.start;
           const e = toCtx ? toCtx.end(ew.end) : ew.end;
-          if (ctx.cursor >= s && ctx.cursor <= e) inlineNote = { spanStart: s, spanEnd: e, text: noteText };
+          if (ctx.cursor >= s && ctx.cursor <= e) inlineNote = { spanStart: s, spanEnd: e, text: noteText, hint: hasCycledEver() ? undefined : '(underscore to cycle)' };
         }
       }
       // Selector-satellite: the note is CURSOR-POSITION-AWARE, exactly like the

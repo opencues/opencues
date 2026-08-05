@@ -96,6 +96,14 @@ export interface InlineNote {
   readonly spanStart: number;
   readonly spanEnd: number;
   readonly text: string;
+  /**
+   * The right-aligned affordance hint (literally `(underscore to cycle)`),
+   * present only until the user has cycled once this session — then it drops
+   * off and the note keeps just the emoji/number/message. Hosts paint it dim
+   * and right-aligned; undefined means "don't show the hint". See
+   * dim-render.ts (sets it from `hasCycledEver()`) + the host renderers.
+   */
+  readonly hint?: string;
 }
 
 export interface ColoredRange extends Range {

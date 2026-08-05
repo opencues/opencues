@@ -75,13 +75,13 @@ interface Insertion {
 // Connector glyph that ties the note to the span above it.
 const INLINE_NOTE_CONNECTOR = '↳';
 
-// The advisory (def.cueTip) arrives as "<icon> <message>" (e.g.
-// "⚠ the 19th is a Friday"); render it as "<icon> - <message>", led by the
-// `↳` connector at the painter.
+// The note text is already self-formatted by inlineNoteText — a notification
+// as "<emoji> <N> | <message>", an improvement as "<N> | <label>" — so the
+// painter just trims and lets the `↳` connector tie it to the span above.
+// (Pre-2026-08 this inserted a "<icon> - <message>" dash; the ` | ` separator
+// replaced it.)
 function formatInlineNoteText(text: string): string {
-  const trimmed = text.trim();
-  const m = trimmed.match(/^(\S+)\s+([\s\S]*)$/);
-  return m ? `${m[1]} - ${m[2]}` : trimmed;
+  return text.trim();
 }
 
 /**
@@ -233,7 +233,10 @@ export function applyDirectives(
     // yields no leading indent — the arrow just sits at the left edge — instead
     // of being pushed right by the prompt pad.
     const pad = ' '.repeat(Math.max(0, col + promptPad - prefixCells));
-    const body = ANSI_DIM_ON + prefix + formatInlineNoteText(note.text) + ANSI_DIM_OFF;
+    // Trailing `(underscore to cycle)` affordance — present until the user's
+    // first cycle this session (dim-render drops the hint via hasCycledEver()).
+    const noteBody = formatInlineNoteText(note.text) + (note.hint ? `   ${note.hint}` : '');
+    const body = ANSI_DIM_ON + prefix + noteBody + ANSI_DIM_OFF;
     // order 2 → fires after any dim/highlight close-codes at this boundary.
     insertions.push({ visibleAt: at, ansi: '\n' + pad + body, order: 2 });
   }
