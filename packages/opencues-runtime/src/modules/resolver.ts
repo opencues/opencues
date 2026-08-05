@@ -836,14 +836,26 @@ export class Resolver {
       // Deliberate `!== 'off'` polarity: undo-mode defaults ON even on
       // installs whose OPENCUES.md pre-dates the scalar (no line at all).
       enableUndoActions: settings.get('undo-mode') !== 'off',
-      enableSentenceCues: settings.get('sentence-cues-mode') === 'on',
+      // ON by default (`!== 'off'`): sentence cues are passive + advisory like
+      // contradiction. The only shipped non-calendar sentence cue is
+      // `more-formal`, which is allow-listed (`on-site:`) to LinkedIn + web
+      // email — so on-by-default surfaces formality exactly where it's wanted
+      // and nowhere casual (it can't leak onto reddit/forums/chat). Only an
+      // explicit `sentence-cues-mode: off` disables the class.
+      enableSentenceCues: settings.get('sentence-cues-mode') !== 'off',
       // Auto-imply the calendar-conflict sentence-cue from calendar-context-mode
       // (same polarity as the resolve-time calendarContext gate below): turning
       // on calendar reasoning surfaces conflict warnings without also flipping
       // the separately-named sentence-cues-mode. The cue self-inerts with no
       // feed, so this is a no-op until the user adds a calendar.
       enableCalendarContext: this.configLoader.opencuesState.calendarContextMode !== 'off',
-      enableContradictionCues: settings.get('contradiction-cues-mode') === 'on',
+      // ON by default (`!== 'off'`): a contradiction cue is passive and
+      // advisory — it never touches the buffer without a keystroke — so it
+      // belongs on out of the box like spelling, not behind a toggle a user
+      // has to discover. Only an explicit `contradiction-cues-mode: off`
+      // disables it. (Absent OR on → enabled.) Cost: one cues-bucket LLM
+      // parse per settled sentence, cheap on cerebras's prefix cache.
+      enableContradictionCues: settings.get('contradiction-cues-mode') !== 'off',
       worldDataFetch: this.options.worldDataFetch,
       pageLocation: this.options.pageLocation,
       weatherLocation: settings.get('weather-location'),

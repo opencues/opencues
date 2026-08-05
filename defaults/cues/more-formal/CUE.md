@@ -14,11 +14,15 @@ not-on-field: single-line
 # the prose-first surfaces (chrome text fields, the shell editor) and off the
 # CLI hosts. The calendar-conflict cue (a different CUE.md) is unaffected.
 not-on-host: claude-code, gemini-cli, opencode
-# Site scoping — reddit's register is deliberately casual (formalizing a
-# comment reads as noise there), and the contradiction rail's subreddit-rules
-# tier (priority 87) owns reddit sentence spans — it would evict this cue's 85
-# on every overlap anyway. Wildcard covers www./old./sh. and the bare domain.
-not-on-site: [*.reddit.com]
+# Site scoping (chrome) — formality is a PROFESSIONAL-WRITING cue, so allow-list
+# it to the surfaces where "make this more formal" is actually wanted: LinkedIn
+# and web email. Everywhere else on the web (reddit, forums, chat, casual
+# comment boxes) it stays off — those registers are deliberately casual and a
+# background formalizing rewrite reads as noise. An allow-list (not a per-site
+# deny-list) so new casual sites are off by default; extend this list to add a
+# professional surface. Non-chrome hosts have no URL, so on-site doesn't gate
+# them (shell keeps formality; the CLI hosts are excluded by not-on-host above).
+on-site: [linkedin.com, *.linkedin.com, mail.google.com, outlook.live.com, outlook.office.com, outlook.office365.com, mail.proton.me, mail.yahoo.com]
 ---
 
 Rewrite each sentence in the buffer to be MORE FORMAL. Preserve
