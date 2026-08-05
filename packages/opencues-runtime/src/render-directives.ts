@@ -84,6 +84,17 @@ function formatInlineNoteText(text: string): string {
   return text.trim();
 }
 
+// Terminal cells only: the note's leading emoji (⚠ 🧢 ❓ ✍️) render TWO cells
+// wide in a terminal, so the single space `inlineNoteText` puts after it reads
+// as cramped against the message. Add one more space so the text clears the
+// glyph. Terminal-side ONLY — chrome's overlay renderer paints the glyph at its
+// natural width and doesn't go through here. (Improvements are number-first with
+// no emoji → untouched.)
+const NOTE_EMOJI_LEAD = /^(⚠️|⚠|🧢|❓|✍️)(\s)/u;
+function padTerminalWideEmoji(text: string): string {
+  return text.replace(NOTE_EMOJI_LEAD, '$1 $2');
+}
+
 /**
  * The full inline-note display string — connector + formatted advisory, e.g.
  * "↳ ⚠ - the 19th is a Friday". Exported so NON-terminal hosts (chrome's
@@ -235,7 +246,7 @@ export function applyDirectives(
     const pad = ' '.repeat(Math.max(0, col + promptPad - prefixCells));
     // Trailing `(underscore to cycle)` affordance — present until the user's
     // first cycle this session (dim-render drops the hint via hasCycledEver()).
-    const noteBody = formatInlineNoteText(note.text) + (note.hint ? `   ${note.hint}` : '');
+    const noteBody = padTerminalWideEmoji(formatInlineNoteText(note.text)) + (note.hint ? `   ${note.hint}` : '');
     const body = ANSI_DIM_ON + prefix + noteBody + ANSI_DIM_OFF;
     // order 2 → fires after any dim/highlight close-codes at this boundary.
     insertions.push({ visibleAt: at, ansi: '\n' + pad + body, order: 2 });
