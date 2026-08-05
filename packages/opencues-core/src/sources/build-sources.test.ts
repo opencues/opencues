@@ -553,3 +553,64 @@ describe('buildSourcesFromConfig — contradiction-cues engine selection (TDZ or
     assert.equal(cx(sources), undefined);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sentence-cue gating: general sentence-cues-mode vs calendar auto-imply
+// ---------------------------------------------------------------------------
+
+describe('buildSourcesFromConfig — sentence-cue gating + calendar auto-imply', () => {
+  const sentenceCue = (sources: ReturnType<typeof buildSourcesFromConfig>) =>
+    sources.filter((s) => s.id.startsWith('sentence-cue:'));
+
+  // A calendar-aware sentence cue (uses-calendar-context) and a plain prose
+  // sentence cue, both in one CUES.md. The calendar one should be auto-implied
+  // by enableCalendarContext; the plain one stays behind enableSentenceCues.
+  const cuesConfig: CuesMdConfig = mkConfig({
+    sources: {
+      calendar: {
+        name: 'calendar', scope: 'sentence', priority: 90,
+        usesCalendarContext: true, promptText: 'calendar-conflict checker',
+      },
+      formalize: {
+        name: 'formalize', scope: 'sentence', priority: 85,
+        promptText: 'make it more formal',
+      },
+    },
+  });
+
+  it('both off → no sentence cues build', () => {
+    const sources = buildSourcesFromConfig(cuesConfig, undefined, {
+      ...defaultOptions, supportsCycling: true,
+      enableSentenceCues: false, enableCalendarContext: false,
+    });
+    assert.deepEqual(sentenceCue(sources).map((s) => s.id), []);
+  });
+
+  it('calendar-context on + sentence-cues off → ONLY the calendar cue is auto-implied', () => {
+    const sources = buildSourcesFromConfig(cuesConfig, undefined, {
+      ...defaultOptions, supportsCycling: true,
+      enableSentenceCues: false, enableCalendarContext: true,
+    });
+    // The uses-calendar-context cue builds; the plain prose sentence cue does NOT.
+    assert.deepEqual(sentenceCue(sources).map((s) => s.id), ['sentence-cue:calendar']);
+  });
+
+  it('sentence-cues on → every sentence cue builds regardless of calendar-context', () => {
+    const sources = buildSourcesFromConfig(cuesConfig, undefined, {
+      ...defaultOptions, supportsCycling: true,
+      enableSentenceCues: true, enableCalendarContext: false,
+    });
+    assert.deepEqual(
+      sentenceCue(sources).map((s) => s.id).sort(),
+      ['sentence-cue:calendar', 'sentence-cue:formalize'],
+    );
+  });
+
+  it('a host with no cycling surface prunes even the auto-implied calendar cue', () => {
+    const sources = buildSourcesFromConfig(cuesConfig, undefined, {
+      ...defaultOptions, supportsCycling: false,
+      enableSentenceCues: false, enableCalendarContext: true,
+    });
+    assert.deepEqual(sentenceCue(sources).map((s) => s.id), []);
+  });
+});

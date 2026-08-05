@@ -202,6 +202,17 @@ export interface BuildSourcesOptions {
    * shape — global kill-switch on top of per-cue declaration.
    */
   enableSentenceCues?: boolean;
+  /**
+   * Enable the calendar-context catalog (`calendar-context-mode: on`). Set
+   * independently of `enableSentenceCues` so the shipped calendar-conflict cue
+   * (`uses-calendar-context: true`, `scope: sentence`) is AUTO-IMPLIED by
+   * turning calendar context on — a user who enables calendar reasoning
+   * shouldn't also have to discover the separately-named `sentence-cues-mode`
+   * toggle to get conflict warnings. The source still self-inerts when no
+   * calendar feed is present, so this only surfaces cues when there's data.
+   * Other (non-calendar) sentence cues stay behind `enableSentenceCues`.
+   */
+  enableCalendarContext?: boolean;
   /** Enable the deterministic contradiction-cue layer (Tier 0: weekday-date
    *  mismatch, split-the-bill math — buffer + clock only, no LLM/network).
    *  Defaults to false; flip on via OPENCUES.md `contradiction-cues-mode: on`. */
@@ -586,7 +597,16 @@ export function buildSourcesFromConfig(
       // word-cues so an overlapping word-cue gets suppressed in the
       // resolver (design decision: sentence wins outright).
       if (scope === 'sentence') {
-        if (!options.enableSentenceCues) continue;
+        // The calendar-conflict cue (uses-calendar-context) is auto-implied by
+        // calendar-context-mode — it fires even when the general
+        // sentence-cues-mode toggle is off, because a user who turned on
+        // calendar reasoning expects conflict warnings without hunting for a
+        // second, differently-named toggle. It self-inerts with no feed
+        // (supports() returns false when calendarContext is empty), so no LLM
+        // call fires unless there's real calendar data. Every OTHER
+        // sentence-scope cue stays gated behind sentence-cues-mode.
+        const calendarImplied = srcCfg.usesCalendarContext && options.enableCalendarContext;
+        if (!options.enableSentenceCues && !calendarImplied) continue;
         if (!supportsCycling) {
           options.log?.(`buildSources: skipping sentence-cue '${srcCfg.name}' — host has no cycling surface`);
           continue;
