@@ -480,7 +480,14 @@ export class SentenceCueSource implements CueSource {
       // have to Ctrl+Alt+Up to read a heads-up. Extract the flag the LLM
       // appended (`… — heads up: <conflict>`) and surface it as the cueTip; the
       // status bar renders it passively when the cursor is on the sentence.
-      let tip: string = this.sourceConfig.name;
+      // cueTip is an ADVISORY (a notification) ONLY. A calendar-conflict cue
+      // extracts the LLM's appended heads-up as a `⚠` tip. A plain rewrite cue
+      // (e.g. more-formal) is a cycleable IMPROVEMENT, not a notification —
+      // leave cueTip undefined so its inline note renders emoji-free as
+      // `N | <label>` (inlineNoteText's improvement branch, e.g.
+      // "Improve formality"). Defaulting to the cue NAME here made every
+      // rewrite cue read as a `⚠ N | <name>` notification — the bug.
+      let tip: string | undefined;
       if (this.sourceConfig.usesCalendarContext) {
         const m = alts[0]?.match(/heads up:\s*(.+)$/i) ?? alts[0]?.match(/—\s*(.+)$/);
         if (m && m[1]) tip = `⚠ ${m[1].trim().replace(/[.\s]+$/, '')}`;
