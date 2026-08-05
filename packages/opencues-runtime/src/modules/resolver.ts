@@ -104,6 +104,10 @@ export interface ResolverOptions {
    *  weather). Chrome passes a service-worker-routed fetch (page-CSP blocks a
    *  content-script one); native hosts omit it → the provider uses global fetch. */
   readonly worldDataFetch?: (url: string) => Promise<{ ok: boolean; json: () => Promise<unknown> }>;
+  /** Tier 5d — live page-location getter for page-scoped community rules
+   *  (subreddit rules). Chrome passes a `location` getter; native hosts omit
+   *  (no page) → the tier stays silent. */
+  readonly pageLocation?: () => { origin: string; pathname: string } | null;
   /** Same â inject the resolver build directly (mostly for testing). */
   readonly resolverFactory?: (cuesConfig: unknown, blanksConfig: unknown, opts: unknown) => unknown;
   /**
@@ -841,6 +845,7 @@ export class Resolver {
       enableCalendarContext: this.configLoader.opencuesState.calendarContextMode !== 'off',
       enableContradictionCues: settings.get('contradiction-cues-mode') === 'on',
       worldDataFetch: this.options.worldDataFetch,
+      pageLocation: this.options.pageLocation,
       weatherLocation: settings.get('weather-location'),
       enableWordCues: settings.get('word-cues-mode') === 'on',
       // `max-thinking` (default on). Threaded into every LLM source's

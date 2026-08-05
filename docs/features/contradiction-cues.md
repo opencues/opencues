@@ -32,6 +32,7 @@ otherwise — so turning the mode on never *requires* a network call.
 | **5** | an outdoor, weather-dependent plan vs the forecast | open-meteo precipitation cache | "picnic in the park on Saturday" when rain is forecast |
 | **5b** | a London transit plan vs live disruption | TfL line-status | "let's take the Jubilee line tomorrow" during a Jubilee suspension |
 | **5c** | a wildly-underestimated journey time | photon geocode + distance | "5 minute walk from East Finchley to Muswell Hill" |
+| **5d** | a draft that conflicts with the subreddit's posted rules (chrome, on reddit) | the subreddit's own `about/rules.json`, fetched same-origin | drafting an off-topic post on r/ClaudeAI ("Be relevant") |
 
 Tier 0 is pure date/number arithmetic — instant, private, no network.
 The higher tiers each make one live call through a **hardcoded** egress
@@ -93,6 +94,14 @@ precision rule; a wrong cue is worse than no cue.
 - **Region.** Tier 0.5 (GOV.UK) and Tier 5b (TfL) are UK/London-specific
   today; Tier 0 and Tier 5 are location-agnostic (weather keys off your
   system-timezone city).
+- **Tier 5d is the one LLM-judged tier.** "Does this draft fit the
+  subreddit's rules" has no arithmetic to compute, so the conflict call
+  is the model's — a declared exception to "data, never generation".
+  The tip text itself is still data (the cached rule's number + name,
+  fetched from the subreddit's own rules endpoint), a hallucinated rule
+  number is dropped, and the tip is phrased as "may conflict with…".
+  Chrome-only (it needs a page to know the community); native hosts
+  never fire it.
 - The `docs/architecture/contradiction-cues.md` companion covers the
   source class, the parse→verify split, the tier caches, and the
   grounding invariants — read it before touching

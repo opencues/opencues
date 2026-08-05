@@ -52,6 +52,7 @@ tiers are **not** separate scalars; they activate by cache availability:
 | 5 | `outdoor_plan_weather` | `weather` (precip) cache | open-meteo |
 | 5b | transit disruption | `tfl` line-status cache | TfL |
 | 5c | `verifyJourneyClaim` | geocode (on demand) | photon/komoot |
+| 5d | `verifyCommunityRuleClaim` | `communityRules` (subreddit rules, page-scoped) | reddit (same-origin) |
 
 Each cache is a `{ refresh(): Promise<void>; current(): ReadonlyMap<…> }`
 passed into `ContradictionLlmSourceConfig`. `refresh()` is kicked
@@ -82,6 +83,47 @@ The calendar-conflict cue (`defaults/cues/calendar/CUE.md`, priority 90)
 is a sibling on the same passive-sentence-cue rail but reasons over the
 calendar snapshot instead of world data — see `calendar-context.md`.
 
+## Tier 5d — community rules (subreddit rules), the one LLM-judged tier
+
+Tier 5d flags a draft sentence that conflicts with the **posted rules of
+the community the user is writing in** — today: subreddit rules on
+reddit pages. It departs from the tiers above in one declared way and
+holds the line everywhere else:
+
+- **The conflict judgement is the model's** (there is no arithmetic that
+  decides "is this relevant to r/ClaudeAI"). This is a deliberate,
+  reviewed departure from "the correction is DATA" — accepted because
+  the cue's *content* is still data: the tip is built by
+  `verifyCommunityRuleClaim` from the **cached** rule (community label +
+  rule number + sanitized rule name), never from model output. The
+  judge's only powers are picking a rule NUMBER (dropped unless it
+  resolves against the cache) and quoting a verbatim phrase (dropped
+  unless grounded in the live sentence). There is no correction
+  alternative — nothing to splice, only the ⚠ tip.
+- **A dedicated judge call, never folded into extract.** The
+  extract prompt keeps its benched claim types untouched; the judge runs
+  as its own per-sentence call (`COMMUNITY_RULE_JUDGE_SYSTEM`) only when
+  the current page has cached rules. (The SUMMON-in-classifier lesson:
+  overloading one prompt with a second job measurably regresses the
+  first; the same job in its own call works.) The static system prompt
+  stays prefix-cacheable; the per-page RULES block + sentence ride the
+  USER message.
+- **Data path.** `RedditRulesProvider` (`contradiction/reddit-rules.ts`)
+  is keyed off a live `pageLocation` getter the host supplies
+  (chrome passes `location`; native hosts have no page → tier silent).
+  It fetches `<reddit origin>/r/<sub>/about/rules.json` with the
+  **content-script global fetch** — same-origin on reddit (rides the
+  page session, allowed by reddit's `connect-src 'self'` CSP), so
+  deliberately NOT the SW-routed `worldDataFetch`. TTL 6 h per
+  subreddit, 10 min negative cache on failure.
+- **Untrusted text.** Rule text is community-controlled. It is
+  sanitized + length-capped at provider parse time, is presented to the
+  judge as DATA with an explicit never-follow-instructions rule, and can
+  only ever reach user-visible tip text — no side-effect channel.
+  Egress stays hardcoded-template: allowlisted reddit origin (exact
+  hostname match — lookalike domains refused) + regex-validated
+  subreddit parsed from the URL path, never model-chosen.
+
 ## Security / grounding invariants
 
 The verify step is the one place LLM-adjacent output shapes an outbound
@@ -108,11 +150,11 @@ request, so it's guarded (security-audit.md rows #28–#29):
 - `contradiction/contradiction-llm-source.ts` — the parse prompt +
   cache plumbing. Adding a networked tier is a new cache field on
   `ContradictionLlmSourceConfig` + its verifier + the host wiring.
-- `contradiction/journey.ts` (geocode/distance), `tfl.ts`, `weather.ts` —
-  per-provider fetch + parse. Fixed URLs or `encodeURIComponent`;
-  defensive parsing; TTL-gated.
+- `contradiction/journey.ts` (geocode/distance), `tfl.ts`, `weather.ts`,
+  `reddit-rules.ts` — per-provider fetch + parse. Fixed URLs or
+  `encodeURIComponent`; defensive parsing; TTL-gated.
 - `resolver.ts` `enableContradictionCues` — the mode gate + `worldDataFetch`
-  wiring.
+  + `pageLocation` wiring.
 
 ## Tests
 
