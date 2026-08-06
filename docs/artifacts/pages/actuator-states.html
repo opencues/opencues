@@ -75,7 +75,7 @@
     <tr><td><kbd>Ctrl+Alt+↓</kbd></td><td>lowers it by the same step</td><td>stops at 0% (muted / screen dark)</td></tr>
     <tr><td><kbd>_</kbd></td><td><span class="badge step">NEW</span> nudges it <strong>up</strong> one step, the quick one-key climb</td><td>climbs to 100% and stays there; the <code>_</code> is never typed into your text</td></tr>
   </table></div>
-  <p class="lead"><code>_</code> is the one-direction quick nudge (up); use <kbd>Ctrl+Alt+↓</kbd> when you need to come back down. Both write straight to the device.</p>
+  <p class="lead"><code>_</code> is the one-direction quick nudge (up); use <code>Ctrl+Alt+↓</code> when you need to come back down. Both write straight to the device.</p>
 
   <!-- 4 -->
   <h2><span class="n">04</span>The value states</h2>
@@ -99,22 +99,22 @@
   <h2><span class="n">05</span>Worked example: climbing with <code>_</code></h2>
   <p class="lead">Verified live. <code>volume _</code> reads the current level (26%), then each bare <code>_</code> adds 6 points until it reaches 100% and stops.</p>
   <div class="strip">
-    <div class="frame"><div class="act"><span class="k"><code>volume _</code></span><span class="hw">reads 26%</span></div>
+    <div class="frame"><div class="act"><span class="k">Type <code>volume _</code></span><span class="hw">reads 26%</span></div>
       <div class="term"><span class="buf">volume <span class="sp">26%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume   <span class="hint">(ctrl+alt+up/down to adjust)</span></span></div></div>
-    <div class="frame"><div class="act"><span class="k"><kbd>_</kbd></span><span class="hw">26 + 6 = 32% · louder</span></div>
+    <div class="frame"><div class="act"><span class="k">Press <kbd>_</kbd></span><span class="hw">26 + 6 = 32% · louder</span></div>
       <div class="term"><span class="buf">volume <span class="sp">32%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume</span></div></div>
-    <div class="frame"><div class="act"><span class="k"><kbd>_</kbd></span><span class="hw">32 + 6 = 38%</span></div>
+    <div class="frame"><div class="act"><span class="k">Press <kbd>_</kbd></span><span class="hw">32 + 6 = 38%</span></div>
       <div class="term"><span class="buf">volume <span class="sp">38%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume</span></div></div>
-    <div class="frame"><div class="act"><span class="k">…keep pressing <kbd>_</kbd>…</span><span class="hw edge">at 98%, +6 would be 104%, so it stops at 100%</span></div>
+    <div class="frame"><div class="act"><span class="k">Keep pressing <kbd>_</kbd></span><span class="hw edge">at 98%, +6 would be 104%, so it stops at 100%</span></div>
       <div class="term"><span class="buf">volume <span class="sp">100%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume</span></div></div>
-    <div class="frame"><div class="act"><span class="k"><kbd>_</kbd> again at the top</span><span class="hw edge">nothing changes, and no <code>_</code> is typed</span></div>
+    <div class="frame"><div class="act"><span class="k">Press <kbd>_</kbd> again</span><span class="hw edge">nothing changes, and no <code>_</code> is typed</span></div>
       <div class="term"><span class="buf">volume <span class="sp">100%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume</span></div></div>
-    <div class="frame"><div class="act"><span class="k"><kbd>Ctrl+Alt+↓</kbd></span><span class="hw">100 − 6 = 94% · quieter</span></div>
+    <div class="frame"><div class="act"><span class="k">Press <kbd>Ctrl+Alt+↓</kbd></span><span class="hw">100 − 6 = 94% · quieter</span></div>
       <div class="term"><span class="buf">volume <span class="sp">94%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume</span></div></div>
   </div>
 
   <div class="note-callout">
-    <b>It stops at the top, it does not wrap.</b> Holding <code>_</code> down at 100% keeps it at 100%; it never rolls round to 0%. That is deliberate: one extra press should not silently mute you. To come back down, use <kbd>Ctrl+Alt+↓</kbd>.
+    <b>It stops at the top, it does not wrap.</b> Holding <code>_</code> down at 100% keeps it at 100%; it never rolls round to 0%. That is deliberate: one extra press should not silently mute you. To come back down, use <code>Ctrl+Alt+↓</code>.
   </div>
 
   <div class="foot">
