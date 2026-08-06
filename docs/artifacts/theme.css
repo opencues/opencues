@@ -133,8 +133,12 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 /* ── Filmstrip (.strip / .frame) — a labelled sequence of states ─────────────
    Two-column rows (label | terminal), collapsing to one column on mobile.
    min-width:0 on the label col lets the terminal shrink instead of overflowing. */
+/* The label column is deliberately wide: at 9rem every caption wrapped to
+   three or four lines. The terminal beside it may clip its longest line as a
+   result, which is fine: it scrolls on screen, and content length is not
+   something the layout can predict, so sizing around it is a losing game. */
 .strip{margin:14px 0}
-.frame{display:grid;grid-template-columns:132px 1fr;gap:16px;align-items:center;padding:11px 0;border-bottom:1px solid var(--hair)}
+.frame{display:grid;grid-template-columns:288px 1fr;gap:16px;align-items:center;padding:11px 0;border-bottom:1px solid var(--hair)}
 .frame:last-child{border-bottom:0}
 .frame .act{font-size:13px;color:var(--muted);min-width:0}
 .frame .act .k{display:inline-block;margin-bottom:5px}
