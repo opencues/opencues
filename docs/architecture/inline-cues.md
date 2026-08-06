@@ -121,11 +121,31 @@ you whether something is *wrong* or just *improvable*:
   at the total, counts `N → 1` as you cycle, and wraps. It sits **after** the
   emoji for a notification (`⚠ 6 | msg`) and **leads** for an improvement
   (`3 | Improve formality`).
-- **The `(underscore to cycle)` hint** — the optional `hint` field, painted
-  right-aligned. It rides until the user's FIRST cycle of any note this session
-  (module flag `hasCycledEver()` / `markCycledEver()` in `dyn-defs.ts`, flipped
-  in `Cycling.applyAltCycle`), then drops off everywhere. Shown only on a
-  cycleable def (`alternatives.length > 1`).
+- **The how-to hint** — the optional `hint` field, painted right-aligned. Its
+  TEXT depends on the gesture: `(underscore to cycle)` for a cycleable cue,
+  `(ctrl+alt+up/down to adjust)` for an actuator (volume / brightness). Shown
+  only on a def that can actually be engaged (`alternatives.length > 1`, or a
+  `blankStep` actuator), and only while the caret is in the span.
+
+  **Dismissal scope — PER-NOTE (2026-08).** The hint retires per NOTE IDENTITY,
+  not globally: adjusting volume hides only the volume hint; cycling one spelling
+  word hides only that word's. Governed by `dyn-defs.ts`:
+  - `HINT_DISMISSAL_SCOPE: 'per-note' | 'session'` — the selector const. Default
+    `'per-note'`. Flip to `'session'` to restore the **original** global
+    behaviour (first cycle/adjust of ANYTHING hides EVERY hint). It is a code
+    const, not a user setting — a maintenance knob.
+  - `noteHintKey(def)` — the stable per-note key: `b:<blankName>` when a def has
+    a blankName (blanks / actuators / sentence-cues), else `w:<original word>`
+    (plain word-cues). Keyed this way so dismissal **survives span drift and
+    re-resolution**.
+  - `markCycledEver(key?)` — called from every cycle/adjust path
+    (`applyAltCycle`, `cycleBlankStep`, `cycleSpanFill`). Sets the session flag
+    AND, given a key, adds it to the per-note dismissed set.
+  - `isHintSuppressed(key)` — what `dim-render` calls; returns per-scope.
+  - **Lifecycle:** SESSION-scoped in memory (per host process). Nothing is
+    persisted, so a fresh host process shows every hint again. Within a session a
+    dismissed hint never returns. Each host (CC / OC / chrome / shell) has its
+    own state — dismissing in one never affects another.
 
 **Cycleable vs passive.** A notification with a real fix to cycle to is
 cycleable — it gets the countdown (`⚠ N | correction`; spelling
@@ -151,6 +171,25 @@ map in `dyn-defs.ts`. The source no longer sets an advisory `cueTip` for plain
 rewrite cues (defaulting to the cue name made every rewrite read as a spurious
 `⚠ N | <name>` notification — the bug that motivated the split); a `cueTip` is
 now set ONLY for genuine advisories (the calendar-conflict `⚠` heads-up).
+
+**Actuators — `volume` / `brightness` (2026-08).** A `blankStep` blank fills a
+single value (`volume 32%`), so `inlineNoteText` returns nothing — but it is a
+LIVE knob, not a dead fill. `dim-render` gives it the standard
+`emoji · label · (hint)` note: the emoji from a new optional **`icon:`** blank
+frontmatter field (`🔊` volume, `🔆` brightness; `BlankConfig.icon`, parsed in
+`cues-md.ts`), the label from the blank's existing `tip:` (`system volume` /
+`screen brightness`), and the `(ctrl+alt+up/down to adjust)` hint. The value
+lives in the buffer, shown once — never repeated in the note. The **label
+persists** (the standing "this is a live knob" signal); the **hint drops** after
+the first adjust (per-note scope, above). Gestures: `Ctrl+Alt+↑/↓` step ±`blankStep`
+(clamped 0–100, written back via the blank's script); bare **`_` nudges UP** one
+step and holds at the top (the one-direction analogue of a text cue's `_`).
+**GET arms the knob** — with the caret in the value span, the step works with no
+separate navigate: `Cycling.step()` falls back to the caret word for a
+`blankStep` def when no nav highlight is active (confined to actuators, so plain
+cues still require a navigate). `cycleBlankStep` syncs the def's `alternatives`
+to the stepped value so the note's liveness check keeps matching across adjusts.
+Full state/gesture reference: `docs/features/inline-cues.md`.
 
 **All of these must hold for the note to actually show** (`dim-render.ts`):
 1. `inline-cues-mode: inline` (default) — `secondary` sends the same advisory to

@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest';
 import { DimRender } from './dim-render';
 import { Navigation, splitWords } from './navigation';
 import { HighlightState } from '../state/highlight-state';
-import { DynDefs, _resetCycledEverForTests, markCycledEver } from '../state/dyn-defs';
+import { DynDefs, _resetCycledEverForTests, markCycledEver, isHintSuppressed, noteHintKey, type WordDef } from '../state/dyn-defs';
 
 // The `(underscore to cycle)` affordance is a SESSION-scoped module flag that a
 // real cycle flips true. Other test files (cycling*) cycle and leak that flag
@@ -745,11 +745,29 @@ blankScript: ./vol.sh
     expect(first?.inlineNote).toEqual({
       spanStart: 7, spanEnd: 10, text: '🔊 system volume', hint: '(ctrl+alt+up/down to adjust)',
     });
-    // After any adjust this session the hint drops; the label persists.
-    markCycledEver();
+    // After adjusting THIS note the hint drops (per-note scope); label persists.
+    markCycledEver('b:volume');
     const later = dim.compute({ text: buf, cursor: 8, externalHighlights: [] });
     expect(later?.inlineNote?.text).toBe('🔊 system volume');
     expect(later?.inlineNote?.hint).toBeUndefined();
+  });
+
+  it('how-to hint is dismissed PER NOTE — retiring one leaves others intact', () => {
+    // HINT_DISMISSAL_SCOPE='per-note': cycling/adjusting one note retires only
+    // THAT note's hint, keyed by identity (blankName, else original word).
+    // Learning the gesture on a spelling word must NOT silence the volume knob.
+    _resetCycledEverForTests();
+    const volume = { blankName: 'volume', alternatives: ['40%'], originalWord: '40%', currentIndex: 0, spanStart: 0, spanEnd: 3 } as WordDef;
+    const spelling = { alternatives: ['attorney', 'lawyer'], originalWord: 'attorney', currentIndex: 0, spanStart: 0, spanEnd: 8 } as WordDef;
+    expect(isHintSuppressed(noteHintKey(volume))).toBe(false);
+    expect(isHintSuppressed(noteHintKey(spelling))).toBe(false);
+    // Cycle the spelling word.
+    markCycledEver(noteHintKey(spelling));
+    expect(isHintSuppressed(noteHintKey(spelling))).toBe(true);   // its hint retires
+    expect(isHintSuppressed(noteHintKey(volume))).toBe(false);    // volume's does NOT (the old coupling is gone)
+    // Adjusting volume retires only volume's.
+    markCycledEver(noteHintKey(volume));
+    expect(isHintSuppressed(noteHintKey(volume))).toBe(true);
   });
 
   it('emits the note at the span boundary (cursor == spanEnd, inclusive)', () => {

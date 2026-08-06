@@ -12,7 +12,7 @@
 
 import type { HostAdapter, KeyEvent, ProcessHandle, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
-import { DynDefs, inlineNoteText, markCycledEver, type WordDef } from '../state/dyn-defs';
+import { DynDefs, inlineNoteText, markCycledEver, noteHintKey, type WordDef } from '../state/dyn-defs';
 import type { ConfigLoader, BlankEntry } from './config-loader';
 import { splitWords } from './navigation';
 import { resolveNavKeymap } from './nav-keymap';
@@ -758,6 +758,8 @@ export class Cycling {
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(newCursor);
     this.adapter.forceRender();
+    // Retire this span's how-to hint (per-note scope; keyed off its tip/value).
+    markCycledEver(`sf:${entry.tip ?? entry.alternatives[0] ?? ''}`);
     this.recordUndo(
       'cycle', `span-fill:${entry.index}`,
       event.text.slice(spanStartWord.start, spanEndWord.end),
@@ -858,8 +860,8 @@ export class Cycling {
       });
     }
     // Adjusting counts as cycling: it retires the one-time hint (the dial's
-    // `(ctrl+alt+up/down to adjust)`, like the text cue's `(underscore to cycle)`).
-    markCycledEver();
+    // `(ctrl+alt+up/down to adjust)`) for THIS actuator (per-note scope).
+    markCycledEver(`b:${blankName}`);
 
     // Sync spanFillState.lastFilledText to the new buffer BEFORE setText —
     // otherwise BlankFill._onTextChangeImpl sees the cycle output as a
@@ -969,9 +971,9 @@ export class Cycling {
     const len = def.alternatives.length;
     if (len <= 1) return false;
 
-    // The user is cycling a note — retire the `(underscore to cycle)` hint for
-    // the rest of the session (they've learned the gesture).
-    markCycledEver();
+    // The user is cycling a note — retire this note's `(underscore to cycle)`
+    // hint (per-note scope; keyed off the def's identity).
+    markCycledEver(noteHintKey(def));
 
     // Compute the char range to REPLACE from live word positions, not
     // from def.spanStart/spanEnd — those can drift across multi-word

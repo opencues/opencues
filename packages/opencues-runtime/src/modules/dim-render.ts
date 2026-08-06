@@ -10,7 +10,7 @@
 import type { HostAdapter, InlineNote, Range, RenderContext, RenderDirectives, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs, WordDef } from '../state/dyn-defs';
-import { inlineNoteText, hasCycledEver } from '../state/dyn-defs';
+import { inlineNoteText, isHintSuppressed, noteHintKey } from '../state/dyn-defs';
 import type { ConfigLoader } from './config-loader';
 import type { SpanFillState } from '../state/span-fill';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
@@ -392,9 +392,10 @@ export class DimRender {
           // cycle)`. A pure advisory (calendar conflict, single alt) has nothing
           // to engage, so no hint.
           const cycleable = def.alternatives.length > 1;
+          const suppressed = isHintSuppressed(noteHintKey(def));
           const hint = actuator
-            ? (hasCycledEver() ? undefined : '(ctrl+alt+up/down to adjust)')
-            : ((cycleable && !hasCycledEver()) ? '(underscore to cycle)' : undefined);
+            ? (suppressed ? undefined : '(ctrl+alt+up/down to adjust)')
+            : ((cycleable && !suppressed) ? '(underscore to cycle)' : undefined);
           inlineNote = { spanStart: s, spanEnd: e, text: noteText, hint };
           // Auto-select: the note-bearing span the caret is in promotes from dim
           // to the active highlight — the "you're on this, `_` engages it" state,
@@ -433,7 +434,7 @@ export class DimRender {
         if (sw && ew && noteText) {
           const s = toCtx ? toCtx.start(sw.start) : sw.start;
           const e = toCtx ? toCtx.end(ew.end) : ew.end;
-          if (ctx.cursor >= s && ctx.cursor <= e) inlineNote = { spanStart: s, spanEnd: e, text: noteText, hint: hasCycledEver() ? undefined : '(underscore to cycle)' };
+          if (ctx.cursor >= s && ctx.cursor <= e) inlineNote = { spanStart: s, spanEnd: e, text: noteText, hint: isHintSuppressed(`sf:${span.tip ?? span.alternatives[0] ?? ''}`) ? undefined : '(underscore to cycle)' };
         }
       }
       // Selector-satellite: the note is CURSOR-POSITION-AWARE, exactly like the
