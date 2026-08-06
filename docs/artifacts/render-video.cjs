@@ -67,8 +67,8 @@ html,body{margin:0;padding:0;background:#111;height:100%;overflow:hidden}
 /* The key is scaled up for video, so its depth scales too: a 2px shadow on a
    30px cap is invisible at this size. 4px of shadow, and a press that travels
    exactly that far, so the cap visibly bottoms out. */
-.stage .hero-cap .hkey{min-width:26px;height:30px;padding:0 9px;font-size:19px;border-radius:0;border-bottom-width:4px}
-.stage .hero-cap .hkey.press{transform:translateY(4px);border-bottom-width:0}
+.stage .hero-cap .hkey{min-width:26px;height:30px;padding:0 9px;font-size:19px;border-radius:0;box-shadow:0 4px 0 #333}
+.stage .hero-cap .hkey.press{transform:translateY(4px);box-shadow:0 0 0 #333}
 </style>
 
 <script>

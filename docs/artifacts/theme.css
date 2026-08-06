@@ -81,7 +81,7 @@ strong{font-weight:300;color:#fff}
 code{font-family:var(--mono);font-size:.86em;background:#000;color:#838383;padding:.1em .38em;border-radius:0;overflow-wrap:anywhere}
 /* inline-block, not the default inline: transform is ignored on non-replaced
    inline elements, so the press below would silently do nothing. */
-kbd{display:inline-block;vertical-align:baseline;font-family:var(--mono);font-size:.8em;background:#1b1b1b;border:1px solid #333;border-bottom-width:2px;border-radius:0;padding:1px 6px;color:#e6e6e6;white-space:nowrap}
+kbd{display:inline-block;vertical-align:baseline;font-family:var(--mono);font-size:.8em;background:#1b1b1b;border:1px solid #333;border-radius:0;padding:1px 6px;color:#e6e6e6;white-space:nowrap;box-shadow:0 2px 0 #333}
 
 /* ── Terminal block (.term) ──────────────────────────────────────────────────
    Monospace "output" panel. white-space:pre keeps ASCII art / aligned notes
@@ -185,13 +185,13 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 /* Keycap — sits AMONG the caption text ("press [_] to climb"), inserted by the
    script ONLY on frames that show a key press, and gone otherwise (no idle
    placeholder). Small but legible; keeps the depress animation. */
-.hero-cap .hkey{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:17px;padding:0 4px;margin:0 1px;font-size:11px;line-height:1;background:#1b1b1b;border:1px solid #333;border-bottom-width:2px;border-radius:0;color:#e6e6e6;vertical-align:middle;transition:none}
+.hero-cap .hkey{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:17px;padding:0 4px;margin:0 1px;font-size:11px;line-height:1;background:#1b1b1b;border:1px solid #333;border-radius:0;color:#e6e6e6;vertical-align:middle;transition:none;box-shadow:0 2px 0 #333}
 /* The press is deliberately a quiet tint, chosen over a high-contrast fill
    (Wilfred, Aug 2026). It is subtle on a dark ground by design; do not
    'fix' it to the accent colour. transition:none stays, though: video
    frames are captured the instant the callback fires, so a transition
    would leave even this much off the clip. */
-.hero-cap .hkey.press{background:var(--accent-soft);transform:translateY(2px);border-bottom-width:0}
+.hero-cap .hkey.press{background:var(--accent-soft);transform:translateY(2px);box-shadow:0 0 0 #333}
 
 /* Respect reduced-motion everywhere: the hero script also self-disables and
    holds a single static frame. */
@@ -241,6 +241,8 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
    quietly promises they can be pushed. So they take a pointer and depress under
    the cursor. They do nothing on purpose: it is tactility, not an action. They
    are deliberately NOT focusable and carry no button role, so nothing promises
-   a keyboard interaction that does not exist. */
-kbd,.hero-cap .hkey{cursor:pointer}
-kbd:active,.hero-cap .hkey:active{background:var(--accent-soft);transform:translateY(2px);border-bottom-width:0}
+   a keyboard interaction that does not exist.
+   user-select:none because repeated clicking otherwise starts selecting the
+   glyph inside, which breaks the illusion that it is a key. */
+kbd,.hero-cap .hkey{cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+kbd:active,.hero-cap .hkey:active{background:var(--accent-soft);transform:translateY(2px);box-shadow:0 0 0 #333}
