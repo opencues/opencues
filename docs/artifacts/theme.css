@@ -233,3 +233,12 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 }
 
 .oc-actions a{display:inline-block;text-decoration:none}
+
+/* ── Easter egg: the chips that look pressable, are ─────────────────────────
+   kbd and the hero keycap carry a 2px bottom border, which reads as depth and
+   quietly promises they can be pushed. So they take a pointer and depress under
+   the cursor. They do nothing on purpose: it is tactility, not an action. They
+   are deliberately NOT focusable and carry no button role, so nothing promises
+   a keyboard interaction that does not exist. */
+kbd,.hero-cap .hkey{cursor:pointer}
+kbd:active,.hero-cap .hkey:active{background:var(--accent-soft);transform:translateY(1px);border-bottom-width:1px}
