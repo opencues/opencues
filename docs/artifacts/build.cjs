@@ -105,4 +105,5 @@ function main() {
   fs.writeFileSync(outPath, out);
   console.log(`[build] wrote ${outPath} (${(out.length / 1024).toFixed(0)} KB, target: ${site ? 'site fragment' : 'artifact'})`);
 }
-main();
+if (require.main === module) main();
+module.exports = { buildFontFace };

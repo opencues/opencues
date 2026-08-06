@@ -181,3 +181,27 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 
 /* Respect reduced-motion everywhere: the hero script also self-disables and
    holds a single static frame. */
+
+/* ── Download actions + print ───────────────────────────────────────────────
+   `.oc-actions` is a small toolbar the page can drop in; it never prints. */
+.oc-actions{display:flex;gap:.6rem;flex-wrap:wrap;margin:0 0 1.4rem}
+.oc-actions button{font-family:var(--mono);font-size:.8rem;line-height:1.7rem;letter-spacing:.06rem;
+  background:transparent;color:var(--muted);border:1px solid var(--hair);border-radius:4px;
+  padding:.15rem .8rem;cursor:pointer;transition:color .12s ease,border-color .12s ease}
+.oc-actions button:hover{color:var(--accent);border-color:var(--accent)}
+.oc-actions button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+@media print{
+  /* Keep the dark ground: browsers drop backgrounds unless told otherwise. */
+  html,body{background:#111111 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .oc-actions{display:none !important}
+  /* Don't split a component across a page break. */
+  .term,.box,.frame,.gauge,.note-callout,.hero{break-inside:avoid;page-break-inside:avoid}
+  h2{break-after:avoid;page-break-after:avoid}
+  /* The hero is an animation; print the frame that is on screen, and drop the
+     caption bar since its instruction is meaningless on paper. */
+  .hero-cap{display:none !important}
+  a[href]:after{content:""}   /* no URL footnotes */
+  @page{margin:14mm;background:#111111}
+}
