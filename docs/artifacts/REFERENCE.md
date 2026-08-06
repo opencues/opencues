@@ -85,8 +85,21 @@ of them is a gap someone invented:
 | `medium-three-spacer` | `8rem` | |
 | `large-spacer` | `12rem` | |
 
-These pages don't use the classes (the content is plain HTML), but the *values*
-are the same, expressed in the twin stylesheets:
+**Spacing is written in `rem` in both twins, with identical numbers.** Not px in
+one and rem in the other: the PDF is rendered from the artifact stylesheet and is
+read next to the website page, so any drift between the two shows up as the same
+document spaced two different ways. They had drifted — `.cols` and `table`
+margins were 14px against the site's 22.4px, the callout 16px against 22.4px —
+which is invisible until you put the two side by side. When you change a spacing
+value, change it in both, in `rem`.
+
+(Font sizes are deliberately *not* shared: the artifact runs a smaller type scale
+to suit its narrower column. Only the space between elements is common, which is
+why the inline chip paddings — `code`, `kbd`, `.badge` — stay per-target too:
+they fit a glyph rather than separating elements.)
+
+These pages don't use the spacer classes (the content is plain HTML), but the
+*values* are the same, expressed in the twin stylesheets:
 
 - **Header** — `2.2rem` under the title, `6rem` under the standfirst.
 - **Section** — `6rem` of air above the rule, `.6rem` between rule and heading.

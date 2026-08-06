@@ -79,13 +79,13 @@
    then a medium-spacer (6rem ≈ 96px) below the standfirst opens the body —
    the same 96px an h2 puts above itself, so the header and the sections
    share one rhythm. */
-h1{font-family:var(--display);font-weight:200;font-size:clamp(32px,5.2vw,46px);line-height:1.05;letter-spacing:-.01em;margin:0 0 35px;color:#fff;text-wrap:balance}
-.dek{font-size:18px;color:var(--muted);max-width:60ch;margin:0 0 96px}
+h1{font-family:var(--display);font-weight:200;font-size:clamp(32px,5.2vw,46px);line-height:1.05;letter-spacing:-.01em;margin:0 0 2.2rem;color:#fff;text-wrap:balance}
+.dek{font-size:18px;color:var(--muted);max-width:60ch;margin:0 0 6rem}
 /* Section rhythm mirrors the site: 6rem of air before the rule, .6rem after
    it (the site's convention on every divider). */
-h2{font-family:var(--display);font-weight:200;font-size:24px;letter-spacing:-.005em;margin:96px 0 6px;padding-top:10px;border-top:1px solid var(--hair);color:#fff}
-h3{font-family:var(--mono);font-size:12px;letter-spacing:.08em;font-weight:300;margin:35px 0 6px;text-transform:uppercase;color:var(--muted)}
-.lead{color:var(--muted);max-width:66ch;margin:10px 0 0} p{max-width:66ch}
+h2{font-family:var(--display);font-weight:200;font-size:24px;letter-spacing:-.005em;margin:6rem 0 .4rem;padding-top:.6rem;border-top:1px solid var(--hair);color:#fff}
+h3{font-family:var(--mono);font-size:12px;letter-spacing:.08em;font-weight:300;margin:2.2rem 0 .4rem;text-transform:uppercase;color:var(--muted)}
+.lead{color:var(--muted);max-width:66ch;margin:.6rem 0} p{max-width:66ch;margin:.6rem 0}
 strong{font-weight:300;color:#fff}
 /* Inline code follows the site's chip: mono, code-grey, on black. Not the
    accent. overflow-wrap:anywhere so a long token can't force horizontal page
@@ -112,7 +112,7 @@ kbd{display:inline-block;vertical-align:baseline;font-family:var(--mono);font-si
      </div>
    This is the single most common way to break these pages. */
 .term{font-family:var(--mono);font-size:13px;line-height:1.8;background:var(--term-bg);color:var(--term-fg);
-  border-radius:0;padding:12px 15px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;white-space:pre;min-width:0;max-width:100%}
+  border-radius:0;padding:.8rem 1rem;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;white-space:pre;min-width:0;max-width:100%}
 /* The site hides scrollbars rather than styling them: its one scrollbar rule
    (on .grid-col-2) sets all three of these. Same here, so a narrow terminal
    does not sprout an unstyled bar. */
@@ -132,10 +132,10 @@ kbd{display:inline-block;vertical-align:baseline;font-family:var(--mono);font-si
 
 /* ── Tables ──────────────────────────────────────────────────────────────────
    Hairline rows, mono uppercase headers. Wrap wide tables in .scroll. */
-table{border-collapse:collapse;width:100%;margin:14px 0;font-size:14px}
+table{border-collapse:collapse;width:100%;margin:1.4rem 0;font-size:14px}
 /* The explicit colour is load-bearing: inherited cell colour printed as
    near-black in the PDF. Do not drop back to inheriting it. */
-th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--hair);vertical-align:top;color:var(--ink)}
+th,td{text-align:left;padding:.6rem .8rem;border-bottom:1px solid var(--hair);vertical-align:top;color:var(--ink)}
 th{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:300}
 /* A mono cell depicts text in the editor, so it takes the TERMINAL's base text
    colour, not the page's. At --ink it sat 25 levels off white, close enough to
@@ -163,11 +163,11 @@ th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
    exchange: it scrolls on screen, and content length is not something a
    layout can predict. */
 .strip{margin:14px 0;--label-col:288px}
-.frame{display:grid;grid-template-columns:var(--label-col) 1fr;gap:16px;align-items:center;padding:11px 0;border-bottom:1px solid var(--hair)}
+.frame{display:grid;grid-template-columns:var(--label-col) 1fr;gap:16px;align-items:center;padding:.7rem 0;border-bottom:1px solid var(--hair)}
 .frame:last-child{border-bottom:0}
 .frame .act{font-size:13px;color:var(--muted);min-width:0}
 .frame .act .k{display:inline-block;margin-bottom:5px}
-.frame .act .hw{display:block;margin-top:5px;font-size:12px;color:var(--muted);font-weight:300}
+.frame .act .hw{display:block;margin-top:.2rem;font-size:12px;color:var(--muted);font-weight:300}
 @media(max-width:600px){.frame{grid-template-columns:1fr;gap:7px}}
 
 /* ── Gauge (a value on a 0–100 track) ────────────────────────────────────────
@@ -184,21 +184,21 @@ th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
    ⚠ min-width:0 on .box is LOAD-BEARING: a grid child won't shrink below its
    content's intrinsic width without it, so a wide .term inside a .box would push
    the card past the viewport on mobile. This is the "box in a box" break. */
-.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1.4rem 0}
 @media(max-width:600px){.cols{grid-template-columns:1fr}}
-.box{border-radius:0;padding:16px 18px;background:var(--panel);min-width:0}
+.box{border-radius:0;padding:1rem 1.2rem;background:var(--panel);min-width:0}
 .box .t{font-weight:300;color:#fff;margin:0 0 8px;display:flex;align-items:center;gap:8px}
 .box .t .em{font-size:18px}
-.box p{font-size:13.5px;color:var(--muted);margin:6px 0 0;max-width:none}
+.box p{font-size:13.5px;color:var(--muted);margin:.4rem 0 0;max-width:none}
 
 /* ── Callout — a recessed aside with an accent rail ──────────────────────────*/
 /* Same grey panel as a card: an aside is a block of prose set apart, and the
    accent rail was the last piece of decoration doing that job by colour. */
-.note-callout{background:var(--panel);border-radius:0;padding:16px 18px;margin:16px 0;font-size:13.5px;color:var(--muted)}
+.note-callout{background:var(--panel);border-radius:0;padding:1rem 1.2rem;margin:1.4rem 0;font-size:13.5px;color:var(--muted)}
 .note-callout b{color:#fff;font-weight:300}
 
 /* ── Footer / provenance line ────────────────────────────────────────────────*/
-.foot{margin-top:52px;padding-top:20px;border-top:1px solid var(--hair);font-size:12.5px;color:var(--faint)}
+.foot{margin-top:3.4rem;padding-top:1.4rem;border-top:1px solid var(--hair);font-size:12.5px;color:var(--faint)}
 
 /* ── Hero animation (optional) ───────────────────────────────────────────────
    A looping demo at the top. It REUSES .term (so it renders identically to the
@@ -206,8 +206,8 @@ th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
    only hero-specific CSS is cosmetic framing + the blinking caret. Driven by a
    small inline <script> (CSP-safe); see README "Hero animation".
    ⚠ Remember the white-space:pre gotcha above for the hero's .term markup. */
-.hero{margin:28px 0 10px;border-radius:0;background:var(--panel-2);overflow:hidden}
-.hero .term{border:0;border-radius:0;background:transparent;padding:18px 18px 12px}
+.hero{margin:1.8rem 0 .6rem;border-radius:0;background:var(--panel-2);overflow:hidden}
+.hero .term{border:0;border-radius:0;background:transparent;padding:1.1rem 1.1rem .8rem}
 .hero .hnote,.hero .hhint{transition:opacity .35s ease}   /* toggled by the script */
 /* The caret is ordinary terminal text, not an accent: it marks where you are,
    which the blink already says, and a real terminal doesn't colour it. Drawn
@@ -227,7 +227,7 @@ th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
         and the keycap only exists on some frames. So line-height is explicit
         and MUST stay greater than .hkey's height (17px below). If you resize
         the keycap, resize this too. */
-.hero-cap{padding:11px 18px 15px;font-family:var(--mono);font-size:12px;line-height:20px;color:var(--muted);border-top:1px solid var(--hair);white-space:nowrap;overflow-x:auto}
+.hero-cap{padding:.7rem 1.1rem 1rem;font-family:var(--mono);font-size:12px;line-height:20px;color:var(--muted);border-top:1px solid var(--hair);white-space:nowrap;overflow-x:auto}
 .hero-cap .hcapt{white-space:nowrap}
 /* Keycap — sits AMONG the caption text ("press [_] to climb"), inserted by the
    script ONLY on frames that show a key press, and gone otherwise (no idle
@@ -245,7 +245,7 @@ th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 
 /* ── Download actions + print ───────────────────────────────────────────────
    `.oc-actions` is a small toolbar the page can drop in; it never prints. */
-.oc-actions{display:flex;gap:22px;flex-wrap:wrap;margin:0 0 10px}
+.oc-actions{display:flex;gap:1.4rem;flex-wrap:wrap;margin:0 0 .6rem}
 /* Downloads are LINKS, not buttons: assets.html offers its files as a plain
    "Download ↓" in base-grey that warms on hover. Same styling here, kept at
    the small mono size the rest of the page labels use. */
@@ -257,7 +257,11 @@ th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
   /* Keep the dark ground: browsers drop backgrounds unless told otherwise. */
   html,body{background:#111111 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .oc-actions{display:flex;gap:1.4rem;flex-wrap:wrap;margin:0 0 1.4rem}
+  /* The toolbar offers this very PDF and its video; inside the PDF those links
+     point nowhere, so it goes — same reasoning as the hero caption below.
+     (It previously re-declared display:flex here, contradicting the comment on
+     the screen rule, and printed a dead "Download PDF" on page 1.) */
+  .oc-actions{display:none !important}
   /* Don't split a component across a page break. */
   .term,.box,.frame,.gauge,.note-callout,.hero{break-inside:avoid;page-break-inside:avoid}
   h2{break-after:avoid;page-break-after:avoid}
