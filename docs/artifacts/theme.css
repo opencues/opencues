@@ -78,8 +78,8 @@ h3{font-family:var(--mono);font-size:12px;letter-spacing:.08em;font-weight:300;m
 strong{font-weight:300;color:#fff}
 /* Inline code: purple on a dark chip, like the site. overflow-wrap:anywhere so a
    long token can't force horizontal page scroll on mobile. */
-code{font-family:var(--mono);font-size:.86em;background:#000;color:#838383;padding:.1em .38em;border-radius:3px;overflow-wrap:anywhere}
-kbd{font-family:var(--mono);font-size:.8em;background:#1b1b1b;border:1px solid #333;border-bottom-width:2px;border-radius:4px;padding:1px 6px;color:#e6e6e6;white-space:nowrap}
+code{font-family:var(--mono);font-size:.86em;background:#000;color:#838383;padding:.1em .38em;border-radius:0;overflow-wrap:anywhere}
+kbd{font-family:var(--mono);font-size:.8em;background:#1b1b1b;border:1px solid #333;border-bottom-width:2px;border-radius:0;padding:1px 6px;color:#e6e6e6;white-space:nowrap}
 
 /* ── Terminal block (.term) ──────────────────────────────────────────────────
    Monospace "output" panel. white-space:pre keeps ASCII art / aligned notes
@@ -98,7 +98,7 @@ kbd{font-family:var(--mono);font-size:.8em;background:#1b1b1b;border:1px solid #
      </div>
    This is the single most common way to break these pages. */
 .term{font-family:var(--mono);font-size:13px;line-height:1.8;background:var(--term-bg);color:var(--term-fg);
-  border:1px solid var(--hair);border-radius:5px;padding:12px 15px;overflow-x:auto;white-space:pre;min-width:0;max-width:100%}
+  border:1px solid var(--hair);border-radius:0;padding:12px 15px;overflow-x:auto;white-space:pre;min-width:0;max-width:100%}
 .term .buf{color:var(--term-fg);display:block}        /* the "buffer" / reference line */
 /* .sp = the active/selected span. The product HIGHLIGHTS it (a background fill,
    like the caret-in-span auto-select) — it never underlines. Match that: a
@@ -123,7 +123,7 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
    Semantic tints on dark. Add variants by pairing a bg tint + a matching text. */
 /* A chip already says "this is a key or a mode"; colour on top is redundant.
    Badges and kbd stay neutral, colour is kept for meaning shape can't carry. */
-.badge{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:300;padding:2px 9px;border-radius:20px;background:#000;color:#e6e6e6;border:1px solid var(--hair)}
+.badge{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:300;padding:2px 9px;border-radius:0;background:#000;color:#e6e6e6;border:1px solid var(--hair)}
 
 /* ── Filmstrip (.strip / .frame) — a labelled sequence of states ─────────────
    Two-column rows (label | terminal), collapsing to one column on mobile.
@@ -140,8 +140,8 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 /* ── Gauge (a value on a 0–100 track) ────────────────────────────────────────
    flex-wrap so the label drops under the bar on narrow screens. */
 .gauge{display:flex;align-items:center;gap:10px;margin:6px 0;flex-wrap:wrap}
-.bar{position:relative;height:10px;flex:1;min-width:120px;max-width:340px;background:#1e1e1e;border:1px solid var(--hair);border-radius:6px;overflow:hidden}
-.bar>span{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:6px}
+.bar{position:relative;height:10px;flex:1;min-width:120px;max-width:340px;background:#1e1e1e;border:1px solid var(--hair);border-radius:0;overflow:hidden}
+.bar>span{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:0}
 .bar.edge>span{background:var(--edge)} .bar.mute>span{background:var(--mute)}
 .gauge .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13px;width:52px;color:var(--ink)}
 .gauge .lbl{font-size:12.5px;color:var(--muted)}
@@ -153,13 +153,13 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
    the card past the viewport on mobile. This is the "box in a box" break. */
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
 @media(max-width:600px){.cols{grid-template-columns:1fr}}
-.box{border:1px solid var(--hair);border-radius:6px;padding:16px 18px;background:var(--panel);min-width:0}
+.box{border:1px solid var(--hair);border-radius:0;padding:16px 18px;background:var(--panel);min-width:0}
 .box .t{font-weight:300;color:#fff;margin:0 0 8px;display:flex;align-items:center;gap:8px}
 .box .t .em{font-size:18px}
 .box p{font-size:13.5px;color:var(--muted);margin:6px 0 0;max-width:none}
 
 /* ── Callout — a recessed aside with an accent rail ──────────────────────────*/
-.note-callout{background:var(--panel-2);border:1px solid var(--hair);border-left:2px solid var(--accent);border-radius:5px;padding:13px 17px;margin:16px 0;font-size:13.5px;color:var(--muted)}
+.note-callout{background:var(--panel-2);border:1px solid var(--hair);border-left:2px solid var(--accent);border-radius:0;padding:13px 17px;margin:16px 0;font-size:13.5px;color:var(--muted)}
 .note-callout b{color:#fff;font-weight:300}
 
 /* ── Footer / provenance line ────────────────────────────────────────────────*/
@@ -171,7 +171,7 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
    only hero-specific CSS is cosmetic framing + the blinking caret. Driven by a
    small inline <script> (CSP-safe); see README "Hero animation".
    ⚠ Remember the white-space:pre gotcha above for the hero's .term markup. */
-.hero{margin:28px 0 10px;border:1px solid var(--hair);border-radius:6px;background:var(--panel-2);overflow:hidden}
+.hero{margin:28px 0 10px;border:1px solid var(--hair);border-radius:0;background:var(--panel-2);overflow:hidden}
 .hero .term{border:0;border-radius:0;background:transparent;padding:18px 18px 12px}
 .hero .hnote,.hero .hhint{transition:opacity .35s ease}   /* toggled by the script */
 .hero .hcur{color:var(--accent);animation:hblink 1.05s steps(1,end) infinite}  /* blinking caret */
@@ -183,7 +183,7 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 /* Keycap — sits AMONG the caption text ("press [_] to climb"), inserted by the
    script ONLY on frames that show a key press, and gone otherwise (no idle
    placeholder). Small but legible; keeps the depress animation. */
-.hero-cap .hkey{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:17px;padding:0 4px;margin:0 1px;font-size:11px;line-height:1;background:#1b1b1b;border:1px solid #333;border-bottom-width:2px;border-radius:3px;color:#e6e6e6;vertical-align:middle;transition:none}
+.hero-cap .hkey{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:17px;padding:0 4px;margin:0 1px;font-size:11px;line-height:1;background:#1b1b1b;border:1px solid #333;border-bottom-width:2px;border-radius:0;color:#e6e6e6;vertical-align:middle;transition:none}
 /* The press is deliberately a quiet tint, chosen over a high-contrast fill
    (Wilfred, Aug 2026). It is subtle on a dark ground by design; do not
    'fix' it to the accent colour. transition:none stays, though: video
@@ -198,7 +198,7 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
    `.oc-actions` is a small toolbar the page can drop in; it never prints. */
 .oc-actions{display:flex;gap:.6rem;flex-wrap:wrap;margin:0 0 1.4rem}
 .oc-actions button,.oc-actions a{font-family:var(--mono);font-size:.8rem;line-height:1.7rem;letter-spacing:.06rem;
-  background:transparent;color:var(--muted);border:1px solid var(--hair);border-radius:4px;
+  background:transparent;color:var(--muted);border:1px solid var(--hair);border-radius:0;
   padding:.15rem .8rem;cursor:pointer;transition:color .12s ease,border-color .12s ease}
 .oc-actions button:hover,.oc-actions a:hover{color:var(--accent);border-color:var(--accent)}
 .oc-actions button:focus-visible,.oc-actions a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}

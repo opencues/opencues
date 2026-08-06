@@ -61,10 +61,10 @@ html,body{margin:0;padding:0;background:#111;height:100%;overflow:hidden}
 .cap h1{font-family:"TWK Lausanne 200","TWK Lausanne",sans-serif;font-weight:200;font-size:46px;line-height:1.1;color:#fff;margin:0 0 14px}
 .cap p{font-family:"TWK Lausanne",sans-serif;font-weight:300;font-size:22px;line-height:1.5;color:#8a8a8a;margin:0;max-width:none}
 /* The hero, scaled for video. Same component, bigger type. */
-.stage .hero{width:100%;max-width:1040px;margin:0;border-radius:10px}
+.stage .hero{width:100%;max-width:1040px;margin:0;border-radius:0}   /* square, like everything else */
 .stage .hero .term{font-size:30px;line-height:1.85;padding:40px 40px 26px}
 .stage .hero-cap{font-size:20px;padding:20px 40px 26px}
-.stage .hero-cap .hkey{min-width:26px;height:30px;padding:0 9px;font-size:19px;border-radius:5px}
+.stage .hero-cap .hkey{min-width:26px;height:30px;padding:0 9px;font-size:19px;border-radius:0}
 </style>
 
 <script>
