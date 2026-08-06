@@ -36,7 +36,12 @@
      approved set, so state colours borrow from it instead of inventing a hue. */
   --accent:#9ec0ff;                       /* primary — code-blue */
   --accent-2:#9085e9;                     /* approved violet, use RARELY */
-  --accent-soft:rgba(144,133,233,.32);    /* press tint: the approved violet */
+  /* Press: solid #DEA4FF, the same colour the download links warm to on hover.
+     One "you are touching this" colour for the whole page, whether the touch
+     is a hover on a link or a press on a key. Solid, not a tint, so the press
+     is unmistakable at video size and in a thumbnail. */
+  --press-bg:#DEA4FF;
+  --press-fg:#fff;
   /* Terminal blocks (darker than the page so they read as "output") */
   --term-bg:#000; --term-fg:#d6d6d6; --term-dim:#7c7c7c;
   /* State, all from the approved range */
@@ -202,7 +207,7 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
    'fix' it to the accent colour. transition:none stays, though: video
    frames are captured the instant the callback fires, so a transition
    would leave even this much off the clip. */
-.hero-cap .hkey.press{background:var(--accent-soft);transform:translateY(2px);box-shadow:0 0 0 #333}
+.hero-cap .hkey.press{background:var(--press-bg);color:var(--press-fg);transform:translateY(2px);box-shadow:0 0 0 #333}
 
 /* Respect reduced-motion everywhere: the hero script also self-disables and
    holds a single static frame. */
@@ -252,4 +257,4 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
    user-select:none because repeated clicking otherwise starts selecting the
    glyph inside, which breaks the illusion that it is a key. */
 kbd,.hero-cap .hkey{cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
-kbd:active,.hero-cap .hkey:active{background:var(--accent-soft);transform:translateY(2px);box-shadow:0 0 0 #333}
+kbd:active,.hero-cap .hkey:active{background:var(--press-bg);color:var(--press-fg);transform:translateY(2px);box-shadow:0 0 0 #333}

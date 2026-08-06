@@ -30,22 +30,29 @@ a component. Source of truth: `~/opencues-website/style.css`.
 | `--muted` | `#8a8a8a` | secondary text |
 | `--faint` | `#5b5b5b` | tertiary text, table headers |
 | `--hair` | `#252525` | hairline borders |
-| `--accent` | `#be6eec` | **primary accent** (code-purple) — use sparingly |
-| `--accent-2` | `#9ec0ff` | secondary accent (code-blue) |
-| `--accent-soft` | `#231a2b` | dark purple tint for chips / pressed states |
-| `--term-bg` `--term-fg` `--term-dim` | `#0a0a0a` `#d6d6d6` `#7c7c7c` | terminal block |
-| `--live` / `--live-bg` | `#5fbf8a` / `#12241a` | "live / real effect" green |
-| `--edge` / `--edge-bg` | `#d9a24a` / `#241d10` | "at a limit / max" amber |
-| `--mute` | `#d66f6b` | "muted / zero" salmon |
+| `--accent` | `#9ec0ff` | **primary accent** (code-blue) — use sparingly |
+| `--accent-2` | `#9085e9` | secondary accent (violet) — rarer still |
+| `--press-bg` / `--press-fg` | `#DEA4FF` / `#fff` | a key or link being touched right now |
+| `--term-bg` `--term-fg` `--term-dim` | `#000` `#d6d6d6` `#7c7c7c` | terminal block |
+| `--live` / `--live-bg` | `#9ec0ff` / 12% of it | "it happened" |
+| `--edge` / `--edge-bg` | `#d66f6b` / 14% of it | "at a limit" |
+| `--mute` | `#5b5b5b` | "zero / absent" |
 
 **Rules of thumb**
 
-- The accent is for *emphasis*, not decoration: eyebrows, section numbers, inline
-  `code`, the keycap. If half the page is purple, cut it back.
+- The accent is for *emphasis*, not decoration. Most of the page is greyscale;
+  colour marks the few things that carry state. If a colour is doing no work,
+  take it out.
+- **Don't colour what is already a shape.** A keycap, a chip, and a code span
+  are already set apart by their box, so colouring them too says the same thing
+  twice. That's why the chips are neutral.
 - The semantic colours (`--live`, `--edge`, `--mute`) mean *state*. Don't use
   them as a second accent, and don't use the accent to mean state.
-- **Corners are sharp.** 5–6px on panels and terminals, 3–4px on code/keycaps,
-  full pills only on `.badge`. The rounded-everywhere look is not OpenCues.
+- **Everything is square.** `border-radius: 0`, with no exceptions — the site
+  uses only 0 and 50%, and nothing on these pages is a circle. Rounded corners
+  read as someone else's design system.
+- **Nothing has a 360° border.** Depth comes from a fill or a shadow, never an
+  outline round a box.
 
 ---
 
@@ -78,21 +85,21 @@ or `<style>` (the host wraps the file, and `build.cjs` adds the style):
 
 ```html
 <div class="wrap">
-  <p class="eyebrow">OpenCues · Reference</p>
   <h1>Page title</h1>
   <p class="dek">One-sentence summary of what this page is.</p>
 
   <!--HERO-->            <!-- optional: build.cjs splices hero.html here -->
 
-  <h2><span class="n">01</span>First section</h2>
+  <h2>First section</h2>
   <p class="lead">Intro line for the section.</p>
   …
   <div class="foot">Provenance line — where this came from, how it was verified.</div>
 </div>
 ```
 
-`h2` sections are numbered with `<span class="n">01</span>` and top-ruled. Keep
-the numbering sequential; it's how readers navigate a long page.
+`h2` sections are top-ruled and **not numbered**. Numbers imply the reader has to
+go in order, so they belong on a real sequence (the steps of a worked example)
+and nowhere else. A reference page is read by jumping to the part you need.
 
 ---
 
@@ -145,13 +152,17 @@ widening the page. `td.mono` for monospace/aligned-number cells.
 
 ### Badges — `.badge`
 
-Small pills for a mode or state. Ships with `.get` (blue), `.set` (green),
-`.step` (purple). Add a variant by pairing a background tint with matching text.
+Small square chips for a mode or state, and they are **neutral on purpose**: a
+chip is already a box, so a colour on top of it repeats what the box said. The
+words `GET` / `SET` carry the meaning. Existing pages still write `.badge get`
+and friends; those modifier classes style nothing and are kept only so the
+markup reads.
 
 ### Gauges — `.gauge` / `.bar`
 
-A value on a 0–100 track. `.bar.edge` (amber) for a maximum, `.bar.mute`
-(salmon) for zero.
+A value on a 0–100 track. The fill is the accent; `.bar.edge` (salmon) marks a
+maximum and `.bar.mute` (grey) marks zero. This is one of the few places colour
+earns its keep, because the bar has no words on it.
 
 ```html
 <div class="gauge"><span class="v">32%</span><div class="bar"><span style="width:32%"></span></div><span class="lbl">normal</span></div>
@@ -169,8 +180,17 @@ to one column on mobile. Use it to walk through an interaction step by step.
 </div>
 ```
 
-`.hw` is the "what actually happened" line (green); `.hw.edge` amber for a limit,
-`.hw.mute` salmon for zero.
+`.hw` is the "what actually happened" line, set in `--muted`. It is deliberately
+uncoloured: it sits next to the terminal that proves it, and the sentence itself
+says whether something hit a limit.
+
+**Tune `--label-col` per strip.** The label column is a fixed width, so a caption
+longer than it wraps to two lines and the row grows. Measure the widest caption
+in *that* strip and set the width on the strip itself
+(`<div class="strip" style="--label-col:19.5rem">`), rather than picking one
+number for every strip on the page. Leave a comment naming the caption you
+measured against, so the next person editing the captions knows to re-measure.
+There is no excuse for a strip whose captions wrap.
 
 ### Callout — `.note-callout`
 
