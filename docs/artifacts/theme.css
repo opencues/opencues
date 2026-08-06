@@ -30,15 +30,19 @@
   --muted:#8a8a8a;      /* secondary text (between --base-grey and --code-grey) */
   --faint:#5b5b5b;      /* tertiary / table headers (--base-grey) */
   --hair:#252525;       /* hairline borders (--border) */
-  --accent:#be6eec;     /* primary accent — code-purple. Use SPARINGLY. */
-  --accent-2:#9ec0ff;   /* secondary accent — code-blue */
-  --accent-soft:#231a2b;/* dark purple tint for chips / pressed states */
+  /* Approved range (comparison.html): code-blue #9EC0FF positive, base-grey
+     #5B5B5B partial/absent, #9085e9 violet, salmon #d66f6b warm, code-grey
+     #838383 baseline, white for OpenCues itself. No green, no amber in the
+     approved set, so state colours borrow from it instead of inventing a hue. */
+  --accent:#9ec0ff;                       /* primary — code-blue */
+  --accent-2:#9085e9;                     /* approved violet, use RARELY */
+  --accent-soft:rgba(158,192,255,.14);    /* blue at low opacity */
   /* Terminal blocks (darker than the page so they read as "output") */
-  --term-bg:#0a0a0a; --term-fg:#d6d6d6; --term-dim:#7c7c7c;
-  /* Semantic state colours — separate from the accent */
-  --live:#5fbf8a; --live-bg:#12241a;   /* "live / hardware effect" green */
-  --edge:#d9a24a; --edge-bg:#241d10;   /* "at a limit / max" amber */
-  --mute:#d66f6b;                       /* "muted / zero" salmon (--salmon-accent) */
+  --term-bg:#000; --term-fg:#d6d6d6; --term-dim:#7c7c7c;
+  /* State, all from the approved range */
+  --live:#9ec0ff; --live-bg:rgba(158,192,255,.12);   /* it happened */
+  --edge:#d66f6b; --edge-bg:rgba(214,111,107,.14);   /* at a limit */
+  --mute:#5b5b5b;                                    /* zero / absent */
   /* Type families. TWK Lausanne is a neo-grotesque; the 200 weight is the
      signature light display face. Ufficio Mono is the code/label face. */
   --mono:"Ufficio Mono",ui-monospace,"SF Mono",Menlo,monospace;
@@ -55,7 +59,7 @@
 .wrap{max-width:860px;margin:0 auto;padding:60px 28px 110px;background:var(--paper);
   color:var(--ink);font-family:var(--sans);font-weight:300;font-size:16px;
   line-height:1.65;-webkit-font-smoothing:antialiased;overflow-x:hidden}
-::selection{background:#3a2b47;color:#fff}
+::selection{background:rgba(158,192,255,.22);color:#fff}
 
 /* ── Typography ──────────────────────────────────────────────────────────────
    Eyebrows / section numbers / table headers / labels are set in Ufficio Mono
@@ -65,14 +69,16 @@
 .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);font-weight:300;margin:0 0 16px}
 h1{font-family:var(--display);font-weight:200;font-size:clamp(32px,5.2vw,46px);line-height:1.05;letter-spacing:-.01em;margin:0 0 16px;color:#fff;text-wrap:balance}
 .dek{font-size:18px;color:var(--muted);max-width:60ch;margin:0 0 6px}
-h2{font-family:var(--display);font-weight:200;font-size:24px;letter-spacing:-.005em;margin:56px 0 6px;padding-top:26px;border-top:1px solid var(--hair);color:#fff}
+/* Section rhythm mirrors the site: 6rem of air before the rule, .6rem after
+   it (the site's convention on every divider). */
+h2{font-family:var(--display);font-weight:200;font-size:24px;letter-spacing:-.005em;margin:96px 0 6px;padding-top:10px;border-top:1px solid var(--hair);color:#fff}
 h2 .n{font-family:var(--mono);color:var(--accent);font-variant-numeric:tabular-nums;margin-right:12px;font-weight:300;font-size:18px}
-h3{font-family:var(--mono);font-size:12px;letter-spacing:.08em;font-weight:300;margin:26px 0 10px;text-transform:uppercase;color:var(--muted)}
+h3{font-family:var(--mono);font-size:12px;letter-spacing:.08em;font-weight:300;margin:35px 0 6px;text-transform:uppercase;color:var(--muted)}
 .lead{color:var(--muted);max-width:66ch;margin:10px 0 0} p{max-width:66ch}
 strong{font-weight:300;color:#fff}
 /* Inline code: purple on a dark chip, like the site. overflow-wrap:anywhere so a
    long token can't force horizontal page scroll on mobile. */
-code{font-family:var(--mono);font-size:.86em;background:#1b1b1b;color:var(--accent);padding:.1em .4em;border-radius:3px;border:1px solid #262626;overflow-wrap:anywhere}
+code{font-family:var(--mono);font-size:.86em;background:#000;color:#838383;padding:.1em .38em;border-radius:3px;overflow-wrap:anywhere}
 kbd{font-family:var(--mono);font-size:.8em;background:#1b1b1b;border:1px solid #333;border-bottom-width:2px;border-radius:4px;padding:1px 6px;color:var(--accent-2);white-space:nowrap}
 
 /* ── Terminal block (.term) ──────────────────────────────────────────────────
@@ -98,7 +104,7 @@ kbd{font-family:var(--mono);font-size:.8em;background:#1b1b1b;border:1px solid #
    like the caret-in-span auto-select) — it never underlines. Match that: a
    subtle accent-tinted highlight with bright text, no underline, no radius
    (terminal-cell look). */
-.term .sp{background:#3a2b47;color:#fff}
+.term .sp{background:rgba(158,192,255,.22);color:#fff}
 .term .note{color:var(--term-dim);display:block}      /* the dim note line under .buf */
 .term .arw{color:#5a5a5a}                              /* the ↳ connector */
 .term .hint{color:var(--term-dim);font-style:italic}  /* the (parenthetical hint) */
@@ -116,9 +122,9 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 /* ── Badges (pill chips) — the one place we keep full rounding ────────────────
    Semantic tints on dark. Add variants by pairing a bg tint + a matching text. */
 .badge{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:300;padding:2px 9px;border-radius:20px;border:1px solid transparent}
-.badge.get{background:#16202e;color:var(--accent-2);border-color:#243a52}
-.badge.set{background:var(--live-bg);color:var(--live);border-color:#1e3a2a}
-.badge.step{background:var(--accent-soft);color:var(--accent);border-color:#3a2b47}
+.badge.get{background:var(--accent-soft);color:var(--accent);border-color:rgba(158,192,255,.3)}
+.badge.set{background:var(--live-bg);color:var(--live);border-color:rgba(158,192,255,.28)}
+.badge.step{background:rgba(144,133,233,.16);color:var(--accent-2);border-color:rgba(144,133,233,.34)}
 
 /* ── Filmstrip (.strip / .frame) — a labelled sequence of states ─────────────
    Two-column rows (label | terminal), collapsing to one column on mobile.
