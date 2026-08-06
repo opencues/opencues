@@ -206,6 +206,16 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
   /* Don't split a component across a page break. */
   .term,.box,.frame,.gauge,.note-callout,.hero{break-inside:avoid;page-break-inside:avoid}
   h2{break-after:avoid;page-break-after:avoid}
+  /* The document is short, so let it breathe: keep each section whole and
+     start a fresh page rather than bleed one across a break. Half-empty
+     pages are fine here and are the point, not a failure. A section taller
+     than a page still breaks naturally, since avoid is a preference. */
+  .sec{break-inside:avoid;page-break-inside:avoid}
+  /* Spacious is not the same as a page holding two lines: keep the closing
+     note attached to whatever precedes it. */
+  .foot{break-before:avoid;page-break-before:avoid}
+  .lead{break-after:avoid;page-break-after:avoid}
+  h3{break-after:avoid;page-break-after:avoid}
   /* The hero is an animation; print the frame that is on screen, and drop the
      caption bar since its instruction is meaningless on paper. */
   .hero-cap{display:none !important}

@@ -52,6 +52,30 @@ function buildFontFace() {
   throw new Error('No fonts at ' + dir + ' and no cached oc-fontface.css. Set OC_WEBSITE or restore the cache.');
 }
 
+/* Group each `h2` and everything under it into a <section class="sec">, for
+   BOTH targets, so print rules have something to hold on to. Done at build
+   time rather than in the source: authors shouldn't have to remember a wrapper,
+   and the two targets must not diverge on it. Content before the first h2 (the
+   title block, actions, hero) and the trailing .foot stay outside. */
+function wrapSections(body) {
+  const lines = body.split('\n');
+  const out = [];
+  let open = false;
+  const closeIfOpen = () => { if (open) { out.push('  </section>'); open = false; } };
+  for (const line of lines) {
+    if (/^\s*<h2[\s>]/.test(line)) {
+      closeIfOpen();
+      out.push('  <section class="sec">');
+      open = true;
+    } else if (/class="foot"/.test(line) || /^\s*<\/div>\s*$/.test(line) && open && lines.indexOf(line) === lines.length - 2) {
+      closeIfOpen();
+    }
+    out.push(line);
+  }
+  closeIfOpen();
+  return out.join('\n');
+}
+
 function main() {
   const argv = process.argv.slice(2);
   // --site emits a website FRAGMENT instead of a standalone artifact page.
@@ -69,6 +93,7 @@ function main() {
   if (body.includes('<!--HERO-->') && fs.existsSync(heroPath)) {
     body = body.replace('<!--HERO-->', fs.readFileSync(heroPath, 'utf8').trim());
   }
+  body = wrapSections(body);
 
   let out;
   if (site) {

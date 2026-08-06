@@ -209,6 +209,35 @@ That last one is worth the habit: eyeballing a dark render is unreliable, and a
 crop that misses the text row reports the background and sends you fixing the
 wrong thing.
 
+
+### Pagination in the PDF
+
+`build.cjs` wraps each `h2` and everything under it in a `<section class="sec">`
+automatically, for both targets, so print rules have something to hold. Authors
+don't add the wrapper; the two targets can't diverge on it.
+
+The print rules then aim for a **spacious** document rather than a dense one,
+because these pages are short:
+
+- `.sec{break-inside:avoid}` keeps a section whole, so a section that would
+  bleed across a break starts on a fresh page instead. Half-empty pages are the
+  intended outcome here, not a failure. A section taller than a page still
+  breaks naturally, since `avoid` is a preference rather than a guarantee.
+- `.foot{break-before:avoid}` stops the closing note from landing alone.
+  Spacious is not the same as a page holding two lines.
+- `h2`, `.lead` and `h3` carry `break-after:avoid`, so a heading or its intro
+  line is never stranded at the foot of a page.
+
+Measured on the actuator page while tuning: 4 pages with section 05 split badly
+(heading, lead and one filmstrip frame alone at the foot of a page), 6 pages
+when every section was forced whole without the footer rule, 5 with the set
+above. Rasterise and look, rather than trusting the page count:
+
+```bash
+gs -q -dNOPAUSE -dBATCH -sDEVICE=png16m -r50 \
+   -sOutputFile=/tmp/p-%d.png docs/artifacts/pdf/<name>.pdf
+```
+
 ## Gotchas
 
 - **Don't hand-edit the fragment in the website.** It is generated. Edit the
