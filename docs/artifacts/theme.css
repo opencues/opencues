@@ -139,8 +139,7 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .frame:last-child{border-bottom:0}
 .frame .act{font-size:13px;color:var(--muted);min-width:0}
 .frame .act .k{display:inline-block;margin-bottom:5px}
-.frame .act .hw{display:block;margin-top:5px;font-size:12px;color:var(--live);font-weight:300}
-.frame .act .hw.edge{color:var(--edge)} .frame .act .hw.mute{color:var(--mute)}
+.frame .act .hw{display:block;margin-top:5px;font-size:12px;color:var(--muted);font-weight:300}
 @media(max-width:600px){.frame{grid-template-columns:1fr;gap:7px}}
 
 /* ── Gauge (a value on a 0–100 track) ────────────────────────────────────────
