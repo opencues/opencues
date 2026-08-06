@@ -211,6 +211,33 @@ The scaffolded `cue.md` is a thorough schema reference — every frontmatter fie
 opencues validate --project
 ```
 
+### How do I turn on session-contradiction cues and ask-cues?
+
+Both are off by default. Add either scalar to `~/.cues/OPENCUES.md` (they hot-reload, no restart):
+
+```
+session-contradiction-mode: on
+ask-cues-mode: on
+```
+
+**Session-contradiction** needs a host with a session transcript — Claude Code, OpenCode, or Gemini CLI. It is inert in the shell and in Chrome, because there is no session to read. Nothing else to set up: each host kicks the background producer itself, so the watchlist builds on its own within the first few seconds of a session.
+
+**Ask-cues** works everywhere. On the transcript hosts it grounds its question in the session; in Chrome it uses the page and field you're typing in.
+
+Both are passive: they surface a note and never change your text without a keystroke.
+
+### Which feature is spending my tokens?
+
+`opencues usage`. Several features can fire on a single edit — word cues, sentence cues, the two session cues, blanks — each making its own call, so per-feature estimates understate the real total.
+
+```bash
+opencues usage            # per-model calls, tokens, cache-hit rate, cost
+opencues usage --json     # same, machine-readable
+opencues usage --reset    # clear the counters
+```
+
+It reads snapshots every running host writes, prices them per model, and counts the out-of-process session-contradiction producer too. It makes no LLM calls of its own. Chrome is the one gap: it has no `/tmp` to write a snapshot to, so its calls aren't counted.
+
 ---
 
 ## Troubleshooting

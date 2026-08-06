@@ -4,10 +4,15 @@
 
 'use strict';
 
+// Keep in step with the help tree in help.cjs — a command missing here still
+// runs, it just never tab-completes, which reads as "that command doesn't
+// exist". `extract-commitments` is deliberately absent: hosts kick it, users
+// don't type it.
 const COMMANDS = [
   'install', 'uninstall', 'seed-configs', 'update-configs', 'init', 'new', 'run',
-  'validate', 'import', 'doctor', 'edit', 'logs', 'list', 'show',
+  'validate', 'import', 'review', 'doctor', 'usage', 'edit', 'logs', 'list', 'show',
   'set-key', 'check-keys', 'models', 'update', 'debug', 'completion',
+  'config', 'identity', 'calendar', 'context', 'cleanup', 'sync',
   'which', 'version', 'help',
 ];
 const HOSTS = ['claude-code', 'claudecode', 'claude', 'cc', 'opencode', 'oc', 'chrome', 'gemini-cli', 'geminicli', 'gemini', 'shell', 'term', 'oc-edit'];

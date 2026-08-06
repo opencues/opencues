@@ -349,6 +349,7 @@ module.exports = function help(argv, ctx) {
       ['which',              'Print every relevant path (installs, configs, logs)'],
       ['version',            'Print CLI version + per-integration versions/compat'],
       ['doctor',             'Cross-host diagnostics + suggested fixes'],
+      ['usage',              'LLM calls, tokens and cost across every running host'],
       ['list',               'List every defined cue / blank with source path'],
       ['show <name>',        'Print full config for one cue / blank by name'],
       ['context [list]',     'Show identity / blank / ambient context (what the LLM would see)'],

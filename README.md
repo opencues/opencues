@@ -104,10 +104,15 @@ Each pins its own upstream fork and never touches your native host install.
 | **Blanks** | Type `_` for free-form generation, translation, formatting, full rewrites, or keyword-bound system actions (`volume _`, `weather _`). |
 | **Sentence rewrites** | Cycle a whole sentence to a different register (formal, concise, ...) seamlessly, no `_` needed. |
 | **Word cues** | Navigate to a single word and cycle a smaller LLM-suggested alternative. |
+| **Live actuators** | `volume _` reads the real level and leaves a knob you can turn: `Ctrl+Alt+↑/↓` or a bare `_` moves it, and the device follows. |
+| **Session-contradiction cues** (opt-in) | Flags a draft that goes against a decision made earlier in the same coding session, on any host with a transcript. |
+| **Ask-cues** (opt-in) | Turns a vague sentence into an inline question with cyclable answers, using the assistant's own clarifying prompt. |
 | **Personal + ambient context** (opt-in) | `my email _` substitutes your real address; fluid lookups can read the page you're on. |
 | **Hot-reload** | Every `.md` config picks up edits in ~2s, no restart. |
 
 Full feature catalogue (44 concepts): [`docs/features/README.md`](docs/features/README.md).
+Running a lot of these at once? `opencues usage` prices every LLM call your
+hosts have made, across features, so the total isn't a guess.
 
 <!-- VIDEO: feature tour (~30s of cues + blanks in action), replace this
      comment with the real embed once available. -->

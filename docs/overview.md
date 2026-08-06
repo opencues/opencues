@@ -82,10 +82,15 @@ See the top-level [README.md](../README.md) for the full quickstart.
 │   │   │   ├── resolver.ts            # CueResolver, createResolver
 │   │   │   ├── cues-md.ts             # CUES.md/BLANK.md parser
 │   │   │   ├── discover.ts            # discoverFolderConfigs — folder-based config discovery
+│   │   │   ├── contradiction/          # Fact-check + session-contradiction engines
+│   │   │   │                           # (checks.ts, session-contradiction-source.ts,
+│   │   │   │                           #  SessionCueSource — fuses session-contradiction
+│   │   │   │                           #  with ask-cues into one call)
 │   │   │   └── sources/                # 20+ source classes: LocalCueSource, ConfigSource,
 │   │   │                               # RoutedWordSourceGroup, BlankSource, FluidBlankSource,
 │   │   │                               # TransformBlankSource, ConfigIntentSource,
-│   │   │                               # SentenceCueSource, build-sources.ts, parsers.ts, ...
+│   │   │                               # SentenceCueSource, ToolPromptCueSource (ask-cues),
+│   │   │                               # build-sources.ts, parsers.ts, ...
 │   │   └── dist/                       # Compiled output
 │   ├── opencues-runtime/            # Host-agnostic runtime — see docs/architecture/
 │   │   ├── src/                       # Navigation, Cycling, BlankFill, ConfigLoader, Resolver, ...

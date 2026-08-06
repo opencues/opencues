@@ -32,6 +32,14 @@ All three share the same navigable system — you move between words and interac
 
 **Multi-Word Group** — An alternative that consists of multiple words (e.g., "Sundar Pichai"). Tracked as a single unit that cycles together.
 
+**Passive Cue** — A cue that never changes the text on its own. It marks a span and offers a rewrite, which applies only when the user presses `Ctrl+Alt+↑`. Sentence-cues, contradiction cues, session-contradiction cues and ask-cues are all passive; word-cues are too. The distinction matters because the runtime *can* splice (blanks do), so "passive" is a promise about consent, not a description of what is technically possible.
+
+**Session-Contradiction Cue** — A passive cue that flags a draft going against a decision made earlier in the same coding session ("we agreed on Bun" … "switch this to node"). Two stages: a background producer distils the session transcript into a **commitments watchlist**, and a matcher checks each draft against it. Distinct from **contradiction cues**, which check a claim against computable fact (a real weekday, arithmetic, live weather) rather than against something the user said. Off by default; needs a host with a session transcript. See [`docs/features/session-contradiction.md`](features/session-contradiction.md).
+
+**Commitments Watchlist** — The distilled record of decisions a session has established (stack, architecture, constraint, scope, …), scoped per working directory. It accumulates as the session runs rather than being rebuilt from the transcript tail each time, so an early decision doesn't age out.
+
+**Ask-Cue** — A passive cue that turns a vague sentence into an inline question with cyclable answers, populated from a coding assistant's own clarifying-question prompt. Options that carry a concrete rewrite change the sentence when chosen; advisory ones only inform. Off by default. See [`docs/features/ask-cues.md`](features/ask-cues.md).
+
 ---
 
 ## Blanks
