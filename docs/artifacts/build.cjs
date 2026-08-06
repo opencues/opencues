@@ -164,8 +164,14 @@ if (require.main === module) main();
  *  Shared by the page build and render-video.cjs's stage, so the video can
  *  never run a different shader from the page it is a recording of. */
 function buildShaderBorder() {
+  /* Which vendored shader the ring runs. Swap the name (or set OC_SHADER) to
+     change the effect; shaders/ holds each one unmodified from ShaderShop.
+     A shader with baked-in parameters needs no uniform wiring — one with a
+     -params.json needs its uniforms declared in shader-border.html, and
+     getting a single name wrong fails the whole compile silently. */
+  const shader = process.env.OC_SHADER || 'x-max-shubz';
   const ringPath = path.join(HERE, 'shader-border.html');
-  const glslPath = path.join(HERE, 'shaders', 'foxfire.glsl');
+  const glslPath = path.join(HERE, 'shaders', shader + '.glsl');
   if (!fs.existsSync(ringPath) || !fs.existsSync(glslPath)) return '';
   const ring = fs.readFileSync(ringPath, 'utf8').trim();
   const glsl = fs.readFileSync(glslPath, 'utf8');
