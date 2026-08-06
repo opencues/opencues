@@ -29,7 +29,11 @@
       var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
       function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
       function showNote(on,h){ note.style.opacity=on?'1':'0'; hint.style.opacity=h?'1':'0'; }
-      var CUR='<span class="hcur">▌</span>';   /* caret ALWAYS visible; sits on the value */
+      /* The caret is drawn in CSS, not typed as a block glyph: a half-block
+         (▌) is far heavier than a real terminal caret, and the thinner block
+         characters are not in every font, so a missing glyph would show as a
+         tofu box. An empty span the CSS gives a width to always renders. */
+      var CUR='<span class="hcur"></span>';   /* caret ALWAYS visible; sits on the value */
       function fill(v){ buf.innerHTML='volume <span class="sp hval">'+v+'</span>'+CUR; }
       function say(text){ cap.textContent=text; }
       function sayKey(pre,post){ cap.innerHTML=pre+'<span class="hkey">_</span>'+post; var k=cap.querySelector('.hkey');

@@ -72,8 +72,13 @@
    NOT bolder: TWK Lausanne 300 is the only body weight shipped, so emphasis is
    by COLOUR, never weight. */
 .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-weight:300;margin:0 0 16px}
-h1{font-family:var(--display);font-weight:200;font-size:clamp(32px,5.2vw,46px);line-height:1.05;letter-spacing:-.01em;margin:0 0 16px;color:#fff;text-wrap:balance}
-.dek{font-size:18px;color:var(--muted);max-width:60ch;margin:0 0 6px}
+/* Header rhythm is the site's spacer scale, nothing invented: small-spacer
+   (2.2rem ≈ 35px) holds the title and its standfirst together as one unit,
+   then a medium-spacer (6rem ≈ 96px) below the standfirst opens the body —
+   the same 96px an h2 puts above itself, so the header and the sections
+   share one rhythm. */
+h1{font-family:var(--display);font-weight:200;font-size:clamp(32px,5.2vw,46px);line-height:1.05;letter-spacing:-.01em;margin:0 0 35px;color:#fff;text-wrap:balance}
+.dek{font-size:18px;color:var(--muted);max-width:60ch;margin:0 0 96px}
 /* Section rhythm mirrors the site: 6rem of air before the rule, .6rem after
    it (the site's convention on every divider). */
 h2{font-family:var(--display);font-weight:200;font-size:24px;letter-spacing:-.005em;margin:96px 0 6px;padding-top:10px;border-top:1px solid var(--hair);color:#fff}
@@ -192,7 +197,10 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .hero{margin:28px 0 10px;border-radius:0;background:var(--panel-2);overflow:hidden}
 .hero .term{border:0;border-radius:0;background:transparent;padding:18px 18px 12px}
 .hero .hnote,.hero .hhint{transition:opacity .35s ease}   /* toggled by the script */
-.hero .hcur{color:var(--accent);animation:hblink 1.05s steps(1,end) infinite}  /* blinking caret */
+/* The caret is ordinary terminal text, not an accent: it marks where you are,
+   which the blink already says, and a real terminal doesn't colour it. Drawn
+   as a thin rule rather than a block glyph — see the note in hero.html. */
+.hero .hcur{display:inline-block;width:.1em;min-width:2px;height:1em;margin-left:1px;vertical-align:-.14em;background:var(--term-fg);animation:hblink 1.05s steps(1,end) infinite}
 @keyframes hblink{50%{opacity:0}}
 /* The caption bar must NOT wrap (a wrapped caption changes the bar height and
    breaks the layout). Like .term, it scrolls sideways if too long. */
@@ -214,7 +222,7 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 
 /* ── Download actions + print ───────────────────────────────────────────────
    `.oc-actions` is a small toolbar the page can drop in; it never prints. */
-.oc-actions{display:flex;gap:1.4rem;flex-wrap:wrap;margin:0 0 1.4rem}
+.oc-actions{display:flex;gap:22px;flex-wrap:wrap;margin:0 0 10px}
 /* Downloads are LINKS, not buttons: assets.html offers its files as a plain
    "Download ↓" in base-grey that warms on hover. Same styling here, kept at
    the small mono size the rest of the page labels use. */
