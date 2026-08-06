@@ -81,10 +81,16 @@ function main() {
     // Paste the fragment INTO the page rather than loading it with
     // `data-include`: an include is injected with innerHTML, and innerHTML
     // never executes <script>, so a hero animation would silently not run.
-    out = body.replace(/(<div\s+)class="wrap"/, '$1class="oc-doc"') + '\n';
+    out = body.replace(/(<div\s+)class="wrap"/, '$1class="oc-doc"');
     if (!/class="oc-doc"/.test(out)) {
-      console.warn('[build] warning: no <div class="wrap"> found — nothing was scoped to .oc-doc');
+      console.warn('[build] warning: no <div class="wrap"> found, nothing was scoped to .oc-doc');
     }
+    // Strip HTML comments. They are authoring notes for us (the kit's own
+    // warnings, section markers); published page source shouldn't carry them.
+    // Safe for the hero script, which comments with /* */ and // only.
+    out = out.replace(/<!--[\s\S]*?-->/g, '')
+             .replace(/^[ \t]*\n/gm, '')   // collapse the blank lines they leave
+             + '\n';
   } else {
     // ── Artifact target (default) ──────────────────────────────────────────
     // A standalone, self-contained page: fonts base64-inlined (the artifact CSP

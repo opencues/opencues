@@ -72,6 +72,67 @@ two, so nobody has to remember which pages animate.
   Every colour, face, and radius is a variable there; no component rule hard-codes
   one. Retheming the site carries through without touching content.
 
+## The integration layer
+
+Three things sit between the source and the site. None is hard on its own; the
+cost is that they're invisible until one breaks.
+
+### 1. What `--site` actually transforms
+
+| Step | Why |
+|---|---|
+| `<div class="wrap">` → `<div class="oc-doc">` | `.oc-doc` is the scope every rule in `oc-doc.css` hangs off. `.wrap` also carries a page shell (background, max-width, padding) the site must own instead. |
+| Theme + `@font-face` omitted | The site already loads TWK Lausanne and Ufficio Mono, and links `oc-doc.css` itself. Inlining either again would fight the site. |
+| HTML comments stripped | They're authoring notes for us. Published page source shouldn't carry the kit's internal warnings. Safe for the hero, whose script comments with `/* */` and `//`. |
+
+Everything else passes through untouched, which is the point: the body is the
+same bytes on both targets.
+
+### 2. The twin-stylesheet contract
+
+`docs/artifacts/theme.css` (this repo) and `oc-doc.css` (website repo) are twins.
+
+**Must stay identical:** the class names and their structural rules — every
+component (`.term`, `.box`, `.cols`, `.gauge`, `.bar`, `.frame`, `.strip`,
+`.badge`, `.note-callout`, `.hero`, `.foot`) and the layout properties that make
+them work, including the two mobile rules (`white-space:pre` on `.term`,
+`min-width:0` on grid children).
+
+**Deliberately differs:** the token values (site maps onto the website's own
+variables instead of literals), the fonts (inlined vs already loaded), the page
+shell (`.wrap` vs nothing), and the scope (global vs `.oc-doc`).
+
+There is no CI gate for this — the files live in different repos — so the check
+is manual. After changing either, compare the class sets:
+
+```bash
+cls(){ grep -o '^[^{]*{' "$1" | grep -oE '\.[a-z][a-z0-9-]*' | sort -u; }
+diff <(cls ~/opencues/docs/artifacts/theme.css) <(cls ~/opencues-website/oc-doc.css)
+```
+
+A clean run prints exactly two lines: `.wrap` (artifact-only page shell) and
+`.oc-doc` (site-only scope). Anything else is drift — a component class present
+in one and missing from the other means that page renders on one target and
+falls apart on the other.
+
+### 3. The content-rule delta
+
+The two targets have different editorial rules, and **the source must satisfy
+the stricter of the two** (the site), because it feeds both:
+
+- **No em dashes.** The website forbids them in authored copy. Use commas,
+  colons, parentheses, or a sentence break.
+- **No reviewer-facing prose.** An artifact often starts life as a design review
+  ("shipped as stop-at-top per your steer, say the word if you'd rather it
+  wrap"). That is addressed to one person and must not reach a public page.
+  State the behaviour and why, and drop the ask.
+- **One `h1`,** and no maturity hedging ("experimental", "prototype", "beta").
+- **Titles end `- OpenCues`** on the site page's `<title>` (that's the page
+  shell, not the fragment).
+
+Full list in the website repo's CLAUDE.md § Content rules. Since the content is
+generated, a violation is fixed **at the source here**, never in the website.
+
 ## Gotchas
 
 - **Don't hand-edit the fragment in the website.** It is generated. Edit the
