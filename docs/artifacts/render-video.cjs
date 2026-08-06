@@ -63,7 +63,10 @@ html,body{margin:0;padding:0;background:#111;height:100%;overflow:hidden}
 /* The hero, scaled for video. Same component, bigger type. */
 .stage .hero{width:100%;max-width:1040px;margin:0;border-radius:0}   /* square, like everything else */
 .stage .hero .term{font-size:30px;line-height:1.85;padding:40px 40px 26px}
-.stage .hero-cap{font-size:20px;padding:20px 40px 26px}
+/* line-height MUST exceed the scaled keycap's height (30px below), or the bar
+   grows on the frames that have a keycap and — because the stage centres its
+   content — the whole demo jumps a few pixels between frames. */
+.stage .hero-cap{font-size:20px;line-height:34px;padding:20px 40px 26px}
 /* The key is scaled up for video, so its depth scales too: a 2px shadow on a
    30px cap is invisible at this size. 4px of shadow, and a press that travels
    exactly that far, so the cap visibly bottoms out. */

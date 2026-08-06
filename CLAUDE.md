@@ -900,12 +900,32 @@ Verify by rasterising a PDF page (`gs`), pulling a video frame (`ffmpeg -ss`), a
 render. Commands, the full trap list, and the pagination rationale:
 [docs/artifacts/PIPELINE.md](docs/artifacts/PIPELINE.md).
 
-**Show the real thing.** Examples should be verified against a running host, and
-the page should end with a `.foot` line saying where the content came from and
-how it was checked. A plausible-looking example that the product doesn't actually
-produce is worse than no example (`volume _` was documented for a while as
-something it never did).
+**Show the real thing, region by region.** Examples must be verified against a
+running host, and the page should end with a `.foot` line saying where the
+content came from and how it was checked. A plausible-looking example the
+product doesn't actually produce is worse than no example (`volume _` was
+documented for a while as something it never did). Check **one region at a
+time** — each table, each card, each filmstrip frame — rather than reading the
+page as a whole: the errors that survive longest are the ones where most of the
+page is right. A table showing `volume 26%` entirely in the highlight colour
+claims the product selects the whole phrase when it selects only the value, and
+nothing in the stylesheet says so — only a render does.
+
+**Borrow the site's design system; don't invent a parallel one.** The kit has no
+design language of its own. Before choosing a spacing value, a colour, a radius,
+or a link treatment, open opencues.com and find where it already solves that
+problem: the spacer scale is `.6 / 1.2 / 2.2 / 4 / 6 / 8 / 12rem` and nothing
+else, the palette is the approved range on `comparison.html`, the only radii are
+`0` and `50%`, scrollbars are hidden rather than styled, and downloads are plain
+`Download ↓` links. A hover colour is not a fill colour — check contrast before
+promoting one. Every rule in `REFERENCE.md` began as something invented and then
+corrected against a real page, so the cheap move is to look first.
+
+Full rules — vertical rhythm, `kbd` vs `code` vs chip, press behaviour and the
+don't-animate-the-box-model constraint, per-strip caption tuning, and the
+measurement traps — live in
+[docs/artifacts/REFERENCE.md](docs/artifacts/REFERENCE.md).
 
 ---
 
-*Last updated: July 2026*
+*Last updated: August 2026*

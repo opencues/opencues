@@ -206,11 +206,22 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 /* The caret is ordinary terminal text, not an accent: it marks where you are,
    which the blink already says, and a real terminal doesn't colour it. Drawn
    as a thin rule rather than a block glyph — see the note in hero.html. */
-.hero .hcur{display:inline-block;width:.1em;min-width:2px;height:1em;margin-left:1px;vertical-align:-.14em;background:var(--term-fg);animation:hblink 1.05s steps(1,end) infinite}
+/* Height and offset are measured against the .sp highlight box beside it, so
+   the caret spans exactly the same rows as the highlight rather than floating
+   short of it. Both are in em, so they hold at any size (the video runs the
+   same rule at 30px). Re-measure if the mono face changes. */
+.hero .hcur{display:inline-block;width:.1em;min-width:2px;height:1.27em;margin-left:1px;vertical-align:-.37em;background:var(--term-fg);animation:hblink 1.05s steps(1,end) infinite}
 @keyframes hblink{50%{opacity:0}}
-/* The caption bar must NOT wrap (a wrapped caption changes the bar height and
-   breaks the layout). Like .term, it scrolls sideways if too long. */
-.hero-cap{padding:11px 18px 15px;font-family:var(--mono);font-size:12px;color:var(--muted);border-top:1px solid var(--hair);white-space:nowrap;overflow-x:auto}
+/* The caption bar must be a CONSTANT height. It isn't decoration: the hero is
+   vertically centred in the video stage, so any change in the bar's height
+   shifts the whole demo up or down between frames — a visible jitter.
+   Two ways it can change, both guarded here:
+     1. wrapping — hence white-space:nowrap (it scrolls sideways instead)
+     2. the keycap — an inline-block TALLER than the line box grows the line,
+        and the keycap only exists on some frames. So line-height is explicit
+        and MUST stay greater than .hkey's height (17px below). If you resize
+        the keycap, resize this too. */
+.hero-cap{padding:11px 18px 15px;font-family:var(--mono);font-size:12px;line-height:20px;color:var(--muted);border-top:1px solid var(--hair);white-space:nowrap;overflow-x:auto}
 .hero-cap .hcapt{white-space:nowrap}
 /* Keycap — sits AMONG the caption text ("press [_] to climb"), inserted by the
    script ONLY on frames that show a key press, and gone otherwise (no idle
