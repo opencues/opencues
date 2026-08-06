@@ -1,0 +1,41 @@
+<!-- ============================================================================
+     Hero animation — an optional looping demo for the top of a page.
+     Reuses .term so it renders identically to the static examples.
+
+     ⚠ The .term's children are on ONE line with NO whitespace between the tags.
+        white-space:pre would otherwise render the newlines as blank space and
+        push the note away from the buffer line. (This bit us; keep it one line.)
+
+     To adapt for a different demo: edit the TYPED string, the fill()/climb
+     values, and the caption text in the <script>
+  (function(){
+    function init(){
+      var t=document.getElementById('ocHero'); if(!t) return;
+      var buf=t.querySelector('.buf'), note=t.querySelector('.hnote'), hint=t.querySelector('.hhint');
+      var cap=t.parentNode.querySelector('.hcapt'); if(!cap) return;
+      /* Reduce-motion still PLAYS (was frozen on a static frame): it just skips
+         the typewriter + keycap depress and keeps the slow state loop. */
+      var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+      function showNote(on,h){ note.style.opacity=on?'1':'0'; hint.style.opacity=h?'1':'0'; }
+      var CUR='<span class="hcur">▌</span>';   /* caret ALWAYS present; lives on the value */
+      function fill(v){ buf.innerHTML='volume <span class="sp hval">'+v+'</span>'+CUR; }
+      function say(text){ cap.textContent=text; }
+      function sayKey(pre,post){ cap.innerHTML=pre+'<span class="hkey">_</span>'+post; var k=cap.querySelector('.hkey'); if(k&&!reduced) requestAnimationFrame(function(){ k.classList.add('press'); setTimeout(function(){ k.classList.remove('press'); },220); }); }
+      var TYPED='volume _';
+      function loop(){
+        var seq=[];
+        seq.push([function(){ buf.innerHTML=CUR; showNote(false,false); say('type a command'); }, reduced?800:900]);
+        if(!reduced){ for(var n=1;n<=TYPED.length;n++){ (function(k){ seq.push([function(){ buf.innerHTML=esc(TYPED.slice(0,k))+CUR; }, 145]); })(n); } }
+        seq.push([function(){ buf.innerHTML='volume <span class="sp hval">_</span>'+CUR; say('reads the current level…'); }, reduced?1500:1900]);
+        seq.push([function(){ fill('26%'); showNote(true,true); say('current volume · the hint shows once'); }, 3400]);
+        [['32%',2000],['38%',2000],['44%',2000],['50%',3800]].forEach(function(step){
+          seq.push([function(){ fill(step[0]); showNote(true,false); sayKey('press ',' to nudge it up'); }, step[1]]);
+        });
+        var i=0; (function next(){ if(i>=seq.length){ return loop(); } var s=seq[i++]; s[0](); setTimeout(next, s[1]); })();
+      }
+      loop();
+    }
+    if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init); else init();
+  })();
+  </script>

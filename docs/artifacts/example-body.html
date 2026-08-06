@@ -1,0 +1,72 @@
+<!-- ============================================================================
+     OpenCues artifact — BODY TEMPLATE / component reference (kitchen sink)
+     Copy this, replace the content, keep the component patterns. Build with:
+         node build.cjs example-body.html out.html "My Page Title"
+     Rules of the road:
+       • Page content only — no <!doctype>/<html>/<head>/<body>/<style>.
+       • Everything lives inside a single <div class="wrap"> … </div>.
+       • Inside a .term, keep children on ONE line (white-space:pre gotcha).
+       • Wrap wide tables in <div class="scroll"> so only they scroll.
+     ============================================================================ -->
+<div class="wrap">
+
+  <!-- Eyebrow + title + dek: the standard page header. -->
+  <p class="eyebrow">OpenCues · Reference</p>
+  <h1>Component baseline</h1>
+  <p class="dek">Every component this theme ships, with the patterns that keep it
+    responsive. Same layout as the default artifact style — only the OpenCues skin.</p>
+
+  <!-- Optional looping hero. Remove this marker (and hero.html) to omit it. -->
+  <!--HERO-->
+
+  <!-- Section header: number span + title, top-ruled. -->
+  <h2><span class="n">01</span>Terminal &amp; text</h2>
+  <p class="lead">A <code>.term</code> block, inline <code>code</code>, and a
+    <kbd>Ctrl+Alt+↑</kbd> keycap. Note the two <code>.term</code> children sit on
+    ONE line in the source.</p>
+  <div class="term"><span class="buf">volume <span class="sp">32%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume   <span class="hint">(ctrl+alt+up/down to adjust)</span></span></div>
+
+  <!-- Two-up cards. Each .box can hold a .term; min-width:0 keeps it mobile-safe. -->
+  <h2><span class="n">02</span>Cards</h2>
+  <div class="cols">
+    <div class="box"><p class="t"><span class="em">🔊</span> volume</p>
+      <div class="term"><span class="buf">volume <span class="sp">40%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume</span></div>
+      <p>A card with a nested terminal — the "box in a box" that needs min-width:0.</p></div>
+    <div class="box"><p class="t"><span class="em">🔆</span> brightness</p>
+      <div class="term"><span class="buf">brightness <span class="sp">90%</span></span><span class="note"><span class="arw">↳ </span>🔆 screen brightness</span></div>
+      <p>Collapses to one column under 600px.</p></div>
+  </div>
+
+  <!-- Table (wrap in .scroll for wide ones) + badges. -->
+  <h2><span class="n">03</span>Table &amp; badges</h2>
+  <div class="scroll"><table>
+    <tr><th>Input</th><th>Mode</th><th class="mono">Result</th></tr>
+    <tr><td class="mono">volume _</td><td><span class="badge get">GET</span></td><td class="mono">volume 26%</td></tr>
+    <tr><td class="mono">volume 40 _</td><td><span class="badge set">SET</span></td><td class="mono">volume 40%</td></tr>
+    <tr><td class="mono">_</td><td><span class="badge step">STEP</span></td><td class="mono">nudges up</td></tr>
+  </table></div>
+
+  <!-- Gauges (value on a 0–100 track; edge/mute variants). -->
+  <h2><span class="n">04</span>Gauges</h2>
+  <div class="gauge"><span class="v">32%</span><div class="bar"><span style="width:32%"></span></div><span class="lbl">normal</span></div>
+  <div class="gauge"><span class="v">100%</span><div class="bar edge"><span style="width:100%"></span></div><span class="lbl">at the top</span></div>
+  <div class="gauge"><span class="v">0%</span><div class="bar mute"><span style="width:2%"></span></div><span class="lbl">muted</span></div>
+
+  <!-- Filmstrip: label | terminal rows, a labelled sequence. -->
+  <h2><span class="n">05</span>Filmstrip</h2>
+  <div class="strip">
+    <div class="frame"><div class="act"><span class="k"><kbd>volume _</kbd></span><span class="hw">reads 26%</span></div>
+      <div class="term"><span class="buf">volume <span class="sp">26%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume</span></div></div>
+    <div class="frame"><div class="act"><span class="k"><kbd>_</kbd></span><span class="hw">set 32</span></div>
+      <div class="term"><span class="buf">volume <span class="sp">32%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume</span></div></div>
+  </div>
+
+  <!-- Callout: a recessed aside with an accent rail. -->
+  <div class="note-callout"><b>Callout.</b> Use for a caveat, a design note, or an
+    open question — the recessed panel + purple rail set it apart from body copy.</div>
+
+  <!-- Footer / provenance. -->
+  <div class="foot">Built from the OpenCues artifact baseline (theme.css + build.cjs).
+    Fonts inlined from opencues-website; palette from its style.css.</div>
+
+</div>
