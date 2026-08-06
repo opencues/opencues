@@ -79,7 +79,7 @@ strong{font-weight:300;color:#fff}
 /* Inline code: purple on a dark chip, like the site. overflow-wrap:anywhere so a
    long token can't force horizontal page scroll on mobile. */
 code{font-family:var(--mono);font-size:.86em;background:#000;color:#838383;padding:.1em .38em;border-radius:3px;overflow-wrap:anywhere}
-kbd{font-family:var(--mono);font-size:.8em;background:#1b1b1b;border:1px solid #333;border-bottom-width:2px;border-radius:4px;padding:1px 6px;color:var(--accent-2);white-space:nowrap}
+kbd{font-family:var(--mono);font-size:.8em;background:#1b1b1b;border:1px solid #333;border-bottom-width:2px;border-radius:4px;padding:1px 6px;color:#e6e6e6;white-space:nowrap}
 
 /* ── Terminal block (.term) ──────────────────────────────────────────────────
    Monospace "output" panel. white-space:pre keeps ASCII art / aligned notes
@@ -121,10 +121,9 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 
 /* ── Badges (pill chips) — the one place we keep full rounding ────────────────
    Semantic tints on dark. Add variants by pairing a bg tint + a matching text. */
-.badge{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:300;padding:2px 9px;border-radius:20px;border:1px solid transparent}
-.badge.get{background:var(--accent-soft);color:var(--accent);border-color:rgba(158,192,255,.3)}
-.badge.set{background:var(--live-bg);color:var(--live);border-color:rgba(158,192,255,.28)}
-.badge.step{background:rgba(144,133,233,.16);color:var(--accent-2);border-color:rgba(144,133,233,.34)}
+/* A chip already says "this is a key or a mode"; colour on top is redundant.
+   Badges and kbd stay neutral, colour is kept for meaning shape can't carry. */
+.badge{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:300;padding:2px 9px;border-radius:20px;background:#000;color:#e6e6e6;border:1px solid var(--hair)}
 
 /* ── Filmstrip (.strip / .frame) — a labelled sequence of states ─────────────
    Two-column rows (label | terminal), collapsing to one column on mobile.
@@ -184,7 +183,7 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 /* Keycap — sits AMONG the caption text ("press [_] to climb"), inserted by the
    script ONLY on frames that show a key press, and gone otherwise (no idle
    placeholder). Small but legible; keeps the depress animation. */
-.hero-cap .hkey{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:17px;padding:0 4px;margin:0 1px;font-size:11px;line-height:1;background:#1b1b1b;border:1px solid #333;border-bottom-width:2px;border-radius:3px;color:var(--accent);vertical-align:middle;transition:none}
+.hero-cap .hkey{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:17px;padding:0 4px;margin:0 1px;font-size:11px;line-height:1;background:#1b1b1b;border:1px solid #333;border-bottom-width:2px;border-radius:3px;color:#e6e6e6;vertical-align:middle;transition:none}
 /* The press is deliberately a quiet tint, chosen over a high-contrast fill
    (Wilfred, Aug 2026). It is subtle on a dark ground by design; do not
    'fix' it to the accent colour. transition:none stays, though: video
@@ -209,6 +208,10 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
   html,body{background:#111111 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .oc-actions{display:none !important}
+  /* A scrollbar is interface, not content: it was printing as a grey bar
+     under any terminal narrow enough to scroll. */
+  .term{scrollbar-width:none}
+  .term::-webkit-scrollbar{display:none}
   /* Don't split a component across a page break. */
   .term,.box,.frame,.gauge,.note-callout,.hero{break-inside:avoid;page-break-inside:avoid}
   h2{break-after:avoid;page-break-after:avoid}
