@@ -1,0 +1,177 @@
+<!-- ============================================================================
+     Shader border — an 8px animated ring around the hero
+     ----------------------------------------------------------------------------
+     Runs a shader lifted from ShaderShop (~/ShaderShop) over a thin ring drawn
+     around the hero demo. The shader body is VENDORED UNMODIFIED at
+     shaders/foxfire.glsl and inlined here by build.cjs at the marker below —
+     re-sync by copying the file again, never by editing it in place.
+
+     Fed a FLAT MUSTARD image, exactly as ShaderShop feeds it a flat logo
+     (img/cs-logo-dark.png, whose brand colour measures #FCC908). Foxfire buckets
+     pixels by hue and pulses each bucket's ALPHA on a sine, so a flat fill makes
+     the whole ring breathe as one — which is the effect at this width. A ring is
+     8px; a displacement shader would have nothing to displace.
+
+     ⚠ VIDEO: this does NOT self-animate when the virtual-time shim is present
+     (render-video.cjs). The shim turns requestAnimationFrame into a queue, and a
+     self-perpetuating rAF loop would re-queue at the same virtual time forever,
+     starving the hero's own timers and hanging the render. Under the shim the
+     ring exposes window.__ocRingDraw(seconds) and paints only when called.
+     ============================================================================ -->
+<script>
+(function () {
+  var HOST = document.querySelector('.hero');
+  if (!HOST) return;
+
+  /* The ring's own colour, measured off ShaderShop's base images. Foxfire
+     passes the source RGB straight through and animates only alpha, so this
+     is exactly what you see. */
+  var MUSTARD = [252 / 255, 201 / 255, 8 / 255];
+  /* The video stage scales the hero up, so it overrides this before the script
+     runs; 8px is the page's value. */
+  var RING = window.__OC_RING_PX || 8;   // px of ring, all four sides
+
+  /* ---- canvas: a CHILD of .hero, filling it exactly ----------------------
+     The ring is drawn just INSIDE the hero's edge. An earlier version inflated
+     the hero by RING and reparented it into a wrapper to escape
+     .hero{overflow:hidden} — which silently broke the video stage, where .hero
+     is a flex child the stage sizes: the wrapper took over that role, and the
+     whole demo shifted off the left of the frame (x=-137). Staying inside the
+     element touches no layout at all, on either target. */
+  if (getComputedStyle(HOST).position === 'static') HOST.style.position = 'relative';
+
+  var cv = document.createElement('canvas');
+  cv.setAttribute('aria-hidden', 'true');
+  cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;' +
+    'pointer-events:none;z-index:2';
+  HOST.appendChild(cv);
+
+  var GLOPTS = { alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: true };
+  var gl = cv.getContext('webgl2', GLOPTS) || cv.getContext('webgl', GLOPTS);
+  if (!gl) return;                    // no WebGL: no ring, page is unaffected
+
+  /* ---- the shader ---------------------------------------------------------
+     Preamble + ring mask are ours; everything between them is foxfire.glsl as
+     shipped. mainImage() writes fragColor; main() then discards any pixel that
+     is not in the outer RING band, so the interior stays untouched. */
+  var FRAG =
+    'precision highp float;\n' +
+    'uniform vec3 iResolution;\n' +
+    'uniform float iTime;\n' +
+    'uniform sampler2D iChannel0;\n' +
+    'uniform float animationValue, progression, saturationThreshold;\n' +
+    'uniform float hueGroupDelta, groupPhaseOffset, steppedProgression;\n' +
+    'uniform float hue_red, hue_red_orange, hue_orange, hue_yellow;\n' +
+    'uniform float hue_yellow_green, hue_green, hue_cyan, hue_blue;\n' +
+    'uniform float hue_blue_purple, hue_purple, hue_magenta, hue_red_purple;\n' +
+    'uniform float ringPx;\n' +
+    /*__SHADER_FOXFIRE__*/
+    '\n' +
+    'void main() {\n' +
+    '  vec2 p = gl_FragCoord.xy;\n' +
+    '  vec2 d = min(p, iResolution.xy - p);\n' +   // distance to nearest edge
+    '  if (min(d.x, d.y) > ringPx) discard;\n' +   // interior: leave it alone
+    '  vec4 c; mainImage(c, p); gl_FragColor = c;\n' +
+    '}\n';
+
+  var VERT = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+
+  function compile(type, src) {
+    var s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      /* Loud, not silent: a shader that fails to compile is otherwise an
+         invisible no-op, and the ring simply never appears. */
+      var log = gl.getShaderInfoLog(s);
+      console.error('[shader-border] compile failed:', log);
+      window.__ocRingError = 'compile: ' + log;
+      return null;
+    }
+    return s;
+  }
+  var vs = compile(gl.VERTEX_SHADER, VERT), fs = compile(gl.FRAGMENT_SHADER, FRAG);
+  if (!vs || !fs) return;
+  var prog = gl.createProgram();
+  gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    console.error('[shader-border] link failed:', gl.getProgramInfoLog(prog));
+    window.__ocRingError = 'link: ' + gl.getProgramInfoLog(prog);
+    return;
+  }
+  gl.useProgram(prog);
+
+  var buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  var loc = gl.getAttribLocation(prog, 'p');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+  /* ---- the input image: a flat mustard fill, like ShaderShop's flat logo --- */
+  var tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+    new Uint8Array([252, 201, 8, 255]));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+  var U = {};
+  ['iResolution', 'iTime', 'iChannel0', 'animationValue', 'progression',
+   'saturationThreshold', 'hueGroupDelta', 'groupPhaseOffset', 'steppedProgression',
+   'ringPx', 'hue_red', 'hue_red_orange', 'hue_orange', 'hue_yellow',
+   'hue_yellow_green', 'hue_green', 'hue_cyan', 'hue_blue', 'hue_blue_purple',
+   'hue_purple', 'hue_magenta', 'hue_red_purple'
+  ].forEach(function (n) { U[n] = gl.getUniformLocation(prog, n); });
+
+  /* ShaderShop's shipped defaults (shaders/foxfire-params.json). */
+  gl.uniform1f(U.progression, 0.0);
+  gl.uniform1f(U.saturationThreshold, 0.3);
+  gl.uniform1f(U.hueGroupDelta, 30.0);
+  gl.uniform1f(U.groupPhaseOffset, 0.1);
+  gl.uniform1f(U.steppedProgression, 0.0);
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].forEach(function (v, i) {
+    /* Order is mapHueGroups()'s, index 0..11 — read off the shader, not guessed.
+       Getting one name wrong fails the whole compile, silently. */
+    var names = ['hue_red', 'hue_red_orange', 'hue_orange', 'hue_yellow',
+      'hue_yellow_green', 'hue_green', 'hue_cyan', 'hue_blue', 'hue_blue_purple',
+      'hue_purple', 'hue_magenta', 'hue_red_purple'];
+    gl.uniform1f(U[names[i]], v);
+  });
+  gl.uniform1i(U.iChannel0, 0);
+
+  function size() {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = Math.round(HOST.offsetWidth * dpr);
+    var h = Math.round(HOST.offsetHeight * dpr);
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    gl.viewport(0, 0, cv.width, cv.height);
+    gl.uniform3f(U.iResolution, cv.width, cv.height, 1);
+    gl.uniform1f(U.ringPx, RING * dpr);
+  }
+
+  function draw(seconds) {
+    size();
+    gl.uniform1f(U.iTime, seconds);
+    /* TurboEngine's animationValue ping-pongs 0..1; foxfire reads it as the
+       animation clock. One breath every 3s. */
+    gl.uniform1f(U.animationValue, (seconds % 3) / 3);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  /* Under the virtual-time shim, paint on demand only — see the warning above. */
+  if (window.__ocRun) { window.__ocRingDraw = draw; draw(0); return; }
+
+  var t0 = null;
+  (function loop(t) {
+    if (t0 === null) t0 = t;
+    draw((t - t0) / 1000);
+    requestAnimationFrame(loop);
+  })(0);
+})();
+</script>

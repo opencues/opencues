@@ -93,6 +93,15 @@ function main() {
   if (body.includes('<!--HERO-->') && fs.existsSync(heroPath)) {
     body = body.replace('<!--HERO-->', fs.readFileSync(heroPath, 'utf8').trim());
   }
+
+  // <!--SHADER-BORDER--> splices in the shader ring (shader-border.html) and
+  // inlines its GLSL, which is vendored UNMODIFIED from ShaderShop under
+  // shaders/. Inlined rather than fetched because the artifact CSP blocks
+  // external requests and a file:// fetch fails too — same reason as the fonts.
+  if (body.includes('<!--SHADER-BORDER-->')) {
+    body = body.replace('<!--SHADER-BORDER-->', buildShaderBorder());
+  }
+
   body = wrapSections(body);
 
   let out;
@@ -151,4 +160,18 @@ function main() {
   console.log(`[build] wrote ${outPath} (${(out.length / 1024).toFixed(0)} KB, target: ${site ? 'site fragment' : 'artifact'})`);
 }
 if (require.main === module) main();
-module.exports = { buildFontFace };
+/** The shader ring, with its GLSL inlined.
+ *  Shared by the page build and render-video.cjs's stage, so the video can
+ *  never run a different shader from the page it is a recording of. */
+function buildShaderBorder() {
+  const ringPath = path.join(HERE, 'shader-border.html');
+  const glslPath = path.join(HERE, 'shaders', 'foxfire.glsl');
+  if (!fs.existsSync(ringPath) || !fs.existsSync(glslPath)) return '';
+  const ring = fs.readFileSync(ringPath, 'utf8').trim();
+  const glsl = fs.readFileSync(glslPath, 'utf8');
+  // The placeholder sits inside a JS string concatenation, so what replaces it
+  // must be a string literal followed by the `+` that continues the chain.
+  return ring.replace('/*__SHADER_FOXFIRE__*/', JSON.stringify(glsl) + ' +');
+}
+
+module.exports = { buildFontFace, buildShaderBorder };

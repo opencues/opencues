@@ -31,7 +31,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { buildFontFace } = require('./build.cjs');
+const { buildFontFace, buildShaderBorder } = require('./build.cjs');
 
 const HERE = __dirname;
 const REPO = path.resolve(HERE, '..', '..');
@@ -51,6 +51,10 @@ function stageHtml({ captioned }) {
   const fontface = buildFontFace();
   const theme = fs.readFileSync(path.join(HERE, 'theme.css'), 'utf8');
   const hero = fs.readFileSync(path.join(HERE, 'hero.html'), 'utf8');
+  /* Same builder the page uses, so the video can never run a different shader
+     from the page it is a recording of. 12px because the stage scales the hero
+     up; 8px would read thinner here than it does on the page. */
+  const shaderBorder = '<script>window.__OC_RING_PX=12;<\/script>\n' + buildShaderBorder();
   return `<!doctype html><html><head><meta charset="utf-8"><style>
 ${fontface}
 ${theme}
@@ -72,6 +76,9 @@ html,body{margin:0;padding:0;background:#111;height:100%;overflow:hidden}
    exactly that far, so the cap visibly bottoms out. */
 .stage .hero-cap .hkey{min-width:26px;height:30px;padding:0 9px;font-size:19px;border-radius:0;box-shadow:0 4px 0 #333}
 .stage .hero-cap .hkey.press{transform:translateY(4px);box-shadow:0 0 0 #333}
+/* The ring scales with the stage: 8px around a 683px page hero reads the same
+   as 12px around this 1040px one. */
+.stage .hero{position:relative}
 </style>
 
 <script>
@@ -106,12 +113,17 @@ html,body{margin:0;padding:0;background:#111;height:100%;overflow:hidden}
     }
   };
   window.__ocTimes = function(){ return times; };
+  /* The shader ring needs the frame's virtual time: it cannot animate itself
+     here (a self-perpetuating rAF would re-queue at the same vt forever and
+     starve the hero), so the driver below paints it once per frame. */
+  window.__ocVt = function(){ return vt; };
 })();
 </script>
 </head><body>
 <div class="stage">
 ${captioned ? `  <div class="cap"><h1>${TITLE}</h1><p>${DESCRIPTION}</p></div>` : ''}
 ${hero}
+${shaderBorder}
 </div>
 <script>
 (function(){
@@ -122,6 +134,9 @@ ${hero}
      time this runs its first state is already applied and its timers queued. */
   function go(){
     window.__ocRun(mode === 'schedule' ? 400 : n);
+    /* Paint the ring at THIS frame's virtual time, after the hero's callbacks
+       have settled, so the ring and the demo always agree on the clock. */
+    if (window.__ocRingDraw) window.__ocRingDraw(window.__ocVt() / 1000);
     if (mode === 'schedule') document.title = JSON.stringify(window.__ocTimes());
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
