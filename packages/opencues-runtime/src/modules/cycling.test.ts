@@ -86,6 +86,43 @@ blankScript: ./vol.sh
     expect(dynDefs.get(1)?.alternatives).toEqual(['38%']);
   });
 
+  it('underscore nudges a blankStep actuator UP one step and clamps at the top (consumes the key)', async () => {
+    // `_` in a volume value walks it UP by blankStep, clamping at 100 — the
+    // one-direction analogue of a text cue's `_`. At the top the key is still
+    // consumed (no stray `_` inserted); down is Ctrl+Alt+↓.
+    const VOLUME_BLANK = `---
+name: volume
+type: blank
+blankKeywords: volume
+tip: system volume
+icon: 🔊
+blankStep: 6
+blankSuffix: %
+blankScript: ./vol.sh
+---`;
+    const adapter = new MockAdapter({ cwd: '/proj', files: { '/proj/blanks/volume/BLANK.md': VOLUME_BLANK } });
+    adapter.pushText('volume 92%');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const cycling = new Cycling(adapter, hlState, dynDefs, loader);
+    cycling.subscribe();
+    dynDefs.set(1, { originalWord: '92%', alternatives: ['92%'], currentIndex: 0, spanStart: 7, spanEnd: 10, blankName: 'volume' });
+    adapter.setCursorOffset(8);            // caret inside "92%"
+    // First `_`: 92 → 98 (up one step), key consumed.
+    expect(adapter.fireKey('_')).toBe(true);
+    expect(adapter.setTextCalls.at(-1)).toBe('volume 98%');
+    // Second `_`: 98 + 6 = 104 → clamped to 100 (the top).
+    adapter.setCursorOffset(8);
+    expect(adapter.fireKey('_')).toBe(true);
+    expect(adapter.setTextCalls.at(-1)).toBe('volume 100%');
+    // Third `_` at the top: stays 100, still consumed (no stray "_").
+    adapter.setCursorOffset(8);
+    expect(adapter.fireKey('_')).toBe(true);
+    expect(adapter.setTextCalls.at(-1)).toBe('volume 100%');
+  });
+
   it('Ctrl+Alt+Up replaces highlighted word with first alternative', async () => {
     const { adapter, hlState, dynDefs } = await setup('fast slow');
     hlState.activate(0, 'fast slow'); // fast

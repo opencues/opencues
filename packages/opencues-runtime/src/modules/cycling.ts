@@ -356,6 +356,21 @@ export class Cycling {
         if (this.cycleSelectorSatellite(event, words, caretWord.index, +1)) return true;
       }
     }
+
+    // Actuator (blankStep: volume / brightness) — `_` NUDGES THE VALUE UP one
+    // step, the one-direction analogue of a text cue's `_`. Clamps at the top
+    // (cycleBlankStep clamps 0..100), so repeated `_` walks up to 100 and stops
+    // there (consumes the key, never inserts a stray `_`). Down is Ctrl+Alt+↓.
+    if (caretWord) {
+      const adef = this.dynDefs.get(caretWord.index);
+      const bn = adef?.blankName;
+      const ablk = bn
+        ? this.configLoader.blanks.get(bn) as { blankStep?: number; blankSuffix?: string; blankScript?: string } | undefined
+        : undefined;
+      if (bn && ablk && ablk.blankStep !== undefined) {
+        return this.cycleBlankStep(event, caretWord, ablk, bn, +1);
+      }
+    }
     return false;
   }
 
