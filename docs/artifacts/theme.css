@@ -20,9 +20,9 @@
 
 :root{
   /* ── Palette (opencues.com dark theme) ────────────────────────────────────
-     Ground is near-black; primary text is a bright off-white; the accent is the
-     site's code-purple, with code-blue as a secondary. Semantic colours
-     (live/edge/mute) are for state, NOT for the accent. */
+     Ground is near-black; primary text is a bright off-white. Blue is the
+     accent, because the site's comparison table paints "has this feature" in
+     code-blue; violet is the rare secondary. */
   --paper:#111111;      /* page background (--bg-colour) */
   --panel:#181818;      /* card background — a hair lighter than the page */
   --panel-2:#0c0c0c;    /* recessed panel / callouts (--dark-backing) */
@@ -62,10 +62,10 @@
 ::selection{background:rgba(158,192,255,.22);color:#fff}
 
 /* ── Typography ──────────────────────────────────────────────────────────────
-   Eyebrows / section numbers / table headers / labels are set in Ufficio Mono
-   with letter-spacing — the site's signature. Headings use the light 200 weight.
-   `strong` is white, NOT bolder (TWK Lausanne 300 is the only body weight we
-   ship, so emphasis is by COLOUR, not weight). */
+   Eyebrows / table headers / labels are set in Ufficio Mono with letter-spacing,
+   the site's signature. Headings use the light 200 weight. `strong` is lighter,
+   NOT bolder: TWK Lausanne 300 is the only body weight shipped, so emphasis is
+   by COLOUR, never weight. */
 .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-weight:300;margin:0 0 16px}
 h1{font-family:var(--display);font-weight:200;font-size:clamp(32px,5.2vw,46px);line-height:1.05;letter-spacing:-.01em;margin:0 0 16px;color:#fff;text-wrap:balance}
 .dek{font-size:18px;color:var(--muted);max-width:60ch;margin:0 0 6px}
@@ -75,8 +75,9 @@ h2{font-family:var(--display);font-weight:200;font-size:24px;letter-spacing:-.00
 h3{font-family:var(--mono);font-size:12px;letter-spacing:.08em;font-weight:300;margin:35px 0 6px;text-transform:uppercase;color:var(--muted)}
 .lead{color:var(--muted);max-width:66ch;margin:10px 0 0} p{max-width:66ch}
 strong{font-weight:300;color:#fff}
-/* Inline code: purple on a dark chip, like the site. overflow-wrap:anywhere so a
-   long token can't force horizontal page scroll on mobile. */
+/* Inline code follows the site's chip: mono, code-grey, on black. Not the
+   accent. overflow-wrap:anywhere so a long token can't force horizontal page
+   scroll on mobile. */
 code{font-family:var(--mono);font-size:.86em;background:#000;color:#838383;padding:.1em .38em;border-radius:0;overflow-wrap:anywhere}
 /* inline-block, not the default inline: transform is ignored on non-replaced
    inline elements, so the press below would silently do nothing. */
@@ -105,10 +106,9 @@ kbd{display:inline-block;vertical-align:baseline;font-family:var(--mono);font-si
    does not sprout an unstyled bar. */
 .term::-webkit-scrollbar{display:none}
 .term .buf{color:var(--term-fg);display:block}        /* the "buffer" / reference line */
-/* .sp = the active/selected span. The product HIGHLIGHTS it (a background fill,
-   like the caret-in-span auto-select) — it never underlines. Match that: a
-   subtle accent-tinted highlight with bright text, no underline, no radius
-   (terminal-cell look). */
+/* .sp = the active/selected span. The product HIGHLIGHTS it with a background
+   fill (the caret-in-span auto-select); it never underlines. Accent-tinted,
+   bright text, square, like a terminal cell. */
 .term .sp{background:rgba(158,192,255,.22);color:#fff}
 .term .note{color:var(--term-dim);display:block}      /* the dim note line under .buf */
 .term .arw{color:#5a5a5a}                              /* the ↳ connector */
@@ -170,7 +170,9 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .box p{font-size:13.5px;color:var(--muted);margin:6px 0 0;max-width:none}
 
 /* ── Callout — a recessed aside with an accent rail ──────────────────────────*/
-.note-callout{background:var(--panel-2);border-left:2px solid var(--accent);border-radius:0;padding:13px 17px;margin:16px 0;font-size:13.5px;color:var(--muted)}
+/* Same grey panel as a card: an aside is a block of prose set apart, and the
+   accent rail was the last piece of decoration doing that job by colour. */
+.note-callout{background:var(--panel);border-radius:0;padding:16px 18px;margin:16px 0;font-size:13.5px;color:var(--muted)}
 .note-callout b{color:#fff;font-weight:300}
 
 /* ── Footer / provenance line ────────────────────────────────────────────────*/
