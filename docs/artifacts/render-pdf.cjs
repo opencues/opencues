@@ -43,7 +43,8 @@ function main() {
 
   // Print the ARTIFACT build: self-contained, fonts inlined, no site shell.
   const page = path.join(dir, 'page.html');
-  execFileSync('node', [path.join(HERE, 'build.cjs'), bodyPath, page, title || 'OpenCues'], { stdio: 'inherit' });
+  execFileSync('node', [path.join(HERE, 'build.cjs'), bodyPath, page, title || 'OpenCues'],
+    { stdio: 'inherit', env: { ...process.env, OC_SKIP_INLINE_ASSETS: '1' } });
 
   const winPdf = path.join(dir, 'out.pdf');
   execFileSync(WIN_CHROME, [

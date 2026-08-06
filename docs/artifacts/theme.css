@@ -198,18 +198,19 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 
 /* ── Download actions + print ───────────────────────────────────────────────
    `.oc-actions` is a small toolbar the page can drop in; it never prints. */
-.oc-actions{display:flex;gap:.6rem;flex-wrap:wrap;margin:0 0 1.4rem}
-.oc-actions button,.oc-actions a{font-family:var(--mono);font-size:.8rem;line-height:1.7rem;letter-spacing:.06rem;
-  background:transparent;color:var(--muted);border-bottom:1px solid var(--hair);border-radius:0;
-  padding:.15rem .8rem;cursor:pointer;transition:color .12s ease,border-color .12s ease}
-.oc-actions button:hover,.oc-actions a:hover{color:var(--accent);border-color:var(--accent)}
-.oc-actions button:focus-visible,.oc-actions a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.oc-actions{display:flex;gap:1.4rem;flex-wrap:wrap;margin:0 0 1.4rem}
+/* Downloads are LINKS, not buttons: assets.html offers its files as a plain
+   "Download ↓" in base-grey that warms on hover. Same styling here, kept at
+   the small mono size the rest of the page labels use. */
+.oc-actions button,.oc-actions a{font-family:var(--doc-mono);font-size:.8rem;line-height:1.7rem;letter-spacing:.06rem;color:var(--muted);background:none;border:0;padding:0;cursor:pointer;text-decoration:none;transition:color .5s cubic-bezier(0.25,0.1,0.25,1)}
+.oc-actions button:hover,.oc-actions a:hover{color:#DEA4FF}
+.oc-actions button:focus-visible,.oc-actions a:focus-visible{outline:1px solid #DEA4FF;outline-offset:3px}
 
 @media print{
   /* Keep the dark ground: browsers drop backgrounds unless told otherwise. */
   html,body{background:#111111 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .oc-actions{display:none !important}
+  .oc-actions{display:flex;gap:1.4rem;flex-wrap:wrap;margin:0 0 1.4rem}
   /* A scrollbar is interface, not content: it was printing as a grey bar
      under any terminal narrow enough to scroll. */
   .term{scrollbar-width:none}
@@ -234,7 +235,6 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
   @page{margin:14mm;background:#111111}
 }
 
-.oc-actions a{display:inline-block;text-decoration:none}
 
 /* ── Easter egg: the chips that look pressable, are ─────────────────────────
    kbd and the hero keycap carry a 2px bottom border, which reads as depth and

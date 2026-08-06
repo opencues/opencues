@@ -123,13 +123,19 @@ function main() {
     // Videos are inlined for the standalone page: an artifact has no sibling
     // files to fetch, so a relative path would just 404. The site target leaves
     // the body's relative fallback alone and serves the files from video/.
+    // The PDF renderer builds this page and then prints it OVER the very file
+    // being inlined here, so each run embedded the previous PDF and the output
+    // grew without bound (204 KB -> 564 -> 1045 -> 1687 in four runs). A printed
+    // page cannot play a video or open a PDF anyway, so the print build carries
+    // neither.
+    const skipAssets = process.env.OC_SKIP_INLINE_ASSETS === '1';
     const vids = {};
     for (const [k, file] of [['raw', 'oc-hero-raw.mp4'], ['captioned', 'oc-hero-captioned.mp4']]) {
       const p = path.join(HERE, 'video', file);
-      if (fs.existsSync(p)) vids[k] = 'data:video/mp4;base64,' + fs.readFileSync(p).toString('base64');
+      if (!skipAssets && fs.existsSync(p)) vids[k] = 'data:video/mp4;base64,' + fs.readFileSync(p).toString('base64');
     }
     const pdfFile = path.join(HERE, 'pdf', 'oc-actuator-states.pdf');
-    const pdfUri = fs.existsSync(pdfFile)
+    const pdfUri = !skipAssets && fs.existsSync(pdfFile)
       ? 'data:application/pdf;base64,' + fs.readFileSync(pdfFile).toString('base64') : '';
     const videoScript =
       (Object.keys(vids).length ? `<script>window.__OC_VIDEO=${JSON.stringify(vids)};</script>\n` : '') +
