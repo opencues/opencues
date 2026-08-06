@@ -94,6 +94,11 @@ describe('ToolPromptCueSource', () => {
     expect(r.alternatives).toEqual([buffer, 'The API is 2x faster.', 'The API is generally faster.']);
     // Full option set (incl. advisory) preserved in metadata for a richer renderer.
     expect((r.metadata?.toolQuestion as { options: unknown[] }).options).toHaveLength(3);
+    // noteLabels align index-for-index with alternatives so the inline note can
+    // ROTATE legible labels instead of prefix-identical sentence snippets. Index
+    // 0 (revert) reuses the advisory "keep"-type option's own label.
+    expect(r.metadata?.noteLabels).toEqual(['Keep as is', 'Add data', 'Qualify']);
+    expect((r.metadata?.noteLabels as string[]).length).toBe(r.alternatives.length);
   });
 
   it('caches per sentence — a second resolve on the same selection makes no new call', async () => {

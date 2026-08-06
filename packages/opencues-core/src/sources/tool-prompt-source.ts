@@ -192,10 +192,18 @@ export class ToolPromptCueSource implements CueSource {
     // metadata for a future per-option-tip renderer but don't add dead no-op
     // cycles today. The tip carries the question.
     const original = sel.text;
-    const applies = q.options
-      .map((o) => (typeof o.apply === 'string' && o.apply.trim() ? o.apply.trim() : null))
-      .filter((a): a is string => a !== null && a !== original);
-    const alternatives = [original, ...applies];
+    // Keep each apply paired with its option LABEL so the rotating inline note
+    // can show "Add benchmark | Qualify claim" instead of snippets of the full
+    // rewritten sentences (which share prefixes → identical fragments). The
+    // alternatives are still the apply TEXTS — that's what the cycle splices.
+    const applyOpts = q.options
+      .map((o) => ({ label: o.label, apply: typeof o.apply === 'string' && o.apply.trim() ? o.apply.trim() : null }))
+      .filter((o): o is { label: string; apply: string } => o.apply !== null && o.apply !== original);
+    const alternatives = [original, ...applyOpts.map((o) => o.apply)];
+    // Label for the original (index 0 = revert): reuse an advisory "keep"-type
+    // option's own label when the model emitted one, else a neutral default.
+    const advisory = q.options.find((o) => !(typeof o.apply === 'string' && o.apply.trim()));
+    const noteLabels = [advisory?.label ?? 'Keep as is', ...applyOpts.map((o) => o.label)];
     // Single-line AQT (v1): the whole question + option labels ride in ONE tip
     // line, so the existing inline-note / statusline channel shows the full
     // "card" without any render-contract change. Multi-line rows are a later
@@ -212,7 +220,7 @@ export class ToolPromptCueSource implements CueSource {
       spanStart: sel.start,
       spanEnd: sel.end,
       cueTip,
-      metadata: { sentenceCue: { cueName: this.id }, toolQuestion: q },
+      metadata: { sentenceCue: { cueName: this.id }, toolQuestion: q, noteLabels },
     };
     this.log(`ToolPrompt(${this.tool.id}): "${q.question}" (${q.options.length} option(s))`);
     return { results: [result] };

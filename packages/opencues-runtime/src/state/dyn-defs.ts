@@ -32,6 +32,17 @@ export interface WordDef {
    * beats a formalizer at 85, not by timing). Absent → treated as 0.
    */
   readonly priority?: number;
+  /**
+   * Optional per-alternative DISPLAY label, aligned index-for-index with
+   * `alternatives`. Used by the inline note when the raw alternatives aren't
+   * self-describing — ask-cues, whose alternatives are full rewritten sentences
+   * that share their opening words (so a 2-word snippet would render three
+   * identical `the new…` fragments). The rotating note shows these labels
+   * ("Keep as is | Add benchmark | Qualify claim") instead. Display-only; the
+   * cycle still splices `alternatives[currentIndex]`. Absent → the note falls
+   * back to snippeting the alternatives.
+   */
+  readonly noteLabels?: readonly string[];
 }
 
 /**
@@ -137,6 +148,17 @@ export function inlineNoteText(def: WordDef): string | undefined {
   if (def.cueTip) {
     const { emoji, rest } = splitNoteEmoji(def.cueTip);
     const em = emoji ?? '⚠';
+    // A cycleable notification whose destinations carry display labels
+    // (ask-cues — a menu of rewrites) ROTATES like spelling/transform: it shows
+    // where the next `_` lands, not a static question + full menu. One paradigm
+    // for every cycleable note. We rotate the LABELS (not the alternatives),
+    // because the alternatives are whole rewritten sentences that share prefixes
+    // and would snippet to identical fragments. The emoji still leads (it's a
+    // notification); the question drops (the labels are the destinations).
+    if (def.noteLabels && def.noteLabels.length === def.alternatives.length && def.alternatives.length > 1) {
+      const labels = upcomingLabels(def, 3);
+      return labels.length ? `${em} ${n} | ${labels.join(' | ')}` : `${em} ${n}`;
+    }
     const msg = rest.replace(/\s*[·▸]\s*/g, ' | ');
     return def.alternatives.length > 1 ? `${em} ${n} | ${msg}` : `${em} ${msg}`;
   }
@@ -183,6 +205,20 @@ function upcomingAlternatives(def: WordDef, max: number): string[] {
   const out: string[] = [];
   for (let i = 1; i < alts.length; i++) out.push(alts[(cur + i) % alts.length]);
   return out.slice(0, max);
+}
+
+/** The DISPLAY LABELS a def can still cycle TO, in cycle order (wrapping),
+ *  EXCLUDING the one currently shown — the label parallel of
+ *  `upcomingAlternatives`. Used for labeled notes (ask-cues) where the raw
+ *  alternatives aren't self-describing. Aligned index-for-index with
+ *  `alternatives`, so it rotates on `currentIndex` the same way. */
+function upcomingLabels(def: WordDef, max: number): string[] {
+  const labels = def.noteLabels;
+  if (!labels || labels.length <= 1) return [];
+  const cur = def.currentIndex;
+  const out: string[] = [];
+  for (let i = 1; i < labels.length; i++) out.push(labels[(cur + i) % labels.length]);
+  return out.slice(0, max).filter(Boolean);
 }
 
 // ── First-cycle affordance state ───────────────────────────────────────────

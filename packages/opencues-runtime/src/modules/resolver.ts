@@ -2233,6 +2233,9 @@ export class Resolver {
           cueTip: r.cueTip,
           // Carried so a later higher-priority overlapping cue can evict this one.
           priority: r.priority,
+          // Per-alternative display labels (ask-cues) → the rotating note shows
+          // legible option labels instead of prefix-identical sentence snippets.
+          noteLabels: (r.metadata as { noteLabels?: readonly string[] } | undefined)?.noteLabels,
         });
         wrote++;
 

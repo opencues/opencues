@@ -679,6 +679,36 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     expect(out?.inlineNote?.spanStart).toBe(0);
   });
 
+  it('ROTATES an ask-cues note through its option LABELS as it cycles (one paradigm)', () => {
+    // ask-cues is a menu of rewrites but renders like every other cycleable
+    // note: it ROTATES to show where the next `_` lands. Its alternatives are
+    // whole rewritten sentences that share prefixes, so it rotates the LABELS
+    // (carried on `noteLabels`), keeping its ❓ notification emoji.
+    const ALTS = ['the new approach is way better', 'the new approach is 2× faster (200ms→100ms)', 'the new approach is generally better'];
+    // Cycling splices alternatives[currentIndex] into the buffer, so the buffer
+    // ALWAYS equals the current alt (dim-render bails when the span is stale).
+    function noteAt(currentIndex: number): string | undefined {
+      const buf = ALTS[currentIndex];
+      const { dynDefs, dimRender } = setup(buf);
+      dynDefs.set(0, {
+        originalWord: ALTS[0],
+        alternatives: ALTS,
+        noteLabels: ['Keep as is', 'Add benchmark', 'Qualify claim'],
+        currentIndex,
+        spanStart: 0,
+        spanEnd: buf.length,
+        blankName: 'sentence-cue:tool-ask',
+        cueTip: '❓ Evidence — what makes it better? ▸ Add benchmark · Qualify claim · Keep as is',
+      });
+      return dimRender.compute({ text: buf, cursor: 3, externalHighlights: [] })?.inlineNote?.text;
+    }
+    // At the original (index 0): ❓ + countdown + the two rewrites you can reach.
+    expect(noteAt(0)).toBe('❓ 3 | Add benchmark | Qualify claim');
+    // After one cycle (index 1): the list ROTATES — drops the one you're on,
+    // wraps 'Keep as is' back in — and the countdown ticks down.
+    expect(noteAt(1)).toBe('❓ 2 | Qualify claim | Keep as is');
+  });
+
   it('emits the note at the span boundary (cursor == spanEnd, inclusive)', () => {
     const { dynDefs, dimRender } = setup(BUFFER);
     seedContradictionDef(dynDefs);
