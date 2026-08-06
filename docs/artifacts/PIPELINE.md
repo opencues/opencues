@@ -140,14 +140,24 @@ A page can offer its own PDF and a 16:9 video of the hero. Both are
 **pre-rendered files**, not generated in the browser:
 
 ```bash
-node docs/artifacts/render-pdf.cjs   pages/<name>.html pdf/<name>.pdf "<Title>"
-node docs/artifacts/render-video.cjs                       # both cuts, 1280x720
+cd docs/artifacts    # REQUIRED: the renderers resolve their paths against cwd
+node render-pdf.cjs   pages/<name>.html pdf/<name>.pdf "<Title>"
+node render-video.cjs                                       # both cuts, 1280x720
 ```
+
+⚠ **The renderers want `docs/artifacts` as the working directory; `build.cjs`
+wants the repo root** (its paths in this file are repo-relative). Running either
+from the wrong place fails with a bare `ENOENT` naming a path you did pass, which
+reads like a missing file rather than a wrong cwd.
 
 The buttons ride in the page body, so both targets get them. `build.cjs`
 inlines the files as data URIs for the artifact target; the site target uses the
 relative fallbacks (`pdf/`, `video/`), so copy the rendered files into the
 website repo alongside the page.
+
+**Regenerate on a theme change, not just a content change.** The video and the
+PDF bake in whatever `theme.css` said at render time, so a colour that moved
+only in CSS leaves them stale and silently disagreeing with the live page.
 
 **Why the PDF is pre-rendered and not `window.print()`.** A published artifact
 runs in a sandboxed iframe where `print()` is blocked, and it is unreliable on
