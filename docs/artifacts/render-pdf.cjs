@@ -49,6 +49,10 @@ function main() {
   execFileSync(WIN_CHROME, [
     '--headless=new', '--disable-gpu',
     '--no-pdf-header-footer',                 // no "about:blank / 1/3" furniture
+    // The hero is an animation, and at t=0 it is an empty box with a caret.
+    // Chrome's own virtual clock runs it on before printing so the page shows
+    // a filled, meaningful state (volume read, note and hint visible).
+    '--virtual-time-budget=5000',
     `--print-to-pdf=${toWin(winPdf)}`,
     'file:///' + toWin(page).replace(/\\/g, '/'),
   ], { stdio: ['ignore', 'ignore', 'ignore'] });

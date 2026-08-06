@@ -106,7 +106,7 @@ kbd{font-family:var(--mono);font-size:.8em;background:#1b1b1b;border:1px solid #
 /* ── Tables ──────────────────────────────────────────────────────────────────
    Hairline rows, mono uppercase headers. Wrap wide tables in .scroll. */
 table{border-collapse:collapse;width:100%;margin:14px 0;font-size:14px}
-th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--hair);vertical-align:top}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--hair);vertical-align:top;color:var(--ink)}
 th{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:300}
 td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .scroll{overflow-x:auto}   /* wrap any wide table/diagram so only IT scrolls */
@@ -176,8 +176,8 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 /* Keycap — sits AMONG the caption text ("press [_] to climb"), inserted by the
    script ONLY on frames that show a key press, and gone otherwise (no idle
    placeholder). Small but legible; keeps the depress animation. */
-.hero-cap .hkey{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:17px;padding:0 4px;margin:0 1px;font-size:11px;line-height:1;background:#1b1b1b;border:1px solid #333;border-bottom-width:2px;border-radius:3px;color:var(--accent);vertical-align:middle;transition:transform .12s ease,background .12s ease}
-.hero-cap .hkey.press{background:var(--accent-soft);transform:translateY(1px);border-bottom-width:1px}
+.hero-cap .hkey{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:17px;padding:0 4px;margin:0 1px;font-size:11px;line-height:1;background:#1b1b1b;border:1px solid #333;border-bottom-width:2px;border-radius:3px;color:var(--accent);vertical-align:middle;transition:none}
+.hero-cap .hkey.press{background:var(--accent);color:#0b0b0b;border-color:var(--accent);transform:translateY(1px);border-bottom-width:1px}
 
 /* Respect reduced-motion everywhere: the hero script also self-disables and
    holds a single static frame. */
