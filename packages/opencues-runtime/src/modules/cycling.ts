@@ -366,8 +366,24 @@ export class Cycling {
 
   /** Exposed for unit testing — direction is +1 (up, forward) / -1 (down, back). */
   step(event: KeyEvent, direction: 1 | -1): boolean {
-    if (!this.hlState.active || this.hlState.wordIndex === null) return false;
-    const wordIndex = this.hlState.wordIndex;
+    let wordIndex: number;
+    if (this.hlState.active && this.hlState.wordIndex !== null) {
+      wordIndex = this.hlState.wordIndex;
+    } else {
+      // GET arms the knob: with no active nav highlight, Ctrl+Alt+↑/↓ still
+      // adjusts a blankStep ACTUATOR (volume / brightness) when the caret sits
+      // in its filled value span — so `volume _` is immediately adjustable
+      // without a separate navigate. Confined to blankStep defs, so plain text
+      // cues still require an explicit navigate (behaviour unchanged for them).
+      const cw = splitWords(event.text).find(w => event.cursorOffset >= w.start && event.cursorOffset <= w.end);
+      const cdef = cw ? this.dynDefs.get(cw.index) : undefined;
+      const cblk = cdef?.blankName ? this.configLoader.blanks.get(cdef.blankName) as { blankStep?: number } | undefined : undefined;
+      if (cw && cblk && cblk.blankStep !== undefined) {
+        wordIndex = cw.index;
+      } else {
+        return false;
+      }
+    }
 
     const words = splitWords(event.text);
     const target = words[wordIndex];
@@ -811,15 +827,24 @@ export class Cycling {
     const clampedCursor = Math.max(0, Math.min(newCursor, newText.length));
 
     // Update the DynDef in-place so subsequent cycles see the new value.
+    // `alternatives` is synced to the new value too (not just originalWord) so
+    // the actuator note's liveness check (defSpanLive → alternatives[current])
+    // keeps matching after an adjust — otherwise the `🔊 system volume` note
+    // would vanish the moment you step.
     const def = this.dynDefs.get(target.index);
     if (def) {
       this.dynDefs.set(target.index, {
         ...def,
         originalWord: nextWord,
+        alternatives: [nextWord],
+        currentIndex: 0,
         spanStart: target.start,
         spanEnd: target.start + nextWord.length,
       });
     }
+    // Adjusting counts as cycling: it retires the one-time hint (the dial's
+    // `(ctrl+alt+up/down to adjust)`, like the text cue's `(underscore to cycle)`).
+    markCycledEver();
 
     // Sync spanFillState.lastFilledText to the new buffer BEFORE setText —
     // otherwise BlankFill._onTextChangeImpl sees the cycle output as a

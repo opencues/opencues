@@ -2,6 +2,7 @@
 name: volume
 type: blank
 tip: system volume
+icon: 🔊
 speak: true
 blankKeywords: volume
 # Allow up to 3 words between the keyword and `_` — so natural

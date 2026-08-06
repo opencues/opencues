@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest';
 import { DimRender } from './dim-render';
 import { Navigation, splitWords } from './navigation';
 import { HighlightState } from '../state/highlight-state';
-import { DynDefs, _resetCycledEverForTests } from '../state/dyn-defs';
+import { DynDefs, _resetCycledEverForTests, markCycledEver } from '../state/dyn-defs';
 
 // The `(underscore to cycle)` affordance is a SESSION-scoped module flag that a
 // real cycle flips true. Other test files (cycling*) cycle and leak that flag
@@ -707,6 +707,49 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     // After one cycle (index 1): the list ROTATES — drops the one you're on,
     // wraps 'Keep as is' back in — and the countdown ticks down.
     expect(noteAt(1)).toBe('❓ 2 | Qualify claim | Keep as is');
+  });
+
+  it('emits an ACTUATOR note for a blankStep blank (volume): icon + tip + adjust hint', async () => {
+    // A blankStep blank (volume/brightness) fills a single value — no cycle
+    // list — but is a LIVE knob. Its note is the standard `<icon> <tip>` label
+    // (from the blank's `icon:`/`tip:`) plus the `(ctrl+alt+up/down to adjust)`
+    // hint, which drops after the first adjust. The value itself stays in the
+    // buffer, not the note.
+    _resetCycledEverForTests();
+    const { ConfigLoader } = await import('./config-loader');
+    const VOLUME_BLANK = `---
+name: volume
+type: blank
+blankKeywords: volume
+tip: system volume
+icon: 🔊
+blankStep: 6
+blankSuffix: %
+blankScript: ./vol.sh
+---`;
+    const adapter = new MockAdapter({ cwd: '/proj', files: { '/proj/blanks/volume/BLANK.md': VOLUME_BLANK } });
+    const buf = 'volume 32%';
+    adapter.pushText(buf);
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    // The fill registers a DynDef at the value word (index 1 = "32%").
+    dynDefs.set(1, {
+      originalWord: '32%', alternatives: ['32%'], currentIndex: 0,
+      spanStart: 7, spanEnd: 10, blankName: 'volume',
+    });
+    const dim = new DimRender(adapter, hlState, dynDefs, loader);
+    // Caret inside "32%" → note shows: label + first-time adjust hint.
+    const first = dim.compute({ text: buf, cursor: 8, externalHighlights: [] });
+    expect(first?.inlineNote).toEqual({
+      spanStart: 7, spanEnd: 10, text: '🔊 system volume', hint: '(ctrl+alt+up/down to adjust)',
+    });
+    // After any adjust this session the hint drops; the label persists.
+    markCycledEver();
+    const later = dim.compute({ text: buf, cursor: 8, externalHighlights: [] });
+    expect(later?.inlineNote?.text).toBe('🔊 system volume');
+    expect(later?.inlineNote?.hint).toBeUndefined();
   });
 
   it('emits the note at the span boundary (cursor == spanEnd, inclusive)', () => {

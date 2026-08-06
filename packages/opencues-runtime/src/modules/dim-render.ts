@@ -365,18 +365,37 @@ export class DimRender {
         // Note-bearing = a cueTip advisory (sentence-cue / contradiction) OR a
         // history-bearing LLM blank (transform / fluid). Shared predicate with
         // Cycling's `_`-step so paint + step never disagree on "has a note".
-        const noteText = inlineNoteText(def);
+        let noteText = inlineNoteText(def);
+        // Actuator note: a blankStep blank (volume / brightness) fills a single
+        // value, so inlineNoteText returns nothing — but it is a LIVE knob, not
+        // a dead fill. Render the standard `<icon> <tip>` label (persistent —
+        // the standing "this is a live knob" signal) with the adjust hint below.
+        // The value itself stays in the buffer, shown once.
+        let actuator = false;
+        if (noteText === undefined) {
+          const blk = def.blankName
+            ? this.configLoader?.blanks.get(def.blankName) as { blankStep?: number; tip?: string; icon?: string } | undefined
+            : undefined;
+          if (blk && blk.blankStep !== undefined && blk.tip) {
+            noteText = blk.icon ? `${blk.icon} ${blk.tip}` : blk.tip;
+            actuator = true;
+          }
+        }
         if (noteText === undefined) continue;
         if (!defSpanLive(def, text)) continue;  // stale span — skip
         const s = toCtx ? toCtx.start(def.spanStart) : def.spanStart;
         const e = toCtx ? toCtx.end(def.spanEnd) : def.spanEnd;
         if (ctx.cursor >= s && ctx.cursor <= e) {
-          // The `(underscore to cycle)` affordance rides until the user has
-          // cycled any note once this session — and only on a CYCLEABLE def
-          // (>1 alternative); a pure advisory (calendar conflict) has nothing
-          // to cycle, so no hint.
+          // The one-time hint rides until the user has cycled/adjusted any note
+          // once this session. Its TEXT depends on the gesture: an actuator uses
+          // `(ctrl+alt+up/down to adjust)`, a cycleable cue uses `(underscore to
+          // cycle)`. A pure advisory (calendar conflict, single alt) has nothing
+          // to engage, so no hint.
           const cycleable = def.alternatives.length > 1;
-          inlineNote = { spanStart: s, spanEnd: e, text: noteText, hint: (cycleable && !hasCycledEver()) ? '(underscore to cycle)' : undefined };
+          const hint = actuator
+            ? (hasCycledEver() ? undefined : '(ctrl+alt+up/down to adjust)')
+            : ((cycleable && !hasCycledEver()) ? '(underscore to cycle)' : undefined);
+          inlineNote = { spanStart: s, spanEnd: e, text: noteText, hint };
           // Auto-select: the note-bearing span the caret is in promotes from dim
           // to the active highlight — the "you're on this, `_` engages it" state,
           // for cues AND transform/fluid blanks alike (consistent affordance).
