@@ -137,7 +137,13 @@ table{border-collapse:collapse;width:100%;margin:14px 0;font-size:14px}
    near-black in the PDF. Do not drop back to inheriting it. */
 th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--hair);vertical-align:top;color:var(--ink)}
 th{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:300}
-td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+/* A mono cell depicts text in the editor, so it takes the TERMINAL's base text
+   colour, not the page's. At --ink it sat 25 levels off white, close enough to
+   the selected value that the unselected words read as selected too; at
+   --term-fg the gap matches the terminal's own (214 vs 255). Same rule, one
+   colour, wherever the page shows your text. */
+td.mono{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--term-fg)}
+th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .scroll{overflow-x:auto}   /* wrap any wide table/diagram so only IT scrolls */
 
 /* ── Badges (pill chips) — the one place we keep full rounding ────────────────

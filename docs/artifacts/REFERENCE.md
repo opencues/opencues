@@ -201,6 +201,14 @@ widening the page. `td.mono` for monospace/aligned-number cells.
 A "what your text becomes" cell is a depiction of the product, so it follows the
 same rule the terminal does: `.sp` on the value only.
 
+`td.mono` also takes the **terminal's** base text colour, not the page's. At the
+page's `--ink` it measured 230 against the selected value's 255 — only 25 levels
+apart, so the unselected words read as selected too. At `--term-fg` the gap is
+214 vs 255, the same one the terminal has. **Anywhere the page depicts your
+text, base text is `--term-fg` and selected text is white on the tint** — one
+pair of colours, so a table and a terminal never disagree about what "selected"
+looks like.
+
 ### Badges — `.badge`
 
 Small square chips for a mode or state, and they are **neutral on purpose**: a
