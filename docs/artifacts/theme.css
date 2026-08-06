@@ -185,11 +185,11 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 /* ── Download actions + print ───────────────────────────────────────────────
    `.oc-actions` is a small toolbar the page can drop in; it never prints. */
 .oc-actions{display:flex;gap:.6rem;flex-wrap:wrap;margin:0 0 1.4rem}
-.oc-actions button{font-family:var(--mono);font-size:.8rem;line-height:1.7rem;letter-spacing:.06rem;
+.oc-actions button,.oc-actions a{font-family:var(--mono);font-size:.8rem;line-height:1.7rem;letter-spacing:.06rem;
   background:transparent;color:var(--muted);border:1px solid var(--hair);border-radius:4px;
   padding:.15rem .8rem;cursor:pointer;transition:color .12s ease,border-color .12s ease}
-.oc-actions button:hover{color:var(--accent);border-color:var(--accent)}
-.oc-actions button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.oc-actions button:hover,.oc-actions a:hover{color:var(--accent);border-color:var(--accent)}
+.oc-actions button:focus-visible,.oc-actions a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 @media print{
   /* Keep the dark ground: browsers drop backgrounds unless told otherwise. */
@@ -205,3 +205,5 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
   a[href]:after{content:""}   /* no URL footnotes */
   @page{margin:14mm;background:#111111}
 }
+
+.oc-actions a{display:inline-block;text-decoration:none}
