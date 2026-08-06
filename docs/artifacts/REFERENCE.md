@@ -32,7 +32,7 @@ a component. Source of truth: `~/opencues-website/style.css`.
 | `--hair` | `#252525` | hairline borders |
 | `--accent` | `#9ec0ff` | **primary accent** (code-blue) — use sparingly |
 | `--accent-2` | `#9085e9` | secondary accent (violet) — rarer still |
-| `--press-bg` / `--press-fg` | `#DEA4FF` / `#fff` | a key or link being touched right now |
+| `--press-bg` / `--press-fg` | `#BE6EEC` / `#fff` | a key being pressed right now (the site's resting purple, not its hover) |
 | `--term-bg` `--term-fg` `--term-dim` | `#000` `#d6d6d6` `#7c7c7c` | terminal block |
 | `--live` / `--live-bg` | `#9ec0ff` / 12% of it | "it happened" |
 | `--edge` / `--edge-bg` | `#d66f6b` / 14% of it | "at a limit" |

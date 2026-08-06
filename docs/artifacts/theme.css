@@ -36,11 +36,13 @@
      approved set, so state colours borrow from it instead of inventing a hue. */
   --accent:#9ec0ff;                       /* primary — code-blue */
   --accent-2:#9085e9;                     /* approved violet, use RARELY */
-  /* Press: solid #DEA4FF, the same colour the download links warm to on hover.
-     One "you are touching this" colour for the whole page, whether the touch
-     is a hover on a link or a press on a key. Solid, not a tint, so the press
-     is unmistakable at video size and in a thumbnail. */
-  --press-bg:#DEA4FF;
+  /* Press: solid #BE6EEC, the site's resting purple — the colour on the "npm i"
+     of the install bar. NOT the lighter #DEA4FF, which the site only ever uses
+     as a hover: a colour meant to be held for a moment becomes the brightest
+     thing on the page once it is a solid fill, and white on it is barely
+     legible (~1.9:1, against ~3.2:1 here). Solid rather than a tint so the
+     press still reads at video size and in a thumbnail. */
+  --press-bg:#BE6EEC;
   --press-fg:#fff;
   /* Terminal blocks (darker than the page so they read as "output") */
   --term-bg:#000; --term-fg:#d6d6d6; --term-dim:#7c7c7c;
@@ -118,8 +120,12 @@ kbd{display:inline-block;vertical-align:baseline;font-family:var(--mono);font-si
 .term .buf{color:var(--term-fg);display:block}        /* the "buffer" / reference line */
 /* .sp = the active/selected span. The product HIGHLIGHTS it with a background
    fill (the caret-in-span auto-select); it never underlines. Accent-tinted,
-   bright text, square, like a terminal cell. */
-.term .sp{background:rgba(158,192,255,.22);color:#fff}
+   bright text, square, like a terminal cell.
+   NOT scoped to .term: wherever a page shows what your text becomes — a table
+   cell, a caption — only the VALUE is selected, and the words around it are
+   ordinary text. Showing the whole string in one colour says the product
+   selected all of it, which it does not. */
+.sp{background:rgba(158,192,255,.22);color:#fff}
 .term .note{color:var(--term-dim);display:block}      /* the dim note line under .buf */
 .term .arw{color:#5a5a5a}                              /* the ↳ connector */
 .term .hint{color:var(--term-dim);font-style:italic}  /* the (parenthetical hint) */

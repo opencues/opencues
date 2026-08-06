@@ -46,10 +46,10 @@
   <p class="lead">Include a number and it <strong>sets</strong> the level; leave it out and it just <strong>reads</strong> the current one. Either way you end up with the value in your text and the cursor on it.</p>
   <div class="scroll"><table>
     <tr><th>You type</th><th>Mode</th><th class="mono">Your text becomes</th><th>What happens</th></tr>
-    <tr><td class="mono">volume _</td><td><span class="badge get">GET</span></td><td class="mono">volume 26%</td><td>reads the current level and writes it in</td></tr>
-    <tr><td class="mono">volume is _</td><td><span class="badge get">GET</span></td><td class="mono">volume 26%</td><td>a few words in between still work</td></tr>
-    <tr><td class="mono">volume 40 _</td><td><span class="badge set">SET</span></td><td class="mono">volume 40%</td><td>turns the volume to 40%, writes it in</td></tr>
-    <tr><td class="mono">set volume to 60 _</td><td><span class="badge set">SET</span></td><td class="mono">volume 60%</td><td>turns the volume to 60%</td></tr>
+    <tr><td class="mono">volume _</td><td><span class="badge get">GET</span></td><td class="mono">volume <span class="sp">26%</span></td><td>reads the current level and writes it in</td></tr>
+    <tr><td class="mono">volume is _</td><td><span class="badge get">GET</span></td><td class="mono">volume <span class="sp">26%</span></td><td>a few words in between still work</td></tr>
+    <tr><td class="mono">volume 40 _</td><td><span class="badge set">SET</span></td><td class="mono">volume <span class="sp">40%</span></td><td>turns the volume to 40%, writes it in</td></tr>
+    <tr><td class="mono">set volume to 60 _</td><td><span class="badge set">SET</span></td><td class="mono">volume <span class="sp">60%</span></td><td>turns the volume to 60%</td></tr>
   </table></div>
   <p class="lead">The word <code>volume</code> stays in your text so the number still makes sense on its own later (<code>volume 40%</code>, not a stray <code>40%</code>).</p>
 
@@ -78,7 +78,7 @@
 
   <!-- 4 -->
   <h2>The value states</h2>
-  <p class="lead">One continuous 0–100 range with two special edges. The number in the number in your text is the real value; the bars below are just to picture it.</p>
+  <p class="lead">One continuous 0–100 range with two special edges. The number in your text is the real value; the bars below are just to picture it.</p>
 
   <h3>Normal: anywhere between</h3>
   <div class="gauge"><span class="v">32%</span><div class="bar"><span style="width:32%"></span></div><span class="lbl">moves up or down a step at a time</span></div>
