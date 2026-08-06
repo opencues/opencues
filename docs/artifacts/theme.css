@@ -72,7 +72,6 @@ h1{font-family:var(--display);font-weight:200;font-size:clamp(32px,5.2vw,46px);l
 /* Section rhythm mirrors the site: 6rem of air before the rule, .6rem after
    it (the site's convention on every divider). */
 h2{font-family:var(--display);font-weight:200;font-size:24px;letter-spacing:-.005em;margin:96px 0 6px;padding-top:10px;border-top:1px solid var(--hair);color:#fff}
-h2 .n{font-family:var(--mono);color:var(--faint);font-variant-numeric:tabular-nums;margin-right:12px;font-weight:300;font-size:18px}
 h3{font-family:var(--mono);font-size:12px;letter-spacing:.08em;font-weight:300;margin:35px 0 6px;text-transform:uppercase;color:var(--muted)}
 .lead{color:var(--muted);max-width:66ch;margin:10px 0 0} p{max-width:66ch}
 strong{font-weight:300;color:#fff}
