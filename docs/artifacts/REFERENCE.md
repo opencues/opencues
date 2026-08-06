@@ -8,6 +8,8 @@ animation**. For the quickstart, see [`README.md`](README.md).
 - [Page skeleton](#page-skeleton)
 - [Components](#components)
 - [The hero animation](#the-hero-animation)
+- [PDF rules](#pdf-rules)
+- [Video rules](#video-rules)
 - [Gotchas](#gotchas)
 - [Writing style](#writing-style)
 - [How the build works](#how-the-build-works)
@@ -220,6 +222,53 @@ exists, bail out, and leave the page frozen on the first frame.
 text in the script. The markup rarely needs to change.
 
 ---
+
+
+## PDF rules
+
+The PDF is a **pre-rendered file** (`render-pdf.cjs` → Chrome `--print-to-pdf`),
+committed next to the page. It is not made in the reader's browser: `print()` is
+blocked inside a published artifact's sandboxed iframe and is unreliable on
+mobile. Regenerate it whenever the content or the theme changes.
+
+What the print rules guarantee, and why each exists:
+
+| Rule | Why |
+|---|---|
+| `print-color-adjust:exact` on everything, `@page{background}` | browsers drop backgrounds when printing; without this the dark ground turns white |
+| colours are **declared, not inherited**, on `th`/`td` | an inherited cell colour printed near-black and was unreadable |
+| `.sec{break-inside:avoid}` | keeps a section whole, so one never bleeds across a break. Half-empty pages are intended: these documents are short and should breathe |
+| `.foot{break-before:avoid}` | spacious is not the same as a page holding two lines |
+| `h2`, `.lead`, `h3` `break-after:avoid` | a heading or its intro is never stranded at a page foot |
+| `.term`, `.box`, `.frame`, `.gauge`, `.note-callout` `break-inside:avoid` | a terminal or card never splits mid-component |
+| `.oc-actions`, `.hero-cap` hidden | the toolbar is not content, and a "press this key" instruction means nothing on paper |
+| `--virtual-time-budget` passed to Chrome | an animation is a bare caret at t=0, so a straight print captures an empty box |
+
+A section taller than a page still breaks: `avoid` is a preference, not a
+guarantee. That is correct behaviour, not a bug to chase.
+
+## Video rules
+
+The video is also pre-rendered (`render-video.cjs`), in two cuts: **raw** (the
+demo alone, nothing to crop for social) and **captioned** (title and description
+burned in). 1280x720, H.264, yuv420p, which is what social platforms accept.
+
+Frames come from the **real** hero markup and theme, never a re-implementation,
+so the video cannot drift from the page. Three constraints follow from how
+frames are captured:
+
+- **No CSS transitions on anything the video must show.** A frame is captured
+  the instant the animation's callback fires, so a transition is still at 0% and
+  its end state never appears. This is why the key press applies instantly.
+- **Reduced motion must be overridden.** Headless Chrome reports
+  `prefers-reduced-motion: reduce`, which made the hero skip its typewriter.
+- **Nothing may sit in HTML space.** A comment left outside its script tag
+  rendered as visible text across the top of every frame.
+
+Designers: the video's look is the page's look. Change `theme.css` (or
+`oc-doc.css`) and re-run the renderer; there is no separate video styling beyond
+the stage in `render-video.cjs`, which only scales the type up and sets the 16:9
+ground.
 
 ## Gotchas
 

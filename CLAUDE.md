@@ -881,6 +881,25 @@ at 0% and its end state never appears. Open the PDF and step the video before
 calling either done, and *measure* colours off the render rather than eyeballing
 a dark image. Commands and the full list: `docs/artifacts/PIPELINE.md`.
 
+**PDF and video are generated differently, and obey different rules.** Both are
+pre-rendered files committed alongside the page (`docs/artifacts/pdf/`,
+`docs/artifacts/video/`), never produced in the reader's browser: `print()` is
+blocked in a published artifact's sandboxed iframe, and there is no browser-side
+way to record a DOM animation. **Regenerate both after any content or theme
+change** and check the output, not the page.
+
+| | PDF | Video |
+|---|---|---|
+| Made by | `render-pdf.cjs` → Chrome `--print-to-pdf` | `render-video.cjs` → Chrome one-shot `--screenshot` per frame → ffmpeg |
+| Handles time by | Chrome's `--virtual-time-budget`, so an animation prints in a filled state instead of at frame zero | a virtual-time shim; `?mode=frame&n=K` steps the real animation code, `?mode=schedule` reports each frame's duration |
+| Layout | the `@media print` rules | a 16:9 stage with the type scaled up |
+| Must hold | dark ground survives (`print-color-adjust:exact`); colours are **declared, not inherited** (inherited cell colour printed near-black); sections stay whole so none bleeds across a break, and the closing note never lands alone | **no CSS transitions** on anything the video must show (a frame is captured the instant the callback fires, so a transition is still at 0%); reduced-motion is overridden, or headless Chrome skips the animation; nothing may sit in HTML space, where it renders as visible text over every frame |
+
+Verify by rasterising a PDF page (`gs`), pulling a video frame (`ffmpeg -ss`), and
+*measuring* colours (`convert … -format '%[max]'`) rather than eyeballing a dark
+render. Commands, the full trap list, and the pagination rationale:
+[docs/artifacts/PIPELINE.md](docs/artifacts/PIPELINE.md).
+
 **Show the real thing.** Examples should be verified against a running host, and
 the page should end with a `.foot` line saying where the content came from and
 how it was checked. A plausible-looking example that the product doesn't actually
