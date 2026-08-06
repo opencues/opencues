@@ -64,7 +64,11 @@ html,body{margin:0;padding:0;background:#111;height:100%;overflow:hidden}
 .stage .hero{width:100%;max-width:1040px;margin:0;border-radius:0}   /* square, like everything else */
 .stage .hero .term{font-size:30px;line-height:1.85;padding:40px 40px 26px}
 .stage .hero-cap{font-size:20px;padding:20px 40px 26px}
-.stage .hero-cap .hkey{min-width:26px;height:30px;padding:0 9px;font-size:19px;border-radius:0}
+/* The key is scaled up for video, so its depth scales too: a 2px shadow on a
+   30px cap is invisible at this size. 4px of shadow, and a press that travels
+   exactly that far, so the cap visibly bottoms out. */
+.stage .hero-cap .hkey{min-width:26px;height:30px;padding:0 9px;font-size:19px;border-radius:0;border-bottom-width:4px}
+.stage .hero-cap .hkey.press{transform:translateY(4px);border-bottom-width:0}
 </style>
 
 <script>

@@ -79,7 +79,9 @@ strong{font-weight:300;color:#fff}
 /* Inline code: purple on a dark chip, like the site. overflow-wrap:anywhere so a
    long token can't force horizontal page scroll on mobile. */
 code{font-family:var(--mono);font-size:.86em;background:#000;color:#838383;padding:.1em .38em;border-radius:0;overflow-wrap:anywhere}
-kbd{font-family:var(--mono);font-size:.8em;background:#1b1b1b;border:1px solid #333;border-bottom-width:2px;border-radius:0;padding:1px 6px;color:#e6e6e6;white-space:nowrap}
+/* inline-block, not the default inline: transform is ignored on non-replaced
+   inline elements, so the press below would silently do nothing. */
+kbd{display:inline-block;vertical-align:baseline;font-family:var(--mono);font-size:.8em;background:#1b1b1b;border:1px solid #333;border-bottom-width:2px;border-radius:0;padding:1px 6px;color:#e6e6e6;white-space:nowrap}
 
 /* ── Terminal block (.term) ──────────────────────────────────────────────────
    Monospace "output" panel. white-space:pre keeps ASCII art / aligned notes
@@ -189,7 +191,7 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
    'fix' it to the accent colour. transition:none stays, though: video
    frames are captured the instant the callback fires, so a transition
    would leave even this much off the clip. */
-.hero-cap .hkey.press{background:var(--accent-soft);transform:translateY(1px);border-bottom-width:1px}
+.hero-cap .hkey.press{background:var(--accent-soft);transform:translateY(2px);border-bottom-width:0}
 
 /* Respect reduced-motion everywhere: the hero script also self-disables and
    holds a single static frame. */
@@ -241,4 +243,4 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
    are deliberately NOT focusable and carry no button role, so nothing promises
    a keyboard interaction that does not exist. */
 kbd,.hero-cap .hkey{cursor:pointer}
-kbd:active,.hero-cap .hkey:active{background:var(--accent-soft);transform:translateY(1px);border-bottom-width:1px}
+kbd:active,.hero-cap .hkey:active{background:var(--accent-soft);transform:translateY(2px);border-bottom-width:0}
