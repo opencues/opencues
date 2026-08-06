@@ -22,6 +22,10 @@
 (function () {
   var HOST = document.querySelector('.hero');
   if (!HOST) return;
+  /* The atlas pass renders the ring on its own and composites it over the hero
+     video afterwards, so the hero pass must not draw it too — or every frame
+     gets the ring twice, once at the wrong cadence. */
+  if (window.__OC_RING_DISABLE) return;
 
   /* The ring's own colour, measured off ShaderShop's base images. Foxfire
      passes the source RGB straight through and animates only alpha, so this
@@ -164,8 +168,14 @@
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
+  /* Always exposed, not just under the shim: it is how the video driver paints
+     a frame, and it is the only way to inspect the ring at a KNOWN phase.
+     Sampling it under headless virtual time otherwise reads whatever moment the
+     clock happened to freeze at, which looks like a bug in the ring. */
+  window.__ocRingDraw = draw;
+
   /* Under the virtual-time shim, paint on demand only — see the warning above. */
-  if (window.__ocRun) { window.__ocRingDraw = draw; draw(0); return; }
+  if (window.__ocRun) { draw(0); return; }
 
   var t0 = null;
   (function loop(t) {
