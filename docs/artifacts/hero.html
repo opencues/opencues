@@ -1,28 +1,40 @@
 <!-- ============================================================================
      Hero animation — an optional looping demo for the top of a page.
-     Reuses .term so it renders identically to the static examples.
+     Reuses .term so it renders identically to the static examples below it.
 
-     ⚠ The .term's children are on ONE line with NO whitespace between the tags.
-        white-space:pre would otherwise render the newlines as blank space and
-        push the note away from the buffer line. (This bit us; keep it one line.)
+     Two things to keep:
+     1. The .term's children are on ONE line with NO whitespace between the
+        tags. white-space:pre would otherwise render the newlines as blank
+        space and push the note away from the line it annotates.
+     2. Never write the literal script tag name inside this comment — a
+        "first script tag to last /script" regex would then match from here
+        and eat the markup below. (That happened once; hence this note.)
 
-     To adapt for a different demo: edit the TYPED string, the fill()/climb
-     values, and the caption text in the <script>
+     To adapt for a different demo: edit the TYPED string, the fill() values,
+     and the caption text in the code below. The markup rarely changes.
+     ============================================================================ -->
+<div class="hero" aria-hidden="true">
+    <div class="term" id="ocHero"><span class="buf">volume <span class="sp hval">26%</span></span><span class="note hnote"><span class="arw">↳ </span>🔊 system volume<span class="hint hhint">   (ctrl+alt+up/down to adjust)</span></span></div>
+    <div class="hero-cap"><span class="hcapt">press <span class="hkey">_</span> to climb</span></div>
+  </div>
+  <script>
   (function(){
     function init(){
       var t=document.getElementById('ocHero'); if(!t) return;
       var buf=t.querySelector('.buf'), note=t.querySelector('.hnote'), hint=t.querySelector('.hhint');
       var cap=t.parentNode.querySelector('.hcapt'); if(!cap) return;
-      /* Reduce-motion still PLAYS (was frozen on a static frame): it just skips
-         the typewriter + keycap depress and keeps the slow state loop. */
+      /* Reduce-motion still PLAYS (an earlier version froze on a static frame,
+         which reads as "broken"): it just skips the typewriter + key depress. */
       var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
       function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
       function showNote(on,h){ note.style.opacity=on?'1':'0'; hint.style.opacity=h?'1':'0'; }
-      var CUR='<span class="hcur">▌</span>';   /* caret ALWAYS present; lives on the value */
+      var CUR='<span class="hcur">▌</span>';   /* caret ALWAYS visible; sits on the value */
       function fill(v){ buf.innerHTML='volume <span class="sp hval">'+v+'</span>'+CUR; }
       function say(text){ cap.textContent=text; }
       function sayKey(pre,post){ cap.innerHTML=pre+'<span class="hkey">_</span>'+post; var k=cap.querySelector('.hkey'); if(k&&!reduced) requestAnimationFrame(function(){ k.classList.add('press'); setTimeout(function(){ k.classList.remove('press'); },220); }); }
       var TYPED='volume _';
+      /* Slow, unhurried loop. Each step is [action, ms-to-hold-after]; the
+         longest hold goes on the state carrying the most to read. */
       function loop(){
         var seq=[];
         seq.push([function(){ buf.innerHTML=CUR; showNote(false,false); say('type a command'); }, reduced?800:900]);
@@ -36,6 +48,8 @@
       }
       loop();
     }
+    /* DOM-ready, so it can't run before its element exists and bail out
+       (which left the page frozen on the first frame). */
     if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init); else init();
   })();
   </script>

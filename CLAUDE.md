@@ -828,4 +828,53 @@ The eight bug classes from the June 2026 debugging session, with the file + the 
 
 ---
 
+## Artifact / reference pages — write to TEACH, not to document
+
+The pages built with the kit in `docs/artifacts/` (feature references, design
+explainers — published as artifacts and, via the pipeline in
+[PIPELINE.md](docs/artifacts/PIPELINE.md), as pages on opencues.com) exist to
+**educate someone who does not have the source open**. That audience changes how
+they're written, and it is the part most often got wrong.
+
+**No internal vocabulary. Ever.** Words that are precise to us are noise to a
+reader. Every one of these was shipped and had to be rewritten:
+
+| Don't write | Write |
+|---|---|
+| "Step **6**" | "each press moves it 6 percentage points" |
+| "the buffer" | "your text" |
+| "`set 32`" (the script call) | "26 + 6 = 32%" |
+| "the keystroke is consumed" | "no `_` is typed into your text" |
+| "a captured number means SET" | "include a number and it sets the level" |
+| "filler words up to 3 apart still fire it" | "a few words in between still work" |
+| "clamped 0–100" | "it never goes below 0% or above 100%" |
+
+The test: *would a new user who has never read the codebase understand this
+sentence?* Class names, function names, field names, and internal mode names
+belong in `docs/architecture/`, not on a page meant to teach.
+
+**Keep it short.** A reference page is a page, not a manual. If it needs a table
+of contents to be usable it's already too long — split it or cut it. Every
+section must earn its place; prefer one worked example over three variations of
+the same idea. Density beats completeness: the reader wants to understand the
+feature, not to be shown everything it can do.
+
+**Readable, not clever.** Short sentences. One idea per paragraph. Say what
+happens, not what the code does — a caption under a state describes the
+observable effect, not the call that produced it.
+
+**Never over-claim, especially in a demo.** If the animation only climbs to 50%,
+the caption must not say "up to 100%", and it must not teach a gesture the demo
+never shows. Anything the demo doesn't demonstrate goes in the tables below it.
+**Check the arithmetic** in every worked example — readers follow those closely,
+and a sequence that doesn't add up discredits the whole page.
+
+**Show the real thing.** Examples should be verified against a running host, and
+the page should end with a `.foot` line saying where the content came from and
+how it was checked. A plausible-looking example that the product doesn't actually
+produce is worse than no example (`volume _` was documented for a while as
+something it never did).
+
+---
+
 *Last updated: July 2026*

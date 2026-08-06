@@ -1,0 +1,93 @@
+<div class="wrap">
+  <p class="eyebrow">OpenCues · Actuator Reference</p>
+  <h1>Volume &amp; brightness: states &amp; gestures</h1>
+  <p class="dek">These two blanks aren't fills that drop a dead number — they're <strong>live knobs</strong>. This is every state they move through and every key that moves them. Shipped behaviour, verified live.</p>
+
+  <!--HERO-->
+
+  <div class="cols">
+    <div class="box"><p class="t"><span class="em">🔊</span> volume</p>
+      <p>Labelled <code>system volume</code>. Each press moves it <strong>6 percentage points</strong>, between 0% and 100%. Backed by <code>volume-blank.sh get|set</code> (Windows / macOS / PipeWire / PulseAudio / ALSA).</p></div>
+    <div class="box"><p class="t"><span class="em">🔆</span> brightness</p>
+      <p>Labelled <code>screen brightness</code>. Each press moves it <strong>10 percentage points</strong>, between 0% and 100%. Same script shape, same gestures — everything here applies to both.</p></div>
+  </div>
+
+  <!-- 1 -->
+  <h2><span class="n">01</span>Entry — how you get into a value</h2>
+  <p class="lead">Include a number and it <strong>sets</strong> the level; leave it out and it just <strong>reads</strong> the current one. Either way you end up with the value in your text and the cursor on it.</p>
+  <div class="scroll"><table>
+    <tr><th>You type</th><th>Mode</th><th class="mono">Your text becomes</th><th>What happens</th></tr>
+    <tr><td class="mono">volume _</td><td><span class="badge get">GET</span></td><td class="mono">volume 26%</td><td>reads the current level and writes it in</td></tr>
+    <tr><td class="mono">volume is _</td><td><span class="badge get">GET</span></td><td class="mono">volume 26%</td><td>a few words in between still work</td></tr>
+    <tr><td class="mono">volume 40 _</td><td><span class="badge set">SET</span></td><td class="mono">volume 40%</td><td>turns the volume to 40%, writes it in</td></tr>
+    <tr><td class="mono">set volume to 60 _</td><td><span class="badge set">SET</span></td><td class="mono">volume 60%</td><td>turns the volume to 60%</td></tr>
+  </table></div>
+  <p class="lead">The word <code>volume</code> stays in your text so the number still makes sense on its own later (<code>volume 40%</code>, not a stray <code>40%</code>).</p>
+
+  <!-- 2 -->
+  <h2><span class="n">02</span>The note — what you see on the value</h2>
+  <p class="lead">Standard <code>emoji · label · (hint)</code> format. The label persists (the standing "this is a live knob" signal); the one-time hint teaches the gesture, then drops after your first adjust.</p>
+  <div class="cols">
+    <div class="box"><p class="t" style="font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">First encounter</p>
+      <div class="term"><span class="buf">volume <span class="sp">26%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume   <span class="hint">(ctrl+alt+up/down to adjust)</span></span></div>
+      <p>Label + the teaching hint.</p></div>
+    <div class="box"><p class="t" style="font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">After your first adjust</p>
+      <div class="term"><span class="buf">volume <span class="sp">32%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume</span></div>
+      <p>Hint gone, label stays — still visibly live.</p></div>
+  </div>
+
+  <!-- 3 -->
+  <h2><span class="n">03</span>Gestures — what moves the value</h2>
+  <p class="lead">Put the cursor on the number. Every press changes the real device and updates the number, never going below 0% or above 100%.</p>
+  <div class="scroll"><table>
+    <tr><th>Key</th><th>Does</th><th>At the edges</th></tr>
+    <tr><td><kbd>Ctrl+Alt+↑</kbd></td><td>raises it one step — 6% for volume, 10% for brightness</td><td>stops at 100%</td></tr>
+    <tr><td><kbd>Ctrl+Alt+↓</kbd></td><td>lowers it by the same step</td><td>stops at 0% (muted / screen dark)</td></tr>
+    <tr><td><kbd>_</kbd></td><td><span class="badge step">NEW</span> nudges it <strong>up</strong> one step — the quick one-key climb</td><td>climbs to 100% and stays there; the <code>_</code> is never typed into your text</td></tr>
+  </table></div>
+  <p class="lead"><code>_</code> is the one-direction quick nudge (up); use <kbd>Ctrl+Alt+↓</kbd> when you need to come back down. Both write straight to the device.</p>
+
+  <!-- 4 -->
+  <h2><span class="n">04</span>The value states</h2>
+  <p class="lead">One continuous 0–100 range with two special edges. The number in the number in your text is the real value; the bars below are just to picture it.</p>
+
+  <h3>Normal — anywhere between</h3>
+  <div class="gauge"><span class="v">32%</span><div class="bar"><span style="width:32%"></span></div><span class="lbl">moves up or down a step at a time</span></div>
+  <div class="gauge"><span class="v">76%</span><div class="bar"><span style="width:76%"></span></div><span class="lbl"></span></div>
+
+  <h3>Top edge — 100%</h3>
+  <div class="gauge"><span class="v">100%</span><div class="bar edge"><span style="width:100%"></span></div><span class="lbl">the maximum — pressing up again does nothing (it never wraps round to 0%)</span></div>
+  <div class="term" style="max-width:520px;margin-top:8px"><span class="buf">volume <span class="sp">100%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume</span></div>
+
+  <h3>Bottom edge — 0%</h3>
+  <div class="gauge"><span class="v">0%</span><div class="bar mute"><span style="width:2%"></span></div><span class="lbl">silent / screen dark — pressing down again does nothing</span></div>
+  <div class="term" style="max-width:520px;margin-top:8px"><span class="buf">volume <span class="sp">0%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume</span></div>
+
+  <p class="lead">There is no "keep as is" and no countdown — a dial has neither. It has a current value and directions. The clamp is felt, not labelled: the number simply stops moving at 0 and 100.</p>
+
+  <!-- 5 -->
+  <h2><span class="n">05</span>Worked example — climbing with <code>_</code></h2>
+  <p class="lead">Verified live. <code>volume _</code> reads the current level (26%), then each bare <code>_</code> adds 6 points until it reaches 100% and stops.</p>
+  <div class="strip">
+    <div class="frame"><div class="act"><span class="k"><kbd>volume _</kbd></span><span class="hw">reads 26%</span></div>
+      <div class="term"><span class="buf">volume <span class="sp">26%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume   <span class="hint">(ctrl+alt+up/down to adjust)</span></span></div></div>
+    <div class="frame"><div class="act"><span class="k"><kbd>_</kbd></span><span class="hw">26 + 6 = 32% · louder</span></div>
+      <div class="term"><span class="buf">volume <span class="sp">32%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume</span></div></div>
+    <div class="frame"><div class="act"><span class="k"><kbd>_</kbd></span><span class="hw">32 + 6 = 38%</span></div>
+      <div class="term"><span class="buf">volume <span class="sp">38%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume</span></div></div>
+    <div class="frame"><div class="act"><span class="k">…keep pressing <kbd>_</kbd>…</span><span class="hw edge">at 98%, +6 would be 104% — stops at 100%</span></div>
+      <div class="term"><span class="buf">volume <span class="sp">100%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume</span></div></div>
+    <div class="frame"><div class="act"><span class="k"><kbd>_</kbd> again at the top</span><span class="hw edge">nothing changes — and no <code>_</code> is typed</span></div>
+      <div class="term"><span class="buf">volume <span class="sp">100%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume</span></div></div>
+    <div class="frame"><div class="act"><span class="k"><kbd>Ctrl+Alt+↓</kbd></span><span class="hw">100 − 6 = 94% · quieter</span></div>
+      <div class="term"><span class="buf">volume <span class="sp">94%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume</span></div></div>
+  </div>
+
+  <div class="note-callout">
+    <b>One open choice.</b> <code>_</code> currently <em>stops</em> at the top (repeated presses hold at 100). The alternative is to <em>wrap</em> 100 → 0 so one key can loop all the way round. Stopping avoids a surprise mute on an extra press; wrapping matches how a text cue's <code>_</code> loops. Shipped as stop-at-top per your "at least until the top" — say the word if you'd rather it wrap.
+  </div>
+
+  <div class="foot">
+    Reflects shipped behaviour: <code>defaults/blanks/{volume,brightness}/BLANK.md</code> + <code>dim-render.ts</code> (note) + <code>cycling.ts</code> (<code>cycleBlankStep</code>, caret-armed <code>step()</code>, <code>_</code>-nudge in <code>stepUnderscore</code>). Verified live on OpenCode + Claude Code. Values write straight to the device via the blank's script; a host with no audio/brightness backend is a silent no-op.
+  </div>
+</div>

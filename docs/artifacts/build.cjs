@@ -53,13 +53,14 @@ function buildFontFace() {
 }
 
 function main() {
-  const [bodyPath, outPath, title] = process.argv.slice(2);
+  const argv = process.argv.slice(2);
+  // --site emits a website FRAGMENT instead of a standalone artifact page.
+  const site = argv.includes('--site');
+  const [bodyPath, outPath, title] = argv.filter(a => a !== '--site');
   if (!bodyPath || !outPath) {
-    console.error('usage: node build.cjs <body.html> <out.html> "<title>"');
+    console.error('usage: node build.cjs [--site] <body.html> <out.html> "<title>"');
     process.exit(1);
   }
-  const fontface = buildFontFace();
-  const theme = fs.readFileSync(path.join(HERE, 'theme.css'), 'utf8');
   let body = fs.readFileSync(bodyPath, 'utf8').trim();
 
   // If the body contains a <!--HERO--> marker, splice in the hero animation
@@ -69,11 +70,33 @@ function main() {
     body = body.replace('<!--HERO-->', fs.readFileSync(heroPath, 'utf8').trim());
   }
 
-  const out =
-    `<title>${title || 'OpenCues'}</title>\n` +
-    `<style>\n/* OpenCues artifact theme — fonts inlined + theme.css */\n${fontface}\n${theme}</style>\n` +
-    body + '\n';
+  let out;
+  if (site) {
+    // ── Site target ────────────────────────────────────────────────────────
+    // A fragment to drop into a page in the opencues-website repo. No fonts
+    // (the site loads TWK Lausanne + Ufficio Mono already), no theme (the page
+    // links `oc-doc.css`), no page shell (the site's .base-grid owns layout).
+    // `.wrap` becomes `.oc-doc`, the scope every oc-doc.css rule hangs off.
+    //
+    // Paste the fragment INTO the page rather than loading it with
+    // `data-include`: an include is injected with innerHTML, and innerHTML
+    // never executes <script>, so a hero animation would silently not run.
+    out = body.replace(/(<div\s+)class="wrap"/, '$1class="oc-doc"') + '\n';
+    if (!/class="oc-doc"/.test(out)) {
+      console.warn('[build] warning: no <div class="wrap"> found — nothing was scoped to .oc-doc');
+    }
+  } else {
+    // ── Artifact target (default) ──────────────────────────────────────────
+    // A standalone, self-contained page: fonts base64-inlined (the artifact CSP
+    // blocks font hosts, so linking one fails silently) + the full theme.
+    const fontface = buildFontFace();
+    const theme = fs.readFileSync(path.join(HERE, 'theme.css'), 'utf8');
+    out =
+      `<title>${title || 'OpenCues'}</title>\n` +
+      `<style>\n/* OpenCues artifact theme — fonts inlined + theme.css */\n${fontface}\n${theme}</style>\n` +
+      body + '\n';
+  }
   fs.writeFileSync(outPath, out);
-  console.log(`[build] wrote ${outPath} (${(out.length / 1024).toFixed(0)} KB)`);
+  console.log(`[build] wrote ${outPath} (${(out.length / 1024).toFixed(0)} KB, target: ${site ? 'site fragment' : 'artifact'})`);
 }
 main();
