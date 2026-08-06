@@ -36,7 +36,7 @@
      approved set, so state colours borrow from it instead of inventing a hue. */
   --accent:#9ec0ff;                       /* primary — code-blue */
   --accent-2:#9085e9;                     /* approved violet, use RARELY */
-  --accent-soft:rgba(158,192,255,.14);    /* blue at low opacity */
+  --accent-soft:rgba(144,133,233,.32);    /* press tint: the approved violet */
   /* Terminal blocks (darker than the page so they read as "output") */
   --term-bg:#000; --term-fg:#d6d6d6; --term-dim:#7c7c7c;
   /* State, all from the approved range */
@@ -133,12 +133,15 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 /* ── Filmstrip (.strip / .frame) — a labelled sequence of states ─────────────
    Two-column rows (label | terminal), collapsing to one column on mobile.
    min-width:0 on the label col lets the terminal shrink instead of overflowing. */
-/* The label column is deliberately wide: at 9rem every caption wrapped to
-   three or four lines. The terminal beside it may clip its longest line as a
-   result, which is fine: it scrolls on screen, and content length is not
-   something the layout can predict, so sizing around it is a losing game. */
-.strip{margin:14px 0}
-.frame{display:grid;grid-template-columns:288px 1fr;gap:16px;align-items:center;padding:11px 0;border-bottom:1px solid var(--hair)}
+/* The caption column is set PER STRIP, not globally: one width cannot suit
+   every walkthrough, and at 9rem these captions wrapped to three or four
+   lines. Override it on the strip itself, e.g.
+     <div class="strip" style="--label-col:21rem">
+   sized to that strip's longest caption. The terminal beside it may clip in
+   exchange: it scrolls on screen, and content length is not something a
+   layout can predict. */
+.strip{margin:14px 0;--label-col:288px}
+.frame{display:grid;grid-template-columns:var(--label-col) 1fr;gap:16px;align-items:center;padding:11px 0;border-bottom:1px solid var(--hair)}
 .frame:last-child{border-bottom:0}
 .frame .act{font-size:13px;color:var(--muted);min-width:0}
 .frame .act .k{display:inline-block;margin-bottom:5px}

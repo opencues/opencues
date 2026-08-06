@@ -1,5 +1,4 @@
 <div class="wrap">
-  <p class="eyebrow">OpenCues · Actuator Reference</p>
   <h1>Volume &amp; brightness: states &amp; gestures</h1>
   <p class="dek">These two blanks aren't fills that drop a dead number. They're <strong>live knobs</strong>. This is every state they move through and every key that moves them. Shipped behaviour, verified live.</p>
 
@@ -98,7 +97,10 @@
   <!-- 5 -->
   <h2>Worked example: climbing with <code>_</code></h2>
   <p class="lead">Verified live. <code>volume _</code> reads the current level (26%), then each bare <code>_</code> adds 6 points until it reaches 100% and stops.</p>
-  <div class="strip">
+  <!-- --label-col is measured against THIS strip's longest caption
+       ("at 98%, +6 would be 104%, so it stops at 100%", 303px), so every
+       caption sits on one line. Re-measure it whenever the captions change. -->
+  <div class="strip" style="--label-col:19.5rem">
     <div class="frame"><div class="act"><span class="k">Type <code>volume _</code></span><span class="hw">reads 26%</span></div>
       <div class="term"><span class="buf">volume <span class="sp">26%</span></span><span class="note"><span class="arw">↳ </span>🔊 system volume   <span class="hint">(ctrl+alt+up/down to adjust)</span></span></div></div>
     <div class="frame"><div class="act"><span class="k">Press <kbd>_</kbd></span><span class="hw">26 + 6 = 32% · louder</span></div>
