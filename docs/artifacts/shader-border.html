@@ -12,21 +12,27 @@
      the whole ring breathe as one — which is the effect at this width. A ring is
      8px; a displacement shader would have nothing to displace.
 
-     ⚠ VIDEO: this does NOT self-animate when the virtual-time shim is present
-     (render-video.cjs). The shim turns requestAnimationFrame into a queue, and a
-     self-perpetuating rAF loop would re-queue at the same virtual time forever,
-     starving the hero's own timers and hanging the render. Under the shim the
-     ring exposes window.__ocRingDraw(seconds) and paints only when called.
+     ⚠ WEB ONLY, deliberately. The ring is not in the exported video and not in
+     the PDF. The video renderer captures one frame per Chrome process against a
+     virtual clock, so the ring could only change when the hero emitted a frame
+     — 24 times across 17.6s, which reads as sporadic flashing, not motion.
+     Smooth motion needs a real frame cadence, and every route to that on this
+     machine is blocked: WSL cannot reach Windows Chrome's debug port, and a
+     Linux Playwright chromium hangs at launch here. Batching frames into one
+     canvas atlas worked but the DOM half could not follow (ImageMagick caps
+     images at 16K pixels tall, and cloneNode does not carry canvas pixels).
+     If a persistent browser ever becomes available, that is the thing to fix
+     first — not this file.
+
+     Under the video's virtual-time shim the ring would also hang the render: a
+     self-perpetuating rAF re-queues at the same virtual time forever, starving
+     the hero's timers. It paints on demand there instead, via
+     window.__ocRingDraw(seconds).
      ============================================================================ -->
 <script>
 (function () {
   var HOST = document.querySelector('.hero');
   if (!HOST) return;
-  /* The atlas pass renders the ring on its own and composites it over the hero
-     video afterwards, so the hero pass must not draw it too — or every frame
-     gets the ring twice, once at the wrong cadence. */
-  if (window.__OC_RING_DISABLE) return;
-
   /* The ring's own colour, measured off ShaderShop's base images. Foxfire
      passes the source RGB straight through and animates only alpha, so this
      is exactly what you see. */

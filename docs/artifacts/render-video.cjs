@@ -31,7 +31,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { buildFontFace, buildShaderBorder } = require('./build.cjs');
+const { buildFontFace } = require('./build.cjs');
 
 const HERE = __dirname;
 const REPO = path.resolve(HERE, '..', '..');
@@ -51,13 +51,6 @@ function stageHtml({ captioned }) {
   const fontface = buildFontFace();
   const theme = fs.readFileSync(path.join(HERE, 'theme.css'), 'utf8');
   const hero = fs.readFileSync(path.join(HERE, 'hero.html'), 'utf8');
-  /* Same builder the page uses, so the video can never run a different shader
-     from the page it is a recording of. 12px because the stage scales the hero
-     up; 8px would read thinner here than it does on the page. */
-  const shaderBorder =
-    '<script>window.__OC_RING_PX=12;' +
-    'if(new URLSearchParams(location.search).get("ring")==="off")window.__OC_RING_DISABLE=1;' +
-    '<\/script>\n' + buildShaderBorder();
   return `<!doctype html><html><head><meta charset="utf-8"><style>
 ${fontface}
 ${theme}
@@ -79,9 +72,6 @@ html,body{margin:0;padding:0;background:#111;height:100%;overflow:hidden}
    exactly that far, so the cap visibly bottoms out. */
 .stage .hero-cap .hkey{min-width:26px;height:30px;padding:0 9px;font-size:19px;border-radius:0;box-shadow:0 4px 0 #333}
 .stage .hero-cap .hkey.press{transform:translateY(4px);box-shadow:0 0 0 #333}
-/* The ring scales with the stage: 8px around a 683px page hero reads the same
-   as 12px around this 1040px one. */
-.stage .hero{position:relative}
 </style>
 
 <script>
@@ -116,17 +106,12 @@ html,body{margin:0;padding:0;background:#111;height:100%;overflow:hidden}
     }
   };
   window.__ocTimes = function(){ return times; };
-  /* The shader ring needs the frame's virtual time: it cannot animate itself
-     here (a self-perpetuating rAF would re-queue at the same vt forever and
-     starve the hero), so the driver below paints it once per frame. */
-  window.__ocVt = function(){ return vt; };
 })();
 </script>
 </head><body>
 <div class="stage">
 ${captioned ? `  <div class="cap"><h1>${TITLE}</h1><p>${DESCRIPTION}</p></div>` : ''}
 ${hero}
-${shaderBorder}
 </div>
 <script>
 (function(){
@@ -135,52 +120,8 @@ ${shaderBorder}
   var n = parseInt(P.get('n') || '0', 10);
   /* The hero also inits on DOMContentLoaded and registered first, so by the
      time this runs its first state is already applied and its timers queued. */
-  /* ── Atlas mode ───────────────────────────────────────────────────────────
-     Draw a batch of ring frames into ONE grid canvas and hand it back as a PNG
-     data URI. Chrome's ~1.4s startup is the whole cost of a frame, so batching
-     turns a 24-minute render into seconds. Shader-agnostic: the only thing this
-     touches is the ring's own draw hook, so any shader tiles the same way.
-     NOTE: no backticks in here — this whole block lives inside a JS template
-     literal, and one backtick silently ends the string. */
-  if (mode === 'atlas') {
-    var fps = +P.get('fps'), from = +P.get('from'), count = +P.get('count');
-    var report = function (id, text) {
-      var d = document.createElement('div'); d.id = id; d.textContent = text;
-      document.body.appendChild(d);
-    };
-    var ring = document.querySelector('canvas[aria-hidden]');
-    if (!ring || !window.__ocRingDraw) { report('oc-atlas-err', 'no ring'); return; }
-    var W = ring.width, H = ring.height;
-    var cols = Math.max(1, Math.min(count, Math.floor(9000 / W)));
-    var rows = Math.ceil(count / cols);
-    var a = document.createElement('canvas');
-    a.width = W * cols; a.height = H * rows;
-    /* An over-large canvas is CLAMPED, not refused, and then silently encodes
-       blank — so check we got the size we asked for before trusting a frame. */
-    if (a.width !== W * cols || a.height !== H * rows) {
-      report('oc-atlas-err', 'canvas clamped to ' + a.width + 'x' + a.height); return;
-    }
-    var actx = a.getContext('2d');
-    for (var k = 0; k < count; k++) {
-      window.__ocRingDraw((from + k) / fps);
-      actx.drawImage(ring, (k % cols) * W, Math.floor(k / cols) * H);
-    }
-    var uri = a.toDataURL('image/png');
-    if (uri.length < 5000) { report('oc-atlas-err', 'blank atlas (out of memory?)'); return; }
-    var r = ring.getBoundingClientRect();
-    report('oc-atlas-meta', JSON.stringify({
-      cols: cols, rows: rows, tileW: W, tileH: H, count: count,
-      x: Math.round(r.left), y: Math.round(r.top)
-    }));
-    report('oc-atlas', uri);
-    return;
-  }
-
   function go(){
     window.__ocRun(mode === 'schedule' ? 400 : n);
-    /* Paint the ring at THIS frame's virtual time, after the hero's callbacks
-       have settled, so the ring and the demo always agree on the clock. */
-    if (window.__ocRingDraw) window.__ocRingDraw(window.__ocVt() / 1000);
     if (mode === 'schedule') document.title = JSON.stringify(window.__ocTimes());
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
@@ -212,60 +153,7 @@ function chrome(args, opts = {}) {
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], ...opts });
 }
 
-
-/* ── Ring atlas ──────────────────────────────────────────────────────────────
-   Renders the shader ring at a real frame rate without paying Chrome's ~1.4s
-   startup per frame: each launch draws a BATCH of frames into one grid canvas
-   and returns a single PNG, which ImageMagick then slices row-major.
-
-   Batch size is a memory trade, not an API limit — an RGBA canvas is 4 bytes a
-   pixel, so 528 tiles of 1052x282 is ~626 MB. 132 (~160 MB) is the default;
-   raise it with OC_ATLAS_TILES if the machine has room.
-
-   The hero keeps its own cheap 24-frame schedule; only the ring needs cadence,
-   and it is composited on afterwards. */
-async function renderRingFrames({ url, fps, seconds, outDir }) {
-  const total = Math.ceil(seconds * fps);
-  const per = Math.max(1, parseInt(process.env.OC_ATLAS_TILES || '132', 10));
-  fs.mkdirSync(outDir, { recursive: true });
-  let meta = null;
-  process.stdout.write(`[video]   ring: ${total} frames @${fps}fps in ` +
-    `${Math.ceil(total / per)} batch(es) of ${per}\n`);
-
-  for (let from = 0; from < total; from += per) {
-    const count = Math.min(per, total - from);
-    const dom = chrome(['--dump-dom',
-      `${url}?mode=atlas&fps=${fps}&from=${from}&count=${count}`],
-      { maxBuffer: 512 * 1024 * 1024 });
-
-    const err = dom.match(/<div id="oc-atlas-err">([^<]*)<\/div>/);
-    if (err) throw new Error('ring atlas failed: ' + err[1]);
-    const m = dom.match(/<div id="oc-atlas-meta">([^<]*)<\/div>/);
-    const u = dom.match(/<div id="oc-atlas">(data:image\/png;base64,[^<]*)<\/div>/);
-    if (!m || !u) throw new Error('ring atlas produced no image (batch at ' + from + ')');
-    meta = JSON.parse(m[1].replace(/&quot;/g, '"'));
-
-    const png = path.join(outDir, `atlas-${from}.png`);
-    fs.writeFileSync(png, Buffer.from(u[1].split(',')[1], 'base64'));
-    // -crop with a bare geometry tiles the image; +repage drops the tile offsets
-    // so each frame is a plain WxH image rather than a canvas-relative one.
-    execFileSync('convert', [png, '-crop', `${meta.tileW}x${meta.tileH}`, '+repage',
-      path.join(outDir, `t-${String(from).padStart(5, '0')}-%04d.png`)]);
-    fs.rmSync(png);
-  }
-
-  // Row-major tile order == frame order, and the padded batch/tile names sort
-  // into a single correct sequence.
-  const tiles = fs.readdirSync(outDir).filter(f => f.startsWith('t-')).sort();
-  if (tiles.length < total) throw new Error(`ring: expected ${total} frames, sliced ${tiles.length}`);
-  tiles.slice(0, total).forEach((f, i) => {
-    fs.renameSync(path.join(outDir, f), path.join(outDir, `ring-${String(i).padStart(5, '0')}.png`));
-  });
-  tiles.slice(total).forEach(f => fs.rmSync(path.join(outDir, f)));   // padding tiles
-  return meta;
-}
-
-async function record({ captioned, outFile, seconds, width, height, fps }) {
+async function record({ captioned, outFile, seconds, width, height }) {
   const dir = path.join(WIN_TMP, captioned ? 'captioned' : 'raw');
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
@@ -293,8 +181,7 @@ async function record({ captioned, outFile, seconds, width, height, fps }) {
   process.stdout.write(`[video]   ${durations.length} distinct frames\n`);
   for (let i = 0; i < durations.length; i++) {
     const png = path.join(dir, String(i).padStart(4, '0') + '.png');
-    chrome([`--screenshot=${toWin(png)}`, `--window-size=${width},${height}`,
-      `${url}?mode=frame&n=${i}` + (fps ? '&ring=off' : '')]);
+    chrome([`--screenshot=${toWin(png)}`, `--window-size=${width},${height}`, `${url}?mode=frame&n=${i}`]);
     if (!fs.existsSync(png)) throw new Error('chrome produced no frame ' + i);
   }
 
@@ -306,8 +193,6 @@ async function record({ captioned, outFile, seconds, width, height, fps }) {
   fs.writeFileSync(listFile, list);
 
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
-  // With a ring overlay coming, the hero is an intermediate, not the output.
-  const heroOut = fps ? path.join(dir, 'hero.mp4') : outFile;
   execFileSync('ffmpeg', [
     '-y', '-loglevel', 'error',
     '-f', 'concat', '-safe', '0', '-i', listFile,
@@ -315,23 +200,8 @@ async function record({ captioned, outFile, seconds, width, height, fps }) {
     '-vf', 'scale=' + width + ':' + height + ':flags=lanczos,format=yuv420p',
     '-c:v', 'libx264', '-preset', 'slow', '-crf', '20',
     '-movflags', '+faststart', '-an',
-    heroOut,
+    outFile,
   ], { stdio: 'inherit' });
-
-  if (fps) {
-    const ringDir = path.join(dir, 'ring');
-    const meta = await renderRingFrames({ url, fps, seconds, outDir: ringDir });
-    // The ring is drawn INSIDE the hero, so it lands at the hero's own origin.
-    execFileSync('ffmpeg', [
-      '-y', '-loglevel', 'error',
-      '-i', heroOut,
-      '-framerate', String(fps), '-i', path.join(ringDir, 'ring-%05d.png'),
-      '-filter_complex', `[0][1]overlay=x=${meta.x}:y=${meta.y}:shortest=1,format=yuv420p`,
-      '-r', String(fps), '-c:v', 'libx264', '-preset', 'slow', '-crf', '20',
-      '-movflags', '+faststart', '-an',
-      outFile,
-    ], { stdio: 'inherit' });
-  }
 
   fs.rmSync(dir, { recursive: true, force: true });
   return outFile;
@@ -347,16 +217,11 @@ async function main() {
   const seconds = parseFloat(arg('seconds', LOOP_SECONDS));
   const width = parseInt(arg('width', '1280'), 10);
   const height = Math.round(width * 9 / 16);   // 16:9, always
-  /* Default stays the cheap schedule-driven path (24 distinct frames, ~1 min).
-     --fps switches the RING to a real cadence via the atlas; the hero keeps its
-     own schedule either way. */
-  const fps = arg('fps', '') ? parseInt(arg('fps', ''), 10) : 0;
 
   for (const [captioned, name] of [[false, 'oc-hero-raw.mp4'], [true, 'oc-hero-captioned.mp4']]) {
     const out = path.join(outDir, name);
-    process.stdout.write(`[video] rendering ${name} (${width}x${height}, ${seconds}s` +
-      (fps ? `, ring @${fps}fps` : '') + `)…\n`);
-    await record({ captioned, outFile: out, seconds, width, height, fps });
+    process.stdout.write(`[video] rendering ${name} (${width}x${height}, ${seconds}s)…\n`);
+    await record({ captioned, outFile: out, seconds, width, height });
     const kb = (fs.statSync(out).size / 1024).toFixed(0);
     process.stdout.write(`[video] wrote ${out} (${kb} KB)\n`);
   }

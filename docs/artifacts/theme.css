@@ -278,6 +278,9 @@ th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
   /* The hero is an animation; print the frame that is on screen, and drop the
      caption bar since its instruction is meaningless on paper. */
   .hero-cap{display:none !important}
+  /* The shader ring is a web-only effect. On paper it would freeze at whatever
+     phase the print happened to catch, which is arbitrary rather than designed. */
+  .hero canvas[aria-hidden]{display:none !important}
   a[href]:after{content:""}   /* no URL footnotes */
   @page{margin:14mm;background:#111111}
 }
