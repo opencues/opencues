@@ -869,6 +869,18 @@ never shows. Anything the demo doesn't demonstrate goes in the tables below it.
 **Check the arithmetic** in every worked example — readers follow those closely,
 and a sequence that doesn't add up discredits the whole page.
 
+**Check the exported artefact, not just the page.** A page can look right in the
+browser and export badly, and the failures are silent. Three that shipped before
+being caught: the PDF printed an **empty hero** (at t=0 an animation is a bare
+caret, so a print is a snapshot of frame zero unless you move the clock, which
+is why `render-pdf.cjs` passes `--virtual-time-budget`); **table text printed
+near-black** because the cells inherited their colour instead of declaring one;
+and a **CSS `transition` never reached a video frame**, because frames are
+captured the instant the animation's callback fires, so the transition is still
+at 0% and its end state never appears. Open the PDF and step the video before
+calling either done, and *measure* colours off the render rather than eyeballing
+a dark image. Commands and the full list: `docs/artifacts/PIPELINE.md`.
+
 **Show the real thing.** Examples should be verified against a running host, and
 the page should end with a `.foot` line saying where the content came from and
 how it was checked. A plausible-looking example that the product doesn't actually

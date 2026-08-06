@@ -106,6 +106,8 @@ kbd{font-family:var(--mono);font-size:.8em;background:#1b1b1b;border:1px solid #
 /* ── Tables ──────────────────────────────────────────────────────────────────
    Hairline rows, mono uppercase headers. Wrap wide tables in .scroll. */
 table{border-collapse:collapse;width:100%;margin:14px 0;font-size:14px}
+/* The explicit colour is load-bearing: inherited cell colour printed as
+   near-black in the PDF. Do not drop back to inheriting it. */
 th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--hair);vertical-align:top;color:var(--ink)}
 th{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:300}
 td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
@@ -177,6 +179,11 @@ td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
    script ONLY on frames that show a key press, and gone otherwise (no idle
    placeholder). Small but legible; keeps the depress animation. */
 .hero-cap .hkey{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:17px;padding:0 4px;margin:0 1px;font-size:11px;line-height:1;background:#1b1b1b;border:1px solid #333;border-bottom-width:2px;border-radius:3px;color:var(--accent);vertical-align:middle;transition:none}
+/* A press must READ. The previous --accent-soft tint on a #1b1b1b key had
+   nowhere to go on a dark ground, so a press looked like nothing happening.
+   Fill with the accent, same size. transition:none above is required, not
+   stylistic: video frames are captured the instant the callback fires, so a
+   transition would still be at 0% and the colour would never reach the clip. */
 .hero-cap .hkey.press{background:var(--accent);color:#0b0b0b;border-color:var(--accent);transform:translateY(1px);border-bottom-width:1px}
 
 /* Respect reduced-motion everywhere: the hero script also self-disables and

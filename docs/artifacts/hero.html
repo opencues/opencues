@@ -24,14 +24,19 @@
       var buf=t.querySelector('.buf'), note=t.querySelector('.hnote'), hint=t.querySelector('.hhint');
       var cap=t.parentNode.querySelector('.hcapt'); if(!cap) return;
       /* Reduce-motion still PLAYS (an earlier version froze on a static frame,
-         which reads as "broken"): it just skips the typewriter + key depress. */
+         which reads as "broken"): it only skips the typewriter. The key press
+         is a colour flip, not motion, so it fires for everyone. */
       var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
       function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
       function showNote(on,h){ note.style.opacity=on?'1':'0'; hint.style.opacity=h?'1':'0'; }
       var CUR='<span class="hcur">▌</span>';   /* caret ALWAYS visible; sits on the value */
       function fill(v){ buf.innerHTML='volume <span class="sp hval">'+v+'</span>'+CUR; }
       function say(text){ cap.textContent=text; }
-      function sayKey(pre,post){ cap.innerHTML=pre+'<span class="hkey">_</span>'+post; var k=cap.querySelector('.hkey'); if(k&&!reduced) requestAnimationFrame(function(){ k.classList.add('press'); setTimeout(function(){ k.classList.remove('press'); },220); }); }
+      function sayKey(pre,post){ cap.innerHTML=pre+'<span class="hkey">_</span>'+post; var k=cap.querySelector('.hkey');
+        /* Not gated on reduced motion: since the press became a colour flip with
+           no transform and no transition, there is no motion to suppress, and
+           gating it meant anyone with Reduce Motion on saw no press at all. */
+        if(k) requestAnimationFrame(function(){ k.classList.add('press'); setTimeout(function(){ k.classList.remove('press'); },220); }); }
       var TYPED='volume _';
       /* Slow, unhurried loop. Each step is [action, ms-to-hold-after]; the
          longest hold goes on the state carrying the most to read. */

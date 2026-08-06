@@ -173,6 +173,42 @@ Two gotchas worth keeping:
 - Anything injected into the stage must live *inside* its script tag. A comment
   left in HTML space rendered as visible text across the top of every frame.
 
+
+### What the rendered output gets wrong that the page does not
+
+A page can look right in the browser and still export badly. All three of these
+shipped before being caught, and all three are invisible until you open the
+artefact itself:
+
+- **The PDF printed an empty hero.** At t=0 the animation is a bare caret, so a
+  straight print catches nothing. `render-pdf.cjs` passes Chrome
+  `--virtual-time-budget=5000`, which runs the animation on to a filled state
+  before printing. Any future animated component needs the same treatment: a
+  print is a snapshot of frame zero unless you move the clock.
+- **Table text printed near-black.** The cells inherited their colour, and
+  inheritance is exactly what a print path can reset. `th,td` now carry an
+  explicit `color`, so there is nothing to lose on the way out.
+- **A `transition` never reaches a frame.** Frames are captured the instant the
+  animation's callback fires, so any CSS transition is still at 0% and its end
+  state never appears. The key press therefore uses `transition:none` and
+  applies instantly. This applies to every state the video is meant to show.
+
+**Verify the artefact, not the page.** Open the PDF and step the video before
+calling either done. Both are cheap to inspect from the shell:
+
+```bash
+gs -q -dNOPAUSE -dBATCH -sDEVICE=png16m -r70 -dFirstPage=1 -dLastPage=1 \
+   -sOutputFile=/tmp/pdf-%d.png docs/artifacts/pdf/<name>.pdf     # look at a page
+ffmpeg -v error -y -ss 7.5 -i docs/artifacts/video/oc-hero-raw.mp4 \
+   -frames:v 1 /tmp/frame.png                                     # look at a frame
+convert /tmp/pdf-1.png -crop 170x14+357+616 +repage -colorspace gray \
+   -format '%[max]' info:                                         # measure a colour
+```
+
+That last one is worth the habit: eyeballing a dark render is unreliable, and a
+crop that misses the text row reports the background and sends you fixing the
+wrong thing.
+
 ## Gotchas
 
 - **Don't hand-edit the fragment in the website.** It is generated. Edit the
