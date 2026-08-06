@@ -133,6 +133,46 @@ the stricter of the two** (the site), because it feeds both:
 Full list in the website repo's CLAUDE.md § Content rules. Since the content is
 generated, a violation is fixed **at the source here**, never in the website.
 
+
+## Downloadable assets (PDF + video)
+
+A page can offer its own PDF and a 16:9 video of the hero. Both are
+**pre-rendered files**, not generated in the browser:
+
+```bash
+node docs/artifacts/render-pdf.cjs   pages/<name>.html pdf/<name>.pdf "<Title>"
+node docs/artifacts/render-video.cjs                       # both cuts, 1280x720
+```
+
+The buttons ride in the page body, so both targets get them. `build.cjs`
+inlines the files as data URIs for the artifact target; the site target uses the
+relative fallbacks (`pdf/`, `video/`), so copy the rendered files into the
+website repo alongside the page.
+
+**Why the PDF is pre-rendered and not `window.print()`.** A published artifact
+runs in a sandboxed iframe where `print()` is blocked, and it is unreliable on
+mobile browsers anyway. A file downloads the same way everywhere. `print()`
+remains as the fallback, and the print rules in both stylesheets still apply if
+someone prints the page directly.
+
+**How the video is captured.** Headless capture inside WSL is broken on this
+class of machine (page screenshots hang on chromium and chrome-headless-shell
+alike, even for a trivial page) and Chrome ignores `--remote-debugging-address`,
+so CDP from WSL is not available either. What works is **Windows Chrome's
+one-shot `--screenshot`**, one process per frame. To make that deterministic the
+stage installs a **virtual-time shim**: `setTimeout`/`rAF` become a queue, and
+`?mode=frame&n=K` advances the *real* hero code by exactly K callbacks.
+`?mode=schedule` runs the whole loop and reports each callback's virtual time,
+which becomes each frame's duration in the cut. So the video is driven by the
+animation's own code and timings, and cannot drift from the page.
+
+Two gotchas worth keeping:
+- Headless Chrome reports `prefers-reduced-motion: reduce`, which made the hero
+  skip its typewriter. The shim overrides `matchMedia` so the video shows the
+  full animation.
+- Anything injected into the stage must live *inside* its script tag. A comment
+  left in HTML space rendered as visible text across the top of every frame.
+
 ## Gotchas
 
 - **Don't hand-edit the fragment in the website.** It is generated. Edit the

@@ -65,77 +65,138 @@ html,body{margin:0;padding:0;background:#111;height:100%;overflow:hidden}
 .stage .hero .term{font-size:30px;line-height:1.85;padding:40px 40px 26px}
 .stage .hero-cap{font-size:20px;padding:20px 40px 26px}
 .stage .hero-cap .hkey{min-width:26px;height:30px;padding:0 9px;font-size:19px;border-radius:5px}
-</style></head><body>
+</style>
+
+<script>
+/* ── Virtual time ────────────────────────────────────────────────────────────
+   Rendering has to be deterministic and headless-Chrome's one-shot --screenshot
+   gives one frame per process, so we cannot race a wall clock. Instead we
+   replace setTimeout/rAF with a queue and step it: '?mode=frame&n=K' advances
+   the REAL hero code by exactly K callbacks and freezes there. No timings are
+   duplicated here, so the video can never drift from the animation.
+   '?mode=schedule' runs the whole loop and reports each callback's virtual time,
+   which becomes each frame's duration in the final cut. */
+(function(){
+  var P = new URLSearchParams(location.search);
+  if (!P.get('mode')) return;                 // live page: leave timers alone
+  /* Headless Chrome reports prefers-reduced-motion: reduce, which would make
+     the hero skip its typewriter. The video should show the full animation. */
+  var mm = window.matchMedia.bind(window);
+  window.matchMedia = function(qy){
+    if (/prefers-reduced-motion/.test(qy)) return { matches: false, media: qy, addListener: function(){}, removeListener: function(){}, addEventListener: function(){}, removeEventListener: function(){} };
+    return mm(qy);
+  };
+  var q = [], vt = 0, seq = 0, times = [];
+  window.setTimeout = function(fn, ms){ q.push({fn: fn, due: vt + (ms || 0), seq: seq++}); return 0; };
+  window.requestAnimationFrame = function(fn){ q.push({fn: function(){ fn(vt); }, due: vt, seq: seq++}); return 0; };
+  window.__ocRun = function(count){
+    for (var n = 0; n < count && q.length; n++){
+      q.sort(function(a,b){ return (a.due - b.due) || (a.seq - b.seq); });
+      var t = q.shift();
+      vt = Math.max(vt, t.due);
+      times.push(vt);
+      try { t.fn(); } catch (e) {}
+    }
+  };
+  window.__ocTimes = function(){ return times; };
+})();
+</script>
+</head><body>
 <div class="stage">
 ${captioned ? `  <div class="cap"><h1>${TITLE}</h1><p>${DESCRIPTION}</p></div>` : ''}
 ${hero}
 </div>
+<script>
+(function(){
+  var P = new URLSearchParams(location.search);
+  var mode = P.get('mode'); if (!mode) return;
+  var n = parseInt(P.get('n') || '0', 10);
+  /* The hero also inits on DOMContentLoaded and registered first, so by the
+     time this runs its first state is already applied and its timers queued. */
+  function go(){
+    window.__ocRun(mode === 'schedule' ? 400 : n);
+    if (mode === 'schedule') document.title = JSON.stringify(window.__ocTimes());
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
+})();
+</script>
+
 </body></html>`;
 }
 
-/* Frames are grabbed on a wall-clock schedule rather than with Playwright's own
-   recordVideo. That recording is variable-frame-rate, and converting it gave a
-   ~1s file out of a 17.6s capture: the container's timing is not something to
-   build on. Screenshotting to a fixed cadence, and *waiting until* each frame's
-   scheduled moment, keeps the video's clock equal to the animation's. */
-const FPS = 15;   // the hero holds each state for seconds; 15 is ample and keeps
-                  // the grab (~40ms at 720p) comfortably inside the interval
+/* ── Capture ─────────────────────────────────────────────────────────────────
+   Headless capture inside WSL is broken on this class of machine (page
+   screenshots hang on both chromium and chrome-headless-shell, even for a
+   trivial page), and Chrome ignores --remote-debugging-address, so CDP from
+   WSL is not available either. What does work is Windows Chrome's one-shot
+   --screenshot. One process gives one frame, so frames are addressed by the
+   virtual-time shim in the stage: `?mode=frame&n=K` advances the real hero code
+   by exactly K callbacks. Deterministic, and no timing is restated here. */
+const WIN_TMP = process.env.OC_WIN_TMP || '/mnt/c/Users/wilfred/AppData/Local/Temp/oc-render';
+const WIN_CHROME = process.env.OC_WIN_CHROME || '/mnt/c/Program Files/Google/Chrome/Application/chrome.exe';
+
+/** /mnt/c/Users/x/... → C:\Users\x\... */
+function toWin(p) {
+  const m = p.match(/^\/mnt\/([a-z])\/(.*)$/);
+  if (!m) throw new Error('not a /mnt/<drive> path: ' + p);
+  return m[1].toUpperCase() + ':\\' + m[2].replace(/\//g, '\\');
+}
+function chrome(args, opts = {}) {
+  return execFileSync(WIN_CHROME, ['--headless=new', '--disable-gpu', '--hide-scrollbars', ...args],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], ...opts });
+}
 
 async function record({ captioned, outFile, seconds, width, height }) {
-  const { chromium } = require(path.join(REPO, 'integrations/chrome/node_modules/@playwright/test'));
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-video-'));
-  const stage = path.join(tmp, 'stage.html');
-  const frames = path.join(tmp, 'frames');
-  fs.mkdirSync(frames);
+  const dir = path.join(WIN_TMP, captioned ? 'captioned' : 'raw');
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  const stage = path.join(dir, 'stage.html');
   fs.writeFileSync(stage, stageHtml({ captioned }));
+  const url = 'file:///' + toWin(stage).replace(/\\/g, '/');
 
-  const browser = await chromium.launch();
-  const ctx = await browser.newContext({
-    viewport: { width, height },
-    deviceScaleFactor: 1,
-    // The hero deliberately still plays under reduced motion, but pin the
-    // preference so a capture never depends on the renderer's default.
-    reducedMotion: 'no-preference',
-  });
-  const page = await ctx.newPage();
-  await page.goto('file://' + stage);
-  await page.waitForTimeout(500);           // let the fonts settle before the loop starts
+  // Pass 1 — ask the animation itself when each frame changes.
+  const dom = chrome(['--dump-dom', url + '?mode=schedule'], { maxBuffer: 64 * 1024 * 1024 });
+  const m = dom.match(/<title>(\[[^<]*\])<\/title>/);
+  if (!m) throw new Error('no schedule reported by the stage (is the virtual-time shim present?)');
+  const times = JSON.parse(m[1]);
 
-  /* Capture through the DevTools protocol rather than page.screenshot().
-     Playwright's screenshot waits for the page to go "stable", and this page
-     never does: a setTimeout loop is mutating the DOM the whole time, so every
-     grab hit its timeout. Page.captureScreenshot just returns the frame. */
-  const cdp = await ctx.newCDPSession(page);
-  const total = Math.round(seconds * FPS);
-  const t0 = Date.now();
-  let late = 0;
-  for (let i = 0; i < total; i++) {
-    const due = t0 + (i * 1000) / FPS;
-    const now = Date.now();
-    if (now < due) await page.waitForTimeout(due - now); else if (i) late++;
-    const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' });
-    fs.writeFileSync(path.join(frames, String(i).padStart(5, '0') + '.png'), Buffer.from(data, 'base64'));
+  // Frame i is on screen from times[i-1] to times[i]; keep frames until the
+  // requested duration is covered.
+  const budget = seconds * 1000;
+  const durations = [];
+  for (let i = 0; i < times.length; i++) {
+    const from = i === 0 ? 0 : times[i - 1];
+    if (from >= budget) break;
+    durations.push(Math.max(1, Math.min(times[i], budget) - from) / 1000);
   }
-  await browser.close();
-  if (late > total * 0.1) {
-    console.warn(`[video] warning: ${late}/${total} frames were grabbed late; the clip may run fast`);
+
+  // Pass 2 — one process per frame.
+  process.stdout.write(`[video]   ${durations.length} distinct frames\n`);
+  for (let i = 0; i < durations.length; i++) {
+    const png = path.join(dir, String(i).padStart(4, '0') + '.png');
+    chrome([`--screenshot=${toWin(png)}`, `--window-size=${width},${height}`, `${url}?mode=frame&n=${i}`]);
+    if (!fs.existsSync(png)) throw new Error('chrome produced no frame ' + i);
   }
+
+  // Each frame is held for exactly as long as the animation holds it.
+  const list = durations.map((d, i) =>
+    `file '${String(i).padStart(4, '0')}.png'\nduration ${d.toFixed(3)}`).join('\n')
+    + `\nfile '${String(durations.length - 1).padStart(4, '0')}.png'\n`;
+  const listFile = path.join(dir, 'frames.txt');
+  fs.writeFileSync(listFile, list);
 
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
-  // yuv420p + even dimensions + faststart: what social platforms actually accept.
   execFileSync('ffmpeg', [
     '-y', '-loglevel', 'error',
-    '-framerate', String(FPS),
-    '-i', path.join(frames, '%05d.png'),
-    '-r', '30',                       // 30fps output, frames duplicated evenly
+    '-f', 'concat', '-safe', '0', '-i', listFile,
+    '-r', '30',
     '-vf', 'scale=' + width + ':' + height + ':flags=lanczos,format=yuv420p',
     '-c:v', 'libx264', '-preset', 'slow', '-crf', '20',
-    '-movflags', '+faststart',
-    '-an',
+    '-movflags', '+faststart', '-an',
     outFile,
   ], { stdio: 'inherit' });
 
-  fs.rmSync(tmp, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true });
   return outFile;
 }
 

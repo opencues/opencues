@@ -95,12 +95,26 @@ function main() {
     // ── Artifact target (default) ──────────────────────────────────────────
     // A standalone, self-contained page: fonts base64-inlined (the artifact CSP
     // blocks font hosts, so linking one fails silently) + the full theme.
+    // Videos are inlined for the standalone page: an artifact has no sibling
+    // files to fetch, so a relative path would just 404. The site target leaves
+    // the body's relative fallback alone and serves the files from video/.
+    const vids = {};
+    for (const [k, file] of [['raw', 'oc-hero-raw.mp4'], ['captioned', 'oc-hero-captioned.mp4']]) {
+      const p = path.join(HERE, 'video', file);
+      if (fs.existsSync(p)) vids[k] = 'data:video/mp4;base64,' + fs.readFileSync(p).toString('base64');
+    }
+    const pdfFile = path.join(HERE, 'pdf', 'oc-actuator-states.pdf');
+    const pdfUri = fs.existsSync(pdfFile)
+      ? 'data:application/pdf;base64,' + fs.readFileSync(pdfFile).toString('base64') : '';
+    const videoScript =
+      (Object.keys(vids).length ? `<script>window.__OC_VIDEO=${JSON.stringify(vids)};</script>\n` : '') +
+      (pdfUri ? `<script>window.__OC_PDF=${JSON.stringify(pdfUri)};</script>\n` : '');
     const fontface = buildFontFace();
     const theme = fs.readFileSync(path.join(HERE, 'theme.css'), 'utf8');
     out =
       `<title>${title || 'OpenCues'}</title>\n` +
       `<style>\n/* OpenCues artifact theme — fonts inlined + theme.css */\n${fontface}\n${theme}</style>\n` +
-      body + '\n';
+      videoScript + body + '\n';
   }
   fs.writeFileSync(outPath, out);
   console.log(`[build] wrote ${outPath} (${(out.length / 1024).toFixed(0)} KB, target: ${site ? 'site fragment' : 'artifact'})`);

@@ -4,8 +4,39 @@
   <p class="dek">These two blanks aren't fills that drop a dead number. They're <strong>live knobs</strong>. This is every state they move through and every key that moves them. Shipped behaviour, verified live.</p>
 
   <div class="oc-actions">
-    <button type="button" onclick="window.print()" title="Save this page as a PDF, dark background kept">Download PDF</button>
+    <button type="button" id="oc-dl-pdf" title="Download this page as a PDF, dark background kept">Download PDF</button>
+    <button type="button" id="oc-dl-video"
+            title="Download the demo as a 16:9 MP4. Right-click for the version with a title and description.">Download video</button>
   </div>
+  <script>
+  (function(){
+    function grabFile(href, name){
+      var a = document.createElement('a');
+      a.href = href; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+    }
+    /* A published page runs in a sandboxed iframe where print() is blocked, and
+       print() is unreliable on mobile anyway, so the PDF is pre-rendered and
+       simply downloaded. print() stays as the fallback. */
+    var pdfBtn = document.getElementById('oc-dl-pdf');
+    if (pdfBtn) pdfBtn.addEventListener('click', function(){
+      var href = (window.__OC_PDF || 'pdf/oc-actuator-states.pdf');
+      if (href) grabFile(href, 'opencues-volume-brightness.pdf'); else window.print();
+    });
+    var b = document.getElementById('oc-dl-video'); if (!b) return;
+    /* The build fills window.__OC_VIDEO per target: data URIs for the
+       standalone page, relative paths on the site. */
+    var V = window.__OC_VIDEO || { raw: 'video/oc-hero-raw.mp4', captioned: 'video/oc-hero-captioned.mp4' };
+    var grab = grabFile;
+    /* Left click gives the raw cut: the demo alone, nothing to crop out. */
+    b.addEventListener('click', function(){ grab(V.raw, 'opencues-volume.mp4'); });
+    /* Right click gives the cut with the title and description burned in. */
+    b.addEventListener('contextmenu', function(e){
+      e.preventDefault();
+      grab(V.captioned, 'opencues-volume-captioned.mp4');
+    });
+  })();
+  </script>
 
   <!--HERO-->
 
