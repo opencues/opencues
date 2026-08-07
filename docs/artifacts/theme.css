@@ -110,9 +110,16 @@ kbd{display:inline-block;vertical-align:baseline;font-family:var(--mono);font-si
        <span class="buf">…</span>
        <span class="note">…</span>   ← the newlines become blank space
      </div>
-   This is the single most common way to break these pages. */
+   This is the single most common way to break these pages.
+
+   ⚠ contain:inline-size is load-bearing on a phone. A pre line has no wrap
+   point, so its minimum width is the whole line, and that minimum travels up
+   the tree and can widen whatever column the block sits in — on the site build
+   one long terminal line made the centre column 440px inside a 390px phone and
+   the page scrolled sideways. Containment stops the block reporting a width to
+   its ancestors at all; it still scrolls inside itself. */
 .term{font-family:var(--mono);font-size:13px;line-height:1.8;background:var(--term-bg);color:var(--term-fg);
-  border-radius:0;padding:.8rem 1rem;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;white-space:pre;min-width:0;max-width:100%}
+  border-radius:0;padding:.8rem 1rem;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;white-space:pre;min-width:0;max-width:100%;contain:inline-size}
 /* The site hides scrollbars rather than styling them: its one scrollbar rule
    (on .grid-col-2) sets all three of these. Same here, so a narrow terminal
    does not sprout an unstyled bar. */
@@ -142,9 +149,21 @@ th{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:up
    the selected value that the unselected words read as selected too; at
    --term-fg the gap matches the terminal's own (214 vs 255). Same rule, one
    colour, wherever the page shows your text. */
-td.mono{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--term-fg)}
+/* nowrap because the cell is a line of text as typed: breaking `volume 40 _`
+   across two lines shows the reader something they would never see. The .scroll
+   wrapper carries the overflow instead. */
+td.mono{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--term-fg);white-space:nowrap}
 th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
-.scroll{overflow-x:auto}   /* wrap any wide table/diagram so only IT scrolls */
+/* Wrap any wide table/diagram so only IT scrolls. contain:inline-size for the
+   same reason as .term above: the table's minimum width must not travel up and
+   widen the page. The scrollbar is hidden, as on the terminal block: the site
+   hides scrollbars rather than styling them, and a native bar under a table
+   reads as a component of its own on a phone. */
+.scroll{overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;contain:inline-size}
+.scroll::-webkit-scrollbar{display:none}
+/* On a phone the columns would otherwise compress to a word or two per line
+   before anything scrolls, which is harder to read than scrolling. */
+@media(max-width:600px){.scroll>table{min-width:520px}}
 
 /* ── Badges (pill chips) — the one place we keep full rounding ────────────────
    Semantic tints on dark. Add variants by pairing a bg tint + a matching text. */

@@ -462,6 +462,19 @@ all set `min-width:0`; `.wrap` also carries `overflow-x:hidden` as a last guard.
 Anything wide gets its own `overflow-x:auto` container so **it** scrolls and the
 page never does.
 
+`overflow-x:auto` alone is not enough on a phone. A `white-space:pre` line has
+no wrap point, so its *minimum* width is the whole line, and that minimum
+travels up the tree: on the site build one long terminal line made the centre
+column 440px inside a 390px phone, and the page scrolled sideways with the title
+cut off. `.term` and `.scroll` therefore also carry **`contain:inline-size`**,
+which stops them reporting any width to their ancestors. They still scroll
+inside themselves. Add it to anything new that can be wider than the page.
+
+The same rule sits under a page's decoration. The shader ring is an absolutely
+positioned square centred on the demo, so whatever hangs off the side of the
+page makes the page scroll sideways; `border.js` treats its bloom room as a
+maximum and takes only the room actually there.
+
 ### 3. Fonts can't be linked
 
 The artifact CSP blocks external font hosts. Linking a font fails *silently* —
