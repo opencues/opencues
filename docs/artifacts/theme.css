@@ -171,13 +171,24 @@ th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 @media(max-width:600px){.frame{grid-template-columns:1fr;gap:7px}}
 
 /* ── Gauge (a value on a 0–100 track) ────────────────────────────────────────
-   flex-wrap so the label drops under the bar on narrow screens. */
-.gauge{display:flex;align-items:center;gap:10px;margin:6px 0;flex-wrap:wrap}
-.bar{position:relative;height:10px;flex:1;min-width:120px;max-width:340px;background:#1e1e1e;border-radius:0;overflow:hidden}
+   ⚠ Grid, not flex: every gauge's track must be the SAME LENGTH, or the bars
+   cannot be read against each other. Under flex the bar was `flex:1` and the
+   label was a sibling that grew with its text, so a longer label shortened its
+   own bar. Here the track is its own column, sized from the column definition
+   alone, and the label column is `minmax(0,1fr)` — the 0 minimum matters, since
+   a bare `1fr` takes the label's longest word as its minimum and starts
+   squeezing the track again. Narrow screens drop the label to a second row
+   instead of letting it compete for the width. */
+.gauge{display:grid;grid-template-columns:52px minmax(120px,340px) minmax(0,1fr);align-items:center;column-gap:10px;margin:6px 0}
+.bar{position:relative;height:10px;width:100%;background:#1e1e1e;border-radius:0;overflow:hidden}
 .bar>span{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:0}
 .bar.edge>span{background:var(--edge)} .bar.mute>span{background:var(--mute)}
 .gauge .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13px;width:52px;color:var(--ink)}
 .gauge .lbl{font-size:12.5px;color:var(--muted)}
+@media(max-width:600px){
+  .gauge{grid-template-columns:52px minmax(0,1fr);margin:6px 0 18px}
+  .gauge .lbl{grid-column:2;margin-top:5px}
+}
 
 /* ── Cards (.cols / .box) ─────────────────────────────────────────────────────
    Two-up grid collapsing to one on mobile.
