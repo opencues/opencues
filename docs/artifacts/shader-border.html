@@ -59,7 +59,7 @@
      that exists — a canvas hugging the border gives it nowhere to go, so the
      effect reads as a clipped band rather than something bleeding over and
      into the shape. This is the room. */
-  var PAD = RING * 8;
+  var PAD = RING * 20;
   var parent = HOST.offsetParent || HOST.parentNode;
   if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
 
