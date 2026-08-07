@@ -26,6 +26,7 @@ page, a doc that isn't OpenCues-facing) is fine without it.
 | [`render-pdf.cjs`](render-pdf.cjs) | Renders the page to a PDF (dark ground preserved, sections kept whole). |
 | [`render-video.cjs`](render-video.cjs) | Renders the hero to a 16:9 MP4, raw and captioned cuts. |
 | [`preview-site.cjs`](preview-site.cjs) | Builds a standalone preview of the SITE target, for review without the site running. |
+| [`CLAUDE.md`](CLAUDE.md) | **Working context** — the twin stylesheet on the website, how these pages are written, the phone traps, and what to check before calling an export done. |
 | [`REFERENCE.md`](REFERENCE.md) | **Full reference** — tokens, every component + its markup, the hero engine, and the gotchas. |
 
 ---

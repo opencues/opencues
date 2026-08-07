@@ -94,14 +94,6 @@ function main() {
     body = body.replace('<!--HERO-->', fs.readFileSync(heroPath, 'utf8').trim());
   }
 
-  // <!--SHADER-BORDER--> splices in the shader ring (shader-border.html) and
-  // inlines its GLSL, which is vendored UNMODIFIED from ShaderShop under
-  // shaders/. Inlined rather than fetched because the artifact CSP blocks
-  // external requests and a file:// fetch fails too — same reason as the fonts.
-  if (body.includes('<!--SHADER-BORDER-->')) {
-    body = body.replace('<!--SHADER-BORDER-->', buildShaderBorder());
-  }
-
   body = wrapSections(body);
 
   let out;
@@ -160,33 +152,4 @@ function main() {
   console.log(`[build] wrote ${outPath} (${(out.length / 1024).toFixed(0)} KB, target: ${site ? 'site fragment' : 'artifact'})`);
 }
 if (require.main === module) main();
-/** The shader ring, with its GLSL inlined.
- *  Shared by the page build and render-video.cjs's stage, so the video can
- *  never run a different shader from the page it is a recording of. */
-function buildShaderBorder() {
-  /* Which vendored shader the ring runs. Swap the name (or set OC_SHADER) to
-     change the effect; shaders/ holds each one unmodified from ShaderShop.
-     A shader with baked-in parameters needs no uniform wiring — one with a
-     -params.json needs its uniforms declared in shader-border.html, and
-     getting a single name wrong fails the whole compile silently. */
-  const shader = process.env.OC_SHADER || 'x-max-shubz';
-  const ringPath = path.join(HERE, 'shader-border.html');
-  const glslPath = path.join(HERE, 'shaders', shader + '.glsl');
-  if (!fs.existsSync(ringPath) || !fs.existsSync(glslPath)) return '';
-  const ring = fs.readFileSync(ringPath, 'utf8').trim();
-  const glsl = fs.readFileSync(glslPath, 'utf8');
-  /* ShaderShop's own source image, inlined. These shaders are image processors
-     — they need a real image with structure, not a shape we painted. Inlined
-     for the same reason as the fonts: the artifact CSP blocks external fetches
-     and a file:// fetch fails too. */
-  const imgPath = path.join(HERE, 'shaders', 'img', 'oc-logo-dark.png');
-  const imgUri = fs.existsSync(imgPath)
-    ? 'data:image/png;base64,' + fs.readFileSync(imgPath).toString('base64') : '';
-  // The placeholder sits inside a JS string concatenation, so what replaces it
-  // must be a string literal followed by the `+` that continues the chain.
-  return ring
-    .replace('/*__SHADER_FOXFIRE__*/', JSON.stringify(glsl) + ' +')
-    .replace('/*__SHADER_IMAGE__*/', JSON.stringify(imgUri));
-}
-
-module.exports = { buildFontFace, buildShaderBorder };
+module.exports = { buildFontFace };
