@@ -54,7 +54,12 @@
      the same problem and silently broke the video stage, where .hero is a flex
      child the stage sizes. This touches no layout — nothing moves, a sibling is
      simply painted over the top. */
-  var PAD = RING * 3;
+  /* The canvas is deliberately MUCH bigger than the border it draws. The
+     shader displaces what it samples, and it can only push pixels into space
+     that exists — a canvas hugging the border gives it nowhere to go, so the
+     effect reads as a clipped band rather than something bleeding over and
+     into the shape. This is the room. */
+  var PAD = RING * 8;
   var parent = HOST.offsetParent || HOST.parentNode;
   if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
 
