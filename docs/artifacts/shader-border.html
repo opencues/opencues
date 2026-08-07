@@ -60,7 +60,13 @@
 
   var cv = document.createElement('canvas');
   cv.setAttribute('aria-hidden', 'true');
-  cv.style.cssText = 'position:absolute;pointer-events:none;z-index:2';
+  /* mix-blend-mode:screen is what makes this work. The shader's output is
+     amber ON BLACK, and screen maps black to "no change" — so the dark parts
+     fall away and only the amber lands on the page. That means the texture can
+     be plain opaque black behind the shape (no alpha juggling), and the shader
+     can render across the WHOLE canvas without being clipped to a border. */
+  cv.style.cssText = 'position:absolute;pointer-events:none;z-index:2;' +
+    'mix-blend-mode:screen';
   parent.appendChild(cv);
 
   function place() {
@@ -87,23 +93,31 @@
     'uniform vec3 iResolution;\n' +
     'uniform float iTime;\n' +
     'uniform sampler2D iChannel0;\n' +
-    'uniform float ringPx;\n' +
+
     /*__SHADER_FOXFIRE__*/
     '\n' +
-    /* This shader aspect-corrects its own uv for a SQUARE source image:
+    /* The shader runs UNCONSTRAINED across the whole canvas — its look comes
+       from displacing a real image, and shaping its input into a ring just
+       shredded it. The border is a WINDOW onto that: keep the outer band, drop
+       the middle so the demo shows through. The shader's own square-image
+       aspect correction is left alone; with REPEAT wrapping, the logo tiles
+       across the wide canvas instead of collapsing to the centre. */
+    /* The shader aspect-corrects its own uv for a SQUARE source image:
          uv.x = (uv.x - 0.5) * aspect + 0.5
-       On a 5.5:1 ring that expands x about the centre, so only the middle ~18%
-       of the width maps into the texture and the edges map outside it entirely
-       — the ring rendered as a small box in the middle of the frame. Rather
-       than edit the vendored file, pass it a PRE-INVERTED coordinate so its own
-       correction cancels and uv comes out as true screen uv. Any vendored
-       shader written for a square image will need this. */
+       On a wide canvas that expands x about the centre, so only the middle
+       ~18% of the width maps into the texture — measured: the ring rendered as
+       a small box mid-frame. Rather than edit the vendored file, pass it a
+       PRE-INVERTED coordinate so its own correction cancels exactly and uv
+       comes out as true screen uv. Any square-assuming shader needs this.
+       Alpha is forced to 1: the screen blend is what removes the black, so the
+       shader's own alpha must not also punch holes in the result. */
     'void main() {\n' +
     '  vec2 s = gl_FragCoord.xy / iResolution.xy;\n' +
     '  float A = iResolution.x / iResolution.y;\n' +
     '  vec2 q = A > 1.0 ? vec2((s.x - 0.5) / A + 0.5, s.y)\n' +
     '                   : vec2(s.x, (s.y - 0.5) * A + 0.5);\n' +
-    '  vec4 c; mainImage(c, q * iResolution.xy); gl_FragColor = c;\n' +
+    '  vec4 c; mainImage(c, q * iResolution.xy);\n' +
+    '  gl_FragColor = vec4(c.rgb, 1.0);\n' +
     '}\n';
 
   var VERT = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
@@ -139,38 +153,31 @@
   gl.enableVertexAttribArray(loc);
   gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
 
-  /* ---- the input image: the ring itself ------------------------------------
-     ShaderShop feeds its shaders a LOGO on near-black — a solid shape with
-     edges. That structure is the point: this shader DISPLACES what it samples,
-     and displacing a constant returns the same constant. A flat fill measured
-     exactly 252/201/8 at every point and every time — the shader ran fine and
-     had nothing to do.
+  /* ---- the input image: an amber shape on black ----------------------------
+     What the shader wants is an amber THING to act on — ShaderShop feeds it a
+     logo on near-black. Here the thing is the ring. The ground is opaque black
+     rather than transparent, because the canvas composites with screen: black
+     contributes nothing, so it disappears on its own and there is no alpha to
+     manage.
 
-     So the image IS the ring: a solid amber rectangle outline on transparent.
-     The shader then pushes its edges around, which is the effect. Everything
-     that is not the ring is transparent, so the demo behind it is untouched.
-     Redrawn whenever the canvas resizes, so the ring keeps its true corners
-     rather than being a stretched square. */
+     The ring is drawn PAD in from the texture edge, which is exactly how far
+     the canvas overhangs the hero — so it lands on the hero's border, and the
+     margin gives the displacement somewhere to push, the way the empty space
+     around ShaderShop's logo does. */
   var texCv = document.createElement('canvas');
   var tex = gl.createTexture();
 
   function buildRingTexture(w, h, ringPx, padPx) {
     texCv.width = w; texCv.height = h;
     var tx = texCv.getContext('2d');
-    tx.clearRect(0, 0, w, h);
+    tx.fillStyle = '#000';
+    tx.fillRect(0, 0, w, h);
     tx.strokeStyle = 'rgb(252,201,8)';
     tx.lineWidth = ringPx;
-    /* The ring sits PAD in from the canvas edge, which is exactly the amount
-       the canvas overhangs the hero — so on screen it lands on the hero's
-       border. The padding is also what stops CLAMP_TO_EDGE smearing: a ring
-       touching the texture edge means every displaced sample that leaves the
-       texture clamps to amber, and the whole frame fills (measured — the demo
-       vanished behind a solid amber field). */
-    var m = padPx;
-    tx.strokeRect(m + ringPx / 2, m + ringPx / 2,
-                  w - 2 * m - ringPx, h - 2 * m - ringPx);
+    tx.strokeRect(padPx + ringPx / 2, padPx + ringPx / 2,
+                  w - 2 * padPx - ringPx, h - 2 * padPx - ringPx);
     gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);   // canvas is top-down, GL is not
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, texCv);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -181,7 +188,7 @@
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
   var U = {};
-  ['iResolution', 'iTime', 'iChannel0', 'ringPx'].forEach(function (n) {
+  ['iResolution', 'iTime', 'iChannel0'].forEach(function (n) {
     U[n] = gl.getUniformLocation(prog, n);
   });
   gl.uniform1i(U.iChannel0, 0);
@@ -194,7 +201,6 @@
     if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
     gl.viewport(0, 0, cv.width, cv.height);
     gl.uniform3f(U.iResolution, cv.width, cv.height, 1);
-    gl.uniform1f(U.ringPx, RING * dpr);
     if (texCv.width !== cv.width || texCv.height !== cv.height) {
       buildRingTexture(cv.width, cv.height, RING * dpr, PAD * dpr);
     }

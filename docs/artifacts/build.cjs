@@ -175,9 +175,18 @@ function buildShaderBorder() {
   if (!fs.existsSync(ringPath) || !fs.existsSync(glslPath)) return '';
   const ring = fs.readFileSync(ringPath, 'utf8').trim();
   const glsl = fs.readFileSync(glslPath, 'utf8');
+  /* ShaderShop's own source image, inlined. These shaders are image processors
+     — they need a real image with structure, not a shape we painted. Inlined
+     for the same reason as the fonts: the artifact CSP blocks external fetches
+     and a file:// fetch fails too. */
+  const imgPath = path.join(HERE, 'shaders', 'img', 'oc-logo-dark.png');
+  const imgUri = fs.existsSync(imgPath)
+    ? 'data:image/png;base64,' + fs.readFileSync(imgPath).toString('base64') : '';
   // The placeholder sits inside a JS string concatenation, so what replaces it
   // must be a string literal followed by the `+` that continues the chain.
-  return ring.replace('/*__SHADER_FOXFIRE__*/', JSON.stringify(glsl) + ' +');
+  return ring
+    .replace('/*__SHADER_FOXFIRE__*/', JSON.stringify(glsl) + ' +')
+    .replace('/*__SHADER_IMAGE__*/', JSON.stringify(imgUri));
 }
 
 module.exports = { buildFontFace, buildShaderBorder };
