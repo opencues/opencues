@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  MUTE_MS, FORGET_DOUBLE_MS,
+  MUTE_MS, FORGET_GRACE_MS, forgetOfferRemainingMs,
   dismissalTargetOf, isCueDismissed, muteRemainingMs, pressDismiss,
   registerDismissalSink, setForgottenKeys, _resetCueDismissalsForTests,
 } from './cue-dismissals';
@@ -52,7 +52,22 @@ describe('mute — the first press', () => {
   it('two presses far apart are two mutes, not a forget', () => {
     const t0 = 3_000_000;
     expect(pressDismiss({ key: 'k', label: 'l', source: 's' }, t0)).toBe('mute');
-    expect(pressDismiss({ key: 'k', label: 'l', source: 's' }, t0 + FORGET_DOUBLE_MS + 1)).toBe('mute');
+    expect(pressDismiss({ key: 'k', label: 'l', source: 's' }, t0 + FORGET_GRACE_MS + 1)).toBe('mute');
+  });
+
+  it('opens the offer window, which then lapses', () => {
+    // ⚠ The window is what makes `forget` reachable: DimRender keeps painting
+    // the note while it is open, so there is something left to press again.
+    const t0 = 3_500_000;
+    expect(forgetOfferRemainingMs('k', t0)).toBe(0);          // nothing pressed yet
+    pressDismiss({ key: 'k', label: 'l', source: 's' }, t0);
+    expect(forgetOfferRemainingMs('k', t0 + 500)).toBeGreaterThan(0);
+    expect(forgetOfferRemainingMs('k', t0 + FORGET_GRACE_MS + 1)).toBe(0);
+  });
+
+  it('offers nothing once the cue is already forgotten', () => {
+    setForgottenKeys(['k']);
+    expect(forgetOfferRemainingMs('k')).toBe(0);
   });
 });
 

@@ -11,7 +11,7 @@ import type { HostAdapter, InlineNote, Range, RenderContext, RenderDirectives, U
 import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs, WordDef } from '../state/dyn-defs';
 import { inlineNoteText, isHintSuppressed, noteHintKey } from '../state/dyn-defs';
-import { dismissalTargetOf, isCueDismissed } from '../state/cue-dismissals';
+import { dismissalTargetOf, forgetOfferRemainingMs, isCueDismissed } from '../state/cue-dismissals';
 import type { ConfigLoader } from './config-loader';
 import type { SpanFillState } from '../state/span-fill';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
@@ -386,8 +386,14 @@ export class DimRender {
         // Dismissed (muted or forgotten) → the note does not paint at all. The
         // check sits here, on the paint, so it covers a def registered BEFORE
         // the dismissal as well as one resolved after it.
+        //
+        // EXCEPT during the offer window right after the first press: the note
+        // has to stay up long enough to say that a second press forgets it, or
+        // that grain is unreachable — the first press would silence the very
+        // note you would press again.
         const dismissable = dismissalTargetOf(def);
-        if (dismissable && isCueDismissed(dismissable.key)) continue;
+        const forgetOffer = dismissable ? forgetOfferRemainingMs(dismissable.key) > 0 : false;
+        if (dismissable && isCueDismissed(dismissable.key) && !forgetOffer) continue;
         if (!defSpanLive(def, text)) continue;  // stale span — skip
         const s = toCtx ? toCtx.start(def.spanStart) : def.spanStart;
         const e = toCtx ? toCtx.end(def.spanEnd) : def.spanEnd;
@@ -402,11 +408,16 @@ export class DimRender {
           // the other two gestures — it teaches, then retires.
           const cycleable = def.alternatives.length > 1;
           const suppressed = isHintSuppressed(noteHintKey(def));
-          const hint = actuator
-            ? (suppressed ? undefined : '(ctrl+alt+up/down to adjust)')
-            : cycleable
-              ? (suppressed ? undefined : '(underscore to cycle)')
-              : ((dismissable && !suppressed) ? '(underscore to dismiss)' : undefined);
+          // The offer hint ignores suppression: it is not teaching a gesture the
+          // user may already know, it is stating what the next press does to a
+          // cue that is already quiet. Without it the window is invisible.
+          const hint = forgetOffer
+            ? '(muted · underscore again to forget)'
+            : actuator
+              ? (suppressed ? undefined : '(ctrl+alt+up/down to adjust)')
+              : cycleable
+                ? (suppressed ? undefined : '(underscore to cycle)')
+                : ((dismissable && !suppressed) ? '(underscore to dismiss)' : undefined);
           inlineNote = { spanStart: s, spanEnd: e, text: noteText, hint };
           // Auto-select: the note-bearing span the caret is in promotes from dim
           // to the active highlight — the "you're on this, `_` engages it" state,

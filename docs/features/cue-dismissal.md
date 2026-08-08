@@ -14,11 +14,16 @@ I am free Thursday morning
 ```
 
 - **Press `_` once** and the cue goes quiet for half an hour. Nothing is typed
-  into your text; the note simply disappears.
-- **Press `_` twice** and it does not come back at all.
+  into your text. The note stays up for a few seconds and changes to tell you
+  what a second press would do:
 
-The hint fades once you have used it, the same way the other gestures teach
-themselves and then get out of the way.
+```
+I am free Thursday morning
+⚠ clashes with dentist 10:00  (muted · underscore again to forget)
+```
+
+- **Press `_` again** while that is showing and the cue does not come back at
+  all. Leave it alone and the note fades; the cue is simply quiet for a while.
 
 Notes that offer something to swap in keep their usual meaning: there `_`
 cycles through the alternatives, and taking the suggested rewrite is the answer

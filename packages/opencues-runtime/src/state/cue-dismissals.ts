@@ -53,8 +53,19 @@ export function dismissalTargetOf(
  *  enough that a claim you still care about comes back on its own. */
 export const MUTE_MS = 30 * 60 * 1000;
 
-/** Window for the second `_` to read as "forget" rather than a second mute. */
-export const FORGET_DOUBLE_MS = 800;
+/**
+ * How long the note stays up after the first press, offering the second one.
+ *
+ * ⚠ This window is the whole reason `forget` is reachable. Without it the first
+ * press silences the cue, the note stops painting, and there is nothing left on
+ * screen to press `_` on a second time — the grain would be unreachable through
+ * the UI, which is exactly the state the first cut of this shipped in.
+ *
+ * So it is a GRACE window, not a double-click timer: long enough to read a new
+ * hint and act on it, not a reflex test. During it the note keeps painting and
+ * its hint changes to say what a second press does.
+ */
+export const FORGET_GRACE_MS = 3_000;
 
 /** key → epoch ms at which the mute lapses. */
 const _muted = new Map<string, number>();
@@ -98,9 +109,25 @@ export function muteRemainingMs(key: string, now: number = Date.now()): number {
 }
 
 /**
- * Record a dismissal press. The FIRST press mutes; a SECOND press on the same
- * cue within `FORGET_DOUBLE_MS` upgrades it to a forget. Returns which grain
- * was applied so the caller can log it and the note can say what happened.
+ * Milliseconds left of the offer-to-forget window, 0 outside it.
+ *
+ * DimRender keeps painting a note while this is positive (with a hint saying
+ * what a second press does) and Cycling keeps claiming `_` for it. Both stop
+ * the moment it lapses, so a muted cue goes quiet and `_` returns to its
+ * ordinary meaning — no key silently swallowed over an invisible note.
+ */
+export function forgetOfferRemainingMs(key: string, now: number = Date.now()): number {
+  if (!key || _forgotten.has(key)) return 0;      // already forgotten — nothing to offer
+  const last = _lastPress.get(key);
+  if (last === undefined) return 0;
+  const left = last + FORGET_GRACE_MS - now;
+  return left > 0 ? left : 0;
+}
+
+/**
+ * Record a dismissal press. The FIRST press mutes and opens the offer window;
+ * a SECOND press within `FORGET_GRACE_MS` upgrades it to a forget. Returns
+ * which grain was applied, so the caller can log it.
  *
  * The double-press is deliberately keyed per cue, not global: pressing `_` on
  * two different advisories in quick succession mutes both rather than forgetting
@@ -113,7 +140,7 @@ export function pressDismiss(
   const { key, label, source } = args;
   if (!key) return 'mute';
   const last = _lastPress.get(key) ?? 0;
-  const grain: 'mute' | 'forget' = now - last <= FORGET_DOUBLE_MS ? 'forget' : 'mute';
+  const grain: 'mute' | 'forget' = last > 0 && now - last <= FORGET_GRACE_MS ? 'forget' : 'mute';
   _lastPress.set(key, now);
 
   if (grain === 'forget') {

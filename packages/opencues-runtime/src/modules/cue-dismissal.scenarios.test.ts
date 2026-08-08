@@ -19,7 +19,8 @@ import { DimRender } from './dim-render';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs, _resetCycledEverForTests, type WordDef } from '../state/dyn-defs';
 import {
-  isCueDismissed, registerDismissalSink, setForgottenKeys, _resetCueDismissalsForTests,
+  FORGET_GRACE_MS, isCueDismissed, registerDismissalSink, setForgottenKeys,
+  _resetCueDismissalsForTests,
 } from '../state/cue-dismissals';
 import type { DismissalRecord } from '@opencues/core';
 import { MockAdapter } from '../../testing/mock-adapter';
@@ -41,9 +42,12 @@ async function setup(text = 'I am free Thursday morning') {
   const cycling = new Cycling(adapter, hlState, dynDefs, loader);
   cycling.subscribe();
   const dim = new DimRender(adapter, hlState, dynDefs, loader);
+  // Spans the first sentence only, so a second advisory can be registered on a
+  // later one without the two overlapping.
+  const first = text.split('. ')[0] + (text.includes('. ') ? '.' : '');
   const advisory: WordDef = {
-    originalWord: text, alternatives: [text], currentIndex: 0,
-    spanStart: 0, spanEnd: text.length,
+    originalWord: first, alternatives: [first], currentIndex: 0,
+    spanStart: 0, spanEnd: first.length,
     blankName: 'sentence-cue:calendar', cueTip: CLASH, priority: 90,
   };
   dynDefs.set(0, advisory);
@@ -66,28 +70,59 @@ describe('the note teaches the gesture', () => {
       .toBe('(underscore to cycle)');
   });
 
-  it('the hint retires once the user has dismissed that note', async () => {
+  it('the plain dismiss hint returns once a mute has lapsed', async () => {
+    // A mute is not a lesson learned, so the cue comes back offering the same
+    // gesture. (The how-to hint is retired only by a forget, after which there
+    // is no cue left to show it.)
     const { adapter, dim, text } = await setup();
     adapter.fireKey('_', {}, { cursorOffset: 3 });
-    setForgottenKeys([]);                       // the mute is what silenced it
-    _resetCueDismissalsForTests();              // …so un-silence to inspect the hint
+    _resetCueDismissalsForTests();              // stand in for the mute lapsing
     expect(dim.compute({ text, cursor: 3, externalHighlights: [] })?.inlineNote?.hint)
-      .toBeUndefined();
+      .toBe('(underscore to dismiss)');
   });
 });
 
 describe('press `_` once — mute', () => {
-  it('silences the note and types nothing into the buffer', async () => {
+  it('types nothing into the buffer, and the note offers the second grain', async () => {
+    // ⚠ Regression: the first cut deleted the def and stopped painting on the
+    // first press, so there was nothing left on screen to press `_` on again —
+    // `forget` was unreachable through the UI. The note must survive the offer
+    // window and say what a second press does.
     const { adapter, dim, text } = await setup();
-    expect(dim.compute({ text, cursor: 3, externalHighlights: [] })?.inlineNote).toBeTruthy();
+    expect(dim.compute({ text, cursor: 3, externalHighlights: [] })?.inlineNote?.hint)
+      .toBe('(underscore to dismiss)');
 
     adapter.fireKey('_', {}, { cursorOffset: 3 });
 
     // The gesture is consumed: the buffer is untouched, no stray underscore.
     expect(adapter.getText()).toBe(text);
     expect(adapter.setTextCalls).toHaveLength(0);
-    // And the note is gone.
-    expect(dim.compute({ text, cursor: 3, externalHighlights: [] })?.inlineNote).toBeUndefined();
+    // The note is still up, now offering the forget.
+    expect(dim.compute({ text, cursor: 3, externalHighlights: [] })?.inlineNote).toMatchObject({
+      text: CLASH, hint: '(muted · underscore again to forget)',
+    });
+  });
+
+  it('goes quiet once the offer window lapses', async () => {
+    const { adapter, dim, text } = await setup();
+    adapter.fireKey('_', {}, { cursorOffset: 3 });
+    const real = Date.now;
+    try {
+      Date.now = () => real.call(Date) + FORGET_GRACE_MS + 1;
+      expect(dim.compute({ text, cursor: 3, externalHighlights: [] })?.inlineNote).toBeUndefined();
+    } finally { Date.now = real; }
+  });
+
+  it('stops swallowing `_` once the note is no longer painted', async () => {
+    // A muted cue past its window paints nothing, so the key must fall through
+    // to its ordinary meaning rather than vanish over an invisible note.
+    const { adapter } = await setup();
+    adapter.fireKey('_', {}, { cursorOffset: 3 });
+    const real = Date.now;
+    try {
+      Date.now = () => real.call(Date) + FORGET_GRACE_MS + 1;
+      expect(adapter.fireKey('_', {}, { cursorOffset: 3 })).toBe(false);
+    } finally { Date.now = real; }
   });
 
   it('does not write anything durable — a mute is this session only', async () => {
@@ -99,11 +134,14 @@ describe('press `_` once — mute', () => {
   });
 
   it('leaves a DIFFERENT advisory alone', async () => {
-    const { adapter, dynDefs, dim, text } = await setup();
-    const at = text.indexOf('Thursday');
+    // The p31 invariant: silencing one claim must not blind another.
+    const text = 'I am free Thursday morning. Pick-up is at four.';
+    const { adapter, dynDefs, dim } = await setup(text);
+    const second = 'Pick-up is at four.';
+    const at = text.indexOf(second);
     dynDefs.set(5, {
-      originalWord: 'Thursday', alternatives: ['Thursday'], currentIndex: 0,
-      spanStart: at, spanEnd: at + 'Thursday'.length,
+      originalWord: second, alternatives: [second], currentIndex: 0,
+      spanStart: at, spanEnd: at + second.length,
       blankName: 'sentence-cue:calendar', cueTip: '⚠ clashes with the school run',
     });
     adapter.fireKey('_', {}, { cursorOffset: 3 });          // dismiss the first
@@ -117,13 +155,11 @@ describe('press `_` twice — forget', () => {
   it('writes one durable record with the label the user saw', async () => {
     const written: DismissalRecord[] = [];
     registerDismissalSink((r) => written.push(r));
-    const { adapter, dynDefs, advisory } = await setup();
+    const { adapter } = await setup();
 
+    // Two presses on the note in front of you — no re-registration needed,
+    // because the note is still painted through the offer window.
     adapter.fireKey('_', {}, { cursorOffset: 3 });
-    // The def is gone after the first press, so the second press needs the note
-    // back — exactly what happens live, where the next resolve re-registers it
-    // and the user presses again on the note in front of them.
-    dynDefs.set(0, advisory);
     adapter.fireKey('_', {}, { cursorOffset: 3 });
 
     expect(written).toHaveLength(1);
@@ -160,11 +196,11 @@ describe('`_` still means cycle where there is something to cycle', () => {
 describe('restoring from the CLI', () => {
   it('brings the cue back in the running session, no restart', async () => {
     const { adapter, dynDefs, dim, text, advisory } = await setup();
+    registerDismissalSink(() => { /* a writer exists, so forget is durable */ });
     adapter.fireKey('_', {}, { cursorOffset: 3 });
-    dynDefs.set(0, advisory);
     adapter.fireKey('_', {}, { cursorOffset: 3 });          // forgotten
 
-    dynDefs.set(0, advisory);
+    dynDefs.set(0, advisory);                                // a later resolve
     expect(dim.compute({ text, cursor: 3, externalHighlights: [] })?.inlineNote).toBeUndefined();
 
     // `opencues dismissals restore` rewrites the file; the ingest re-reads it

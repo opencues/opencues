@@ -23,7 +23,7 @@ across mute, revival, scoping and kill at 7/7.
 
 | | Mute | Forget |
 |---|---|---|
-| Gesture | `_` once on the note | `_` twice, within 800 ms |
+| Gesture | `_` once on the note | `_` again, within `FORGET_GRACE_MS` (3 s) |
 | Lives in | memory (`cue-dismissals.ts`), per host process | `<cues>/dismissals.json` |
 | Lasts | `MUTE_MS` (30 min), then lapses on its own | until restored |
 | Listed by `opencues dismissals` | no | yes |
@@ -32,6 +32,22 @@ The mute is what makes the feature safe to ship. Without it the only response
 to a cue that is right but badly timed is the permanent one, and a user will
 take it — after which the feature is dead for them. With it, "not now" and
 "never" are different keystrokes.
+
+### ⚠ The offer window is what makes `forget` reachable
+
+A mute silences the cue, which means DimRender stops painting its note and the
+resolver stops registering it. So there is nothing left on screen to press `_`
+on a second time — the first cut of this shipped exactly that, with the second
+grain unreachable through the UI, and a scenario test that hid it by
+re-registering the def by hand between the presses.
+
+The fix: for `FORGET_GRACE_MS` after the first press the note **keeps painting**,
+with its hint replaced by `(muted · underscore again to forget)`. Cycling keeps
+claiming `_` for the same window and stops the moment it lapses, so a muted cue
+never swallows a keystroke over an invisible note.
+
+Three seconds, not a double-click timer: long enough to read the new hint and
+act, because the second press is a decision rather than a reflex.
 
 ## The key is TEXT, not an id
 
@@ -80,8 +96,9 @@ Three places, each covering something the others cannot:
    `alternatives.length <= 1` guard, which is exactly what would otherwise drop
    advisories on the floor and let the `_` type into the buffer. Same liveness
    and cursor gates as the cycle path, so dismiss fires precisely where the note
-   is painted. Deletes the def, retires the note's how-to hint, repaints, and
-   consumes the keystroke.
+   is painted, plus the offer-window check so it claims `_` only while the note
+   is visible. A mute LEAVES the def in place (the note must keep painting); a
+   forget deletes it and retires the note's how-to hint.
 2. **`DimRender`** — the paint. A dismissed cue's note never renders, which also
    covers a def registered *before* the dismissal.
 3. **`Resolver`** — the registration. A dismissed cue is never registered at
