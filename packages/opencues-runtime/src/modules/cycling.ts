@@ -13,6 +13,7 @@
 import type { HostAdapter, KeyEvent, ProcessHandle, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
 import { DynDefs, inlineNoteText, markCycledEver, noteHintKey, type WordDef } from '../state/dyn-defs';
+import { dismissalTargetOf, pressDismiss } from '../state/cue-dismissals';
 import type { ConfigLoader, BlankEntry } from './config-loader';
 import { splitWords } from './navigation';
 import { resolveNavKeymap } from './nav-keymap';
@@ -292,12 +293,35 @@ export class Cycling {
 
     const text = event.text;
     const cursor = event.cursorOffset;
-    for (const [, def] of this.dynDefs.entries()) {
+    for (const [defIndex, def] of this.dynDefs.entries()) {
       // Note-bearing = cueTip advisory OR history-bearing LLM blank (transform /
       // fluid). Same predicate DimRender paints on, so `_`-step fires exactly
       // where a note is visible — for a blank, the alternatives ARE the walkable
       // transform history.
       if (inlineNoteText(def) === undefined) continue;
+      // A PURE ADVISORY (calendar clash, an advisory contradiction verdict) has
+      // nothing to cycle to, so `_` on it means DISMISS instead: once mutes,
+      // twice forgets. Checked before the cycleable guard below, because that
+      // guard is exactly what would otherwise drop these on the floor and let
+      // the `_` type into the buffer.
+      const target = dismissalTargetOf(def);
+      if (target) {
+        // Same liveness + cursor gate the cycle path uses below, so dismiss
+        // fires exactly where the note is painted and never on a stale span.
+        if (def.spanEnd <= def.spanStart || def.spanEnd > text.length) continue;
+        if (text.slice(def.spanStart, def.spanEnd) !== def.alternatives[def.currentIndex]) continue;
+        if (cursor < def.spanStart || cursor > def.spanEnd) continue;  // inclusive, matches paint
+        const grain = pressDismiss(target);
+        // Retire this note's how-to hint the same way a cycle does — the user
+        // has just performed the gesture it was teaching.
+        markCycledEver(noteHintKey(def));
+        this.dynDefs.delete(defIndex);
+        this.adapter.log('info', `cue ${grain}: ${target.label}`);
+        // Repaint so the note goes under the keystroke rather than at the next
+        // resolve, and CONSUME the `_` — it is a gesture, not text.
+        this.adapter.forceRender();
+        return true;
+      }
       if (def.alternatives.length <= 1) continue;
       // Generic span-liveness (not sentence-cue-specific): the current alt is
       // still verbatim at the recorded span. Stale → skip (user edited it).

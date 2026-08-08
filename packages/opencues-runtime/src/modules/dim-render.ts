@@ -11,6 +11,7 @@ import type { HostAdapter, InlineNote, Range, RenderContext, RenderDirectives, U
 import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs, WordDef } from '../state/dyn-defs';
 import { inlineNoteText, isHintSuppressed, noteHintKey } from '../state/dyn-defs';
+import { dismissalTargetOf, isCueDismissed } from '../state/cue-dismissals';
 import type { ConfigLoader } from './config-loader';
 import type { SpanFillState } from '../state/span-fill';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
@@ -382,6 +383,11 @@ export class DimRender {
           }
         }
         if (noteText === undefined) continue;
+        // Dismissed (muted or forgotten) → the note does not paint at all. The
+        // check sits here, on the paint, so it covers a def registered BEFORE
+        // the dismissal as well as one resolved after it.
+        const dismissable = dismissalTargetOf(def);
+        if (dismissable && isCueDismissed(dismissable.key)) continue;
         if (!defSpanLive(def, text)) continue;  // stale span — skip
         const s = toCtx ? toCtx.start(def.spanStart) : def.spanStart;
         const e = toCtx ? toCtx.end(def.spanEnd) : def.spanEnd;
@@ -391,11 +397,16 @@ export class DimRender {
           // `(ctrl+alt+up/down to adjust)`, a cycleable cue uses `(underscore to
           // cycle)`. A pure advisory (calendar conflict, single alt) has nothing
           // to engage, so no hint.
+          // A pure advisory has nothing to cycle, so `_` is free there and means
+          // DISMISS: once to mute, twice to forget. Same one-time-hint model as
+          // the other two gestures — it teaches, then retires.
           const cycleable = def.alternatives.length > 1;
           const suppressed = isHintSuppressed(noteHintKey(def));
           const hint = actuator
             ? (suppressed ? undefined : '(ctrl+alt+up/down to adjust)')
-            : ((cycleable && !suppressed) ? '(underscore to cycle)' : undefined);
+            : cycleable
+              ? (suppressed ? undefined : '(underscore to cycle)')
+              : ((dismissable && !suppressed) ? '(underscore to dismiss)' : undefined);
           inlineNote = { spanStart: s, spanEnd: e, text: noteText, hint };
           // Auto-select: the note-bearing span the caret is in promotes from dim
           // to the active highlight — the "you're on this, `_` engages it" state,

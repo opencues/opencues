@@ -17,6 +17,7 @@ import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../ada
 import type { ConfigLoader } from './config-loader';
 import type { DynDefs, WordDef } from '../state/dyn-defs';
 import { reconstructAsTyped, reconstructAsTypedWithMap } from '../state/dyn-defs';
+import { dismissalTargetOf, isCueDismissed } from '../state/cue-dismissals';
 import type { HighlightState } from '../state/highlight-state';
 import type { SpanFillState } from '../state/span-fill';
 import type { AgentTaskState } from '../state/agent-task';
@@ -2202,6 +2203,18 @@ export class Resolver {
         }
         if (overlapsSatellite || overlapsDynDef) {
           this.adapter.log('info', `SentenceCue[${r.source}]: skipping â sentence span [${start},${end}) overlaps an active managed span (satellite=${overlapsSatellite}, dyndef=${overlapsDynDef})`);
+          continue;
+        }
+
+        // Dismissed by the user (muted this session, or forgotten on disk) →
+        // never register it. Doing this HERE rather than only at paint time is
+        // what makes the dismissal cover the secondary display too, and keeps a
+        // silenced cue out of the def table entirely.
+        const dismissTarget = dismissalTargetOf({
+          cueTip: r.cueTip, blankName: r.source, alternatives: r.alternatives,
+        });
+        if (dismissTarget && isCueDismissed(dismissTarget.key)) {
+          this.adapter.log('info', `SentenceCue[${r.source}]: skipping — dismissed by the user (${dismissTarget.label})`);
           continue;
         }
 

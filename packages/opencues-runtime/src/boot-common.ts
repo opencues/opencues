@@ -530,6 +530,7 @@ import { HighlightState } from './state/highlight-state';
 import { DynDefs } from './state/dyn-defs';
 import { SpanFillState } from './state/span-fill';
 import { DismissedBlanks } from './state/dismissed-blanks';
+import { registerDismissalSink, setForgottenKeys } from './state/cue-dismissals';
 import { SelectorSatelliteState } from './state/selector-satellite';
 import { AgentTaskState } from './state/agent-task';
 import { UndoJournal } from './state/undo-journal';
@@ -882,6 +883,97 @@ export interface SessionCommitmentsHolder {
   sessionId?: string;
   /** Stop the refresh timer (harness teardown / tests). */
   stop(): void;
+}
+
+/**
+ * Cue dismissals — hydrate what the user has forgotten, and register the writer
+ * that persists a new forget.
+ *
+ * Wired from `buildSharedRuntime`, so every host band gets it from one line
+ * rather than five. Node-only: chrome has no filesystem, and there the runtime
+ * degrades to mute-only (see `pressDismiss`), which is the honest behaviour
+ * rather than a promise it cannot keep.
+ *
+ * The file is USER-level (`<cues>/dismissals.json`), deliberately not scoped
+ * per working directory like the commitments watchlist. A watchlist is session
+ * state; "I never want to see this advisory again" is a standing preference,
+ * and a user who silenced a calendar clash in one repo does not expect it back
+ * in the next.
+ *
+ * The re-read is what makes `opencues dismissals` a live undo: restore a cue in
+ * the CLI and the running host picks it up on the next poll, no restart.
+ */
+export function startCueDismissals(
+  log: (level: LogLevel, msg: string) => void,
+  opts: { refreshMs?: number } = {},
+): { stop(): void } | undefined {
+  if (typeof process === 'undefined' || !process.versions?.node) return undefined;
+  let core: {
+    parseDismissals?: (raw: string) => Array<{ key: string }>;
+    serializeDismissals?: (records: ReadonlyArray<unknown>) => string;
+    addDismissal?: (records: ReadonlyArray<unknown>, rec: unknown) => Array<unknown>;
+  } | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    core = require('@opencues/core');
+  } catch {
+    return undefined;
+  }
+  if (!core?.parseDismissals || !core.serializeDismissals || !core.addDismissal) return undefined;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require('node:path') as typeof import('node:path');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const os = require('node:os') as typeof import('node:os');
+
+  const cuesDir = (): string => {
+    const override = typeof process !== 'undefined' ? process.env['OPENCUES_HOME'] : undefined;
+    return override && override.trim().length > 0 ? override : path.join(os.homedir(), '.cues');
+  };
+  const file = (): string => path.join(cuesDir(), 'dismissals.json');
+
+  let lastMtimeMs = -1;
+  const load = (): void => {
+    const f = file();
+    try {
+      const st = fs.statSync(f, { throwIfNoEntry: false });
+      if (!st) {
+        if (lastMtimeMs !== -1) { setForgottenKeys([]); log('info', 'dismissals: file removed — nothing forgotten'); }
+        lastMtimeMs = -1;
+        return;
+      }
+      if (st.mtimeMs === lastMtimeMs) return;
+      const records = core!.parseDismissals!(fs.readFileSync(f, 'utf8'));
+      setForgottenKeys(records.map((r) => r.key));
+      lastMtimeMs = st.mtimeMs;
+      log('info', `dismissals: ${records.length} forgotten cue(s) loaded from ${f}`);
+    } catch (err) {
+      // A malformed file must not take the host down, and must not silently
+      // un-forget everything either — keep the last good set.
+      log('warn', `dismissals: load failed (${(err as Error)?.message ?? err})`);
+    }
+  };
+
+  // Read-modify-write so a concurrent host's forget is not lost, and so a hand
+  // edit of the file survives. Cheap enough at human keystroke rates.
+  registerDismissalSink((rec) => {
+    const f = file();
+    try {
+      fs.mkdirSync(path.dirname(f), { recursive: true });
+      const existing = fs.existsSync(f) ? core!.parseDismissals!(fs.readFileSync(f, 'utf8')) : [];
+      fs.writeFileSync(f, core!.serializeDismissals!(core!.addDismissal!(existing, rec)));
+      lastMtimeMs = -1;   // force the next poll to re-read what we just wrote
+      log('info', `dismissals: forgot "${rec.label}" (${rec.source})`);
+    } catch (err) {
+      log('warn', `dismissals: write failed (${(err as Error)?.message ?? err})`);
+    }
+  });
+
+  load();
+  const timer = setInterval(load, opts.refreshMs ?? 4_000);
+  if (typeof (timer as { unref?: () => void }).unref === 'function') (timer as { unref: () => void }).unref();
+  return { stop: () => { clearInterval(timer); registerDismissalSink(null); } };
 }
 
 export function buildSessionCommitmentsIngest(
@@ -1422,6 +1514,12 @@ export function buildSharedRuntime(
   // marker / no repo / chrome / any error. See `checkRuntimeDrift`
   // for the limits.
   void checkRuntimeDrift(adapter);
+
+  // Cue dismissals: hydrate what the user has forgotten and register the writer
+  // for new ones. One wire here rather than five per-band ones; a no-op where
+  // there is no filesystem (chrome), which leaves dismissal working as
+  // mute-only there.
+  startCueDismissals(log);
 
   // ConfigLoader first — every other module depends on it. load() runs
   // async; modules tolerate the empty pre-load window.

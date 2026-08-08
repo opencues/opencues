@@ -31,6 +31,7 @@ export default defineConfig({
       'src/segment.test.ts',
       'src/sources/blank-source.test.ts',
       'src/session-commitments.test.ts',
+      'src/dismissals.test.ts',
       'src/contradiction/session-contradiction-source.test.ts',
       'src/sources/tool-prompt-source.test.ts',
       'src/sources/session-cue-source.test.ts',
