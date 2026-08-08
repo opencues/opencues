@@ -2,6 +2,7 @@
 name: brightness
 type: blank
 tip: screen brightness
+icon: 🔆
 speak: true
 blankKeywords: brightness
 blankStep: 10

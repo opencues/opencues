@@ -83,6 +83,19 @@ export interface ResolverOptions {
     readonly ingestedAt?: string;
   };
   /**
+   * Ingested session-commitments watchlist (the CC-developer decisions the
+   * `opencues extract-commitments` producer distilled from the session
+   * transcript). A live holder the host mutates on a cadence; read fresh each
+   * resolve and forwarded to SessionContradictionSource via `CueContext`.
+   * Gated by `session-contradiction-mode` (off by default).
+   */
+  readonly sessionCommitments?: {
+    readonly commitments: ReadonlyArray<{ id: string; category: string; statement: string }>;
+    readonly summary?: string;
+    readonly ingestedAt?: string;
+    readonly sessionId?: string;
+  };
+  /**
    * Default-model override from a host-level UI (chrome popup's Model
    * dropdown). When non-empty, takes precedence over OPENCUES.md's
    * `llm-model:` scalar AND the legacy `defaultModel` fallback.
@@ -856,6 +869,12 @@ export class Resolver {
       // disables it. (Absent OR on → enabled.) Cost: one cues-bucket LLM
       // parse per settled sentence, cheap on cerebras's prefix cache.
       enableContradictionCues: settings.get('contradiction-cues-mode') !== 'off',
+      // Session cues stay OPT-IN (`=== 'on'`, off by default): they run an
+      // LLM producer over the session transcript + a per-tick matcher — the
+      // heavier, less-universal features the user deliberately kept off the
+      // on-by-default set.
+      enableSessionContradiction: settings.get('session-contradiction-mode') === 'on',
+      enableAskCues: settings.get('ask-cues-mode') === 'on',
       worldDataFetch: this.options.worldDataFetch,
       pageLocation: this.options.pageLocation,
       weatherLocation: settings.get('weather-location'),
@@ -1449,6 +1468,26 @@ export class Resolver {
               catalog: this.options.calendarContext.catalog,
               ingestedAt: this.options.calendarContext.ingestedAt,
               mode: 'on' as const,
+            }
+          : undefined,
+        // Session-commitments watchlist (ingested from the CC transcript by the
+        // `extract-commitments` producer). Host mutates the holder on a cadence;
+        // read fresh here so a re-ingest applies without restart. Gated by
+        // `session-contradiction-mode` (off by default). Not PII-dehydrated —
+        // these are the user's own project decisions, terse by construction; the
+        // producer prompt forbids secrets / code / file contents.
+        // Forwarded when EITHER consumer is on: session-contradiction (matches
+        // the draft against the commitments) OR ask-cues (grounds its question
+        // in the summary + decisions). Carries the `summary` for the latter.
+        sessionCommitments: (this.configLoader.opencuesState.sessionContradictionMode === 'on'
+          || this.configLoader.opencuesState.askCuesMode === 'on')
+          && this.options.sessionCommitments
+          && (this.options.sessionCommitments.commitments.length > 0 || !!this.options.sessionCommitments.summary)
+          ? {
+              commitments: this.options.sessionCommitments.commitments,
+              summary: this.options.sessionCommitments.summary,
+              ingestedAt: this.options.sessionCommitments.ingestedAt,
+              sessionId: this.options.sessionCommitments.sessionId,
             }
           : undefined,
         // Sentinel grammar (bare default / typed opt-in). Threaded so the
@@ -2194,6 +2233,9 @@ export class Resolver {
           cueTip: r.cueTip,
           // Carried so a later higher-priority overlapping cue can evict this one.
           priority: r.priority,
+          // Per-alternative display labels (ask-cues) → the rotating note shows
+          // legible option labels instead of prefix-identical sentence snippets.
+          noteLabels: (r.metadata as { noteLabels?: readonly string[] } | undefined)?.noteLabels,
         });
         wrote++;
 

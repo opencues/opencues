@@ -30,6 +30,7 @@ import { TransformBlankSource, type TransformBlankSourceConfig } from './transfo
 import { ConfigIntentSource, type ConfigIntentSourceConfig } from './config-intent-source';
 import { SentenceCueSource, type SentenceCueSourceConfig } from './sentence-cue-source';
 import { ContradictionLlmSource } from '../contradiction/contradiction-llm-source';
+import { SessionCueSource } from './session-cue-source';
 import { BankHolidayProvider } from '../contradiction/bank-holidays';
 import { WeatherProvider } from '../contradiction/weather';
 import { TflProvider } from '../contradiction/tfl';
@@ -220,6 +221,19 @@ export interface BuildSourcesOptions {
    *  mismatch, split-the-bill math — buffer + clock only, no LLM/network).
    *  Defaults to false; flip on via OPENCUES.md `contradiction-cues-mode: on`. */
   enableContradictionCues?: boolean;
+  /** Enable the session-contradiction layer — a fast LLM matches the draft
+   *  buffer against a watchlist of session decisions (produced out-of-band by
+   *  `opencues extract-commitments`) and flags a direct contradiction as a
+   *  passive cue. The watchlist arrives per-resolve on `CueContext`, so this is
+   *  just the on/off gate. Defaults to false; flip on via OPENCUES.md
+   *  `session-contradiction-mode: on`. */
+  enableSessionContradiction?: boolean;
+  /** Enable the AskUserQuestion (tool-prompt) cue — the sentence at the cursor
+   *  gets an inline question + cyclable options populated by the AskUserQuestion
+   *  tool prompt. Defaults to false; flip on via OPENCUES.md `ask-cues-mode:
+   *  on`. Ambient (fires on the current sentence; the source caches per
+   *  sentence so it's one LLM call per new sentence). */
+  enableAskCues?: boolean;
   /** Host-provided GET for the contradiction world-data caches (bank holidays,
    *  weather). Chrome passes a service-worker-routed fetch (a content-script
    *  fetch is blocked by the host page's CSP); native hosts omit it → global fetch. */
@@ -548,6 +562,39 @@ export function buildSourcesFromConfig(
       }));
     } else {
       options.log?.('buildSources: contradiction-cues → SKIPPED (no LLM resolvable — no key / trainsOnInput provider)');
+    }
+  }
+
+  // Session-contradiction cues (validator class) — a built-in source, not
+  // driven by any CUE.md. The watchlist (session commitments) arrives per
+  // resolve on CueContext (the runtime ingests session-commitments.json into a
+  // live holder), so here we only construct the matcher + wire its LLM. Reuses
+  // the sentence-cues LLM tier like the deterministic engine. Same
+  // temporal-dead-zone constraint as the block above — MUST come after
+  // resolveFor is defined. If no LLM resolves, the cue simply doesn't run.
+  // Session cue — the UNIFIED context-aware cue: session-contradiction (⚠) and
+  // ask-cues (❓) fused into ONE source that runs contradiction-first and
+  // short-circuits (no ask call when a contradiction fires), so they no longer
+  // overlap or evict each other. Per-type gating from the two scalars. Reuses
+  // the sentence-cues LLM tier. If no LLM resolves, it simply doesn't run.
+  if (options.enableSessionContradiction || options.enableAskCues) {
+    const scLlm = resolveFor(options.sentenceCues);
+    if (scLlm) {
+      const which = [options.enableSessionContradiction && 'contradiction', options.enableAskCues && 'ask'].filter(Boolean).join('+');
+      options.log?.(`buildSources: session-cue [${which}] → LLM engine (${scLlm.provider.id}/${scLlm.model})`);
+      sources.push(new SessionCueSource({
+        httpAdapter: withFallback(options.httpAdapter, scLlm.fallback),
+        provider: scLlm.provider,
+        endpoint: scLlm.endpoint,
+        apiKey: scLlm.apiKey,
+        model: scLlm.model,
+        maxThinking: options.maxThinking,
+        enableContradiction: !!options.enableSessionContradiction,
+        enableAsk: !!options.enableAskCues,
+        log: (m) => options.log?.(m),
+      }));
+    } else {
+      options.log?.('buildSources: session-cue → SKIPPED (no LLM resolvable — no key / trainsOnInput provider)');
     }
   }
 

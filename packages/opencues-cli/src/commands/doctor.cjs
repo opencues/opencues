@@ -553,6 +553,11 @@ module.exports = async function doctor(argv, ctx) {
         }
       }
     } catch { /* cc-statusline lib unavailable — non-fatal */ }
+    // (No statusline-dependency warning for session-contradiction / ask-cues:
+    // the CC boot band now kicks the producer itself via a transcript poller —
+    // startSessionCommitmentsKick + locateNewestCCTranscript — the same way
+    // OpenCode/Gemini do, so the feature no longer depends on the opt-in
+    // statusline. The statusline stays a pure tip-rendering opt-in.)
     s.render();
   }
   // Stale pre-compact-footprint install still on disk?

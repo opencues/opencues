@@ -155,6 +155,21 @@ export interface OpenCuesState {
    */
   readonly calendarContextMode: 'off' | 'on';
   /**
+   * Session-contradiction cues (CC-developer watchlist matcher). `off`
+   * (default): no session-commitment matching. `on`: a background producer
+   * distils the CC session transcript into a commitments watchlist and a fast
+   * model flags a draft that contradicts one. Claude Code only (needs the
+   * transcript). See docs/architecture/session-contradiction.md.
+   */
+  readonly sessionContradictionMode: 'off' | 'on';
+  /**
+   * AskUserQuestion cues (tool-prompt-populated). `off` (default): no
+   * tool-prompt question cues. `on`: the sentence under the cursor gets an
+   * inline question + cyclable options, populated by the AskUserQuestion tool
+   * prompt. Reuses the cue/cycling UI. See tool-prompt-source.ts.
+   */
+  readonly askCuesMode: 'off' | 'on';
+  /**
    * Sentinel grammar for identity-/blank-context tokens.
    * `bare` (default): flat `[TOKEN]` form — byte-identical to pre-feature
    * behaviour for every existing user.
@@ -272,6 +287,8 @@ export const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   identityContextMode: 'safe',
   blankContextMode: 'safe',
   calendarContextMode: 'on',
+  sessionContradictionMode: 'off',
+  askCuesMode: 'off',
   sentinelLanguage: 'bare',
   inlineCuesMode: 'inline',
   aiCallableAllow: [],
@@ -376,6 +393,13 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   // Explicit `off` is the only value that disables a configured feed.
   const calendarContextMode: 'off' | 'on' =
     get('calendar-context-mode', 'on').toLowerCase() === 'off' ? 'off' : 'on';
+  // Session-contradiction — OFF by default (CC-only; sends distilled session
+  // decisions to the cues bucket). Only an explicit `on` enables it.
+  const sessionContradictionMode: 'off' | 'on' =
+    get('session-contradiction-mode', 'off').toLowerCase() === 'on' ? 'on' : 'off';
+  // AskUserQuestion (tool-prompt) cues — OFF by default; only an explicit `on`.
+  const askCuesMode: 'off' | 'on' =
+    get('ask-cues-mode', 'off').toLowerCase() === 'on' ? 'on' : 'off';
   // Sentinel grammar — `bare` default keeps every existing user on the
   // flat [TOKEN] path; only an explicit `typed` opts into the richer
   // grammar. Unrecognised value → `bare` (fail-safe, no behavioural diff).
@@ -430,7 +454,7 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   // Tests keep shipping mock `settings:` blocks; they get the
   // file-driven definitions, identical to the pre-refactor behaviour.
   const definitions = mergeDefinitions(getMenuDefinitions(undefined, settings), parseSettingsBlock(lines));
-  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, identityContextMode, blankContextMode, calendarContextMode, sentinelLanguage, inlineCuesMode, aiCallableAllow, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
+  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, identityContextMode, blankContextMode, calendarContextMode, sessionContradictionMode, askCuesMode, sentinelLanguage, inlineCuesMode, aiCallableAllow, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
 }
 
 /**
@@ -798,6 +822,8 @@ export class ConfigLoader {
       identityContextMode,
       blankContextMode,
       calendarContextMode: (get('calendar-context-mode', 'on').toLowerCase() === 'off' ? 'off' : 'on') as 'off' | 'on',
+      sessionContradictionMode: (get('session-contradiction-mode', 'off').toLowerCase() === 'on' ? 'on' : 'off') as 'off' | 'on',
+      askCuesMode: (get('ask-cues-mode', 'off').toLowerCase() === 'on' ? 'on' : 'off') as 'off' | 'on',
       sentinelLanguage: (get('sentinel-language', 'bare').toLowerCase() === 'typed' ? 'typed' : 'bare') as 'bare' | 'typed',
       inlineCuesMode: (get('inline-cues-mode', 'inline').toLowerCase() === 'secondary' ? 'secondary' : 'inline') as 'inline' | 'secondary',
       aiCallableAllow: (get('ai-callable-allow', '') || get('param-safe-allow', '')) // LEGACY-NAME-ALLOW: pre-rename scalar

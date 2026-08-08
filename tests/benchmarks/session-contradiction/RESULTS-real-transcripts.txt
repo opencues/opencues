@@ -1,0 +1,65 @@
+
+real-transcript-bench — Stage A on 5 real sessions
+gemini→gemini-3.5-flash-lite, judge anthropic/claude-sonnet-4-6, tail 256KB, render ≤48k chars
+====================================================================================================
+
+■ opencues ~7.6MB
+   data reduction:  raw 7671KB  →  tail 255KB  →  11 prose turns (7KB)  →  rendered 7KB (1.9k tok approx)
+   gemma  (cerebras/gemma-4-31b)         607ms  in   3.0k out  174  # 3  precision    3/3  recall    3/7
+                                        missed:  "Stage-A default is Haiku-first via resolveExtractionLLM; bench recommends flipping to cerebras/gemini-lite (4× faster, identical recall)"; "Harness commits go to tests/agentic (private, scenarios branch); extraction bench commits go to tests/benchmarks (public)"
+   haiku  (anthropic/claude-haiku-4-5)   4066ms  in   3.0k out  352  # 6  precision    6/6  recall    6/9
+                                        missed:  "Benchmark finding: flip Stage-A extraction default away from Haiku to cerebras/gemini-flash-lite (4× faster, same 5/5 recall, lower cost)"; "seedFiles hardening: move scoped subdir aside during seeding to prevent shadowing scenario's flat seed (bug fix decision)"
+   gemini (gemini/flash-lite)           1042ms  in   3.0k out  101  # 2  precision    2/2  recall    2/6
+                                        missed:  "Stage-A default extraction model routes to Haiku when ANTHROPIC_API_KEY is set (resolveExtractionLLM), flagged as wrong default"; "Harness scenario commits go to `scenarios` branch in private `tests/agentic` repo per PR workflow"
+
+■ worktree ~9.4MB
+   data reduction:  raw 9425KB  →  tail 255KB  →  18 prose turns (10KB)  →  rendered 10KB (2.5k tok approx)
+   gemma  (cerebras/gemma-4-31b)         622ms  in   3.6k out  187  # 3  precision    3/3  recall    3/5
+                                        missed:  "Surface catalog classification: native Win32/WinForms/WPF and Electron (MSAA) work; browser web content is deny-listed (extension's job)"; "Ctrl+Backspace (word-delete) identified as a booster fallback to extend no-flash clear ceiling (~300 chars), not a foundation"
+   haiku  (anthropic/claude-haiku-4-5)   5103ms  in   3.8k out  364  # 6  precision    5/6  recall    5/7
+                                        missed:  "Ctrl+Backspace (word-delete) noted as a booster fallback to ~6x the whole-clear ceiling (~300 chars) when diff is large"; "Browser web content deny-listed as extension's job (a policy constraint, not just scope note)"
+                                        weak:    "Item 6 (scope: test prefix-diff in Discord) is an ephemeral test plan/task, not a durable architectural decision or constraint"
+   gemini (gemini/flash-lite)            819ms  in   3.6k out   79  # 1  precision    1/1  recall    1/5
+                                        missed:  "WhatsApp/WinUI 3 parked as known-hard 'winui-island' surface — no re-investigation without AT-wake R&D"; "Browser web content deny-listed as extension's job (out of scope for this tool)"
+
+■ opencues ~19.6MB
+   data reduction:  raw 19655KB  →  tail 255KB  →  20 prose turns (6KB)  →  rendered 7KB (1.7k tok approx)
+   gemma  (cerebras/gemma-4-31b)         527ms  in   2.6k out  177  # 3  precision    3/3  recall    3/6
+                                        missed:  "Version bumped as patch (0.15.0 → 0.15.1) for this bugfix"; "Two explicit regression tests added to pin issue #282"
+   haiku  (anthropic/claude-haiku-4-5)   2683ms  in   2.7k out  203  # 3  precision    3/3  recall    3/4
+                                        missed:  "Version bumped from 0.15.0 to 0.15.1 (patch bump for bugfix)"; "Static TRIGGER_WORDS set retained as belt-and-braces fallback after refactor"
+                                        weak:    "Issue #282 closed / no open issues — ephemeral status, not a durable constraint or decision"
+   gemini (gemini/flash-lite)            618ms  in   2.6k out   31  # 0  precision    n/a  recall    0/6
+                                        missed:  "Drift-proof fix: pickWord excludes all words of matched trigger phrase (keyword) instead of maintaining a static TRIGGER_WORDS set"; "Contract clarification: keyword is always the exact trigger phrase, context holds the content word — tests updated to reflect real dispatch shape"
+
+■ opencues ~37MB
+   data reduction:  raw 36939KB  →  tail 254KB  →  17 prose turns (4KB)  →  rendered 4KB (1.1k tok approx)
+   gemma  (cerebras/gemma-4-31b)         504ms  in   2.0k out  148  # 2  precision    2/2  recall    2/5
+                                        missed:  "ClaudeLog tip rewrites left uncommitted intentionally — owner will handle commit/review themselves"; "PR #377 (docs/marketing-hero) merged into master and branch deleted (local + remote)"
+   haiku  (anthropic/claude-haiku-4-5)   3051ms  in   2.1k out  278  # 4  precision    4/4  recall    4/5
+                                        missed:  "File parses cleanly (node --check) with literal backticks and \' apostrophe escaping preserved — a durable constraint for future edits"
+   gemini (gemini/flash-lite)            783ms  in   2.0k out   32  # 0  precision    n/a  recall    0/5
+                                        missed:  "ClaudeLog sponsors.js: only title+content fields edited; id/cta/url/image/opencuesArchived left untouched"; "ClaudeLog tip rewrites left as uncommitted working-tree changes intentionally (not staged/pushed)"
+
+■ ClaudeLog ~50MB
+   data reduction:  raw 50440KB  →  tail 256KB  →  48 prose turns (8KB)  →  rendered 9KB (2.2k tok approx)
+   gemma  (cerebras/gemma-4-31b)         601ms  in   3.2k out  166  # 5  precision    5/5  recall    5/6
+                                        missed:  "Declined posts are logged to ledgers each tick (commit discipline established and repeated)"; "Priorities follow 'Early viral detection' note in CLAUDE.md — fresh posts weighted over older ones"
+   haiku  (anthropic/claude-haiku-4-5)   3718ms  in   3.4k out  378  # 7  precision    7/7  recall    7/8
+                                        missed:  "Commit ledger state after each tick (decline or surface), explicitly noted as 'ledgers committed'"; "Do not surface posts already seen/previously surfaced in prior ticks (implied by 'already-seen items' and 'only comment bumps')"
+   gemini (gemini/flash-lite)           1045ms  in   3.2k out  119  # 3  precision    3/3  recall    3/5
+                                        missed:  "Stay silent if no qualifying candidates found (explicit silence protocol)"; "Commit ledgers after each tick regardless of outcome (declined or surfaced)"
+
+====================================================================================================
+COST-AT-SCALE — input is bounded by the 256KB tail + 48k render, NOT the session size:
+session                    raw    tail    prose   rendered→LLM
+----------------------------------------------------------------------------------------------------
+opencues ~7.6MB         7671KB   255KB      7KB            7KB
+worktree ~9.4MB         9425KB   255KB     10KB           10KB
+opencues ~19.6MB       19655KB   255KB      6KB            7KB
+opencues ~37MB         36939KB   254KB      4KB            4KB
+ClaudeLog ~50MB        50440KB   256KB      8KB            9KB
+
+Note: on the largest sessions the 256KB tail holds only the most RECENT turns —
+decisions made early in a long session fall outside it (a recall boundary, by design).
+

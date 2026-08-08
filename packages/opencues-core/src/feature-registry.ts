@@ -455,6 +455,28 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
+    scalar: 'session-contradiction-mode',
+    group: 'Cues',
+    camelCase: 'sessionContradictionMode',
+    description: 'Watchlist contradiction cues — flags a draft that goes against a decision you made earlier in this coding session (stack, constraints, memory/compaction, scope). A background producer distils the session transcript into a commitments watchlist; a fast model checks each draft against it. Works on hosts with a session transcript (Claude Code, OpenCode, Gemini CLI).',
+    menuTip: 'Catch yourself contradicting the session: you agreed "runtime is Bun, not Node" earlier, then type "switch this to node". Two-stage — a slow producer builds the watchlist from the session transcript, a fast model matches your draft against it. LLM-authored advisory (passive; Ctrl+Alt+↑ applies the reconciled rewrite). OFF by default. Needs a session transcript — Claude Code, OpenCode, or Gemini CLI (on Claude Code the OpenCues statusline must be enabled — it triggers the producer).',
+    values: [
+      { id: 'off', description: 'Disabled (default) — no session-commitment matching' },
+      { id: 'on',  description: 'Enabled — a fast model flags a draft that contradicts an earlier session decision' },
+    ],
+  },
+  {
+    scalar: 'ask-cues-mode',
+    group: 'Cues',
+    camelCase: 'askCuesMode',
+    description: 'AskUserQuestion cues — attaches an inline question with cyclable options to the sentence under your cursor, populated by the well-known AskUserQuestion tool prompt. The question is the tip; each option is a cycle alternative (options that carry a concrete rewrite edit the sentence; advisory ones just inform).',
+    menuTip: 'Turn the sentence you\'re on into a question with options: "Substantiate the speed claim with data or qualify it?" → cycle "Add data" / "Qualify claim". Reuses the cue/cycling UI; the AskUserQuestion tool prompt populates it. Ambient (fires on the sentence at your cursor). One LLM call per new sentence (cached). OFF by default.',
+    values: [
+      { id: 'off', description: 'Disabled (default) — no tool-prompt question cues' },
+      { id: 'on',  description: 'Enabled — the sentence at your cursor gets an AskUserQuestion-shaped cue' },
+    ],
+  },
+  {
     scalar: 'inline-cues-mode',
     group: 'Cues',
     camelCase: 'inlineCuesMode',

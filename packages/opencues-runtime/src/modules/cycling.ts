@@ -12,7 +12,7 @@
 
 import type { HostAdapter, KeyEvent, ProcessHandle, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
-import { DynDefs, inlineNoteText, markCycledEver, type WordDef } from '../state/dyn-defs';
+import { DynDefs, inlineNoteText, markCycledEver, noteHintKey, type WordDef } from '../state/dyn-defs';
 import type { ConfigLoader, BlankEntry } from './config-loader';
 import { splitWords } from './navigation';
 import { resolveNavKeymap } from './nav-keymap';
@@ -356,6 +356,21 @@ export class Cycling {
         if (this.cycleSelectorSatellite(event, words, caretWord.index, +1)) return true;
       }
     }
+
+    // Actuator (blankStep: volume / brightness) — `_` NUDGES THE VALUE UP one
+    // step, the one-direction analogue of a text cue's `_`. Clamps at the top
+    // (cycleBlankStep clamps 0..100), so repeated `_` walks up to 100 and stops
+    // there (consumes the key, never inserts a stray `_`). Down is Ctrl+Alt+↓.
+    if (caretWord) {
+      const adef = this.dynDefs.get(caretWord.index);
+      const bn = adef?.blankName;
+      const ablk = bn
+        ? this.configLoader.blanks.get(bn) as { blankStep?: number; blankSuffix?: string; blankScript?: string } | undefined
+        : undefined;
+      if (bn && ablk && ablk.blankStep !== undefined) {
+        return this.cycleBlankStep(event, caretWord, ablk, bn, +1);
+      }
+    }
     return false;
   }
 
@@ -366,8 +381,24 @@ export class Cycling {
 
   /** Exposed for unit testing — direction is +1 (up, forward) / -1 (down, back). */
   step(event: KeyEvent, direction: 1 | -1): boolean {
-    if (!this.hlState.active || this.hlState.wordIndex === null) return false;
-    const wordIndex = this.hlState.wordIndex;
+    let wordIndex: number;
+    if (this.hlState.active && this.hlState.wordIndex !== null) {
+      wordIndex = this.hlState.wordIndex;
+    } else {
+      // GET arms the knob: with no active nav highlight, Ctrl+Alt+↑/↓ still
+      // adjusts a blankStep ACTUATOR (volume / brightness) when the caret sits
+      // in its filled value span — so `volume _` is immediately adjustable
+      // without a separate navigate. Confined to blankStep defs, so plain text
+      // cues still require an explicit navigate (behaviour unchanged for them).
+      const cw = splitWords(event.text).find(w => event.cursorOffset >= w.start && event.cursorOffset <= w.end);
+      const cdef = cw ? this.dynDefs.get(cw.index) : undefined;
+      const cblk = cdef?.blankName ? this.configLoader.blanks.get(cdef.blankName) as { blankStep?: number } | undefined : undefined;
+      if (cw && cblk && cblk.blankStep !== undefined) {
+        wordIndex = cw.index;
+      } else {
+        return false;
+      }
+    }
 
     const words = splitWords(event.text);
     const target = words[wordIndex];
@@ -727,6 +758,8 @@ export class Cycling {
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(newCursor);
     this.adapter.forceRender();
+    // Retire this span's how-to hint (per-note scope; keyed off its tip/value).
+    markCycledEver(`sf:${entry.tip ?? entry.alternatives[0] ?? ''}`);
     this.recordUndo(
       'cycle', `span-fill:${entry.index}`,
       event.text.slice(spanStartWord.start, spanEndWord.end),
@@ -811,15 +844,24 @@ export class Cycling {
     const clampedCursor = Math.max(0, Math.min(newCursor, newText.length));
 
     // Update the DynDef in-place so subsequent cycles see the new value.
+    // `alternatives` is synced to the new value too (not just originalWord) so
+    // the actuator note's liveness check (defSpanLive → alternatives[current])
+    // keeps matching after an adjust — otherwise the `🔊 system volume` note
+    // would vanish the moment you step.
     const def = this.dynDefs.get(target.index);
     if (def) {
       this.dynDefs.set(target.index, {
         ...def,
         originalWord: nextWord,
+        alternatives: [nextWord],
+        currentIndex: 0,
         spanStart: target.start,
         spanEnd: target.start + nextWord.length,
       });
     }
+    // Adjusting counts as cycling: it retires the one-time hint (the dial's
+    // `(ctrl+alt+up/down to adjust)`) for THIS actuator (per-note scope).
+    markCycledEver(`b:${blankName}`);
 
     // Sync spanFillState.lastFilledText to the new buffer BEFORE setText —
     // otherwise BlankFill._onTextChangeImpl sees the cycle output as a
@@ -929,9 +971,9 @@ export class Cycling {
     const len = def.alternatives.length;
     if (len <= 1) return false;
 
-    // The user is cycling a note — retire the `(underscore to cycle)` hint for
-    // the rest of the session (they've learned the gesture).
-    markCycledEver();
+    // The user is cycling a note — retire this note's `(underscore to cycle)`
+    // hint (per-note scope; keyed off the def's identity).
+    markCycledEver(noteHintKey(def));
 
     // Compute the char range to REPLACE from live word positions, not
     // from def.spanStart/spanEnd — those can drift across multi-word

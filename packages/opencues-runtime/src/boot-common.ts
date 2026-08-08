@@ -860,6 +860,325 @@ export function buildCalendarContextIngest(
   return holder;
 }
 
+/**
+ * Session-commitments ingest for the CC host — read the shared
+ * `session-commitments.json` snapshot (produced by `opencues
+ * extract-commitments`, kicked by the CC statusline) into a live holder the
+ * resolver reads fresh each pass. Mirrors buildCalendarContextIngest but
+ * simpler: no token/catalog build (the commitments are the user's own project
+ * decisions, not PII) and no feed-sync (the producer is the statusline-kick,
+ * out-of-band).
+ *
+ * Search order: `$OPENCUES_HOME/session-commitments.json` first (test-shard
+ * isolation), then `~/.cues/session-commitments.json`. Missing file → holder
+ * empties (the documented inert mode — the source stays silent). mtime-gated
+ * re-read on a 60s unref'd timer so a re-ingest applies without a host restart.
+ * Returns undefined in non-Node environments.
+ */
+export interface SessionCommitmentsHolder {
+  commitments: Array<{ id: string; category: string; statement: string }>;
+  summary?: string;
+  ingestedAt?: string;
+  sessionId?: string;
+  /** Stop the refresh timer (harness teardown / tests). */
+  stop(): void;
+}
+
+export function buildSessionCommitmentsIngest(
+  log: (level: LogLevel, msg: string) => void,
+  opts: { refreshMs?: number; cwd?: string } = {},
+): SessionCommitmentsHolder | undefined {
+  if (typeof process === 'undefined' || !process.versions?.node) return undefined;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fsMod = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const pathMod = require('node:path') as typeof import('node:path');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const osMod = require('node:os') as typeof import('node:os');
+
+  // Mirror of @opencues/core sessionCommitmentsKey — kept inline so the ingest
+  // stays a self-contained node-guarded fn (no cross-package require timing).
+  const scKey = (cwd: string | undefined): string =>
+    ((cwd || '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120)) || '_default';
+
+  const cuesDirOf = (): string => {
+    const override = typeof process !== 'undefined' ? process.env['OPENCUES_HOME'] : undefined;
+    return override && override.trim().length > 0 ? override : pathMod.join(osMod.homedir(), '.cues');
+  };
+  const snapshotPath = (): string => {
+    const cuesDir = cuesDirOf();
+    // Per-cwd scoped file wins; fall back to the legacy flat file (tests, hand
+    // runs, and hosts with no cwd) so nothing breaks.
+    const scoped = pathMod.join(cuesDir, 'session-commitments', `${scKey(opts.cwd)}.json`);
+    if (opts.cwd) { try { if (fsMod.existsSync(scoped)) return scoped; } catch { /* fall back */ } }
+    return pathMod.join(cuesDir, 'session-commitments.json');
+  };
+
+  let lastMtimeMs = -1;
+  let lastPath = '';
+  const holder: SessionCommitmentsHolder = { commitments: [], summary: undefined, ingestedAt: undefined, sessionId: undefined, stop() { /* set below */ } };
+
+  const load = (): void => {
+    const file = snapshotPath();
+    try {
+      const st = fsMod.statSync(file, { throwIfNoEntry: false });
+      if (!st) {
+        if (holder.commitments.length > 0 || holder.summary) {
+          holder.commitments.length = 0;
+          holder.summary = undefined;
+          holder.ingestedAt = undefined;
+          holder.sessionId = undefined;
+          log('info', 'session-contradiction: snapshot removed — watchlist now empty');
+        }
+        lastMtimeMs = -1; lastPath = file;
+        return;
+      }
+      if (file === lastPath && st.mtimeMs === lastMtimeMs) return;   // unchanged
+      const parsed = JSON.parse(fsMod.readFileSync(file, 'utf8')) as { commitments?: unknown; summary?: string; ingestedAt?: string; sessionId?: string } | null;
+      const raw = parsed && Array.isArray(parsed.commitments) ? parsed.commitments : [];
+      holder.commitments.length = 0;
+      for (const c of raw) {
+        if (c && typeof c === 'object') {
+          const r = c as { id?: unknown; category?: unknown; statement?: unknown };
+          if (typeof r.id === 'string' && typeof r.statement === 'string') {
+            holder.commitments.push({ id: r.id, category: typeof r.category === 'string' ? r.category : 'decision', statement: r.statement });
+          }
+        }
+      }
+      holder.summary = typeof parsed?.summary === 'string' ? parsed.summary : undefined;
+      holder.ingestedAt = parsed?.ingestedAt;
+      holder.sessionId = parsed?.sessionId;
+      lastMtimeMs = st.mtimeMs; lastPath = file;
+      log('info', `session-contradiction: ${holder.commitments.length} commitment(s) loaded from ${file}`);
+    } catch (err) {
+      // Malformed snapshot must never take the host down; keep last-good.
+      log('warn', `session-contradiction: load failed (${(err as Error)?.message ?? err})`);
+    }
+  };
+
+  // Poll cheaply (a single mtime statSync) so a freshly-produced watchlist
+  // becomes active in the running host within a few seconds, not a minute —
+  // the producer writes the file out-of-band and this is the only path that
+  // folds it into the live holder. 5s keeps "decision → active" responsive
+  // without meaningful cost.
+  const refreshMs = opts.refreshMs ?? 4_000;
+  load();   // boot read
+  const timer = setInterval(load, refreshMs);
+  if (typeof (timer as { unref?: () => void }).unref === 'function') (timer as { unref: () => void }).unref();
+  holder.stop = () => clearInterval(timer);
+  return holder;
+}
+
+/**
+ * Producer-kick poller for hosts that DON'T have CC's statusline trigger
+ * (Gemini). On a timer it locates the current session transcript, and when it
+ * has grown, fire-and-forgets `opencues extract-commitments <path> --format
+ * <fmt>` — the same distill the CC statusline kicks. The producer self-gates
+ * (mode off → exits) and self-debounces, so this only adds a cheap mode-check +
+ * an mtime gate so we don't spawn node while idle or disabled.
+ *
+ * Node-only (Gemini runs on Node). Lazy-requires so it never pulls Node
+ * built-ins into a Bun host at module scope. `locate()` returns the transcript
+ * path or null; `format` is the extract-commitments format. The CLI is resolved
+ * from `OPENCUES_CLI` (a `node /path/cli.cjs` string or a binary) else the
+ * `opencues` on PATH.
+ */
+export function startSessionCommitmentsKick(
+  log: (level: LogLevel, msg: string) => void,
+  opts: { locate: () => string | null; format: string; extraArgs?: string[]; cuesDir?: string; intervalMs?: number },
+): { stop(): void } | undefined {
+  if (typeof process === 'undefined' || !process.versions?.node) return undefined;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const cp = require('node:child_process') as typeof import('node:child_process');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require('node:path') as typeof import('node:path');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const os = require('node:os') as typeof import('node:os');
+  const cuesDir = opts.cuesDir || (process.env['OPENCUES_HOME']?.trim() || path.join(os.homedir(), '.cues'));  // BROWSER-SAFE-ALLOW: fn is Node-only, guarded at entry by process.versions.node
+
+  const enabled = (): boolean => {
+    try {
+      const md = fs.readFileSync(path.join(cuesDir, 'OPENCUES.md'), 'utf8');
+      return /^(session-contradiction-mode|ask-cues-mode):\s*on\b/im.test(md);
+    } catch { return false; }
+  };
+
+  let lastSrc = '', lastMtime = -1;
+  const kick = (): void => {
+    if (!enabled()) return;
+    let src: string | null = null;
+    try { src = opts.locate(); } catch { src = null; }
+    if (!src) return;
+    let mtime: number;
+    try { mtime = fs.statSync(src).mtimeMs; } catch { return; }
+    // SQLite WAL: the main .db mtime lags; the -wal file changes on every write.
+    // Harmless for CC/Gemini (no -wal → statSync throws → ignored).
+    try { const w = fs.statSync(src + '-wal').mtimeMs; if (w > mtime) mtime = w; } catch { /* no wal */ }
+    if (src === lastSrc && mtime === lastMtime) return;   // transcript unchanged → skip
+    lastSrc = src; lastMtime = mtime;
+    const cli = process.env['OPENCUES_CLI']?.trim() || 'opencues';  // BROWSER-SAFE-ALLOW: fn is Node-only, guarded at entry by process.versions.node
+    const parts = cli.split(/\s+/);
+    const argv = [...parts.slice(1), 'extract-commitments', src, '--format', opts.format, ...(opts.extraArgs ?? []), '--quiet'];
+    try {
+      const child = cp.spawn(parts[0], argv, { detached: true, stdio: 'ignore' });
+      child.on('error', () => { /* opencues not on PATH — best effort */ });
+      child.unref();
+    } catch { /* best effort */ }
+  };
+
+  const timer = setInterval(kick, opts.intervalMs ?? 6000);
+  if (typeof (timer as { unref?: () => void }).unref === 'function') (timer as { unref: () => void }).unref();
+  log('info', `session-commitments: producer-kick poller started (${opts.format})`);
+  return { stop: () => clearInterval(timer) };
+}
+
+/**
+ * Aggregate LLM usage meter. Registers a process-global sink (`registerUsageSink`)
+ * that `@opencues/core`'s `dispatchChat` reports every call to, so EVERY source
+ * (word/sentence/session-contradiction/ask/contradiction cues + blanks) is
+ * counted with no per-source wiring. Snapshots per-provider/model totals to
+ * `/tmp/opencues-usage-<pid>.json` every few seconds so `opencues usage` can
+ * price them. Passive accounting — makes no LLM calls of its own, adds no token
+ * cost; the only overhead is a small JSON write when something changed. Node-only.
+ */
+export function startUsageMeter(
+  log: (level: LogLevel, msg: string) => void,
+  opts: { host: string; intervalMs?: number; filePath?: string },
+): { stop(): void } | undefined {
+  if (typeof process === 'undefined' || !process.versions?.node) return undefined;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const os = require('node:os') as typeof import('node:os');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require('node:path') as typeof import('node:path');
+  let core: { registerUsageSink?: (fn: (e: unknown) => void) => () => void; UsageMeter?: new () => { record(e: unknown): void; rows(): unknown[] } };
+  try { core = require('@opencues/core'); } catch { return undefined; }
+  if (typeof core.registerUsageSink !== 'function' || typeof core.UsageMeter !== 'function') return undefined;   // older bundle → no meter
+  const meter = new core.UsageMeter();
+  let dirty = false;
+  const off = core.registerUsageSink((e) => { meter.record(e); dirty = true; });
+  const startedAt = new Date().toISOString();
+  const file = opts.filePath || path.join(os.tmpdir(), `opencues-usage-${process.pid}.json`);
+  const flush = (): void => {
+    if (!dirty) return;
+    dirty = false;
+    try {
+      const snap = { host: opts.host, pid: process.pid, startedAt, updatedAt: new Date().toISOString(), rows: meter.rows() };
+      const tmp = `${file}.tmp-${process.pid}`;
+      fs.writeFileSync(tmp, JSON.stringify(snap));
+      fs.renameSync(tmp, file);
+    } catch { /* best effort — usage is observability, never load-bearing */ }
+  };
+  const timer = setInterval(flush, opts.intervalMs ?? 5000);
+  if (typeof (timer as { unref?: () => void }).unref === 'function') (timer as { unref: () => void }).unref();
+  log('info', `usage-meter: aggregating LLM usage → ${file}`);
+  return { stop: () => { clearInterval(timer); flush(); off(); } };
+}
+
+/**
+ * Locate the newest Gemini CLI chat transcript on disk (Gemini writes to
+ * `~/.gemini/tmp/<projectId>/chats/session-*.{jsonl,json}`). Returns the most
+ * recently modified one within `maxAgeMs` (so a stale session isn't picked) —
+ * good enough for a single active session without replicating Gemini's
+ * project-id hashing. Node-only.
+ */
+export function locateNewestGeminiChat(cwd?: string, maxAgeMs = 10 * 60_000): string | null {
+  if (typeof process === 'undefined' || !process.versions?.node) return null;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require('node:path') as typeof import('node:path');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const os = require('node:os') as typeof import('node:os');
+  const tmp = path.join(os.homedir(), '.gemini', 'tmp');
+
+  const newestIn = (chatsDir: string): { p: string; m: number } | null => {
+    let out: { p: string; m: number } | null = null;
+    let files: string[]; try { files = fs.readdirSync(chatsDir); } catch { return null; }
+    for (const f of files) {
+      if (!/^session-.*\.(jsonl|json)$/i.test(f)) continue;
+      const full = path.join(chatsDir, f);
+      try { const st = fs.statSync(full); if (!out || st.mtimeMs > out.m) out = { p: full, m: st.mtimeMs }; } catch { /* skip */ }
+    }
+    return out;
+  };
+
+  // Prefer the project dir for THIS cwd — Gemini names it `getShortId(cwd)`,
+  // which is ~`basename(cwd)`, with a sha256(cwd) fallback. Scope to those
+  // first so a more-recently-touched OTHER project can't hijack the context.
+  if (cwd) {
+    const scoped: string[] = [path.basename(cwd)];
+    try { scoped.push(require('node:crypto').createHash('sha256').update(cwd).digest('hex')); } catch { /* no crypto */ }
+    for (const proj of scoped) {
+      const best = newestIn(path.join(tmp, proj, 'chats'));
+      if (best && Date.now() - best.m <= maxAgeMs) return best.p;
+    }
+  }
+
+  // Fallback: newest chat across all projects (single-active-session heuristic).
+  let best: { p: string; m: number } | null = null;
+  try {
+    for (const proj of fs.readdirSync(tmp)) {
+      const b = newestIn(path.join(tmp, proj, 'chats'));
+      if (b && (!best || b.m > best.m)) best = b;
+    }
+  } catch { return null; }
+  if (!best || Date.now() - best.m > maxAgeMs) return null;   // none active
+  return best.p;
+}
+
+/**
+ * Locate the newest Claude Code session transcript for `cwd`. CC writes each
+ * session to `~/.claude/projects/<cwd-slug>/<sessionId>.jsonl`, where the slug
+ * is the cwd with every non-alphanumeric char replaced by `-` (e.g.
+ * `/home/u/proj` → `-home-u-proj`). Returns the most-recently-modified TOP-LEVEL
+ * `.jsonl` in that project dir within `maxAgeMs` (subagent shards live in
+ * per-session subdirs and are skipped — non-recursive read). This lets the CC
+ * boot band kick the producer directly, the same way OpenCode/Gemini do, so
+ * session-contradiction / ask-cues no longer depend on the (opt-in) statusline
+ * trigger. Node-only. */
+export function locateNewestCCTranscript(cwd?: string, maxAgeMs = 10 * 60_000): string | null {
+  if (typeof process === 'undefined' || !process.versions?.node) return null;
+  if (!cwd) return null;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require('node:path') as typeof import('node:path');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const os = require('node:os') as typeof import('node:os');
+  const slug = cwd.replace(/[^a-zA-Z0-9]/g, '-');
+  const projDir = path.join(os.homedir(), '.claude', 'projects', slug);
+  let best: { p: string; m: number } | null = null;
+  let files: string[]; try { files = fs.readdirSync(projDir); } catch { return null; }
+  for (const f of files) {
+    if (!/\.jsonl$/i.test(f)) continue;              // top-level session files only
+    const full = path.join(projDir, f);
+    try { const st = fs.statSync(full); if (st.isFile() && (!best || st.mtimeMs > best.m)) best = { p: full, m: st.mtimeMs }; } catch { /* skip */ }
+  }
+  if (!best || Date.now() - best.m > maxAgeMs) return null;   // none active
+  return best.p;
+}
+
+/** Path to OpenCode's session SQLite DB, or null if absent. The producer reads
+ *  it (via node:sqlite in the Node CLI — OpenCode's own runtime is Bun and can't
+ *  use node:sqlite) with `--format opencode --cwd <dir>` to find the session by
+ *  its `directory` column. Node-only. */
+export function locateOpenCodeDb(): string | null {
+  if (typeof process === 'undefined' || !process.versions?.node) return null;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require('node:path') as typeof import('node:path');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const os = require('node:os') as typeof import('node:os');
+  const xdg = process.env['XDG_DATA_HOME']?.trim() || path.join(os.homedir(), '.local', 'share');  // BROWSER-SAFE-ALLOW: fn is Node-only, guarded at entry by process.versions.node
+  const db = path.join(xdg, 'opencode', 'opencode.db');
+  try { return fs.existsSync(db) ? db : null; } catch { return null; }
+}
+
 export const AI_CALLABLE_ARG_MAX = 200;
 
 /**

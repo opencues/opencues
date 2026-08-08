@@ -21,6 +21,7 @@
  */
 
 import { resolveReasoningEffort } from './model-thinking';
+import { hasUsageSinks, reportUsage } from './usage-meter';
 
 export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'openai-subscription' | 'anthropic' | 'cerebras' | 'claude-code-cli' | 'opencode-zen' | 'ollama';
 
@@ -2065,7 +2066,11 @@ export async function dispatchChat(
     // in that case so we don't pollute /tmp/opencues.log on providers
     // that don't cache. See CLAUDE.md § "Cerebras prefix caching" for
     // the optimisation rationale.
-    if (ctx.onUsage) {
+    // Parse usage when EITHER the caller wants it (per-call debug) OR a global
+    // usage sink is registered (the aggregate meter). Reporting to the meter is
+    // automatic for every source — no per-source wiring — because dispatchChat
+    // is the one chokepoint they all funnel through.
+    if (ctx.onUsage || hasUsageSinks()) {
       try {
         const parsed = JSON.parse(raw) as {
           usage?: {
@@ -2084,7 +2089,7 @@ export async function dispatchChat(
           const accepted = u.completion_tokens_details?.accepted_prediction_tokens ?? 0;
           const rejected = u.completion_tokens_details?.rejected_prediction_tokens ?? 0;
           const predTotal = accepted + rejected;
-          ctx.onUsage({
+          ctx.onUsage?.({
             promptTokens: u.prompt_tokens,
             completionTokens: u.completion_tokens ?? 0,
             cachedTokens: cached,
@@ -2092,6 +2097,13 @@ export async function dispatchChat(
             acceptedPredictionTokens: accepted,
             rejectedPredictionTokens: rejected,
             predictionAcceptRate: predTotal > 0 ? accepted / predTotal : 0,
+          });
+          reportUsage({
+            providerId: provider.id,
+            model: req.model,
+            promptTokens: u.prompt_tokens,
+            cachedTokens: cached,
+            completionTokens: u.completion_tokens ?? 0,
           });
         }
       } catch { /* malformed usage block — silent */ }

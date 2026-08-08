@@ -227,6 +227,10 @@ export interface BlankConfig {
    *  Default (omitted) = enabled. */
   enabled?: boolean;
   tip?: string;
+  /** Optional emoji shown as the note's leading glyph for an actuator blank
+   *  (blankStep) — e.g. 🔊 on `volume`. Pairs with `tip` as the persistent
+   *  label: `🔊 system volume`. Cosmetic; ignored for non-actuator blanks. */
+  icon?: string;
   speak?: boolean;
   /** Context words that bind a blank (_) to this entry (e.g., ['volume', 'sound']) */
   blankKeywords?: string[];
@@ -1011,6 +1015,7 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   promptPath?: string;
   // Blank-specific fields
   tip?: string;
+  icon?: string;
   speak?: boolean;
   blankKeywords?: string;
   blankStep?: number;
@@ -1132,6 +1137,7 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'enabled': fm.enabled = value !== 'false'; break;
       case 'promptPath': fm.promptPath = value; break;
       case 'tip': fm.tip = value; break;
+      case 'icon': fm.icon = value; break;
       case 'speak': fm.speak = value === 'true'; break;
       case 'blankKeywords': fm.blankKeywords = value; break;
       case 'signature': fm.signature = value; break;
@@ -1283,6 +1289,7 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       const blank: BlankConfig = {
         name,
         tip: frontmatter.tip,
+        icon: frontmatter.icon,
         speak: frontmatter.speak,
       };
       if (frontmatter.enabled !== undefined) blank.enabled = frontmatter.enabled;

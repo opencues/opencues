@@ -352,6 +352,71 @@ export {
 // Pure (no network); the host poller fetches the feed and passes the text.
 // One parser covers Luma / Google / Outlook / Apple / any .ics feed.
 export { parseIcs } from './ics';
+
+// Session-commitments — a REASONING watchlist of CC-developer decisions
+// distilled from the session transcript, matched against the draft in realtime
+// by SessionContradictionSource. Ingest-on-a-timer (the `opencues
+// extract-commitments` producer writes the snapshot), never per-keystroke.
+// See docs/architecture/session-contradiction.md.
+export {
+  buildSessionCommitmentsSnapshot,
+  parseExtractionResult,
+  sessionCommitmentsKey,
+  extractTranscriptTurns,
+  extractGeminiTranscriptTurns,
+  stripHarnessFraming,
+  renderTranscriptForExtraction,
+  renderSessionCommitmentsCatalog,
+  renderSessionContextForAsk,
+  mergeSessionCommitments,
+  normalizeCommitmentStatement,
+  parseSupersededResult,
+  SESSION_COMMITMENTS_EXTRACT_SYSTEM,
+  SESSION_COMMITMENTS_SUPERSEDE_SYSTEM,
+  COMMITMENT_CATEGORIES,
+  MAX_COMMITMENTS,
+  MAX_STATEMENT_LEN,
+} from './session-commitments';
+
+export {
+  registerUsageSink,
+  hasUsageSinks,
+  reportUsage,
+  UsageMeter,
+  mergeSnapshots,
+  MODEL_PRICING,
+  priceFor,
+  estimateCost,
+  estimateRowCostUSD,
+} from './usage-meter';
+export type { UsageEvent, UsageTotals, UsageRow, UsageSnapshot, ModelPrice, RowCost, CostReport } from './usage-meter';
+export type {
+  SessionContradictionMode,
+  CommitmentCategory,
+  SessionCommitment,
+  SessionCommitmentsSnapshot,
+  TranscriptTurn,
+} from './session-commitments';
+
+// Tool-prompt cues — populate cues from a well-known tool system-prompt
+// (AskUserQuestion first): question → tip, options → cyclable alternatives on
+// the selected span. A generic, pluggable primitive. See tool-prompt-source.ts.
+export { SessionCueSource } from './sources/session-cue-source';
+export type { SessionCueSourceConfig } from './sources/session-cue-source';
+export {
+  ToolPromptCueSource,
+  parseToolQuestion,
+  renderSingleLineTip,
+  renderAmbientForAsk,
+  SINGLE_LINE_TIP_MAX,
+  ASK_USER_QUESTION_SYSTEM,
+  TOOL_PROMPTS,
+} from './sources/tool-prompt-source';
+export type {
+  ToolOption,
+  ToolQuestion,
+  ToolPrompt,
+} from './sources/tool-prompt-source';
 export type { IcsEvent, ParseIcsOptions } from './ics';
 
 // IDENTITY.md write-validator — load-bearing safety check for any path

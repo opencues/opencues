@@ -27,16 +27,21 @@ There is exactly one presentation, degrading gracefully:
   means a cycleable improvement** (a formality lift, a transform result, a lookup
   answer — nothing wrong, just a better option). A **countdown number** shows how
   many options remain (`⚠ 3 | the 19th is a Friday`, or `2 | Improve formality`),
-  and a right-aligned **`(underscore to cycle)`** hint appears until your first
-  cycle, then drops off. A pure advisory with nothing to cycle to (a calendar
-  conflict) shows just the emoji and message — no number, no hint. The note is
+  and a right-aligned **how-to hint** appears until you first use that note, then
+  drops off — **per note**, so learning the gesture on one note doesn't silence
+  the hint on a different one. The hint text matches the gesture:
+  **`(underscore to cycle)`** for a cycleable cue, **`(ctrl+alt+up/down to adjust)`**
+  for a volume/brightness knob. It shows again after a host restart. A pure
+  advisory with nothing to cycle to (a calendar conflict) shows just the emoji
+  and message — no number, no hint. The note is
   **display-only** — spliced into what the host *paints*, never into the buffer
   you submit, so it can never be sent. A long note **wraps** onto multiple lines
   and pushes the content below down to make room.
-- **Press `_` to cycle.** With the caret inside a revealed span, a plain `_`
-  rotates that span forward (the discoverable complement to Ctrl+Alt+↑). Move
-  past it (type a space) or edit it, and `_` goes back to its normal blank
-  meaning.
+- **Press `_` to cycle / nudge.** With the caret inside a revealed span, a plain
+  `_` rotates that span forward (the discoverable complement to Ctrl+Alt+↑). On a
+  **volume/brightness knob** `_` nudges the value UP one step (and holds at the
+  top); use Ctrl+Alt+↓ to come back down. Move past the span (type a space) or
+  edit it, and `_` goes back to its normal blank meaning.
 
 Where a host has no inline paint surface (e.g. chrome's normal
 `<input>`/`<textarea>`, where CSS Custom Highlight can't reach), the advisory
@@ -64,7 +69,12 @@ inline-cues-mode: inline      # default
 - **Passive cues** (`def.cueTip`) — **sentence-cues** (`scope: sentence`, e.g.
   the calendar-conflict heads-up) and **contradiction cues** — show their advisory.
 - **Word-cues** (incl. spelling) show their suggestions.
-- **Filled list/script blanks** (volume, brightness, …) show their tip.
+- **Actuators** — `volume` / `brightness` (any `blankStep` blank) — fill a value
+  (`volume 32%`) and show a live-knob note: `🔊 system volume` / `🔆 screen
+  brightness` (emoji from the blank's `icon:`, label from its `tip:`) plus the
+  adjust hint. `Ctrl+Alt+↑/↓` or `_` change the real device level; the value in
+  the buffer tracks it. Once the caret is in the value it's adjustable with no
+  separate navigate ("GET arms the knob").
 - **Settings selector-satellite** (`opencues settings _`) shows a cursor-aware
   tip: the setting's description on the selector, the value's tip on the satellite.
 

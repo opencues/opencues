@@ -481,6 +481,12 @@ begin_step "Installing CC support files (statusline)"
 mkdir -p "$OC_INSTALL_ROOT/scripts"
 cp "$SCRIPT_DIR/highlight-statusline.sh" "$OC_INSTALL_ROOT/statusline.sh"
 chmod +x "$OC_INSTALL_ROOT/statusline.sh"
+# Bake the resolved CLI invocation into the statusline so its
+# session-contradiction watchlist kick (Stage A of session-contradiction-mode)
+# can find the CLI without relying on `opencues` being on PATH — the fork's
+# statusline runs in the user's own shell env. Falls back to $OPENCUES_CLI /
+# `command -v opencues` if this bake never ran (e.g. a hand-copied statusline).
+sedi "s|^OPENCUES_CLI_BAKED=.*|OPENCUES_CLI_BAKED=\"node $REPO_ROOT/packages/opencues-cli/bin/cli.cjs\"|" "$OC_INSTALL_ROOT/statusline.sh"
 
 # 6a. Migrate legacy statusLine paths only — never auto-write fresh.
 #

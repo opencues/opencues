@@ -50,6 +50,9 @@ Each integration pins its own upstream fork and never touches your native host i
 | **Blanks** | Type `_` for free-form generation, translation, formatting, full rewrites, or keyword actions (`volume _`, `weather _`). |
 | **Sentence rewrites** | Cycle a whole sentence to a different register (formal, concise, …) — no `_` needed. |
 | **Word cues** | Navigate to a word and cycle a smaller LLM-suggested alternative. |
+| **Live actuators** | `volume _` reads the real level and leaves a knob: `Ctrl+Alt+↑/↓` or a bare `_` turns it, and the device follows. |
+| **Session-contradiction cues** *(opt-in)* | Flags a draft that goes against a decision you made earlier in the same coding session. |
+| **Ask-cues** *(opt-in)* | Turns a vague sentence into an inline question with cyclable answers. |
 | **Personal + ambient context** *(opt-in)* | `my email _` substitutes your real address; fluid lookups can read the page you're on. |
 | **Hot-reload** | Every `.md` config picks up edits in ~2s — no restart. |
 
@@ -68,13 +71,14 @@ opencues run <host>           launch a patched host
 opencues set-key <p> <key>    store a provider key
 opencues seed-configs         copy default cues into ~/.cues/
 opencues doctor               diagnose install / config issues
+opencues usage                what your LLM calls cost, across every running host
 opencues which                show every relevant path
 opencues review <pack>        vet an untrusted cue/blank pack before trusting it
 opencues version              versions + host compatibility
 opencues help [command]       discoverable help
 ```
 
-Also shipped: `models`, `identity`, `calendar`, `sync`, `import`, `init`, `new`, `validate`, `list`, `show`, `edit`, `logs`, `update`, `config`, `completion`.
+Also shipped: `models`, `identity`, `calendar`, `sync`, `import`, `init`, `new`, `validate`, `list`, `show`, `edit`, `logs`, `update`, `config`, `completion`, and `extract-commitments` (the background producer behind session-contradiction cues — kicked automatically by each host, rarely run by hand).
 
 ## Security
 

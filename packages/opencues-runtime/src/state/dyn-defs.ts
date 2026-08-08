@@ -32,6 +32,17 @@ export interface WordDef {
    * beats a formalizer at 85, not by timing). Absent → treated as 0.
    */
   readonly priority?: number;
+  /**
+   * Optional per-alternative DISPLAY label, aligned index-for-index with
+   * `alternatives`. Used by the inline note when the raw alternatives aren't
+   * self-describing — ask-cues, whose alternatives are full rewritten sentences
+   * that share their opening words (so a 2-word snippet would render three
+   * identical `the new…` fragments). The rotating note shows these labels
+   * ("Keep as is | Add benchmark | Qualify claim") instead. Display-only; the
+   * cycle still splices `alternatives[currentIndex]`. Absent → the note falls
+   * back to snippeting the alternatives.
+   */
+  readonly noteLabels?: readonly string[];
 }
 
 /**
@@ -137,6 +148,17 @@ export function inlineNoteText(def: WordDef): string | undefined {
   if (def.cueTip) {
     const { emoji, rest } = splitNoteEmoji(def.cueTip);
     const em = emoji ?? '⚠';
+    // A cycleable notification whose destinations carry display labels
+    // (ask-cues — a menu of rewrites) ROTATES like spelling/transform: it shows
+    // where the next `_` lands, not a static question + full menu. One paradigm
+    // for every cycleable note. We rotate the LABELS (not the alternatives),
+    // because the alternatives are whole rewritten sentences that share prefixes
+    // and would snippet to identical fragments. The emoji still leads (it's a
+    // notification); the question drops (the labels are the destinations).
+    if (def.noteLabels && def.noteLabels.length === def.alternatives.length && def.alternatives.length > 1) {
+      const labels = upcomingLabels(def, 3);
+      return labels.length ? `${em} ${n} | ${labels.join(' | ')}` : `${em} ${n}`;
+    }
     const msg = rest.replace(/\s*[·▸]\s*/g, ' | ');
     return def.alternatives.length > 1 ? `${em} ${n} | ${msg}` : `${em} ${msg}`;
   }
@@ -185,17 +207,63 @@ function upcomingAlternatives(def: WordDef, max: number): string[] {
   return out.slice(0, max);
 }
 
-// ── First-cycle affordance state ───────────────────────────────────────────
-// The `(underscore to cycle)` hint shows until the user cycles ANY note once —
-// then they've learned the gesture and it drops off everywhere for the rest of
-// the session. Session-scoped (in-memory); a fresh host process shows it again.
+/** The DISPLAY LABELS a def can still cycle TO, in cycle order (wrapping),
+ *  EXCLUDING the one currently shown — the label parallel of
+ *  `upcomingAlternatives`. Used for labeled notes (ask-cues) where the raw
+ *  alternatives aren't self-describing. Aligned index-for-index with
+ *  `alternatives`, so it rotates on `currentIndex` the same way. */
+function upcomingLabels(def: WordDef, max: number): string[] {
+  const labels = def.noteLabels;
+  if (!labels || labels.length <= 1) return [];
+  const cur = def.currentIndex;
+  const out: string[] = [];
+  for (let i = 1; i < labels.length; i++) out.push(labels[(cur + i) % labels.length]);
+  return out.slice(0, max).filter(Boolean);
+}
+
+// ── "How-to" hint affordance ───────────────────────────────────────────────
+// The parenthetical hint ("(underscore to cycle)" / "(ctrl+alt+up/down to
+// adjust)") teaches the gesture, then retires. Two scopes are implemented; the
+// const below selects which. Both are SESSION-scoped in memory (per host
+// process) — a fresh host shows the hints again; nothing is persisted.
+//
+//   'per-note' (default) — the hint retires PER NOTE IDENTITY: adjusting volume
+//                          hides only the volume hint; cycling one spelling word
+//                          hides only that word's. Keyed by blankName (blanks /
+//                          actuators / sentence-cues) or the original word
+//                          (plain word-cues), so dismissal survives span drift
+//                          and re-resolution.
+//   'session'            — the ORIGINAL global behaviour: the first cycle/adjust
+//                          of ANYTHING hides EVERY hint for the rest of the
+//                          session.
+//
+// Flip this const to 'session' to restore the global behaviour. (Deliberately a
+// code const, not a user setting — a maintenance knob, per the design note.)
+export const HINT_DISMISSAL_SCOPE: 'per-note' | 'session' = 'per-note';
+
 let _hasCycledEver = false;
-/** True once the user has cycled at least one inline note this session. */
+const _dismissedHints = new Set<string>();
+
+/** Stable per-note key for hint dismissal. Keyed by blankName when present
+ *  (actuators / blanks / sentence-cues) else the original word (plain word-cues)
+ *  — both survive span drift and re-resolution so the hint stays retired. */
+export function noteHintKey(def: WordDef): string {
+  return def.blankName ? `b:${def.blankName}` : `w:${def.alternatives[0] ?? ''}`;
+}
+/** True once the user has cycled ANY note this session (drives 'session' scope). */
 export function hasCycledEver(): boolean { return _hasCycledEver; }
-/** Record that the user cycled a note (called from Cycling on every step). */
-export function markCycledEver(): void { _hasCycledEver = true; }
-/** Test hook — reset the session affordance flag. */
-export function _resetCycledEverForTests(): void { _hasCycledEver = false; }
+/** Record a cycle/adjust. Sets the session flag AND, given a key, retires that
+ *  note's per-note hint. Called from Cycling on every step. */
+export function markCycledEver(key?: string): void {
+  _hasCycledEver = true;
+  if (key) _dismissedHints.add(key);
+}
+/** Whether the how-to hint should be SUPPRESSED for this note key, per scope. */
+export function isHintSuppressed(key: string): boolean {
+  return HINT_DISMISSAL_SCOPE === 'per-note' ? _dismissedHints.has(key) : _hasCycledEver;
+}
+/** Test hook — reset the session flag AND all per-note dismissals. */
+export function _resetCycledEverForTests(): void { _hasCycledEver = false; _dismissedHints.clear(); }
 
 function altWordsOf(def: WordDef): string[] {
   const cache = def as WordDef & { _altWordsCache?: { idx: number; words: string[] } };

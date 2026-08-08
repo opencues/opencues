@@ -10,6 +10,55 @@
 # minimal line rather than aborting. Aborting would mean an empty
 # statusline which is a worse user experience than partial info.)
 
+# ─── Session-contradiction watchlist kick (Stage A trigger) ──────────────
+# CC pipes a JSON blob {session_id, transcript_path, cwd, ...} to statusline
+# commands on stdin. When `session-contradiction-mode: on` and the transcript
+# has grown, fire-and-forget the watchlist producer (`opencues
+# extract-commitments`). Everything here is best-effort, debounced, and
+# detached — it never blocks the render or changes the printed line. Portable
+# (bash 3.2 / BSD; no jq, no /proc dependency). See
+# docs/architecture/session-contradiction.md.
+OPENCUES_CLI_BAKED=""   # setup.sh rewrites this line with the resolved CLI invocation
+if [ ! -t 0 ]; then _oc_stdin=$(cat 2>/dev/null); else _oc_stdin=""; fi
+_oc_kick_commitments() {
+  [ -n "$_oc_stdin" ] || return 0
+  _oc_home="${OPENCUES_HOME:-$HOME/.cues}"
+  # Cheap gate first — the distilled session feeds session-contradiction AND
+  # ask-cues, so kick when EITHER is on. Bail otherwise (most users have neither).
+  grep -qiE '^(session-contradiction-mode|ask-cues-mode):[[:space:]]*on([[:space:]]|$)' "$_oc_home/OPENCUES.md" 2>/dev/null || return 0
+  _oc_tp=$(printf '%s' "$_oc_stdin" | grep -oE '"transcript_path"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')
+  [ -n "$_oc_tp" ] || return 0
+  # Session cwd — scopes the distilled watchlist per-project so two CC sessions
+  # in different repos don't clobber a shared session-commitments.json. CC's
+  # statusline stdin carries workspace.current_dir (preferred) and/or cwd.
+  _oc_cwd=$(printf '%s' "$_oc_stdin" | grep -oE '"current_dir"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*"current_dir"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')
+  [ -n "$_oc_cwd" ] || _oc_cwd=$(printf '%s' "$_oc_stdin" | grep -oE '"cwd"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*"cwd"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')
+  # bash-level debounce — a SHORT spawn-gate (5s) so we don't launch node on
+  # every redraw during streaming. This is deliberately shorter than the
+  # producer's own extract cadence so the two don't "beat" against each other
+  # (a mid-session decision then lands within ~one producer window, not two).
+  # The FIRST kick of a session has no stamp, so the initial watchlist builds
+  # promptly on the first activity.
+  _oc_stamp="$_oc_home/.session-commitments.kick"
+  _oc_now=$(date +%s 2>/dev/null || echo 0)
+  if [ -f "$_oc_stamp" ]; then
+    _oc_last=$(cat "$_oc_stamp" 2>/dev/null || echo 0)
+    [ -n "$_oc_last" ] && [ "$((_oc_now - _oc_last))" -lt 5 ] 2>/dev/null && return 0
+  fi
+  printf '%s' "$_oc_now" > "$_oc_stamp" 2>/dev/null
+  _oc_cli="$OPENCUES_CLI"
+  [ -z "$_oc_cli" ] && [ -n "$OPENCUES_CLI_BAKED" ] && _oc_cli="$OPENCUES_CLI_BAKED"
+  [ -z "$_oc_cli" ] && command -v opencues >/dev/null 2>&1 && _oc_cli="opencues"
+  [ -n "$_oc_cli" ] || return 0
+  # Detached fire-and-forget — quoted transcript path; output discarded.
+  if [ -n "$_oc_cwd" ]; then
+    ( $_oc_cli extract-commitments "$_oc_tp" --cwd "$_oc_cwd" --quiet >/dev/null 2>&1 & ) >/dev/null 2>&1
+  else
+    ( $_oc_cli extract-commitments "$_oc_tp" --quiet >/dev/null 2>&1 & ) >/dev/null 2>&1
+  fi
+}
+_oc_kick_commitments 2>/dev/null
+
 # Find Claude Code PID by walking up the process tree.
 # Match any of:
 #   - cmdline starting with `claude` (the system install or a `claude-cues` shim)

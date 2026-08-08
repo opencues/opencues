@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest';
 import { DimRender } from './dim-render';
 import { Navigation, splitWords } from './navigation';
 import { HighlightState } from '../state/highlight-state';
-import { DynDefs, _resetCycledEverForTests } from '../state/dyn-defs';
+import { DynDefs, _resetCycledEverForTests, markCycledEver, isHintSuppressed, noteHintKey, type WordDef } from '../state/dyn-defs';
 
 // The `(underscore to cycle)` affordance is a SESSION-scoped module flag that a
 // real cycle flips true. Other test files (cycling*) cycle and leak that flag
@@ -677,6 +677,97 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     // the current buffer text.
     expect(out?.inlineNote?.text).toBe('2 | thanks a…');
     expect(out?.inlineNote?.spanStart).toBe(0);
+  });
+
+  it('ROTATES an ask-cues note through its option LABELS as it cycles (one paradigm)', () => {
+    // ask-cues is a menu of rewrites but renders like every other cycleable
+    // note: it ROTATES to show where the next `_` lands. Its alternatives are
+    // whole rewritten sentences that share prefixes, so it rotates the LABELS
+    // (carried on `noteLabels`), keeping its ❓ notification emoji.
+    const ALTS = ['the new approach is way better', 'the new approach is 2× faster (200ms→100ms)', 'the new approach is generally better'];
+    // Cycling splices alternatives[currentIndex] into the buffer, so the buffer
+    // ALWAYS equals the current alt (dim-render bails when the span is stale).
+    function noteAt(currentIndex: number): string | undefined {
+      const buf = ALTS[currentIndex];
+      const { dynDefs, dimRender } = setup(buf);
+      dynDefs.set(0, {
+        originalWord: ALTS[0],
+        alternatives: ALTS,
+        noteLabels: ['Keep as is', 'Add benchmark', 'Qualify claim'],
+        currentIndex,
+        spanStart: 0,
+        spanEnd: buf.length,
+        blankName: 'sentence-cue:tool-ask',
+        cueTip: '❓ Evidence — what makes it better? ▸ Add benchmark · Qualify claim · Keep as is',
+      });
+      return dimRender.compute({ text: buf, cursor: 3, externalHighlights: [] })?.inlineNote?.text;
+    }
+    // At the original (index 0): ❓ + countdown + the two rewrites you can reach.
+    expect(noteAt(0)).toBe('❓ 3 | Add benchmark | Qualify claim');
+    // After one cycle (index 1): the list ROTATES — drops the one you're on,
+    // wraps 'Keep as is' back in — and the countdown ticks down.
+    expect(noteAt(1)).toBe('❓ 2 | Qualify claim | Keep as is');
+  });
+
+  it('emits an ACTUATOR note for a blankStep blank (volume): icon + tip + adjust hint', async () => {
+    // A blankStep blank (volume/brightness) fills a single value — no cycle
+    // list — but is a LIVE knob. Its note is the standard `<icon> <tip>` label
+    // (from the blank's `icon:`/`tip:`) plus the `(ctrl+alt+up/down to adjust)`
+    // hint, which drops after the first adjust. The value itself stays in the
+    // buffer, not the note.
+    _resetCycledEverForTests();
+    const { ConfigLoader } = await import('./config-loader');
+    const VOLUME_BLANK = `---
+name: volume
+type: blank
+blankKeywords: volume
+tip: system volume
+icon: 🔊
+blankStep: 6
+blankSuffix: %
+blankScript: ./vol.sh
+---`;
+    const adapter = new MockAdapter({ cwd: '/proj', files: { '/proj/blanks/volume/BLANK.md': VOLUME_BLANK } });
+    const buf = 'volume 32%';
+    adapter.pushText(buf);
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    // The fill registers a DynDef at the value word (index 1 = "32%").
+    dynDefs.set(1, {
+      originalWord: '32%', alternatives: ['32%'], currentIndex: 0,
+      spanStart: 7, spanEnd: 10, blankName: 'volume',
+    });
+    const dim = new DimRender(adapter, hlState, dynDefs, loader);
+    // Caret inside "32%" → note shows: label + first-time adjust hint.
+    const first = dim.compute({ text: buf, cursor: 8, externalHighlights: [] });
+    expect(first?.inlineNote).toEqual({
+      spanStart: 7, spanEnd: 10, text: '🔊 system volume', hint: '(ctrl+alt+up/down to adjust)',
+    });
+    // After adjusting THIS note the hint drops (per-note scope); label persists.
+    markCycledEver('b:volume');
+    const later = dim.compute({ text: buf, cursor: 8, externalHighlights: [] });
+    expect(later?.inlineNote?.text).toBe('🔊 system volume');
+    expect(later?.inlineNote?.hint).toBeUndefined();
+  });
+
+  it('how-to hint is dismissed PER NOTE — retiring one leaves others intact', () => {
+    // HINT_DISMISSAL_SCOPE='per-note': cycling/adjusting one note retires only
+    // THAT note's hint, keyed by identity (blankName, else original word).
+    // Learning the gesture on a spelling word must NOT silence the volume knob.
+    _resetCycledEverForTests();
+    const volume = { blankName: 'volume', alternatives: ['40%'], originalWord: '40%', currentIndex: 0, spanStart: 0, spanEnd: 3 } as WordDef;
+    const spelling = { alternatives: ['attorney', 'lawyer'], originalWord: 'attorney', currentIndex: 0, spanStart: 0, spanEnd: 8 } as WordDef;
+    expect(isHintSuppressed(noteHintKey(volume))).toBe(false);
+    expect(isHintSuppressed(noteHintKey(spelling))).toBe(false);
+    // Cycle the spelling word.
+    markCycledEver(noteHintKey(spelling));
+    expect(isHintSuppressed(noteHintKey(spelling))).toBe(true);   // its hint retires
+    expect(isHintSuppressed(noteHintKey(volume))).toBe(false);    // volume's does NOT (the old coupling is gone)
+    // Adjusting volume retires only volume's.
+    markCycledEver(noteHintKey(volume));
+    expect(isHintSuppressed(noteHintKey(volume))).toBe(true);
   });
 
   it('emits the note at the span boundary (cursor == spanEnd, inclusive)', () => {
