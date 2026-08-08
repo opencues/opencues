@@ -41,6 +41,15 @@ per-source frontmatter (`provider:` / `model:` in a CUE.md / BLANK.md)
             openai-subscription — fires ONLY at zero env keys, iff the binary is on PATH)
 ```
 
+**`deepseek` is deliberately absent from `PROVIDER_AUTO_ORDER`.** It is
+selectable in all three bucket menus like any other paid provider, but
+auto-route is the path for a user who chose nothing — and DeepSeek is
+the slowest provider in the matrix (1.6×–4× cerebras on every surface
+measured), so it would be the wrong silent default even though it is by
+far the cheapest. Users who want it name it: `blanks-llm-provider:
+deepseek`. Same reasoning applies to `openrouter`, which is a routing
+layer rather than a best-for-the-job pick.
+
 The subscription rung makes a keyless Claude Code install work out of
 the box: the CC integration patches the `claude` binary itself, so its
 users by definition carry an authenticated subscription. The rung is

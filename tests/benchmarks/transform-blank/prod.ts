@@ -19,11 +19,12 @@
  *   CEREBRAS_API_KEY=xxx GROQ_API_KEY=xxx \
  *     npx tsx tests/benchmarks/transform-blank/prod.ts [--provider cerebras|groq] [--parallel N]
  *
- * Flags: `--provider cerebras|groq` (default cerebras),
- * `--parallel N` (default 8). GROQ_API_KEY is always required — the JUDGE
- * pins to groq gpt-oss-120b regardless of inference provider (see
- * EXPERIMENTS.md § Experiment 6). The selected inference provider's key
- * (CEREBRAS_API_KEY / GROQ_API_KEY) is required too.
+ * Flags: `--provider cerebras|groq|gemini|deepseek|ollama` (default
+ * cerebras), `--parallel N` (default 8). GROQ_API_KEY is always required
+ * — the JUDGE pins to groq gpt-oss-120b regardless of inference provider
+ * (see EXPERIMENTS.md § Experiment 6). The selected inference provider's
+ * key (CEREBRAS_API_KEY / GROQ_API_KEY / DEEPSEEK_API_KEY / …) is
+ * required too.
  */
 
 import { TransformBlankSource } from '../../../packages/opencues-core/src/sources/transform-blank-source';
@@ -44,6 +45,7 @@ const BOLD = '\x1b[1m';
 const CEREBRAS_KEY = process.env.CEREBRAS_API_KEY;
 const GROQ_KEY = process.env.GROQ_API_KEY;
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
+const DEEPSEEK_KEY = process.env.DEEPSEEK_API_KEY;
 // The inference-provider key is validated in buildSource (only the
 // selected provider's key is required). GROQ_KEY is always needed — the
 // judge is pinned to groq gpt-oss-120b regardless of inference provider.
@@ -104,6 +106,7 @@ const httpAdapter: HttpAdapter = {
 };
 
 const CEREBRAS_MODEL = process.env.OPENCUES_CEREBRAS_MODEL ?? 'gpt-oss-120b';
+const DEEPSEEK_MODEL = process.env.OPENCUES_DEEPSEEK_MODEL ?? 'deepseek-v4-flash';
 const GROQ_MODEL = process.env.OPENCUES_GROQ_MODEL ?? 'openai/gpt-oss-120b';
 const GEMINI_MODEL = process.env.OPENCUES_GEMINI_MODEL ?? 'gemini-3.5-flash-lite';
 // Local Ollama (native /api/chat, think:false). Key is a non-empty dummy —
@@ -118,6 +121,7 @@ const PROVIDERS: Record<string, { endpoint: string; key: string | undefined; mod
   groq:     { endpoint: 'https://api.groq.com/openai/v1/chat/completions', key: GROQ_KEY, model: GROQ_MODEL },
   gemini:   { endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent', key: GEMINI_KEY, model: GEMINI_MODEL },
   ollama:   { endpoint: 'http://localhost:11434/api/chat', key: 'ollama', model: OLLAMA_MODEL },
+  deepseek: { endpoint: 'https://api.deepseek.com/chat/completions', key: DEEPSEEK_KEY, model: DEEPSEEK_MODEL },
 };
 
 function buildSource(providerId: string): TransformBlankSource {

@@ -18,6 +18,7 @@ different provider/model for each LLM-driven feature.
 | **gemini** | `GEMINI_API_KEY` | `gemini-3.5-flash-lite` | Google `contents`/`parts` shape |
 | **anthropic** | `ANTHROPIC_API_KEY` | `claude-haiku-4-5-20251001` | Messages API |
 | **openai** | `OPENAI_API_KEY` | `gpt-5.4-mini` | paid API, full model catalogue |
+| **deepseek** | `DEEPSEEK_API_KEY` | `deepseek-v4-flash` | OpenAI-compat HTTP. Cheapest per correct answer in the matrix; higher latency — see [DeepSeek models](#deepseek-models) |
 | **openai-subscription** *(subscription)* | `codex login` | `gpt-5.4-mini` | OpenAI's Responses API via your ChatGPT plan |
 | **openrouter** | `OPENROUTER_API_KEY` | `openai/gpt-oss-120b:free` | OpenAI-compat HTTP |
 | **claude-code-cli** *(subscription, alias `claude-cli`)* | `claude` login | `haiku` | Claude's subscription via local subprocess |
@@ -56,6 +57,45 @@ or the Predicted-Outputs `prediction` field (which Gemma 400s on). Select
 it per surface, e.g. `blanks-llm-provider: cerebras` +
 `blanks-llm-model: gemma-4-31b`. Full data:
 `tests/results/gemma-hackathon/FINDINGS.md`.
+
+### DeepSeek models
+
+| Model | Reasoning | Best for |
+|---|---|---|
+| `deepseek-v4-flash` *(default)* | yes (pinned off) | everything; the cheapest option in the matrix |
+| `deepseek-v4-pro` | yes (pinned off) | larger sibling; unbenchmarked here |
+
+`deepseek-v4-flash` is the 0731 build — 284B MoE, 13B active per token,
+1M context. Benchmarked across seven surfaces on 2026-08-07 against a
+same-session Cerebras baseline: it **wins** sentence-cues (100% vs
+97.1%) and transform-blank (85.8% vs 84.8%), **ties** agent-rewrite
+(83.3%), next-prompt-cues (100%) and fluid-blank-ambient (99.4%), and
+**loses** fluid-blank (98.5% vs 99.3%). Accuracy is a wash; the real
+trade is latency — it runs **1.6×–4× slower on every surface**, so it
+isn't a fit for word-cues, which have a ~500ms budget.
+
+What it wins on is cost. Measured from live `usage` blocks on the
+production fluid-blank prompt, DeepSeek prefix-caches 1024 of 1123
+prompt tokens (91%) and charges $0.0028/M on cache hits against $0.14/M
+uncached, working out to **≈$0.021 per 1K correct answers** — the
+cheapest row in the matrix by a wide margin. The stable-system /
+varying-user message split OpenCues already keeps for Cerebras is what
+makes that cache rate achievable, so no prompt changes are needed.
+
+Reasoning is on at the API default and OpenCues pins it **off**
+(`reasoning_effort: 'none'`, via the standard path — there's no
+provider-specific body field). On short lookups that's better *and*
+faster; on transform-blank reasoning would buy +2.7pp for 5.4× the
+latency, which isn't worth it when latency is already the weak axis.
+To revisit, raise `max` in `MODEL_THINKING['deepseek:deepseek-v4-flash']`
+(`packages/opencues-core/src/model-thinking.ts`) — with a bench.
+
+Not in the auto-route order: it needs a key, and auto-route is the
+path for users who picked nothing, where the slowest provider is the
+wrong silent default. Select it explicitly, e.g. `blanks-llm-provider:
+deepseek`. Note DeepSeek processes and stores data in the PRC, which
+may matter for your compliance posture. Full data:
+`tests/benchmarks/BENCHMARKS.md`.
 
 Source: `packages/opencues-core/src/llm-provider.ts`.
 

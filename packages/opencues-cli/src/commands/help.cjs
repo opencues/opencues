@@ -271,6 +271,7 @@ const PROVIDER_DISPLAY = {
   'claude-code-cli': 'Claude Code (CLI, subscription)',
   'openai-subscription': 'OpenAI (ChatGPT subscription)',
   'opencode-zen': 'OpenCode Zen',
+  deepseek: 'DeepSeek',
   ollama: 'Ollama (local)',
 };
 
@@ -286,6 +287,7 @@ const PROVIDER_DEFAULT_MODEL = {
   'claude-code-cli': 'haiku',
   'openai-subscription': 'gpt-5.4-mini',
   'opencode-zen': 'big-pickle',
+  deepseek:   'deepseek-v4-flash',
   ollama:     'gemma4:e2b',
 };
 // Strip cosmetic prefixes/suffixes for display ('openai/foo' → 'foo',

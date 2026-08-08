@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — DeepSeek provider (`@opencues/core` 0.42.4 → 0.43.0)
+
+New built-in `deepseek` provider — OpenAI-compatible chat-completions at
+`api.deepseek.com`, serving `deepseek-v4-flash` (default, the 0731 build:
+284B MoE, 13B active, 1M context) and `deepseek-v4-pro`. Set
+`DEEPSEEK_API_KEY` and select it per bucket, e.g. `blanks-llm-provider:
+deepseek`. It appears in all three bucket menus (cues / auditors /
+blanks) and flows into `opencues check-keys` and `set-key` automatically
+via its `keyProbe`.
+
+**Why:** it is the cheapest option in the matrix by a wide margin —
+**≈$0.021 per 1K correct fluid-blank answers**, roughly 8× cheaper than
+the previous best row. That comes from a measured 91% prefix-cache hit
+rate on the production fused prompt (1024 of 1123 tokens) against
+$0.0028/M cached vs $0.14/M uncached. Cost is computed from live `usage`
+blocks, not estimated from prompt length.
+
+Benchmarked across **seven surfaces** in one session against a
+same-session `cerebras gpt-oss-120b` baseline: wins sentence-cues (100%
+vs 97.1%) and transform-blank (85.8% vs 84.8%); ties agent-rewrite
+(83.3%), next-prompt-cues (100%) and fluid-blank-ambient (99.4%); loses
+fluid-blank (98.5% vs 99.3%) and fluid-config precision. Accuracy is a
+wash; the trade is **latency — 1.6×–4× slower on every surface**, so it
+is not viable for word-cues (~500ms budget) and is deliberately **not in
+`PROVIDER_AUTO_ORDER`** (auto-route serves users who chose nothing; the
+slowest provider is the wrong silent default). Full table +
+category-level inversions in `tests/benchmarks/BENCHMARKS.md`.
+
+Reasoning is on at DeepSeek's API default and OpenCues pins it **off**
+via the standard `reasoning_effort: 'none'` path (no provider-specific
+body field). `deepseek-*` doesn't match `isReasoningModelName`, so the
+adapter opens the forward gate with `includeReasoningEffort: true` —
+without it the field is silently dropped and the model reasons anyway, at
+~2× the latency with no signal. Pinned `{ max: 'none', off: 'none' }` in
+`model-thinking.ts` alongside the `zai-glm-4.7` / `gemma-4-31b`
+precedent, with the bench trade recorded there (reasoning-on is worse on
+short lookups and buys +2.7pp on long rewrites for 5.4× the latency).
+
+Also corrects the `deepseek-v4-flash-free` row in the OpenCode Zen free-pool
+table, which reads at 46.7% and is **not** representative of DeepSeek's own
+API (98.5% on the same suite) — the Zen free tier serves something degraded.
+
 ### Added — contradiction cues Tier 5d: subreddit-rules conflicts on reddit (chrome) (`@opencues/core` 0.41.1 → 0.42.0, `@opencues/runtime` 0.28.22 → 0.29.0, `@opencues/chrome` 0.2.152 → 0.2.153)
 
 Drafting a post or comment on reddit now checks each sentence against the **subreddit's own posted rules** and raises the passive ⚠ contradiction rail when a sentence clearly conflicts with one (e.g. an off-topic draft on a sub whose rule 2 is "Be relevant"). New `RedditRulesProvider` fetches `/r/<sub>/about/rules.json` **same-origin from the content script** (rides the page session — no service-worker hop, no new host permission), TTL-cached per subreddit and keyed off a new live `pageLocation` getter threaded chrome-bootstrap → chrome band → runtime resolver → build-sources (native hosts omit it → tier silent). The conflict judgement is a **dedicated per-sentence LLM judge call** (`COMMUNITY_RULE_JUDGE_SYSTEM`) — never folded into the benched extract prompt — and is the one declared exception to "the correction is DATA": the tip text itself is still built from the cached rule (community + number + sanitized name), a hallucinated rule number or ungrounded quote is dropped by `verifyCommunityRuleClaim`, and rule text is sanitized/length-capped untrusted data with no side-effect channel. Rides the existing `contradiction-cues-mode` scalar (off by default; no new scalar, no new UI surface). See `docs/architecture/contradiction-cues.md` § Tier 5d.
