@@ -760,6 +760,16 @@ The open-standard version (`packages/opencues-core/src/spec-version.ts`'s `SPEC_
 7. **Conformance fixtures (`spec/conformance/`)** — per `spec/conformance/README.md`, the suite forks when a new spec version cuts. Adding fixtures for the new surface (e.g. `spec/conformance/valid/identity/`) goes here. If the new surface ships without fixtures, add a TODO row to `spec/conformance/README.md` explicitly calling out the coverage gap.
 8. **JSON schemas (`spec/schemas/`)** — update any schema affected by the new frontmatter keys or scalars. JSON-schema-driven validators are the first thing a third-party tooling integrator will reach for; stale schemas silently flag valid frontmatter as unknown.
 9. Update package versions per the usual per-package rules (`@opencues/core` always bumps when SPEC_VERSION bumps; downstream packages bump per `docs/architecture/versioning.md`).
+10. **The website's open-standard page** (`~/opencues-website`,
+    `md/population/open-standard.md`) — the ONE public description of the
+    standard. Change the version strings **and document the new surface**;
+    a version string on its own is what makes the page look current while it
+    describes an older standard. This drifted twice: the page sat at `0.10`
+    through the `0.11` cut, and the `0.10` pass before it moved only the string,
+    so `on-site:` / `on-field:` (the entire content of that bump) went
+    undocumented for two versions. It is also a box in
+    [versioning.md § How to cut a release](docs/architecture/versioning.md#how-to-cut-a-release),
+    because a spec bump usually rides out on one.
 
 The `version-bump-gate` lint enforces `package.json` version bumps when `src/` changes; it does NOT enforce SPEC_VERSION bumps when only `spec/` changes. Reviewers MUST eyeball spec-only PRs for the bump checklist above — there's no current static gate. (Candidate for a future `lint-spec-bump.sh`.)
 
