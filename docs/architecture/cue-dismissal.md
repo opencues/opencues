@@ -109,8 +109,18 @@ Three places, each covering something the others cannot:
 `startCueDismissals` (boot-common) hydrates the forgotten set at boot, re-reads
 `<cues>/dismissals.json` on a 4 s mtime gate, and registers the sink that
 writes a new forget (read-modify-write, so a concurrent host's dismissal is not
-lost and a hand edit survives). It is wired from `buildSharedRuntime`, so every
-host band gets it from one line.
+lost and a hand edit survives).
+
+⚠ **Wiring it is per-band, not universal.** Six bands get it from
+`buildSharedRuntime`; the **Claude Code band does not call that helper** — it
+predates it and assembles its modules by hand, mentioning `buildSharedRuntime`
+only in comments — so CC calls `startCueDismissals` itself, next to its other
+ingests. That gap shipped once: on CC the gesture fired and logged `cue forget`,
+then silently degraded to a mute because no sink was registered, and nothing
+ever reached the file. `boot-bands-wiring.test.ts` now asserts every band either
+calls `buildSharedRuntime` or wires the service directly, matching on the CALL
+with comments stripped — a `grep` for the name is what hid this, since it
+matched CC's comments.
 
 The re-read is what makes the CLI a live undo: restore a cue and the running
 host picks it up within seconds, no restart.
