@@ -36,7 +36,7 @@ import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { UndoJournal } from '../../../src/state/undo-journal';
 import { applyDirectives } from '../../../src/render-directives';
-import { buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, buildSessionCommitmentsIngest, startSessionCommitmentsKick, locateNewestCCTranscript, startUsageMeter, buildCyclingProviderProbe, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, buildSessionCommitmentsIngest, startCueDismissals, startSessionCommitmentsKick, locateNewestCCTranscript, startUsageMeter, buildCyclingProviderProbe, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { buildBlankWeaver } from '../../../src/modules/blank-weave';
 import { startEventBridge } from '../../../src/event-bridge';
 import type {
@@ -716,6 +716,14 @@ export function boot(host: HostInfo): BootResult {
   // Resolver is constructed even with no keys so the MissingKeyFallbackSource
   // can substitute a visible in-buffer hint on `_` instead of silent no-op.
   const calendarContextHolder = buildCalendarContextIngest(log);
+  // Cue dismissals: hydrate what the user has forgotten and register the writer
+  // that persists a new forget. ⚠ Wired HERE by hand because this band does not
+  // call `buildSharedRuntime` — it predates it and assembles its modules
+  // itself. Without this line the `_`-twice gesture fires, logs `cue forget`,
+  // and silently degrades to a 24h mute because no sink is registered: the
+  // dismissal never reaches <cues>/dismissals.json and never shows up in
+  // `opencues dismissals`. That is exactly how it shipped the first time.
+  startCueDismissals(log);
   // Session-contradiction / ask-cues: native read of the per-cwd
   // session-commitments watchlist (produced by `opencues extract-commitments`).
   // Live holder — refreshed on a timer; the resolver reads it fresh each pass.

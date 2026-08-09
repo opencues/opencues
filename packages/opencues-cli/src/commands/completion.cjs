@@ -12,7 +12,7 @@ const COMMANDS = [
   'install', 'uninstall', 'seed-configs', 'update-configs', 'init', 'new', 'run',
   'validate', 'import', 'review', 'doctor', 'usage', 'edit', 'logs', 'list', 'show',
   'set-key', 'check-keys', 'models', 'update', 'debug', 'completion',
-  'config', 'identity', 'calendar', 'context', 'cleanup', 'sync',
+  'config', 'identity', 'calendar', 'context', 'cleanup', 'sync', 'dismissals',
   'which', 'version', 'help',
 ];
 const HOSTS = ['claude-code', 'claudecode', 'claude', 'cc', 'opencode', 'oc', 'chrome', 'gemini-cli', 'geminicli', 'gemini', 'shell', 'term', 'oc-edit'];

@@ -105,6 +105,7 @@ Each pins its own upstream fork and never touches your native host install.
 | **Sentence rewrites** | Cycle a whole sentence to a different register (formal, concise, ...) seamlessly, no `_` needed. |
 | **Word cues** | Navigate to a single word and cycle a smaller LLM-suggested alternative. |
 | **Live actuators** | `volume _` reads the real level and leaves a knob you can turn: `Ctrl+Alt+↑/↓` or a bare `_` moves it, and the device follows. |
+| **Dismissing a cue** | A cue that only tells you something can be silenced from its own note: `_` once quiets it for a while, `_` again forgets it for good. `opencues dismissals` lists what you forgot and turns any of it back on. |
 | **Session-contradiction cues** (opt-in) | Flags a draft that goes against a decision made earlier in the same coding session, on any host with a transcript. |
 | **Ask-cues** (opt-in) | Turns a vague sentence into an inline question with cyclable answers, using the assistant's own clarifying prompt. |
 | **Personal + ambient context** (opt-in) | `my email _` substitutes your real address; fluid lookups can read the page you're on. |

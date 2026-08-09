@@ -440,6 +440,26 @@ module.exports = async function doctor(argv, ctx) {
       const label = `${basename} present (${populated.count} ${populated.unit})`;
       s.ok(label, fs.existsSync(filePath));
     }
+    // Dismissed cues. Dismissal is the one gesture that makes something STOP
+    // appearing, so it has to be visible somewhere the user already looks —
+    // otherwise "cue X never fires any more" is unanswerable from the outside.
+    // Not registry-derived: dismissal is a gesture, not a scalar feature.
+    {
+      const file = path.join(userConfigDir, 'dismissals.json');
+      let count = 0;
+      try {
+        if (fs.existsSync(file)) {
+          const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+          count = Array.isArray(parsed?.dismissed) ? parsed.dismissed.length : 0;
+        }
+      } catch { count = -1; }   // unreadable — say so rather than showing 0
+      if (count > 0) {
+        s.info('dismissed cues', `${count} silenced — \`opencues dismissals\` to restore`);
+      } else if (count < 0) {
+        s.info('dismissed cues', dim('dismissals.json is unreadable — cues may be silenced'));
+      }
+    }
+
     s.render();
 
     // Cross-check: scalar set to non-default, but the feature's prereq

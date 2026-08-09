@@ -226,6 +226,28 @@ ask-cues-mode: on
 
 Both are passive: they surface a note and never change your text without a keystroke.
 
+### A cue keeps telling me something I don't care about. Can I silence just that one?
+
+Yes, from the note itself. Put your cursor on the flagged text and press `_`:
+once quiets that cue for half an hour, and the note stays up for a few seconds
+offering the second press, which forgets it for good. Nothing is typed into your
+text either way.
+
+```
+I am free Thursday morning
+⚠ clashes with dentist 10:00  (underscore to dismiss)
+```
+
+This applies to cues that only tell you something (a calendar clash, an advisory
+fact-check). A cue that offers a rewrite keeps `_` for cycling to it, since
+taking the suggestion is the answer there.
+
+Nothing is lost. `opencues dismissals` lists everything you have permanently
+silenced and turns any row back on; a running host picks that up within seconds,
+with no restart. `opencues dismissals clear` brings back the lot. In Chrome
+there is nowhere to save a permanent dismissal, so a second press quiets the cue
+for a day instead.
+
 ### Which feature is spending my tokens?
 
 `opencues usage`. Several features can fire on a single edit — word cues, sentence cues, the two session cues, blanks — each making its own call, so per-feature estimates understate the real total.

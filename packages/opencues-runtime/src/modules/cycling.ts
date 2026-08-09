@@ -13,6 +13,7 @@
 import type { HostAdapter, KeyEvent, ProcessHandle, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
 import { DynDefs, inlineNoteText, markCycledEver, noteHintKey, type WordDef } from '../state/dyn-defs';
+import { dismissalTargetOf, forgetOfferRemainingMs, isCueDismissed, pressDismiss } from '../state/cue-dismissals';
 import type { ConfigLoader, BlankEntry } from './config-loader';
 import { splitWords } from './navigation';
 import { resolveNavKeymap } from './nav-keymap';
@@ -292,12 +293,47 @@ export class Cycling {
 
     const text = event.text;
     const cursor = event.cursorOffset;
-    for (const [, def] of this.dynDefs.entries()) {
+    for (const [defIndex, def] of this.dynDefs.entries()) {
       // Note-bearing = cueTip advisory OR history-bearing LLM blank (transform /
       // fluid). Same predicate DimRender paints on, so `_`-step fires exactly
       // where a note is visible — for a blank, the alternatives ARE the walkable
       // transform history.
       if (inlineNoteText(def) === undefined) continue;
+      // A PURE ADVISORY (calendar clash, an advisory contradiction verdict) has
+      // nothing to cycle to, so `_` on it means DISMISS instead: once mutes,
+      // twice forgets. Checked before the cycleable guard below, because that
+      // guard is exactly what would otherwise drop these on the floor and let
+      // the `_` type into the buffer.
+      const target = dismissalTargetOf(def);
+      if (target) {
+        // Only claim `_` where the note is actually ON SCREEN: live, or inside
+        // the offer window after a first press. A muted cue past that window
+        // paints nothing, so swallowing the key there would eat a keystroke
+        // over an invisible note — it falls through to `_`'s normal meaning.
+        const offered = forgetOfferRemainingMs(target.key) > 0;
+        if (isCueDismissed(target.key) && !offered) continue;
+        // Same liveness + cursor gate the cycle path uses below, so dismiss
+        // fires exactly where the note is painted and never on a stale span.
+        if (def.spanEnd <= def.spanStart || def.spanEnd > text.length) continue;
+        if (text.slice(def.spanStart, def.spanEnd) !== def.alternatives[def.currentIndex]) continue;
+        if (cursor < def.spanStart || cursor > def.spanEnd) continue;  // inclusive, matches paint
+        const grain = pressDismiss(target);
+        if (grain === 'forget') {
+          // Gone for good — drop the def so nothing repaints it, and retire the
+          // how-to hint the way a cycle does.
+          markCycledEver(noteHintKey(def));
+          this.dynDefs.delete(defIndex);
+        }
+        // On a MUTE the def stays: DimRender keeps painting it for the offer
+        // window (with the "again to forget" hint), which is what makes the
+        // second grain reachable at all. It stops painting when the window
+        // lapses, without needing a timer here.
+        this.adapter.log('info', `cue ${grain}: ${target.label}`);
+        // Repaint so the note changes under the keystroke rather than at the
+        // next resolve, and CONSUME the `_` — it is a gesture, not text.
+        this.adapter.forceRender();
+        return true;
+      }
       if (def.alternatives.length <= 1) continue;
       // Generic span-liveness (not sentence-cue-specific): the current alt is
       // still verbatim at the recorded span. Stale → skip (user edited it).

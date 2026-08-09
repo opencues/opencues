@@ -378,6 +378,20 @@ export {
   MAX_STATEMENT_LEN,
 } from './session-commitments';
 
+// Cue dismissals — the durable half of "I do not want this cue". Keyed on the
+// normalized TEXT, never on a commitment id (those are per-snapshot ordinals);
+// see the header of dismissals.ts.
+export {
+  dismissalKey,
+  dismissalLabel,
+  parseDismissals,
+  serializeDismissals,
+  addDismissal,
+  removeDismissal,
+  dismissedKeySet,
+} from './dismissals';
+export type { DismissalRecord, DismissalsFile } from './dismissals';
+
 export {
   registerUsageSink,
   hasUsageSinks,
