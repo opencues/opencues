@@ -53,8 +53,11 @@ this repo in its own CLAUDE.md.
 ### A release ships FIVE surfaces, not one
 
 **`node scripts/check-release-alignment.cjs` answers "is anything out of step?"
-deterministically** — it diffs every pair of files that must agree across the
-five surfaces and names the fix for each disagreement. Run it before a release
+deterministically** — it diffs every pair of files that must agree and names
+the fix for each disagreement: the five release surfaces, plus the open
+standard (every spec doc's banner against `SPEC_VERSION` and
+`spec/CHANGELOG.md`) and the module numbers (chrome's `manifest.json` against
+its `package.json`, and the version map below against every `package.json`). Run it before a release
 to see what the last one left behind, and again at the end as the exit gate.
 The judgement calls (is the prose any good, does the page describe the new
 surface) stay human; everything else is a comparison, so it is a script.
