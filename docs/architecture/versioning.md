@@ -91,6 +91,14 @@ had been stale since the release before. Work the checklist top to bottom.
 
 **Before you start**
 
+- [ ] `node scripts/check-release-alignment.cjs` — the deterministic half of
+      this checklist. It compares every pair of files that must agree (CLI
+      version ↔ CHANGELOG ↔ tag ↔ npm ↔ GitHub release ↔ Homebrew ↔ the site's
+      changelog, open-standard page and `llms.txt`) and names the fix for each
+      disagreement. Run it before you start to see what the LAST release left
+      behind, and again at the end as the exit gate. `--offline` skips the
+      network checks; `--deep` also verifies the Homebrew sha256 against the
+      published tarball.
 - [ ] `npm whoami` returns your user. A 401 here is the publish failing later
       for a reason that has nothing to do with the release.
 - [ ] `docker ps` works, or accept that step 6's verification gate will be
@@ -197,6 +205,9 @@ written: the site often carries a PROVISIONAL entry for the unreleased wave.
 
 **10. Close the loop**
 
+- [ ] `node scripts/check-release-alignment.cjs` again — every line green. This
+      is the exit gate: if a surface still disagrees, the release is not done,
+      whatever the checklist says.
 - [ ] `opencues install <host>` on your own machines, or they keep running the
       pre-release bundle. `opencues doctor` names every stale one.
 
