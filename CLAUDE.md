@@ -52,6 +52,13 @@ this repo in its own CLAUDE.md.
 
 ### A release ships FIVE surfaces, not one
 
+**`node scripts/check-release-alignment.cjs` answers "is anything out of step?"
+deterministically** — it diffs every pair of files that must agree across the
+five surfaces and names the fix for each disagreement. Run it before a release
+to see what the last one left behind, and again at the end as the exit gate.
+The judgement calls (is the prose any good, does the page describe the new
+surface) stay human; everything else is a comparison, so it is a script.
+
 Work the checklist in
 [versioning.md § How to cut a release](docs/architecture/versioning.md#how-to-cut-a-release)
 top to bottom. It is a real checklist with boxes, and every box exists because
@@ -691,17 +698,17 @@ done
 |---|---|---|---|
 | `SPEC.md` (open-standard) | `cues-spec` | 0.11 (draft) | exported as `SPEC_VERSION` from `@opencues/core` |
 | `package.json` (monorepo root) | `opencues` | 0.1.0 | private |
-| `packages/opencues-core/` | `@opencues/core` | 0.41.0 | private |
-| `packages/opencues-runtime/` | `@opencues/runtime` | 0.28.20 | private |
-| `packages/opencues-cli/` | `opencues` (real CLI) | 0.4.0 | **PUBLISHED on npm** |
-| `integrations/claude-code/` | `@opencues/claude-code` | 0.2.10 | private |
-| `integrations/opencode/` | `@opencues/opencode` | 0.2.14 | private |
-| `integrations/chrome/` | `@opencues/chrome` | 0.2.152 | private |
-| `integrations/gemini-cli/` | `@opencues/gemini-cli` | 0.2.10 | private |
+| `packages/opencues-core/` | `@opencues/core` | 0.43.0 | private |
+| `packages/opencues-runtime/` | `@opencues/runtime` | 0.30.2 | private |
+| `packages/opencues-cli/` | `opencues` (real CLI) | 0.6.0 | **PUBLISHED on npm** |
+| `integrations/claude-code/` | `@opencues/claude-code` | 0.2.11 | private |
+| `integrations/opencode/` | `@opencues/opencode` | 0.2.15 | private |
+| `integrations/chrome/` | `@opencues/chrome` | 0.2.165 | private |
+| `integrations/gemini-cli/` | `@opencues/gemini-cli` | 0.2.11 | private |
 | `integrations/shell/` | `@opencues/shell` | 0.2.21 | private |
 | `integrations/windows/` | `@opencues/windows` | 0.2.4 | private |
 
-The bare `opencues` name on npm is the real CLI (`packages/opencues-cli/`, **published** — v0.4.0 superseded the retired parking placeholder's v0.0.1; the old `packages/opencues-park/` source was deleted post-publish, July 2026). The npm org grants access via the `developers` team.
+The bare `opencues` name on npm is the real CLI (`packages/opencues-cli/`, **published** — v0.6.0 superseded the retired parking placeholder's v0.0.1; the old `packages/opencues-park/` source was deleted post-publish, July 2026). The npm org grants access via the `developers` team.
 
 The `@opencues/*` library packages remain `private: true`. Flipping one to publishable requires removing `"private": true` AND repointing (or removing) its `publishConfig` block (most currently target `npm.pkg.github.com`).
 
