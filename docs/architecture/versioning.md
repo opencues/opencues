@@ -82,36 +82,117 @@ product is at `0.3` is fine and expected). Don't try to sync them.
 
 ### How to cut a release
 
-1. Pick `X.Y.Z` — bump from the **last release** per semver (not from a package
-   version).
-2. Set `packages/opencues-cli/package.json` `version` → `X.Y.Z`.
-3. In `CHANGELOG.md`: rename the `## [Unreleased]` heading to
-   `## [X.Y.Z] - YYYY-MM-DD`, and add a fresh empty `## [Unreleased]` above it.
-4. `git commit -m "chore(release): vX.Y.Z"`, then
-   `git tag vX.Y.Z && git push origin vX.Y.Z`.
-5. `npm publish` the CLI if the CLI changed (first publish: see
-   the internal npm-handover runbook).
-   **After the publish**, run `bash scripts/check-npm-fresh-install.sh` —
-   a pristine-container cold install of the published package (fetch pinned
-   to the new tag, corepack bootstrap). A publish isn't verified until this
-   gate is green.
-   Then **bump the Homebrew tap** (`opencues/homebrew-opencues`,
-   `Formula/opencues.rb`): update `url` to the new registry tarball and
-   `sha256` (`curl -sL <tarball-url> | sha256sum`), commit, push. The brew
-   channel serves whatever the formula pins — skipping this leaves brew
-   users on the previous release.
-6. `gh release create vX.Y.Z --title "OpenCues vX.Y.Z" --notes-file <notes>`.
-7. **Open the paired website changelog PR** (`~/opencues-website`, repo
-   `opencues/opencues-web`) — a release is not DONE until this PR exists.
-   In `md/population/changelog.md`: add a `# vX.Y.Z` entry at the top with
-   the real release date (`# 30th JULY 2026` format — don't leave the
-   `# current date` placeholder on a shipped release) and marketing-distilled
-   sections (`# TITLE / vN-anchor` headers, benefit-first bullets — match the
-   existing entries' voice, not the raw CHANGELOG). Update the website
-   CLAUDE.md "Last synced" line, run
-   `python3 scripts/update-sitemap-lastmod.py`, and note any owed follow-up
-   passes (features page, comparison grid, open-standard page on spec bumps).
-   Post-deploy: `python3 scripts/indexnow-submit.py`.
+⚠ **Five surfaces ship a release, not one.** npm, the git tag, the GitHub
+release, the Homebrew tap and opencues.com. Miss one and users get a
+half-release that looks fine from wherever you happened to be standing: the
+v0.6.0 cut (Aug 2026) tagged before the release commit merged, published with
+`npm publish -w` (which cannot work here), and inherited a Homebrew formula that
+had been stale since the release before. Work the checklist top to bottom.
+
+**Before you start**
+
+- [ ] `npm whoami` returns your user. A 401 here is the publish failing later
+      for a reason that has nothing to do with the release.
+- [ ] `docker ps` works, or accept that step 6's verification gate will be
+      skipped (say so in the release notes rather than pretending it ran).
+- [ ] `bash scripts/pre-pr.sh` is as green as it gets on your machine, and you
+      know which failures are environmental.
+
+**1. Pick the version**
+
+- [ ] Bump from the **last release** per semver — `git tag --sort=-v:refname | head -1`.
+- [ ] Check `packages/opencues-cli/package.json`. Per-PR bumps often push it
+      **past** the last release; if it is already at a sane number, release
+      THAT and skip the intervening ones (semver allows the skip). Never edit
+      it downward just to make the sequence tidy.
+- [ ] The published CLI pins its own repo checkout to its version tag, so
+      version = tag = npm = what users clone. Keep the three identical.
+
+**2. The release commit**
+
+- [ ] `packages/opencues-cli/package.json` `version` → `X.Y.Z`.
+- [ ] `CHANGELOG.md`: rename `## [Unreleased]` → `## [X.Y.Z] - YYYY-MM-DD`,
+      add a fresh empty `## [Unreleased]` above it.
+- [ ] `git commit -m "chore(release): vX.Y.Z"` on a `chore/release-vX.Y.Z`
+      branch, PR it, **merge it**.
+
+**3. Tag — AFTER the merge, never before**
+
+- [ ] `git checkout master && git pull` first. Tagging the pre-merge tip
+      produces a tagged tree whose CHANGELOG still says `[Unreleased]`, which
+      is what every `npm i -g opencues` user then clones.
+- [ ] `git tag -a vX.Y.Z -m "OpenCues vX.Y.Z" && git push origin vX.Y.Z`
+      (annotated, matching the existing tags).
+
+**4. Publish the CLI**
+
+- [ ] `cd packages/opencues-cli && npm publish`. **Not** `npm publish -w
+      packages/opencues-cli` — this is a pnpm workspace and the root
+      `package.json` has no npm `workspaces` field, so `-w` resolves nothing.
+- [ ] The `prepublishOnly` guard runs here. It lets the unscoped `opencues`
+      through to public npmjs precisely because it has no `publishConfig`, and
+      refuses every `@opencues/*` library. A guard failure is the guard
+      working; read it before reaching for the bypass.
+- [ ] `timeout 30 npm view opencues version` says `X.Y.Z`.
+
+**5. GitHub release**
+
+- [ ] `gh release create vX.Y.Z --title "OpenCues vX.Y.Z" --notes-file <notes>`.
+- [ ] Notes are curated, not dumped — see the next section.
+
+**6. Verify the publish**
+
+- [ ] `bash scripts/check-npm-fresh-install.sh` — a cold install in a pristine
+      container, with the fetch pinned to the new tag. **A publish is not
+      verified until this is green.** Needs the Docker daemon.
+
+**7. Homebrew tap** (`opencues/homebrew-opencues`, `Formula/opencues.rb`)
+
+THREE lines change, and the third is the one that gets forgotten:
+
+- [ ] `url` → the new registry tarball
+      (`npm view opencues@X.Y.Z dist.tarball`).
+- [ ] `sha256` → `curl -sL <tarball-url> | sha256sum`. Compute it from what
+      the registry is actually serving; never copy it from anywhere.
+- [ ] `assert_match "X.Y.Z"` in the `test do` block. This was stale for two
+      releases (still asserting 0.4.1 while the formula moved on), so the test
+      was passing against a version the formula did not ship.
+- [ ] Branch + PR + merge, same as every other opencues repo.
+- [ ] The brew channel serves whatever the formula pins. Skipping this leaves
+      brew users on the previous release with no signal that they are behind.
+
+**8. The website** (`~/opencues-website`, repo `opencues/opencues-web`)
+
+**A release is not DONE until this has merged**, and it is usually already half
+written: the site often carries a PROVISIONAL entry for the unreleased wave.
+
+- [ ] `md/population/changelog.md`: if a provisional entry exists, rename its
+      heading to `# vX.Y.Z` and replace `# current date` with the real date
+      (`# 9th AUG 2026` format). If not, write the entry — benefit-first
+      bullets under `# TITLE / vN-anchor` headers, in the site's voice, not
+      the raw CHANGELOG's.
+- [ ] Rename the section anchors to track the real version (`v43-*` → `v60-*`)
+      after checking nothing links to the old ones.
+- [ ] New capability → a features-page block and usually an FAQ page (that has
+      its own checklist in the website CLAUDE.md: hub fold, FAQPage +
+      BreadcrumbList JSON-LD, meta description, canonical, sitemap entry).
+- [ ] `python3 scripts/update-sitemap-lastmod.py`.
+- [ ] Update the website CLAUDE.md "Last synced" line, naming what is still owed.
+- [ ] Branch + PR + merge. **Merging is what deploys the site.**
+
+**9. After the deploy lands**
+
+- [ ] Cloudflare Pages check on the merge commit says success.
+- [ ] `curl -s -o /dev/null -w '%{http_code}' -L <a new URL>` returns 200.
+      The first request to a brand-new path can 404 on a cold edge — retry
+      before believing it.
+- [ ] `python3 scripts/indexnow-submit.py` (Bing / DuckDuckGo / Yandex).
+      Google has no push API; the refreshed lastmod dates do that job.
+
+**10. Close the loop**
+
+- [ ] `opencues install <host>` on your own machines, or they keep running the
+      pre-release bundle. `opencues doctor` names every stale one.
 
 ### Release notes are curated, not dumped
 
