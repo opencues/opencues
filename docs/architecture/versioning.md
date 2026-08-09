@@ -176,6 +176,12 @@ written: the site often carries a PROVISIONAL entry for the unreleased wave.
 - [ ] New capability → a features-page block and usually an FAQ page (that has
       its own checklist in the website CLAUDE.md: hub fold, FAQPage +
       BreadcrumbList JSON-LD, meta description, canonical, sitemap entry).
+- [ ] **`SPEC_VERSION` moved since the last release?** Then
+      `md/population/open-standard.md` needs BOTH its version strings and the
+      **new surface described**. A version bump with no prose is how that page
+      spent two spec versions claiming to be current while documenting a
+      one-axis scoping model. Check it against `spec/CHANGELOG.md`, not against
+      the number.
 - [ ] `python3 scripts/update-sitemap-lastmod.py`.
 - [ ] Update the website CLAUDE.md "Last synced" line, naming what is still owed.
 - [ ] Branch + PR + merge. **Merging is what deploys the site.**
