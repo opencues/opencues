@@ -50,13 +50,31 @@ story. Unpublished-on-site features (see the website repo's CLAUDE.md content
 rules) still apply there. The website repo tracks its last sync date against
 this repo in its own CLAUDE.md.
 
-**Release cuts are not advisory: cutting `vX.Y.Z` REQUIRES the paired
-website changelog PR in the same pass** — it is step 7 of
-[versioning.md § How to cut a release](docs/architecture/versioning.md#releases--tagging)
-(site `changelog.md` entry with the real date + website CLAUDE.md sync line +
-sitemap script). A release without its site PR is an incomplete release;
-whoever cuts the tag opens the PR. There is no CI gate across the two repos —
-this contract IS the gate, which is why it lives here.
+### A release ships FIVE surfaces, not one
+
+Work the checklist in
+[versioning.md § How to cut a release](docs/architecture/versioning.md#how-to-cut-a-release)
+top to bottom. It is a real checklist with boxes, and every box exists because
+a release missed it. There is no CI gate across these repos — the checklist IS
+the gate, which is why the surface list lives here too:
+
+| Surface | Where | Miss it and… |
+|---|---|---|
+| **npm** | `cd packages/opencues-cli && npm publish` | nobody can install the release. **`npm publish -w` cannot work** — pnpm workspace, no npm `workspaces` field |
+| **git tag** | `master` AFTER the release PR merges | the tagged tree still says `[Unreleased]`, and that is what every user's `~/.opencues/repo` clones |
+| **GitHub release** | `gh release create vX.Y.Z` | the repo's front page still advertises the previous version |
+| **Homebrew** | `opencues/homebrew-opencues`, `Formula/opencues.rb` | brew users stay on the old release. THREE lines: `url`, `sha256`, and the `assert_match` in `test do` (that one was stale for two releases) |
+| **opencues.com** | `opencues/opencues-web`, `md/population/changelog.md` | the site announces a version with no tag behind it, or keeps a `# current date` placeholder on a shipped release |
+
+**A release without its website PR is an incomplete release**; whoever cuts the
+tag opens it. The site often already carries a PROVISIONAL entry for the
+unreleased wave, so that PR is usually a rename of the heading plus the real
+date, not new writing.
+
+Post-release: `check-npm-fresh-install.sh` (a publish is unverified until that
+gate is green), `indexnow-submit.py` once the site deploy lands, and
+`opencues install <host>` on your own machines so they stop running the
+pre-release bundle.
 
 ---
 
