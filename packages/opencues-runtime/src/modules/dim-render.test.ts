@@ -793,11 +793,42 @@ blankScript: ./vol.sh
       currentIndex: 0,
       spanStart: 4,
       spanEnd: 12,
+      cueSource: 'legal',
     });
     const out = dimRender.compute({ text: 'the attorney filed', cursor: 6, externalHighlights: [] });
-    // A word-cue (incl. spelling) is a NOTIFICATION (an error) — ✍️ + countdown,
-    // pipe-separated suggestions (alternatives excluding the original).
-    expect(out?.inlineNote?.text).toBe('✍️ 3 | lawyer | counsel');
+    // An IMPROVEMENT: the countdown, then the pipe-separated stops it can cycle
+    // to. NO emoji — an emoji says something is wrong, and `attorney → lawyer`
+    // is an alternative on offer, not a mistake.
+    expect(out?.inlineNote?.text).toBe('3 | lawyer | counsel');
+  });
+
+  it('leads a SPELLING word-cue with the error mark, and only a spelling one', () => {
+    const { dynDefs, dimRender } = setup('the recieve filed');
+    dynDefs.set(1, {
+      originalWord: 'recieve',
+      alternatives: ['recieve', 'receive'],
+      currentIndex: 0,
+      spanStart: 4,
+      spanEnd: 11,
+      cueSource: 'spelling',
+    });
+    const out = dimRender.compute({ text: 'the recieve filed', cursor: 6, externalHighlights: [] });
+    expect(out?.inlineNote?.text).toBe('✍️ 2 | receive');
+  });
+
+  it('treats a word-cue with no recorded source as an improvement, not an error', () => {
+    // The safe default: a note that fails to flag an error is a smaller lie
+    // than one that calls a synonym a mistake.
+    const { dynDefs, dimRender } = setup('the attorney filed');
+    dynDefs.set(1, {
+      originalWord: 'attorney',
+      alternatives: ['attorney', 'lawyer'],
+      currentIndex: 0,
+      spanStart: 4,
+      spanEnd: 12,
+    });
+    const out = dimRender.compute({ text: 'the attorney filed', cursor: 6, externalHighlights: [] });
+    expect(out?.inlineNote?.text).toBe('2 | lawyer');
   });
 
   it('does NOT emit a note for a single-alternative def (nothing to suggest)', () => {

@@ -33,6 +33,16 @@ export interface WordDef {
    */
   readonly priority?: number;
   /**
+   * Which cue produced this def (`CueResult.source` — a cue's `name:`). Read
+   * ONLY by the inline note, to tell a spelling correction from any other
+   * word-cue: a spelling error is a NOTIFICATION and leads with ✍️, while a
+   * legal or medical alternative is an IMPROVEMENT and leads with its count.
+   * Absent → treated as an improvement, which is the safe default: a note that
+   * fails to flag an error is a smaller lie than one calling a synonym a
+   * mistake.
+   */
+  readonly cueSource?: string;
+  /**
    * Optional per-alternative DISPLAY label, aligned index-for-index with
    * `alternatives`. Used by the inline note when the raw alternatives aren't
    * self-describing — ask-cues, whose alternatives are full rewritten sentences
@@ -179,15 +189,24 @@ export function inlineNoteText(def: WordDef): string | undefined {
     return label ? `${n} | ${label}` : `${n}`;
   }
 
-  // SPELLING (plain word-cue, no blankName) — a NOTIFICATION (an error): lead
-  // with ✍️ + the countdown, list the options you can still cycle TO,
-  // pipe-separated. The list ROTATES with currentIndex — cycling drops the one
-  // you're on and advances the rest, wrapping through EVERY stop INCLUDING the
-  // original (you can cycle back to it), so the note always shows where the
-  // next presses lead.
+  // PLAIN WORD-CUE (no blankName) — the countdown, then the stops you can still
+  // cycle TO, pipe-separated. The list ROTATES with currentIndex — cycling
+  // drops the one you're on and advances the rest, wrapping through EVERY stop
+  // INCLUDING the original (you can cycle back to it), so the note always shows
+  // where the next presses lead.
+  //
+  // ✍️ ONLY for spelling. The emoji means "something here is wrong", and this
+  // branch catches EVERY plain word-cue, not just the spelling one it was
+  // written for: a legal or medical alternative was announced with the error
+  // mark, telling the reader their word was a mistake when a synonym was merely
+  // on offer. The one rule of this format is that an emoji marks a notification
+  // and a bare count marks an improvement, and `attorney → lawyer` is an
+  // improvement.
   if (!def.blankName) {
     const upcoming = upcomingAlternatives(def, 3);
-    if (upcoming.length > 0) return `✍️ ${n} | ${upcoming.join(' | ')}`;
+    if (upcoming.length === 0) return undefined;
+    const body = `${n} | ${upcoming.join(' | ')}`;
+    return def.cueSource === 'spelling' ? `✍️ ${body}` : body;
   }
   return undefined;
 }

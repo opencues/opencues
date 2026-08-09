@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the spelling mark stopped leading every word-cue (`@opencues/runtime` 0.30.2 → 0.30.3)
+
+The inline note has one rule: an **emoji leads a notification** (something is
+flagged) and a **bare count leads an improvement** (nothing is wrong, there is
+just a better option). `inlineNoteText`'s plain-word-cue branch was
+`if (!def.blankName)`, which catches EVERY word-cue and not only the spelling
+one it was written for, so a legal or medical alternative was announced with
+`✍️` - telling the reader their word was a mistake when a synonym was merely on
+offer. `attorney → lawyer` is an improvement.
+
+`WordDef` now carries `cueSource` (the producing cue's `CueResult.source`,
+stamped where the resolver registers a word-cue def), and the mark is emitted
+only for `spelling`. A def with no recorded source is treated as an improvement:
+a note that fails to flag an error is a smaller lie than one that calls a
+synonym a mistake.
+
+Found while writing the cycling reference page, which had been documenting the
+behaviour the docs describe rather than the behaviour the code had.
+
 ## [0.6.0] - 2026-08-09
 
 ### Added — dismiss a cue from its own note (`@opencues/core` 0.42.7 → 0.43.0, `@opencues/runtime` 0.29.11 → 0.30.2, `opencues` 0.5.5 → 0.6.0)

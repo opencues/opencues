@@ -2610,18 +2610,23 @@ export class Resolver {
         continue;
       }
 
+      // cueSource is carried so the inline note can tell a spelling error
+      // (which leads with ✍️) from any other word-cue's alternatives (which
+      // lead with the count). Without it every word-cue looked like an error.
       const def: WordDef = isMultiWordSpan ? {
         originalWord: '_',
         alternatives: ['_', ...alts],
         currentIndex: 0,
         spanStart: r.spanStart!,
         spanEnd: r.spanEnd!,
+        cueSource: r.source,
       } : {
         originalWord: target.word,
         alternatives: [target.word, ...alts],
         currentIndex: 0,
         spanStart: target.start,
         spanEnd: target.end,
+        cueSource: r.source,
       };
       // `DynDefs.set` enforces the managed-span ownership invariant centrally:
       // a plain word-cue whose span overlaps an active managed owner (transform/
