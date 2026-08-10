@@ -758,7 +758,7 @@ blankScript: ./vol.sh
     // Learning the gesture on a spelling word must NOT silence the volume knob.
     _resetCycledEverForTests();
     const volume = { blankName: 'volume', alternatives: ['40%'], originalWord: '40%', currentIndex: 0, spanStart: 0, spanEnd: 3 } as WordDef;
-    const spelling = { alternatives: ['attorney', 'lawyer'], originalWord: 'attorney', currentIndex: 0, spanStart: 0, spanEnd: 8 } as WordDef;
+    const spelling = { alternatives: ['zephyr', 'ALT-ONE'], originalWord: 'zephyr', currentIndex: 0, spanStart: 0, spanEnd: 6 } as WordDef;
     expect(isHintSuppressed(noteHintKey(volume))).toBe(false);
     expect(isHintSuppressed(noteHintKey(spelling))).toBe(false);
     // Cycle the spelling word.
@@ -786,61 +786,61 @@ blankScript: ./vol.sh
   });
 
   it('emits a note for a plain word-cue = its suggestions (the alternatives it carries)', () => {
-    const { dynDefs, dimRender } = setup('the attorney filed');
+    const { dynDefs, dimRender } = setup('the zephyr filed');
     dynDefs.set(1, {
-      originalWord: 'attorney',
-      alternatives: ['attorney', 'lawyer', 'counsel'],
+      originalWord: 'zephyr',
+      alternatives: ['zephyr', 'ALT-ONE', 'ALT-TWO'],
       currentIndex: 0,
       spanStart: 4,
-      spanEnd: 12,
+      spanEnd: 10,
       cueSource: 'legal',
     });
-    const out = dimRender.compute({ text: 'the attorney filed', cursor: 6, externalHighlights: [] });
+    const out = dimRender.compute({ text: 'the zephyr filed', cursor: 6, externalHighlights: [] });
     // An IMPROVEMENT: the countdown, then the pipe-separated stops it can cycle
-    // to. NO emoji — an emoji says something is wrong, and `attorney → lawyer`
-    // is an alternative on offer, not a mistake.
-    expect(out?.inlineNote?.text).toBe('3 | lawyer | counsel');
+    // to. NO emoji — an emoji says something is wrong, and an alternative on
+    // offer is not a mistake.
+    expect(out?.inlineNote?.text).toBe('3 | ALT-ONE | ALT-TWO');
   });
 
   it('leads a SPELLING word-cue with the error mark, and only a spelling one', () => {
-    const { dynDefs, dimRender } = setup('the recieve filed');
+    const { dynDefs, dimRender } = setup('the zephyrr filed');
     dynDefs.set(1, {
-      originalWord: 'recieve',
-      alternatives: ['recieve', 'receive'],
+      originalWord: 'zephyrr',
+      alternatives: ['zephyrr', 'ALT-FIX'],
       currentIndex: 0,
       spanStart: 4,
       spanEnd: 11,
       cueSource: 'spelling',
     });
-    const out = dimRender.compute({ text: 'the recieve filed', cursor: 6, externalHighlights: [] });
-    expect(out?.inlineNote?.text).toBe('✍️ 2 | receive');
+    const out = dimRender.compute({ text: 'the zephyrr filed', cursor: 6, externalHighlights: [] });
+    expect(out?.inlineNote?.text).toBe('✍️ 2 | ALT-FIX');
   });
 
   it('treats a word-cue with no recorded source as an improvement, not an error', () => {
     // The safe default: a note that fails to flag an error is a smaller lie
     // than one that calls a synonym a mistake.
-    const { dynDefs, dimRender } = setup('the attorney filed');
+    const { dynDefs, dimRender } = setup('the zephyr filed');
     dynDefs.set(1, {
-      originalWord: 'attorney',
-      alternatives: ['attorney', 'lawyer'],
+      originalWord: 'zephyr',
+      alternatives: ['zephyr', 'ALT-ONE'],
       currentIndex: 0,
       spanStart: 4,
-      spanEnd: 12,
+      spanEnd: 10,
     });
-    const out = dimRender.compute({ text: 'the attorney filed', cursor: 6, externalHighlights: [] });
-    expect(out?.inlineNote?.text).toBe('2 | lawyer');
+    const out = dimRender.compute({ text: 'the zephyr filed', cursor: 6, externalHighlights: [] });
+    expect(out?.inlineNote?.text).toBe('2 | ALT-ONE');
   });
 
   it('does NOT emit a note for a single-alternative def (nothing to suggest)', () => {
-    const { dynDefs, dimRender } = setup('the attorney filed');
+    const { dynDefs, dimRender } = setup('the zephyr filed');
     dynDefs.set(1, {
-      originalWord: 'attorney',
-      alternatives: ['attorney'], // only the original → no suggestions
+      originalWord: 'zephyr',
+      alternatives: ['zephyr'], // only the original → no suggestions
       currentIndex: 0,
       spanStart: 4,
-      spanEnd: 12,
+      spanEnd: 10,
     });
-    const out = dimRender.compute({ text: 'the attorney filed', cursor: 6, externalHighlights: [] });
+    const out = dimRender.compute({ text: 'the zephyr filed', cursor: 6, externalHighlights: [] });
     expect(out?.inlineNote).toBeUndefined();
   });
 
