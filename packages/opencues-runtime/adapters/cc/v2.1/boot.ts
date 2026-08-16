@@ -53,18 +53,30 @@ import type {
 } from '../../../src/adapter';
 
 /**
- * Columns Claude Code prepends to the input's FIRST line (the `❯ ` prompt +
- * any box indent) but NOT to continuation lines. An inline cue note is injected
- * as a continuation line, so a first-line span sits this far right of its
- * buffer column on screen; `applyDirectives` adds it back so the note stays
- * under the span. Tunable live via `OPENCUES_CC_NOTE_INDENT` (no rebuild —
- * export it and restart) while we settle on the right value; default is the
- * `❯ ` prompt width.
+ * Columns Claude Code prepends to the input's FIRST line that a continuation
+ * line does NOT get. For Claude Code that is ZERO: the `❯ ` prompt indents the
+ * first line, and CC's input box indents the continuation lines by the same
+ * amount, so an injected note line already starts at the span's own frame.
+ *
+ * IT WAS 2 UNTIL 2026-08-16, and the reason is worth keeping because it was
+ * two errors cancelling. The comment here claimed continuation lines got no
+ * indent, so the pad added the prompt width back — and the old note rule then
+ * subtracted the `↳ ` connector's two cells to put the MESSAGE under the span.
+ * The two cancelled: on screen the ARROW landed on the span's column and the
+ * message sat two cells past it, which is what CC has always shown and why
+ * nobody noticed the runtime was nominally message-aligned. When the runtime
+ * moved to aligning the CONNECTOR (render-directives.ts), the subtraction went
+ * and the addition was left double-counting: the arrow appeared two cells INTO
+ * the word. Zero is the honest value, and it agrees with the OpenTUI hosts,
+ * which never had a compensation.
+ *
+ * Still tunable live via `OPENCUES_CC_NOTE_INDENT` (no rebuild — export it and
+ * restart) for a host whose box does indent only the first line.
  */
 const CC_INPUT_FIRST_LINE_INDENT: number = (() => {
   const raw = typeof process !== 'undefined' ? process.env?.OPENCUES_CC_NOTE_INDENT : undefined;
   const n = raw !== undefined ? Number(raw) : NaN;
-  return Number.isFinite(n) && n >= 0 ? n : 2;
+  return Number.isFinite(n) && n >= 0 ? n : 0;
 })();
 
 /** Minimal host info the patch supplies. boot() builds HostBindings from it. */

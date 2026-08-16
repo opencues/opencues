@@ -179,31 +179,35 @@ describe('applyDirectives — markdown ranges (Phase 1: terminals)', () => {
 
 // The OpenTUI hosts (OpenCode / shell) can't splice a note line into the
 // textarea's own render, so they float an absolute overlay line at this
-// column. It must match the terminal splice's alignment: the MESSAGE lands
-// under the span column, the `↳ ` connector (2 cells) hanging to its left.
+// column. It must match the terminal splice's alignment: the `↳ ` CONNECTOR
+// lands ON the span's column, pointing at the value's first character.
+// Aligning the MESSAGE instead (what this did until 2026-08-16) makes the
+// alignment depend on whichever character the message begins with — an emoji's
+// mark is drawn narrower than its cell and lands a fraction off, a word lands
+// on exactly — so the same note wobbled by message.
 describe('inlineNoteBoxColumn', () => {
-  it('span at column 0 → flush left (connector clamps, no negative pad)', () => {
+  it('span at column 0 → flush left', () => {
     expect(inlineNoteBoxColumn('attorney filed today', 0)).toBe(0);
   });
 
-  it('mid-line ASCII span → span column minus the 2-cell connector', () => {
-    // "the " = 4 cells before the span; 4 - 2 (connector) = 2.
-    expect(inlineNoteBoxColumn('the attorney filed', 4)).toBe(2);
+  it('mid-line ASCII span → the span\'s own column', () => {
+    // "the " = 4 cells before the span, so the connector starts at 4.
+    expect(inlineNoteBoxColumn('the attorney filed', 4)).toBe(4);
   });
 
   it('CJK prefix counted in visual cells, not code units', () => {
-    // "日本語" = 3 code units but 6 cells; 6 - 2 = 4 (not 3 - 2 = 1).
-    expect(inlineNoteBoxColumn('日本語x', 3)).toBe(4);
+    // "日本語" = 3 code units but 6 cells → 6, not 3.
+    expect(inlineNoteBoxColumn('日本語x', 3)).toBe(6);
   });
 
   it('only the span line prefix counts (prior lines ignored)', () => {
     // "line1\n" then "the cat"; span at 'cat' (offset 10). Line prefix
-    // "the " = 4 cells → 4 - 2 = 2, independent of line1's length.
-    expect(inlineNoteBoxColumn('line1\nthe cat', 10)).toBe(2);
+    // "the " = 4 cells → 4, independent of line1's length.
+    expect(inlineNoteBoxColumn('line1\nthe cat', 10)).toBe(4);
   });
 
   it('out-of-range spanStart is clamped to the buffer length', () => {
-    expect(inlineNoteBoxColumn('hi', 999)).toBe(0);
+    expect(inlineNoteBoxColumn('hi', 999)).toBe(2);
   });
 });
 
