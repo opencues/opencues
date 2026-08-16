@@ -89,3 +89,24 @@ describe('harness bridge — provider registration', () => {
     expect(useStrictJson('harness', 'deepseek-v4-flash')).toBe(false);
   });
 });
+
+describe('harness bridge — zero-key auto-selection', () => {
+  it('is NOT auto-picked when no host has bound a bridge', async () => {
+    const { pickAutoProvider } = await import('../llm-provider');
+    // No keys, no binding: nothing to route to. A host that never bound a
+    // dispatch must not be handed traffic it cannot serve.
+    expect(pickAutoProvider({}, { isCliAvailable: () => false })).toBeNull();
+  });
+
+  it('is auto-picked with zero keys once a host binds one', async () => {
+    const { pickAutoProvider } = await import('../llm-provider');
+    dispose = registerHarnessDispatch(async () => 'x');
+    expect(pickAutoProvider({}, { isCliAvailable: () => false })).toBe('harness');
+  });
+
+  it('still loses to a real key — an explicit key is a stronger signal', async () => {
+    const { pickAutoProvider } = await import('../llm-provider');
+    dispose = registerHarnessDispatch(async () => 'x');
+    expect(pickAutoProvider({ CEREBRAS_API_KEY: 'sk-x' }, { isCliAvailable: () => false })).toBe('cerebras');
+  });
+});

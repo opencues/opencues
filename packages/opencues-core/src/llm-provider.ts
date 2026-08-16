@@ -22,7 +22,7 @@
 
 import { resolveReasoningEffort } from './model-thinking';
 import { hasUsageSinks, reportUsage } from './usage-meter';
-import { HARNESS } from './providers/harness-bridge';
+import { HARNESS, isHarnessBridgeReady } from './providers/harness-bridge';
 
 export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'openai-subscription' | 'anthropic' | 'cerebras' | 'claude-code-cli' | 'opencode-zen' | 'ollama' | 'harness';
 
@@ -1697,6 +1697,13 @@ export function pickAutoProvider(
     const adapter = PROVIDERS[id];
     if (adapter && apiKeys[adapter.envKeyName]) return id;
   }
+  // Keyless rung one: a bound harness bridge. Deliberately its own step
+  // rather than an entry in SUBSCRIPTION_AUTO_FALLBACK — that list is
+  // subscription-CLI providers and carries a binary-map invariant, while
+  // the bridge has no binary to probe. It is available exactly when a host
+  // has bound a dispatch, which is also the strongest possible signal of
+  // intent: the user configured that model in the app they are typing in.
+  if (isHarnessBridgeReady()) return 'harness';
   const probe = opts.isCliAvailable ?? defaultCliAvailable;
   for (const id of SUBSCRIPTION_AUTO_FALLBACK) {
     if (PROVIDERS[id] && probe(id)) return id;
