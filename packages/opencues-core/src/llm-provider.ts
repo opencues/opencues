@@ -22,10 +22,11 @@
 
 import { resolveReasoningEffort } from './model-thinking';
 import { hasUsageSinks, reportUsage } from './usage-meter';
+import { HARNESS } from './providers/harness-bridge';
 
-export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'openai-subscription' | 'anthropic' | 'cerebras' | 'claude-code-cli' | 'opencode-zen' | 'ollama';
+export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'openai-subscription' | 'anthropic' | 'cerebras' | 'claude-code-cli' | 'opencode-zen' | 'ollama' | 'harness';
 
-export const PROVIDER_IDS: readonly ProviderId[] = ['groq', 'openrouter', 'gemini', 'openai', 'openai-subscription', 'anthropic', 'cerebras', 'claude-code-cli', 'opencode-zen', 'ollama'];
+export const PROVIDER_IDS: readonly ProviderId[] = ['groq', 'openrouter', 'gemini', 'openai', 'openai-subscription', 'anthropic', 'cerebras', 'claude-code-cli', 'opencode-zen', 'ollama', 'harness'];
 
 /**
  * Legacy provider-id aliases. User configs created before the rename
@@ -1580,6 +1581,7 @@ const PROVIDERS: Readonly<Record<ProviderId, ProviderAdapter>> = {
   'claude-code-cli': CLAUDE_CLI,
   'opencode-zen': OPENCODE_ZEN,
   ollama: OLLAMA,
+  harness: HARNESS,
 };
 
 /**
@@ -2250,6 +2252,11 @@ export interface ResolvedLLM {
  *     body possible.
  */
 const FALLBACK_PAIRS: Readonly<Record<ProviderId, ProviderId | undefined>> = {
+  // The host owns routing for `harness`, so there is nothing for us to
+  // fall back TO: if the host's dispatch fails, that is the host's model
+  // being unavailable, and silently rerouting to one of our providers
+  // would need a key the user has deliberately not supplied.
+  harness: undefined,
   groq: 'cerebras',
   cerebras: 'groq',
   openrouter: undefined,

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — `harness` provider: run OpenCues on the host's own model, with no OpenCues key (`@opencues/core` 0.43.0 → 0.44.0)
+
+A host that already has a configured LLM can now serve OpenCues' calls itself. `registerHarnessDispatch(fn)` binds a dispatch function; the new `harness` provider routes through it. Three consequences: a user needs **no OpenCues API key at all**, credentials stay in the host process and never reach a browser, and the host's own retry policy, provider UI and token metering apply to cue traffic.
+
+It reuses the existing `transport: 'cli'` seam that `claude-code-cli` uses — a provider that owns its dispatch and returns assistant text directly, so `buildRequest`/`parseResponse` are never called and no wire format is assumed. That is why this is additive rather than a new transport concept.
+
+Deliberately **not** in `useStrictJson`'s allowlist: a host bridge cannot promise constrained decoding, so every source takes its existing prompt-based JSON path, already exercised by the providers that lack strict mode. `FALLBACK_PAIRS` maps it to `undefined` — if the host's dispatch fails, that is the host's model being unavailable, and silently rerouting to one of ours would need a key the user deliberately has not supplied. `trainsOnInput` stays false: the prose-source guard exists to stop OpenCues shipping a user's writing to a provider picked for its price, and that reasoning does not transfer to the model the user already configured for their own conversation. Which model is serving is a thing to surface in the host's settings UI, not to refuse over.
+
+Motivating host is DeepSeek Harness, whose `ctx.llm.stream()` is a free-standing one-shot completion. Measured there: `deepseek-v4-flash` answers a 3.6k-token-prefix cue in ~980ms with 99.6% prefix-cache reuse, against ~270ms for cerebras and ~220ms for groq — comfortable for `_` blanks, slower than ideal for passive cues, which is why the choice stays the user's. **Reasoning effort matters more than the model**: DeepSeek's default effort streams chain-of-thought as text, so a bridge must pin it off or the user's buffer fills with "We need to answer…". Eleven tests cover registration, stale-disposer safety, dispatch pass-through, loud failure when unbound, and the provider's registry wiring.
+
 ## [0.6.1] - 2026-08-16
 
 ### Changed — an inline note's `↳` points AT the span, not two cells left of it (`@opencues/runtime` 0.30.2 → 0.30.3)

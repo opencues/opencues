@@ -272,6 +272,7 @@ const PROVIDER_DISPLAY = {
   'openai-subscription': 'OpenAI (ChatGPT subscription)',
   'opencode-zen': 'OpenCode Zen',
   ollama: 'Ollama (local)',
+  harness: "Host harness (uses the app's own model)",
 };
 
 // Default model fallback for pre-build. Live data sourced from
@@ -287,6 +288,9 @@ const PROVIDER_DEFAULT_MODEL = {
   'openai-subscription': 'gpt-5.4-mini',
   'opencode-zen': 'big-pickle',
   ollama:     'gemma4:e2b',
+  // The host owns model selection for the harness bridge, so there is no
+  // default to advertise here.
+  harness:    '',
 };
 // Strip cosmetic prefixes/suffixes for display ('openai/foo' → 'foo',
 // 'foo:free' → 'foo'). Keeps the meaningful model identity, trims chrome.
