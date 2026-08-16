@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed — an inline note's `↳` points AT the span, not two cells left of it (`@opencues/runtime`)
+### Changed — an inline note's `↳` points AT the span, not two cells left of it (`@opencues/runtime` 0.30.2 → 0.30.3)
 
 The note line's indent aligned the MESSAGE under the flagged span, with the `↳ ` connector hanging in the margin to its left. It aligns the CONNECTOR now: the arrow lands on the value's first character. The reason is that a message's alignment depends on whichever character it begins with — an emoji's mark is drawn narrower than its cell and lands a fraction off, while a word lands on exactly — so the same note sat differently by message and by host. The connector is one glyph the renderer controls, so pointing IT at the span is stable, and it is the rule the artifact kit and opencues.com have used for a while: this closes a divergence rather than opening one. `applyDirectives` pads by `col` instead of `col - prefixCells`, and `inlineNoteBoxColumn` (the column the OpenTUI hosts float their overlay line at) returns the span's own column, so the terminal splice and the overlay hosts still land in the same place.
 
