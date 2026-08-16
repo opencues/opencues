@@ -319,6 +319,10 @@ interface ActiveSlot {
   /** Index into `frames`. Starts at 0, ticks bump it; wraps to
    *  `loopStartIdx` (not 0) at end-of-array. */
   frameIdx: number;
+  /** The exact character this slot last wrote into the buffer, or null
+   *  before the first write. Give-up recovery uses it to undo OUR glyph
+   *  and nothing else — see `_recoverFromOverwrite`. */
+  lastWritten: string | null;
 }
 
 /**
@@ -494,6 +498,7 @@ export class BlankLoadingAnimator {
       frames,
       loopStartIdx: loopStartIdxFor(mode, customFramesPresent),
       frameIdx: 0,
+      lastWritten: null,
     });
     const modeTag = mode === 'custom'
       ? (customFramesPresent ? 'custom' : 'custom→braille-rotate (fallback)')
@@ -522,7 +527,7 @@ export class BlankLoadingAnimator {
     const slot = this._active.get(wordIndex);
     if (!slot) return;
     this._active.delete(wordIndex);
-    this._restoreUnderscore(wordIndex, slot.frames);
+    this._restoreUnderscore(slot);
     this._log(`BlankLoading: stop wordIndex=${wordIndex} owner=${owner}`);
     if (this._active.size === 0 && this._timer !== null) {
       clearInterval(this._timer);
@@ -543,7 +548,7 @@ export class BlankLoadingAnimator {
         const slot = this._active.get(idx);
         if (!slot) continue;
         this._active.delete(idx);
-        this._restoreUnderscore(idx, slot.frames);
+        this._restoreUnderscore(slot);
       }
       if (this._timer !== null) {
         clearInterval(this._timer);
@@ -569,6 +574,12 @@ export class BlankLoadingAnimator {
       // are also recognised (not just the built-in BOUNCE/BRAILLE
       // sets covered by ALL_FRAME_CHARS).
       if (!slot.frames.includes(word) && word !== '_') {
+        // Before giving up, undo OUR glyph if it is still sitting inside
+        // the word the user typed around (`▘` + `!!` → `▘!!`). Without
+        // this the frame character is orphaned in the buffer forever:
+        // the animator stops, and the substitution path can no longer
+        // find a `_` to splice into. See _recoverFromOverwrite.
+        this._recoverFromOverwrite(slot, word);
         this._dropQuiet(slot.wordIndex); continue;
       }
       // Advance frame and write. Wrap to loopStartIdx (not 0) so the
@@ -580,19 +591,84 @@ export class BlankLoadingAnimator {
       const nextChar = slot.frames[slot.frameIdx];
       if (nextChar === word) continue;        // unlikely (same-frame edge); no-op
       this._writeChar(slot.wordIndex, nextChar);
+      slot.lastWritten = nextChar;            // the one character we own
     }
+  }
+
+  /**
+   * Undo this slot's own glyph when the user typed INTO the slot word.
+   *
+   * The animator owns exactly one character: the frame it last wrote. If
+   * the word still contains that character, the rest of the word is the
+   * user's edit, so replacing that one occurrence with `_` restores the
+   * buffer to "what the user typed, with the blank still a blank" — which
+   * keeps the slot resolvable instead of stranding a spinner glyph.
+   *
+   * Deliberately narrow: it matches the EXACT character last written by
+   * THIS slot, not the frame set. Bounce and flipper frames are ordinary
+   * ASCII (`-`, `|`, `/`), so matching the whole set would rewrite a `-`
+   * the user typed themselves.
+   */
+  private _recoverFromOverwrite(slot: ActiveSlot, word: string): void {
+    const glyph = slot.lastWritten;
+    if (glyph === null || glyph === '_') return;   // nothing of ours in the buffer
+    const at = word.indexOf(glyph);
+    if (at !== -1) {
+      const restored = word.slice(0, at) + '_' + word.slice(at + glyph.length);
+      this._writeChar(slot.wordIndex, restored);
+      this._log(`BlankLoading: recovered overwritten slot wordIndex=${slot.wordIndex} ${JSON.stringify(word)} → ${JSON.stringify(restored)}`);
+      return;
+    }
+    // Our glyph is not in the tracked word at all. Either the substitution
+    // path took the word (nothing to do) or an edit BEFORE the slot shifted
+    // every word index, so we have been watching the wrong word while our
+    // glyph sits elsewhere in the buffer. Rescue it — but only on terms
+    // that cannot touch the user's own text.
+    this._rescueDisplacedGlyph(glyph);
+  }
+
+  /**
+   * Last-resort rescue for a glyph left behind when word indices shifted
+   * under the animator (text inserted before the slot).
+   *
+   * Two conditions make this safe, and both are required:
+   *   - the glyph is non-ASCII, so it is one of the braille / custom
+   *     marks, never a `-` or `|` the user could plausibly have typed
+   *     (bounce and flipper frames are deliberately excluded);
+   *   - it occurs EXACTLY ONCE in the buffer, so there is no ambiguity
+   *     about which occurrence is ours.
+   * Anything less certain is left alone: a stray glyph is a blemish, but
+   * rewriting a character the user typed is data loss.
+   */
+  private _rescueDisplacedGlyph(glyph: string): void {
+    const cp = glyph.codePointAt(0);
+    if (cp === undefined || cp < 128) return;      // ambiguous with user text
+    const text = this._adapter.getText();
+    const first = text.indexOf(glyph);
+    if (first === -1) return;
+    if (text.indexOf(glyph, first + glyph.length) !== -1) return;  // more than one
+    const restored = text.slice(0, first) + '_' + text.slice(first + glyph.length);
+    this._adapter.setText(restored);
+    this._adapter.forceRender?.();
+    this._log(`BlankLoading: rescued displaced glyph ${JSON.stringify(glyph)} at ${first}`);
   }
 
   /** Replace the word at wordIndex with `_`. Used on stop().
    *  Takes the slot's frames so custom-character animations restore
    *  correctly — without the per-slot set we'd refuse to restore any
    *  custom char and the loading glyph would stick. */
-  private _restoreUnderscore(wordIndex: number, slotFrames: readonly string[]): void {
-    const word = this._wordAt(wordIndex);
+  private _restoreUnderscore(slot: ActiveSlot): void {
+    const word = this._wordAt(slot.wordIndex);
     if (word === null) return;
-    if (!slotFrames.includes(word) && word !== '_') return;   // user / substitution took over
+    if (!slot.frames.includes(word) && word !== '_') {
+      // The word is no longer a bare frame char. Either the substitution
+      // path replaced it (nothing to do) or the user typed around our
+      // glyph, in which case recovery peels our one character back out.
+      this._recoverFromOverwrite(slot, word);
+      return;
+    }
     if (word === '_') return;                 // already `_`
-    this._writeChar(wordIndex, '_');
+    this._writeChar(slot.wordIndex, '_');
   }
 
   /** Word-aware splice: replace the word at wordIndex with `next`.

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the loading animator no longer strands its glyph in the buffer (`@opencues/runtime` 0.30.3 → 0.30.4)
+
+Type into a `_` slot while its blank is still in flight and the spinner character was left behind for good: `weather ▘!!`. The animator gives up whenever the slot's word stops being one of its frames — the documented behaviour, since the substitution path is expected to take the word — but it gave up *without putting `_` back*, so the blank it was animating could never resolve either. There was no `_` left to splice into. Two ways to reach it, both fixed:
+
+**The user types beside the glyph.** The animator owns exactly one character, the frame it last wrote, so a slot now records it (`lastWritten`) and peels that single occurrence back out on give-up: `▘!!` → `_!!`, keeping the user's edit and the blank. Matching is on the exact character last written, never the frame set, because `bounce` and `flipper` frames are ordinary ASCII (`-`, `|`, `/`) and matching the set would rewrite a `-` the user typed themselves. Applies on the tick path and on `stop()`, which had the same hole.
+
+**An edit before the slot shifts every word index.** The animator then watches the wrong word entirely while its glyph sits elsewhere, so neither the tracked word nor the give-up check ever sees it. A last-resort rescue scans the buffer, on two conditions that together make it unambiguous: the glyph is non-ASCII (the braille and custom marks, so `bounce`/`flipper` are excluded by construction) and it occurs exactly once. Anything less certain is left alone — a stray glyph is a blemish, rewriting a character the user typed is data loss.
+
+Found on DeepSeek Harness, whose asynchronous composer writes widen the window, but the give-up path is host-agnostic and every host could hit it. Eight new `blank-loading.test.ts` cases cover both recoveries plus the three refusals (substitution took the word, ASCII frame, glyph appears twice); 91 pass in that file.
+
 ## [0.6.1] - 2026-08-16
 
 ### Changed — an inline note's `↳` points AT the span, not two cells left of it (`@opencues/runtime` 0.30.2 → 0.30.3)
