@@ -130,6 +130,93 @@ the card's height, which is a worse kind of jumping.
 dsh's own stats line lives. Never moves, entirely native, but loses span
 anchoring and reads as a status line rather than a note.
 
+## LLM routing: two modes
+
+**Harness mode (the default).** Every OpenCues call goes through dsh's own
+`ctx.llm.stream()`, using whatever provider and model the user already
+configured there. `GenerateOptions` is a free-standing one-shot ("a
+hand-built one-shot passes any list"), so this creates no session and
+writes nothing to the transcript. Three consequences: **no OpenCues API key
+is needed**, credentials stay in the Node process where the browser cannot
+see them even in principle, and the host's retry policy plus token metering
+cover cue traffic.
+
+The seam is `@opencues/core`'s `harness` provider (`transport: 'cli'`,
+`registerHarnessDispatch(fn)`). The browser half binds a dispatch that
+POSTs the neutral `ChatRequest` to `/opencues/llm`; the node half maps it
+onto `GenerateOptions` and dispatches.
+
+**OpenCues mode.** The runtime's own per-bucket routing (cues / auditors /
+blanks) from OPENCUES.md, with OpenCues' own providers and keys. Unchanged
+by any of this.
+
+### Four things that are easy to get wrong
+
+- **Harness mode must beat the BUCKET scalars, not just the global one.**
+  The resolver's precedence is per-source > per-feature > bucket > global,
+  and `providerOverride` only replaces the global tier. A bucket scalar in
+  the user's OPENCUES.md silently wins, and the first cut of this routed
+  cues to cerebras while believing it was on the harness. The fix is to
+  compose the effective OPENCUES.md (rewriting every `*-llm-provider` to
+  `harness` and dropping the model scalars) in the served virtual FS. The
+  file on disk is never touched.
+- **Never forward OpenCues' model scalar to the host.** OpenCues carries
+  e.g. `gemma-4-31b`; sending that to `deepseek-official` asks DeepSeek for
+  a Cerebras model, and adapters are explicitly told *not* to reject
+  unlisted ids, so it is served as *something* rather than failing loudly.
+  The node half validates the requested model against `listModels()` and
+  falls back, reporting `modelFallbackFrom`.
+- **Pin reasoning effort off.** Both DeepSeek models advertise
+  `off | high | max` with **`defaultEffort: high`**, and at the default
+  every response streams chain-of-thought as ordinary text — which OpenCues
+  splices straight into the user's document ("We need to answer…"). Off
+  also saves ~400ms. Efforts are adapter-owned opaque strings, so resolve
+  them from `resolveModelInfo` rather than assuming a vocabulary.
+- **Consume `text-delta` only.** `StreamChunk` is a discriminated union
+  where `reasoning-delta` carries chain-of-thought. Filtering on a generic
+  `.text` field picks up both.
+
+### Measured, same prompt and machine
+
+| Route | TTFT | Total |
+|---|---|---|
+| groq / gpt-oss-120b | 211 ms | 218 ms |
+| cerebras / gemma-4-31b | 260 ms | 268 ms |
+| deepseek-v4-flash (reasoning off) | 826 ms | 979 ms |
+| deepseek-v4-pro (reasoning off) | 1162 ms | 1310 ms |
+
+Prefix caching works well on DeepSeek (3584 of 3598 tokens reused, 99.6%),
+so OpenCues' stable-system-prompt design pays off. But a cached call with
+**14 input and 5 output tokens still takes 837 ms**, which is a round-trip
+floor rather than inference: it will not tune away. Fine for `_` blanks,
+where the user is already waiting; noticeably behind for passive cues.
+That is why the choice stays the user's, and why the settings tab states
+the numbers instead of hiding them.
+
+`listConfigurableProviders()` returns ~36 dormant routes including
+cerebras, groq and openai: dsh's LLM layer is a generic multi-provider
+adapter (`llm-pi-ai`) with `apiKeyEnv` as a credential *reference*. So a
+user wanting speed can activate cerebras **inside dsh** and keep every
+benefit of harness mode.
+
+## Settings
+
+Contributed into dsh's own Settings > Plugins section through the public
+`settings.plugins.tab` slot, so it sits beside their Plugin configuration
+and Plugin list tabs rather than being a parallel UI.
+
+It deliberately contains only two things: **which model sees your text**
+(harness mode inherits the model configured for the user's agent
+conversation, and they should be told plainly rather than have it inferred
+from a dropdown they never opened) and the routing choice with the measured
+latency attached. Every other OpenCues scalar stays in OPENCUES.md and the
+in-buffer `_` settings blank; mirroring forty scalars into a second surface
+would be a drift surface with no upside.
+
+Mode currently persists in `localStorage`, so it applies instantly and per
+browser. Moving it to a dsh settings namespace would make it follow the
+user's `$DSH_HOME` across ports, and is the obvious next step.
+
 ## Host contract findings
 
 Five bugs cost real time and all five generalise to any asynchronous or
@@ -170,6 +257,32 @@ invocation".
 
 Bundle with chrome's esbuild externals: `node:fs`, `node:path`, `node:os`,
 `node:child_process`, `https`.
+
+## Install
+
+```
+dsh plugin --profile web add @opencues/dsh
+```
+
+That is all of it. pnpm links the package, dsh reads its `dsh.bundle`
+manifest and appends it to `dsh.profile.bundles`, and the next boot serves
+the client half from `/plugins`. Reload the tab. Removal is
+`dsh plugin --profile web remove @opencues/dsh`.
+
+No fork, no patch engine, no version pin, no binary surgery, no
+`opencues install` step. The published package carries a prebuilt
+`client.js` with `@opencues/core` and `@opencues/runtime` inlined (~1.2 MB),
+so both can stay private packages; the node half has no dependencies
+beyond `node:fs`.
+
+**A user with an existing OpenCues install** gets their `~/.cues/` tree and
+env keys picked up automatically, and can choose either LLM mode.
+
+**A user who has never heard of OpenCues** currently gets a working
+integration only if `~/.cues/` exists. Closing that is the one shipping
+gap: bundle `defaults/` at build time the way chrome's esbuild inlines
+`__DEFAULT_*__` constants, and fall back to it when no config directory is
+found. Harness mode already means they need no API key.
 
 ## What is verified working
 
