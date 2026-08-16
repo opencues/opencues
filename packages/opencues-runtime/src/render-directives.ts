@@ -108,12 +108,18 @@ export function inlineNoteDisplayText(cueTip: string): string {
 
 /**
  * Screen COLUMN (in terminal cells) where an inline note's `↳ ` connector
- * should start so the MESSAGE lands under the span's column — the same
- * alignment `applyDirectives` computes for the terminal splice, factored out
- * so the OpenTUI hosts (OpenCode / shell), which can't splice into the
- * textarea's own render and instead float an absolute-positioned overlay
- * line, land the note in the SAME place. The connector hangs to the left of
- * the span column; clamped at 0 so a span at/near column 0 sits flush left.
+ * should start: ON the span's own column, so the arrow points at the value's
+ * first character. The same alignment `applyDirectives` computes for the
+ * terminal splice, factored out so the OpenTUI hosts (OpenCode / shell), which
+ * can't splice into the textarea's own render and instead float an
+ * absolute-positioned overlay line, land the note in the SAME place.
+ *
+ * THE CONNECTOR ALIGNS, NOT THE MESSAGE (changed 2026-08-16, bringing the
+ * runtime onto the artifact kit's rule). Aligning the message makes the
+ * alignment depend on whichever character it begins with: an emoji's mark is
+ * drawn narrower than its cell and lands a fraction off, while a word lands on
+ * exactly — so the same note wobbled by host and by message. The connector is
+ * one glyph the renderer controls, so pointing IT at the span is stable.
  *
  * `text` is the painted plain-text buffer; `spanStart` is the note span's
  * start offset in that same space. Wrap-unaware by design (matches the
@@ -124,10 +130,7 @@ export function inlineNoteBoxColumn(text: string, spanStart: number): number {
   const s = Math.min(Math.max(0, spanStart), text.length);
   const lineStart = text.lastIndexOf('\n', Math.max(0, s - 1)) + 1;
   const lineText = text.slice(lineStart, s);
-  const col = codeUnitsToCells(lineText, lineText.length);
-  const prefix = INLINE_NOTE_CONNECTOR + ' ';
-  const prefixCells = codeUnitsToCells(prefix, prefix.length);
-  return Math.max(0, col - prefixCells);
+  return Math.max(0, codeUnitsToCells(lineText, lineText.length));
 }
 
 /**
@@ -232,18 +235,16 @@ export function applyDirectives(
     // Japanese" bug). Measure in terminal cells so the note tracks the span.
     const lineText = visible.slice(lineStart, spanStart);
     const col = codeUnitsToCells(lineText, lineText.length);
-    // The `↳ ` connector points up at the span; the MESSAGE aligns under the
-    // span's column, with the arrow hanging in the margin to its left.
+    // THE CONNECTOR ALIGNS, NOT THE MESSAGE: the `↳ ` sits ON the span's own
+    // column, pointing at the value's first character. Aligning the message
+    // instead made the alignment depend on whichever character it began with -
+    // an emoji's mark is drawn narrower than its cell and lands a fraction off,
+    // a word lands on exactly - so the same note wobbled by message.
     const prefix = INLINE_NOTE_CONNECTOR + ' ';
-    const prefixCells = codeUnitsToCells(prefix, prefix.length);
     // First-line span → add back the host prompt indent the note line (a
     // continuation line) doesn't inherit. lineStart === 0 ⟺ span on line 1.
     const promptPad = lineStart === 0 ? Math.max(0, firstLineIndent) : 0;
-    // Message target column = col + promptPad; the connector hangs prefixCells
-    // to its left. Fold both into ONE clamp so a span at (or near) column 0
-    // yields no leading indent — the arrow just sits at the left edge — instead
-    // of being pushed right by the prompt pad.
-    const pad = ' '.repeat(Math.max(0, col + promptPad - prefixCells));
+    const pad = ' '.repeat(Math.max(0, col + promptPad));
     // Trailing `(underscore to cycle)` affordance — present until the user's
     // first cycle this session (dim-render drops the hint via hasCycledEver()).
     const noteBody = padTerminalWideEmoji(formatInlineNoteText(note.text)) + (note.hint ? `   ${note.hint}` : '');

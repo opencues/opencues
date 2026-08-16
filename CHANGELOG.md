@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — an inline note's `↳` points AT the span, not two cells left of it (`@opencues/runtime` 0.30.2 → 0.30.3)
+
+The note line's indent aligned the MESSAGE under the flagged span, with the `↳ ` connector hanging in the margin to its left. It aligns the CONNECTOR now: the arrow lands on the value's first character. The reason is that a message's alignment depends on whichever character it begins with — an emoji's mark is drawn narrower than its cell and lands a fraction off, while a word lands on exactly — so the same note sat differently by message and by host. The connector is one glyph the renderer controls, so pointing IT at the span is stable, and it is the rule the artifact kit and opencues.com have used for a while: this closes a divergence rather than opening one. `applyDirectives` pads by `col` instead of `col - prefixCells`, and `inlineNoteBoxColumn` (the column the OpenTUI hosts float their overlay line at) returns the span's own column, so the terminal splice and the overlay hosts still land in the same place.
+
+**Claude Code's first-line indent goes to 0 with it**, and the two errors it was cancelling are worth recording. `CC_INPUT_FIRST_LINE_INDENT` existed because the note is injected as a continuation line, which the comment said gets no `❯ ` prompt — so the pad added the prompt width back. CC's input box indents continuation lines too, so that addition and the connector's own two-cell subtraction cancelled: on screen the arrow already sat on the span and the message two cells past it, which is what CC has always shown and why nobody noticed the runtime was nominally message-aligned. With the subtraction gone the addition double-counted and the arrow moved two cells INTO the word. Zero is the honest value and it agrees with the OpenTUI hosts, which never had a compensation. Still overridable live with `OPENCUES_CC_NOTE_INDENT` for a host that really does indent only its first line.
+
+Nine `dim-render.test.ts` expectations and five `render-directives.test.ts` ones pinned the old rule and now pin the new; 2245 runtime tests pass, with opencode (54), gemini-cli (23) and shell (45). Not a spec change — a rendering rule, no scalar.
+
 ## [0.6.0] - 2026-08-09
 
 ### Added — dismiss a cue from its own note (`@opencues/core` 0.42.7 → 0.43.0, `@opencues/runtime` 0.29.11 → 0.30.2, `opencues` 0.5.5 → 0.6.0)

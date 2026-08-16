@@ -632,8 +632,8 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     });
     const directives = dimRender.compute({ text: buf, cursor: 5, externalHighlights: [] });
     const visible = applyDirectives(buf, directives).replace(/\x1b\[[0-9;]*m/g, '');
-    expect(visible).toContain('formal\n     ↳ 2 | Improve formality'); // 5 spaces (cells)
-    expect(visible).not.toContain('formal\n  ↳'); // NOT the 2-space code-point pad
+    expect(visible).toContain('formal\n       ↳ 2 | Improve formality'); // 5 spaces (cells)
+    expect(visible).not.toContain('formal\n     ↳'); // NOT the old message-aode-point pad
   });
 
   it('auto-selects a transform span when the caret is inside, and CLEARS when it leaves', () => {
@@ -920,9 +920,9 @@ blankScript: ./vol.sh
     // indented to the span's column (11 = start of "saturday").
     const visible = painted.replace(/\x1b\[[0-9;]*m/g, '');
     expect(visible.startsWith(BUFFER)).toBe(true);
-    // Message aligns under the span (col 11); "↳ " (2 cols) hangs in the margin,
-    // so the line is padded to col-2 = 9 before the connector.
-    expect(visible).toContain('\n' + ' '.repeat(9) + '↳ ⚠  2 | the 19th is a Friday, not Saturday');
+    // THE CONNECTOR aligns under the span (col 11): the line is padded to the
+    // span's own column, so the arrow points at its first character.
+    expect(visible).toContain('\n' + ' '.repeat(11) + '↳ ⚠  2 | the 19th is a Friday, not Saturday');
     expect(painted).toContain('\x1b[2m↳ ⚠  2 | the 19th is a Friday, not Saturday   (underscore to cycle)\x1b[22m');
   });
 
@@ -939,10 +939,10 @@ blankScript: ./vol.sh
       cueTip: '⚠ the 19th is a Friday',
     });
     const directives = dimRender.compute({ text: buf0, cursor: 3, externalHighlights: [] });
-    // col 0 + promptPad 2 - "↳ "(2) = 0 → arrow sits at the left edge, no indent.
+    // col 0 + promptPad 2 → the arrow sits at the prompt's own column, no indent.
     const visible = applyDirectives(buf0, directives, 2).replace(/\x1b\[[0-9;]*m/g, '');
-    expect(visible).toContain('\n↳ ⚠  2 | the 19th is a Friday');
-    expect(visible).not.toContain('\n ↳'); // no leading space before the arrow
+    expect(visible).toContain('\n  ↳ ⚠  2 | the 19th is a Friday');
+    expect(visible).not.toContain('\n↳'); // the prompt's columns before the arrow
   });
 
   it('adds the host first-line indent when the span is on line 1 (CC prompt)', () => {
@@ -952,7 +952,7 @@ blankScript: ./vol.sh
     // firstLineIndent = 4 → note pad = (col-2) + 4 = 9 + 4 = 13. The span is on
     // line 1 (lineStart 0), so the prompt offset applies.
     const visible = applyDirectives(BUFFER, directives, 4).replace(/\x1b\[[0-9;]*m/g, '');
-    expect(visible).toContain('\n' + ' '.repeat(13) + '↳ ⚠  2 | the 19th is a Friday, not Saturday');
+    expect(visible).toContain('\n' + ' '.repeat(15) + '↳ ⚠  2 | the 19th is a Friday, not Saturday');
   });
 
   it('does NOT add the first-line indent when the span is on a later line', () => {
@@ -970,9 +970,9 @@ blankScript: ./vol.sh
     });
     const directives = dimRender.compute({ text: multiline, cursor: 24, externalHighlights: [] });
     // Even with a large firstLineIndent, a line-2 span gets NO prompt pad:
-    // col = 21 - 16 = 5 → pad = col-2 = 3, unchanged.
+    // col = 21 - 16 = 5 → pad = col = 5, and no prompt indent on a later line.
     const visible = applyDirectives(multiline, directives, 8).replace(/\x1b\[[0-9;]*m/g, '');
-    expect(visible).toContain('saturday now\n   ↳ ⚠  2 | the 19th is a Friday');
+    expect(visible).toContain('saturday now\n     ↳ ⚠  2 | the 19th is a Friday');
   });
 
   it('places the pill under the SPAN\'s line, not below the whole buffer (long buffer)', () => {
@@ -992,8 +992,8 @@ blankScript: ./vol.sh
     });
     const directives = dimRender.compute({ text: multiline, cursor: 8, externalHighlights: [] });
     const visible = applyDirectives(multiline, directives).replace(/\x1b\[[0-9;]*m/g, '');
-    // span at col 5 → message aligns under it, "↳ " hangs left → pad = 3.
-    expect(visible).toContain('saturday\n   ↳ ⚠  2 | the 19th is a Friday   (underscore to cycle)\nmore text');
+    // span at col 5 → the connector sits ON col 5 → pad = 3.
+    expect(visible).toContain('saturday\n     ↳ ⚠  2 | the 19th is a Friday   (underscore to cycle)\nmore text');
     // Not dangling after the last line.
     expect(visible.endsWith('even more')).toBe(true);
   });
@@ -1023,8 +1023,8 @@ blankScript: ./vol.sh
     const visible = applyDirectives(MIDLINE, directives).replace(/\x1b\[[0-9;]*m/g, '');
     // Right-side text preserved on the line; note below, message under col 8.
     expect(visible.startsWith('meet on saturday at 6pm')).toBe(true);
-    // col 8 → pad = 8 - 2 = 6; "↳ " then message → ⚠ lands at col 8 (under 's').
-    expect(visible).toContain('at 6pm\n      ↳ ⚠  2 | the 19th is a Friday');
+    // col 8 → pad = 8; the connector lands ON col 8 (under 's').
+    expect(visible).toContain('at 6pm\n        ↳ ⚠  2 | the 19th is a Friday');
   });
 
   it('MID-LINE span with a following line — note inserts between, right-side text preserved', () => {
@@ -1034,17 +1034,17 @@ blankScript: ./vol.sh
     const directives = dimRender.compute({ text: buf, cursor: 12, externalHighlights: [] });
     const visible = applyDirectives(buf, directives).replace(/\x1b\[[0-9;]*m/g, '');
     // Note lands between the span's line and the next; "at 6pm" stays on line 1,
-    // "see you there" stays on its own line, message aligned under col 8.
-    expect(visible).toContain('at 6pm\n      ↳ ⚠  2 | the 19th is a Friday   (underscore to cycle)\nsee you there');
+    // "see you there" stays on its own line, connector aligned under col 8.
+    expect(visible).toContain('at 6pm\n        ↳ ⚠  2 | the 19th is a Friday   (underscore to cycle)\nsee you there');
   });
 
   it('MID-LINE span on the prompted first line — prompt indent + column both apply', () => {
     const { dynDefs, dimRender } = setup(MIDLINE);
     seedMidlineDef(dynDefs);
     const directives = dimRender.compute({ text: MIDLINE, cursor: 12, externalHighlights: [] });
-    // firstLineIndent 2 (CC prompt) → pad = col 8 + 2 - "↳ "(2) = 8, so the
-    // message sits under the span's on-screen column (prompt 2 + col 8 = 10).
+    // firstLineIndent 2 (CC prompt) → pad = col 8 + 2 = 10, so the CONNECTOR
+    // sits under the span's on-screen column (prompt 2 + col 8 = 10).
     const visible = applyDirectives(MIDLINE, directives, 2).replace(/\x1b\[[0-9;]*m/g, '');
-    expect(visible).toContain('at 6pm\n        ↳ ⚠  2 | the 19th is a Friday');
+    expect(visible).toContain('at 6pm\n          ↳ ⚠  2 | the 19th is a Friday');
   });
 });
