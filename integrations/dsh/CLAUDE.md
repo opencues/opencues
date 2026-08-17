@@ -293,17 +293,40 @@ fills to `Reykjavik`, on the host's model, with no key anywhere.
 
 ## Credentials
 
-`/opencues/config` **withholds API key values by default** and returns only
-the key NAMES, so a surface can say "cerebras, groq detected" without
-holding the secrets. Values are sent only when the client asks with
-`?withKeys=1`, which it does exclusively in OpenCues mode, where the
-runtime dispatches to providers from the page and genuinely needs them.
+**No API key value ever reaches the page, in either mode.** This matters
+more here than on most hosts: **dsh is a plugin host**, so the page context
+is shared with third-party plugin code, and a key handed to the page is a
+key handed to every plugin the user has installed.
 
-In harness mode the page therefore never receives a credential at all.
-That matters more here than on most hosts: **dsh is a plugin host**, so
-the page context is shared with third-party plugin code, and a key handed
-to the page is a key handed to all of them. The first cut of this route
-sent every value unconditionally; that was wrong and is fixed.
+Three parts:
+
+- `/opencues/config` returns key **names** only, so a surface can report
+  "cerebras, groq detected" without holding secrets. There is deliberately
+  **no opt-in flag** to get values: any flag page code can set is a flag
+  hostile page code can set. An earlier cut had a `?withKeys=1` escape
+  hatch, which was exactly that mistake, and it is gone.
+- The runtime is handed **placeholder** keys (`__OPENCUES_PROXY__`), which
+  is enough for a provider to be selectable and for `buildRequest` to
+  populate its auth header.
+- `/opencues/llm/proxy` substitutes the real secret on the way out, for an
+  **allowlisted https destination only** (the six provider hosts). Plain
+  http is refused; unknown hosts are refused.
+
+Stated plainly, because it is not absolute: a hostile plugin can still ask
+the proxy to spend the user's quota — but it could equally just use the
+harness model. What it can no longer do is **read the key and use it
+elsewhere, forever, off this machine**. Exfiltration is the harm being
+closed.
+
+Verified by `probe-credentials.mjs`, which runs as a co-resident page
+script would: four config-route variants return zero values, `window.__oc`
+holds nothing secret-shaped, and the proxy answers 403 to both an
+arbitrary destination and to plaintext http.
+
+**Known gap:** data blanks that call a third-party API from the page with
+their own key (stocks via `FINNHUB_API_KEY`) no longer have one and will
+degrade. Extending the proxy's allowlist to cover them is the fix; it is
+not done.
 
 ## What is verified working
 
