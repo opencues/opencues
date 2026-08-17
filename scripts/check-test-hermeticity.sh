@@ -37,12 +37,32 @@ declare -a WATCH_DIRS=("$HOME/.opencues" "$HOME/.cues")
 declare -a HAVE_BASELINE=()
 declare -a BASELINE_FILES=()
 
+# Paths a RUNNING HOST owns, excluded from the snapshot.
+#
+# This gate asks "did a test write to the user's real config?". It was
+# answering a broader question — "did anything under ~/.cues change?" — and a
+# live Claude Code / OpenCode session sitting in another terminal answers yes
+# on its own: its commitments poller rewrites `.session-commitments.kick` every
+# few seconds, and a blank that fires updates `.user-blank-state/`. Neither is
+# a test escaping its sandbox, but the gate reported HERMETICITY VIOLATION
+# either way, which trains people to skim past the one output that must never
+# be ignored.
+#
+# Everything here is EPHEMERAL RUNTIME STATE, regenerated on demand. Nothing
+# here is user config. The config surface the gate exists to protect —
+# OPENCUES.md, CUES.md, IDENTITY.md, .env, cues/, blanks/, auditors/, words/,
+# katas/, scripts/ — is deliberately still watched, so PR #41's
+# vendor-pins-wiping-the-real-tmux-dir class stays caught.
+# Each snapshot line is `<relative-path>:<mtime>`, so an entry is ignored when
+# it IS one of these (followed by `:`) or lives UNDER one (followed by `/`).
+IGNORE_RE='^(\.session-commitments[^:/]*|session-commitments(\.stash-[0-9]+)?|\.opencues-log|\.user-blank-state|\.user-blank-storage)(:|/)'
+
 snapshot_dir() {
   local dir="$1" out="$2"
-  find "$dir" -printf '%P:%T@\n' 2>/dev/null \
-    | sort > "$out" 2>/dev/null \
-    || find "$dir" -exec stat -f '%N:%m' {} \; 2>/dev/null \
-       | sort > "$out"
+  { find "$dir" -printf '%P:%T@\n' 2>/dev/null \
+      || find "$dir" -exec stat -f '%N:%m' {} \; 2>/dev/null; } \
+    | grep -vE "$IGNORE_RE" \
+    | sort > "$out"
 }
 
 # Snapshot every watched dir that exists. We compare the SORTED list

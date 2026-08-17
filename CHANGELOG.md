@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the hermeticity gate cried wolf on a running host's own writes
+
+`check-test-hermeticity.sh` asks "did a test write to the user's real config?" but was answering a broader question: "did anything under `~/.cues` change?". A live Claude Code or OpenCode session in another terminal answers yes on its own — its commitments poller rewrites `.session-commitments.kick` every few seconds, and a blank that fires updates `.user-blank-state/`. Neither is a test escaping its sandbox, and the gate reported `HERMETICITY VIOLATION` either way, which trains people to skim past the one piece of output that must never be ignored.
+
+Ephemeral runtime state a running host owns is now excluded from the snapshot: the `.session-commitments*` files, `session-commitments/` (and its stash dirs), `.opencues-log`, `.user-blank-state/` and `.user-blank-storage/`. The config surface the gate exists to protect stays watched in full — `OPENCUES.md`, `CUES.md`, `IDENTITY.md`, `.env`, `cues/`, `blanks/`, `auditors/`, `words/`, `katas/`, `scripts/` — so PR #41's class (a test wiping the user's real vendored tmux dir) is still caught. Verified both directions against the real tree: 114 noise lines dropped, 67 config lines still watched, and a hand-checked case list confirming `OPENCUES.md`, `.env` and `cues/**` survive the filter.
+
+### Fixed — two `seed-configs` runs at once could crash the install (`opencues` 0.7.1 → 0.7.2)
+
+The Windows helper-`.exe` compile staged its files at a **fixed** path in the Windows home dir — `<base>.cs` and `<base>.exe` — so two `seed-configs` runs at the same time raced over the same two paths and each one's `finally` deleted the other's file. The observed shape is a TOCTOU: `existsSync(stagedExe)` returns true, the sibling run unlinks it, and the copy then throws `ENOENT`.
+
+And it threw *out*. The block had a `finally` but **no `catch`**, so any failure there — a vanished staging file, a full disk, an unreadable Windows home — propagated and took the whole `seed-configs` run down with it. That turns an optional, Windows-only optimisation into a hard failure of `opencues install`, on a machine where the blanks would have degraded gracefully without the `.exe` anyway.
+
+Staging paths are now unique per invocation, and the compile failure is caught and logged as a warning. Surfaced as a flaky test — `pnpm -r test` runs its files in parallel, which is exactly the concurrent-`seed-configs` condition — and verified by running the affected suites six-up and four-up concurrently, clean each time.
+
 ### Fixed — stacked PRs ran no CI at all, and an empty check list looks like a passing one
 
 `pull_request: branches: [master]` matches the PR's **base**, so a stacked PR — one based on another feature branch, which is how a dependent change gets reviewed — matched nothing and produced **zero checks**. GitHub renders that as an empty check list, which is visually indistinguishable from a green one, so #395 reached `mergeable / clean` with no CI behind it and was very nearly merged that way. Retargeting its base to `master` did not help either: that is a `pull_request: edited` event, and `edited` is not in the default type set (`opened` / `synchronize` / `reopened`), so nothing re-triggered. It took closing and reopening the PR to get a run.
