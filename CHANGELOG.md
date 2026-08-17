@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — a marketplace install of the dsh plugin shipped no browser half (`@opencues/dsh` 0.1.1 → 0.1.2)
+
+**The dsh plugin marketplaces do not install from npm.** They clone the repository and run `npm install --omit=dev --ignore-scripts` — with scripts disabled *by default*, for safety — then copy the result into the profile. Read out of `DSH-Plugins-Marketplace`'s `lib/index.js` rather than inferred from its prose; its own fallback message states the expectation outright: *"using the build artifacts committed in the repo"*.
+
+`client.js` was gitignored and produced by `prepublishOnly`, so on that path it simply did not exist. The node half loads, the config route answers, and **nothing ever paints or fills** — a broken install with no error anywhere to explain it. That ecosystem has already been bitten by this bug class by another plugin (their issue #54, where a package's content lived only in the published tarball), which is why their npm-tarball fallback exists at all.
+
+So `client.js` and `default-opencues.md` are now **committed**, which is the opposite of what this repo does everywhere else — `integrations/chrome/dist/` is not committed, and that stays true. It is not a change of principle: chrome is not distributed by clone-scraping marketplaces, and dsh is.
+
+Two things pay for committing derived output. **`minify: true`** cuts the bundle 1.71MB → 1.01MB, halving the per-change cost in git history and shrinking what every dsh page load pulls. And **`scripts/check-dsh-bundle-fresh.sh`** guards the real hazard: a committed artifact one version behind its source is exactly the silent-staleness failure this codebase has been bitten by repeatedly. esbuild is byte-reproducible for identical inputs (two consecutive builds hash identically), so the gate rebuilds and diffs — exact rather than heuristic — and builds core + runtime first, because the bundle inlines their dist and a stale dist would otherwise let a genuinely stale bundle pass. Wired into `pre-pr.sh` and CI.
+
+Verified by reproducing the marketplace path exactly — `git clone`, copy the plugin directory into a profile, **no npm tarball anywhere and no build step** — on a machine with no `.cues` config and every OpenCues provider key stripped: 29 shipped defaults load, 7 sources build, and `the capital of iceland is _` fills to `Reykjavik`.
+
+One detail worth keeping: their CLI-hint detection reads the **repo root** `package.json`, whose name is `opencues`, not `@opencues/dsh`. The npm install path is found via the command in the root README instead — another reason not to depend on the npm path being the one taken.
+
 ### Fixed — two OpenCues hosts in one page fought over the buffer (`@opencues/core` 0.45.0 → 0.46.0, `@opencues/chrome` 0.2.165 → 0.2.166, `@opencues/dsh` 0.1.0 → 0.1.1)
 
 A user with **both** the chrome extension and the dsh plugin installed had two OpenCues runtimes driving the same composer, and they could not see each other: a content script runs in an **isolated world** with its own `window`, so the page-level singleton each host uses to survive its own remounts is invisible across the boundary. What they share is the document — same textarea, same key events, same `CSS.highlights`.

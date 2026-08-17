@@ -1,6 +1,20 @@
-# Build artifacts. Both are PUBLISHED (they are in package.json's `files`
-# and produced by `prepublishOnly`), which is what lets a user install with
-# no build step and therefore no pnpm `allowBuilds` grant — see README
-# § Distribution. They are not committed, because they are derived.
-client.js
-default-opencues.md
+# client.js and default-opencues.md are BUILD ARTIFACTS THAT ARE COMMITTED.
+#
+# That is deliberate and it is the opposite of what this repo does everywhere
+# else (integrations/chrome/dist/ is not committed). The reason is specific to
+# this ecosystem rather than a change of principle:
+#
+# The dsh plugin marketplaces install by CLONING the repository and running
+# `npm install --omit=dev --ignore-scripts`, with scripts disabled BY DEFAULT
+# for safety. So `prepublishOnly` never runs on that path, and a gitignored
+# bundle simply would not exist — the node half would load, the config route
+# would answer, and nothing would ever paint or fill. Their own installer
+# says as much when it falls back: "using the build artifacts committed in
+# the repo".
+#
+# Staleness is the cost of committing derived output, and it is guarded:
+# `scripts/check-dsh-bundle-fresh.sh` rebuilds and diffs (esbuild is
+# byte-reproducible for identical inputs), and runs in pre-pr.sh + CI.
+#
+# So: if you change anything under src/, run `pnpm --filter @opencues/dsh
+# build` and commit the result alongside it.

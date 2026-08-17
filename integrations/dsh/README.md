@@ -148,6 +148,17 @@ pull request here. That is exactly why they are written down.
    at least a day old with 10+ commits, real working code, and **no marketing
    language**, which is why the phrasing above is flat and mechanical.
 
+**Steps 3 and 4 are one-time, not per-release.** The topic stays set, and the
+directories that matter either re-scan it on a timer or read the curated list.
+[CLAUDE.md § Where this plugin is listed](./CLAUDE.md#where-this-plugin-is-listed)
+records every surface and which ones need a PR versus collect themselves.
+
+**Step 0, every time you touch `src/`: rebuild and commit `client.js`.** It is
+a build artifact that is deliberately committed, because the marketplaces
+install by cloning this repo with `--ignore-scripts` — so what is committed
+here is literally what those users run. `scripts/check-dsh-bundle-fresh.sh`
+fails the build if it drifts.
+
 ## Status
 
 First release. Known gaps:

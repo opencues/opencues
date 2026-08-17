@@ -473,6 +473,89 @@ that write.
 (`Ctrl+Alt+→`). Pressing it with nothing active correctly returns
 not-consumed. That is not a bug.
 
+## Where this plugin is listed
+
+Published as `@opencues/dsh` on npm (2026-08-17, v0.1.1). The ecosystem has
+roughly a dozen directories, and they split into two kinds — which is the
+only thing worth remembering here, because it decides whether a new release
+needs any action at all.
+
+**Auto-collected from the `dsh-plugin` GitHub topic.** Nothing to submit;
+the topic on `opencues/opencues` is the entire mechanism, and it is also the
+one dsh's own README endorses.
+
+| Surface | Refresh |
+|---|---|
+| [DSH-Plugins-Marketplace](https://github.com/bradeGithub/DSH-Plugins-Marketplace) (in-GUI, one-click install) | CI every 2h |
+| [AdamPlatin123/awesome-dsh-plugins](https://github.com/AdamPlatin123/awesome-dsh-plugins) | scan every 6h |
+| [Zhiyuan-Fan/Awesome-DeepSeek-Harness-Plugins](https://github.com/Zhiyuan-Fan/Awesome-DeepSeek-Harness-Plugins) | curated daily |
+| [bruc3van/awesome-dsh-plugin](https://github.com/bruc3van/awesome-dsh-plugin) | scraped daily, then hand-verified |
+| dshmarketplace.dev, dshplugin.app, dshplugin.org | index the topic |
+
+**Hand-curated, submitted by PR** (2026-08-17):
+
+| List | PR | Notes |
+|---|---|---|
+| [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin) (7.5k★) | [#1508](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/1508) | **The authoritative catalog.** One YAML at `data/plugins/opencues__opencues--integrations-dsh.yml`, then `npm ci && node scripts/generate-readme.mjs`. [dsh-market](https://github.com/dsh-market/dsh-market) reads its `plugins.json` daily, so this entry is what puts OpenCues in the in-dsh market — do not submit to dsh-market directly, it says so itself |
+| [0xsline/awesome-deepseek-harness](https://github.com/0xsline/awesome-deepseek-harness) (687★) | [#374](https://github.com/0xsline/awesome-deepseek-harness/pull/374) | Hand-edited README; **both `README.md` and `README.zh-CN.md` must be updated together**. Category: `Input & Editing` |
+| [Anil-matcha/awesome-dsh-plugin](https://github.com/Anil-matcha/awesome-dsh-plugin) (927★) | [#26](https://github.com/Anil-matcha/awesome-dsh-plugin/pull/26) | Single README, alphabetical within section, `—` separator. No input category; `UI Enhancements` is where composer plugins live |
+
+**Deliberately not submitted:**
+[Dominic789654/awesome-deepseek-harness](https://github.com/Dominic789654/awesome-deepseek-harness)
+requires a **`dsh`** topic, not `dsh-plugin`. GitHub caps a repo at 20 topics
+and `opencues/opencues` is at exactly 20 — `dsh-plugin` already cost us
+`gpt-oss`. Spending a second slot for one 123★ list is a judgement call, not
+an obvious win, so it is Wilfred's to make rather than something to do
+quietly.
+
+### Why `client.js` is committed (the marketplaces do not use npm)
+
+**The marketplaces install by CLONING this repo**, not from npm. Read from
+`lib/index.js` of DSH-Plugins-Marketplace rather than inferred from its prose:
+it runs `npm install --omit=dev --ignore-scripts`, with
+**`allowScripts=false` as the safe default**, then copies the result into
+`~/.dsh/profiles/web/node_modules/<pkg>`. Its own fallback message states the
+expectation outright — *"using the build artifacts committed in the repo"*.
+
+So a gitignored bundle would simply not exist on that path: `prepublishOnly`
+never runs, `--ignore-scripts` guarantees nothing builds it, and the user gets
+the node half with no browser half. The config route answers, and nothing ever
+paints or fills — a broken install with no error anywhere. They have already
+been bitten by this bug class by another plugin (their issue #54, where a
+package's content lived only in the published tarball), which is why
+`installNpmTargetToTemp` exists as a fallback at all.
+
+**Hence `client.js` and `default-opencues.md` are committed**, which is the
+opposite of what this repo does everywhere else — `integrations/chrome/dist/`
+is not committed. That is not a change of principle: chrome is not distributed
+by clone-scraping marketplaces, and dsh is.
+
+Two things pay for it:
+
+- **`minify: true`** in `build.mjs` — 1.71MB → 1.01MB, so the per-change cost
+  in git history is halved, and every dsh page load gets the smaller bundle.
+- **`scripts/check-dsh-bundle-fresh.sh`** — committed derived output goes
+  stale silently, which is the worst failure mode in this codebase's history.
+  esbuild is byte-reproducible for identical inputs (two consecutive builds
+  hash identically), so the gate rebuilds and diffs: exact, not heuristic. It
+  builds core + runtime first, because the bundle inlines their dist and a
+  stale dist would otherwise let a genuinely stale bundle pass. Runs in
+  `pre-pr.sh` and CI.
+
+**If you change anything under `src/`, rebuild and commit the bundle with it.**
+
+Verified by reproducing the marketplace path exactly — `git clone`, copy the
+plugin directory into a profile, no npm tarball anywhere, no build step: 29
+shipped defaults load, 7 sources build, and `the capital of iceland is _` fills
+to `Reykjavik`.
+
+Their scraper does handle monorepos: `findPluginRoots` walks to depth 3 and
+requires each sub-package to declare `dsh` itself, which `integrations/dsh`
+(depth 2) does. Note their CLI-hint detection reads the **repo root**
+`package.json`, whose name is `opencues`, not `@opencues/dsh` — so the npm
+path is found via the install command in the root README rather than the
+manifest. One more reason not to depend on the npm path being taken.
+
 ## Known gaps
 
 - **Inline notes** as above.

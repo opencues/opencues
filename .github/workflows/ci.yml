@@ -286,3 +286,11 @@ jobs:
         run: pnpm build
       - name: Check chrome bundle
         run: bash scripts/check-chrome-bundle.sh
+
+      # The dsh bundle is the ONE build artifact this repo commits, because
+      # the dsh marketplaces install by cloning with --ignore-scripts — so
+      # whatever is committed is literally what those users run. Committed
+      # derived output goes stale with no error anywhere, hence the gate.
+      # Shares this job because it needs the same `pnpm build` output.
+      - name: Check dsh bundle freshness
+        run: bash scripts/check-dsh-bundle-fresh.sh
