@@ -278,11 +278,32 @@ beyond `node:fs`.
 **A user with an existing OpenCues install** gets their `~/.cues/` tree and
 env keys picked up automatically, and can choose either LLM mode.
 
-**A user who has never heard of OpenCues** currently gets a working
-integration only if `~/.cues/` exists. Closing that is the one shipping
-gap: bundle `defaults/` at build time the way chrome's esbuild inlines
-`__DEFAULT_*__` constants, and fall back to it when no config directory is
-found. Harness mode already means they need no API key.
+**A user who has never heard of OpenCues** gets the shipped defaults,
+inlined at build time (29 files: `CUES.md`, `OPENCUES.md`, and every
+`cues/*/CUE.md` and `blanks/*/BLANK.md`) and dropped into the same virtual
+FS a real tree would populate. A real `.cues` directory always wins.
+
+This is not a nicety. Verified on a clean HOME **before** the fallback
+existed: the config route returned `"files":{}`, ConfigLoader reported
+`0 cue entries, 0 blanks`, the resolver built no sources, and typing
+`the capital of iceland is _` did nothing at all — **a silent no-op with no
+error to explain it**, which for a plugin someone just installed reads as
+broken. With the fallback the same user gets 97 blanks and that sentence
+fills to `Reykjavik`, on the host's model, with no key anywhere.
+
+## Credentials
+
+`/opencues/config` **withholds API key values by default** and returns only
+the key NAMES, so a surface can say "cerebras, groq detected" without
+holding the secrets. Values are sent only when the client asks with
+`?withKeys=1`, which it does exclusively in OpenCues mode, where the
+runtime dispatches to providers from the page and genuinely needs them.
+
+In harness mode the page therefore never receives a credential at all.
+That matters more here than on most hosts: **dsh is a plugin host**, so
+the page context is shared with third-party plugin code, and a key handed
+to the page is a key handed to all of them. The first cut of this route
+sent every value unconditionally; that was wrong and is fixed.
 
 ## What is verified working
 
