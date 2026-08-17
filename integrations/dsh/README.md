@@ -93,7 +93,7 @@ Building from a checkout of this repo instead:
 
 ```sh
 pnpm install
-pnpm --filter @opencues/dsh build          # writes client.js + default-opencues.md
+pnpm build --filter @opencues/dsh          # writes client.js + default-opencues.md
 dsh plugin --profile web add /path/to/opencues/integrations/dsh
 ```
 

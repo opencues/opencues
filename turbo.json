@@ -5,6 +5,10 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**", "!dist/version.json"]
     },
+    "@opencues/dsh#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["client.js", "default-opencues.md"]
+    },
     "typecheck": {
       "dependsOn": ["^build"]
     },
