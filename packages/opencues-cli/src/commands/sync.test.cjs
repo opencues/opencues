@@ -39,6 +39,7 @@ const REAL_REPO_ROOT = path.resolve(__dirname, '../../../..');
 const REAL_CORE_DIST = path.join(REAL_REPO_ROOT, 'packages/opencues-core/dist/index.js');
 
 const sync = require('./sync.cjs');
+const { setWslForTests, resetWslForTests } = require('../lib/is-wsl.cjs');
 
 const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
 
@@ -272,18 +273,19 @@ describe('opencues sync — invalid input', () => {
   });
 
   it('invalid: --wsl outside of WSL exits 1 with a clear message', () => {
-    const savedDistro = process.env.WSL_DISTRO_NAME;
-    const savedInterop = process.env.WSL_INTEROP;
-    delete process.env.WSL_DISTRO_NAME;
-    delete process.env.WSL_INTEROP;
+    // Deleting the env vars is NOT enough to simulate not-under-WSL: isWsl()
+    // also reads /proc, which keeps telling the truth on a real WSL machine.
+    // Written that way, this test failed for every WSL developer and passed
+    // on CI's Linux runners — so `pre-pr.sh` was red on every change
+    // regardless of the change, which teaches people to ignore it.
+    setWslForTests(false);
     try {
       const userCues = path.join(tmpHome, '.cues');
       writeFixtureCueDir(userCues);
       assert.throws(() => sync(['chrome', '--wsl'], ctx()), /__EXIT_1__/);
       assert.match(errs.join('\n'), /requires running under WSL/);
     } finally {
-      if (savedDistro === undefined) delete process.env.WSL_DISTRO_NAME; else process.env.WSL_DISTRO_NAME = savedDistro;
-      if (savedInterop === undefined) delete process.env.WSL_INTEROP; else process.env.WSL_INTEROP = savedInterop;
+      resetWslForTests();
     }
   });
 });

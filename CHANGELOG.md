@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — stacked PRs ran no CI at all, and an empty check list looks like a passing one
+
+`pull_request: branches: [master]` matches the PR's **base**, so a stacked PR — one based on another feature branch, which is how a dependent change gets reviewed — matched nothing and produced **zero checks**. GitHub renders that as an empty check list, which is visually indistinguishable from a green one, so #395 reached `mergeable / clean` with no CI behind it and was very nearly merged that way. Retargeting its base to `master` did not help either: that is a `pull_request: edited` event, and `edited` is not in the default type set (`opened` / `synchronize` / `reopened`), so nothing re-triggered. It took closing and reopening the PR to get a run.
+
+The `branches:` filter is gone from `pull_request` — every PR now runs regardless of base. A run on a stacked PR costs one run; not running costs a merge with no evidence. `workflow_dispatch:` is added alongside it, because when #395 had no checks there was also no event that would produce any.
+
+### Fixed — the WSL predicate existed seven times, and two tests could only pass on non-WSL machines (`opencues` 0.7.0 → 0.7.1)
+
+`sync.test.cjs` and `which.test.cjs` simulated "not under WSL" by deleting `WSL_DISTRO_NAME` and `WSL_INTEROP`. Reasonable, and not sufficient: detection also reads `/proc`, which keeps reporting the truth on a real WSL box. So both tests **failed for every WSL developer and passed on CI's Linux runners** — `pre-pr.sh` was red on every change regardless of the change, which is how a gate stops being read.
+
+The cause underneath was duplication. There were **seven** near-copies of the predicate — `sync.cjs`, `which.cjs`, `install.cjs`, `openrouter-oauth.cjs`, chrome's `bin/install.cjs`, and four inline anonymous functions inside `doctor.cjs` — and they had already drifted: most read `/proc/sys/kernel/osrelease`, doctor's read `/proc/version`, and `openrouter-oauth.cjs` checked only the env vars, so it answered **false on a WSL machine** whose shell had not exported them (`wsl.exe -- node …` spawns exactly that shell). That one was a real behavioural bug, not just untidiness.
+
+Detection now lives once in `packages/opencues-cli/src/lib/is-wsl.cjs`, checks both `/proc` files, and carries a test seam (`setWslForTests` / `resetWslForTests`) modelled on the one `@opencues/core` already uses for its CLI-binary probe. Every one of the seven call sites was converted in the same pass. `which.test.cjs` also gains the **positive control** the original pair lacked — asserting the WSL row *appears* under WSL, since "absent" is only meaningful next to "present", and the old assertion would have passed just as happily if the row had been deleted outright.
+
 ## [0.7.0] - 2026-08-17
 
 ### Fixed — a marketplace install of the dsh plugin shipped no browser half (`@opencues/dsh` 0.1.1 → 0.1.2)

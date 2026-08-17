@@ -11,6 +11,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
 const { tag, step, bold, dim, green, banner, cliVersion, G } = require('../lib/style.cjs');
+const { isWsl } = require('../lib/is-wsl.cjs');
 const prompt = require('../lib/prompt.cjs');
 const { pickHost } = require('../lib/pick-host.cjs');
 
@@ -382,13 +383,7 @@ async function preflightChecks(folders) {
 
   // ── WSL: warn about Chrome target path when installing chrome ─────
   if (folders.includes('chrome')) {
-    const isWsl = (() => {
-      if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return true;
-      try {
-        return /microsoft|wsl/i.test(fs.readFileSync('/proc/sys/kernel/osrelease', 'utf8'));
-      } catch { return false; }
-    })();
-    if (isWsl) {
+    if (isWsl()) {
       warnings.push({
         item: 'WSL detected — Chrome is a Windows app',
         impact: 'loading the extension from the WSL filesystem (\\\\wsl.localhost\\…) is slow + flaky',

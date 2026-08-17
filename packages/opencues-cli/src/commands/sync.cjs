@@ -30,6 +30,7 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const { tag, bold, dim, fileLink, tree, banner, cliVersion } = require('../lib/style.cjs');
+const { isWsl } = require('../lib/is-wsl.cjs');
 
 const HOSTS = ['chrome'];   // sync is chrome-only today
 
@@ -280,11 +281,6 @@ function resolveWslDeployPath() {
   const winUser = String(probe.stdout).trim().replace(/\r$/, '');
   if (!winUser) return null;
   return `/mnt/c/Users/${winUser}/AppData/Local/opencues-chrome`;
-}
-function isWsl() {
-  if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return true;
-  try { return /microsoft|wsl/i.test(fs.readFileSync('/proc/sys/kernel/osrelease', 'utf8')); }
-  catch { return false; }
 }
 
 // Display-only: /mnt/c/Foo/Bar → C:\Foo\Bar so users see the path the

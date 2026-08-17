@@ -17,6 +17,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const which = require('./which.cjs');
+const { setWslForTests, resetWslForTests } = require('../lib/is-wsl.cjs');
 
 const REPO_ROOT = path.resolve(__dirname, '../../../..');
 const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
@@ -115,12 +116,32 @@ describe('opencues which — edge cases', () => {
     }
   });
 
-  it('edge: WSL deploy row only appears when WSL env vars are set (best effort — absent here)', () => {
-    // Not under WSL in this test environment (env vars cleared in
-    // beforeEach) — isWsl() should return false and the extra row must
-    // not appear.
-    which([], { REPO_ROOT });
-    assert.doesNotMatch(logs.join('\n'), /WSL deploy/);
+  it('edge: the WSL deploy row is absent when not under WSL', () => {
+    // Clearing the env vars in beforeEach is NOT enough: isWsl() also reads
+    // /proc, which reports the truth on a real WSL machine. So this asserted
+    // the not-under-WSL branch while running under WSL, and failed for every
+    // WSL developer while passing on CI. Drive the seam instead, and the test
+    // now means the same thing on both.
+    setWslForTests(false);
+    try {
+      which([], { REPO_ROOT });
+      assert.doesNotMatch(logs.join('\n'), /WSL deploy/);
+    } finally {
+      resetWslForTests();
+    }
+  });
+
+  it('edge: the WSL deploy row APPEARS when under WSL', () => {
+    // The positive control the original pair lacked. Without it, the
+    // assertion above passes just as happily if the row were deleted
+    // outright — "absent" is only meaningful next to "present".
+    setWslForTests(true);
+    try {
+      which([], { REPO_ROOT });
+      assert.match(logs.join('\n'), /WSL deploy/);
+    } finally {
+      resetWslForTests();
+    }
   });
 });
 
