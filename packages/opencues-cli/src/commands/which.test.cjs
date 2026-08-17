@@ -17,6 +17,8 @@ const os = require('node:os');
 const path = require('node:path');
 
 const which = require('./which.cjs');
+const { setWslForTests, resetWslForTests } = require('../lib/is-wsl.cjs');
+const { spawnSync } = require('node:child_process');
 
 const REPO_ROOT = path.resolve(__dirname, '../../../..');
 const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
@@ -115,12 +117,46 @@ describe('opencues which — edge cases', () => {
     }
   });
 
-  it('edge: WSL deploy row only appears when WSL env vars are set (best effort — absent here)', () => {
-    // Not under WSL in this test environment (env vars cleared in
-    // beforeEach) — isWsl() should return false and the extra row must
-    // not appear.
-    which([], { REPO_ROOT });
-    assert.doesNotMatch(logs.join('\n'), /WSL deploy/);
+  it('edge: the WSL deploy row is absent when not under WSL', () => {
+    // Clearing the env vars in beforeEach is NOT enough: isWsl() also reads
+    // /proc, which reports the truth on a real WSL machine. So this asserted
+    // the not-under-WSL branch while running under WSL, and failed for every
+    // WSL developer while passing on CI. Drive the seam instead, and the test
+    // now means the same thing on both.
+    setWslForTests(false);
+    try {
+      which([], { REPO_ROOT });
+      assert.doesNotMatch(logs.join('\n'), /WSL deploy/);
+    } finally {
+      resetWslForTests();
+    }
+  });
+
+  // The positive control the original pair lacked: without it, the assertion
+  // above passes just as happily if the row were deleted outright, because
+  // "absent" only means something next to "present".
+  //
+  // It cannot run everywhere, and pretending otherwise is the exact mistake
+  // this file is fixing. The row needs isWsl() AND a working `cmd.exe` — it
+  // reads the Windows username through interop to build the deploy path. So
+  // forcing the predicate true is not sufficient on a Linux CI runner, where
+  // there is no Windows side and the row is correctly omitted. Written without
+  // this guard it failed on CI while passing on WSL, which is the same
+  // machine-dependent shape as the bug it was added to catch, just inverted.
+  const hasWindowsInterop = (() => {
+    try {
+      return spawnSync('cmd.exe', ['/c', 'echo x'], { stdio: 'ignore' }).status === 0;
+    } catch { return false; }
+  })();
+
+  it('edge: the WSL deploy row APPEARS when under WSL', { skip: hasWindowsInterop ? false : 'needs Windows interop (cmd.exe) — absent on a Linux runner' }, () => {
+    setWslForTests(true);
+    try {
+      which([], { REPO_ROOT });
+      assert.match(logs.join('\n'), /WSL deploy/);
+    } finally {
+      resetWslForTests();
+    }
   });
 });
 

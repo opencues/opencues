@@ -16,8 +16,30 @@
 # (verified: two consecutive builds hash identically), so "rebuild and diff"
 # is an exact test rather than a heuristic.
 #
+# TURBO OUTPUTS. `turbo.json` carries an `@opencues/dsh#build` override whose
+# `outputs` are `client.js` + `default-opencues.md`, because this package
+# writes to its ROOT rather than `dist/` (the artifact is committed and listed
+# in npm `files`). Without the override the generic `dist/**` matched nothing,
+# turbo warned the task produced no outputs, and — worse — cached it with none:
+# a cache hit then restores nothing, so the build reports success while leaving
+# the committed artifact stale or absent. The comment lives here because turbo
+# validates task keys strictly and rejects a `//` comment inside one.
+#
 # A failure means: you changed src/ (or core/runtime, which are inlined) and
-# did not rebuild. Fix with `pnpm --filter @opencues/dsh build` and commit.
+# did not rebuild. Fix with `pnpm build --filter @opencues/dsh` and commit.
+#
+# Prefer THAT form over `pnpm --filter @opencues/dsh build`: the latter runs
+# the package script directly and skips turbo, so it bundles whatever
+# core/runtime dist happens to be on disk rather than building them first.
+#
+# Correction, because the first version of this comment asserted otherwise: no
+# drift was ever actually observed from that. The "different bundle" it
+# claimed was a unit-confusion on my part — build.mjs prints KiB ("987 kB")
+# and `ls` prints bytes (1,011,171), which are the same file. Verified after
+# the fact: identical sha256 either way. The turbo form is still the better
+# habit because it guarantees the inlined packages are current, but it is
+# insurance, not a fix for a demonstrated bug. This script builds them itself
+# below regardless, which is the actual guarantee.
 #
 # Exits 0 clean, 1 stale. Wired into pre-pr.sh and CI.
 
@@ -39,7 +61,7 @@ for f in "$BUNDLE" "$DEFAULTS"; do
   if [ ! -f "$f" ]; then
     echo "✗ $f is missing — it must be committed, not gitignored."
     echo "  A clone-based marketplace install would ship a plugin with no browser half."
-    echo "  Fix: pnpm --filter @opencues/dsh build && git add $f"
+    echo "  Fix: pnpm build --filter @opencues/dsh && git add $f"
     exit 1
   fi
 done

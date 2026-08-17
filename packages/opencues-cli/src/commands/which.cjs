@@ -8,6 +8,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const { resolveForkDir } = require('../lib/fork-paths.cjs');
+const { isWsl } = require('../lib/is-wsl.cjs');
 const { fileLink, bold, dim, green, G } = require('../lib/style.cjs');
 
 module.exports = function which(argv, ctx) {
@@ -101,12 +102,6 @@ function wslChromeDeployRows() {
   return [['WSL deploy (--wsl)', wslPath]];
 }
 
-function isWsl() {
-  if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return true;
-  try {
-    return /microsoft|wsl/i.test(fs.readFileSync('/proc/sys/kernel/osrelease', 'utf8'));
-  } catch { return false; }
-}
 
 function printHelp() {
   console.log('opencues which');

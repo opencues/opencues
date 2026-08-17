@@ -17,13 +17,29 @@ on:
       - "docs/**"
       - "spec/**"
       - "LICENSE"
+  # NO `branches:` filter here, deliberately. `branches: [master]` matches the
+  # PR's BASE, so a STACKED pr — one based on another feature branch, which is
+  # how a dependent change gets reviewed — matched nothing and ran zero checks.
+  # An empty check list is visually indistinguishable from a passing one, so
+  # #395 reached "mergeable, clean" with no CI at all and was nearly merged
+  # that way. Retargeting its base to master did not help either: that is a
+  # `pull_request: edited` event, and `edited` is not in the default type set
+  # (opened / synchronize / reopened), so nothing re-triggered. It took a
+  # close-and-reopen to get a run.
+  #
+  # Running CI on every PR regardless of base is the correct default: the cost
+  # of a run on a stacked PR is one run, and the cost of not running is a merge
+  # with no evidence.
   pull_request:
-    branches: [master]
     paths-ignore:
       - "**.md"
       - "docs/**"
       - "spec/**"
       - "LICENSE"
+
+  # Lets a run be kicked by hand — the escape hatch that was missing when #395
+  # had no checks and no event would produce any.
+  workflow_dispatch:
 
 # Cancel older runs of the same branch when a new push lands.
 concurrency:

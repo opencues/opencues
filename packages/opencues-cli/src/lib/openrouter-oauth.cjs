@@ -28,6 +28,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { isWsl } = require('./is-wsl.cjs');
 const http = require('node:http');
 const https = require('node:https');
 const { spawn } = require('node:child_process');
@@ -103,9 +104,8 @@ function defaultPostJson(url, payload) {
  *  caller always prints the URL as the manual fallback). */
 function openInBrowser(url, spawnImpl = spawn) {
   const candidates = [];
-  const isWsl = process.platform === 'linux' &&
-    (!!process.env.WSL_DISTRO_NAME || !!process.env.WSL_INTEROP);
-  if (isWsl) {
+  const onWsl = process.platform === 'linux' && isWsl();
+  if (onWsl) {
     candidates.push(['wslview', [url]]);
     candidates.push(['powershell.exe', ['-NoProfile', '-Command', `Start-Process '${url.replace(/'/g, "''")}'`]]);
   } else if (process.platform === 'darwin') {

@@ -7,6 +7,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { resolveForkDir } = require('../lib/fork-paths.cjs');
+const { isWsl } = require('../lib/is-wsl.cjs');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const compatLib = require('../lib/compat.cjs');
@@ -221,10 +222,7 @@ module.exports = async function doctor(argv, ctx) {
   {
     const s = section('Feature backends', 'OS tools per runtime feature — missing = silent degrade, not crash');
 
-    const wslEnv = !!process.env.WSL_DISTRO_NAME || (function () {
-      try { return fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft'); }
-      catch { return false; }
-    })();
+    const wslEnv = isWsl();
 
     const volExe = path.join(HOME, '.cues/blanks/volume/VolCtl.exe');
     const brightExe = path.join(HOME, '.cues/blanks/brightness/BrightCtl.exe');
@@ -677,10 +675,7 @@ module.exports = async function doctor(argv, ctx) {
     // Windows-loaded path. Drift means the user ran `npm run build`
     // but forgot to sync — Chrome runs stale code, no error, just no
     // new behaviour. The friction we hit personally during this ship.
-    const wslEnv = !!process.env.WSL_DISTRO_NAME || (function () {
-      try { return fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft'); }
-      catch { return false; }
-    })();
+    const wslEnv = isWsl();
     if (wslEnv && fs.existsSync(chromeContentJs)) {
       const winCandidates = findWindowsChromeUnpacked();
       for (const winDist of winCandidates) {
@@ -721,10 +716,7 @@ module.exports = async function doctor(argv, ctx) {
   // ~/.cues/ won't reach open tabs and scripted blanks exit 127.
   {
     const s = section('Chrome native-messaging host', 'live ~/.cues/ sync + scripted-blank execution');
-    const wslEnv = !!process.env.WSL_DISTRO_NAME || (function () {
-      try { return fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft'); }
-      catch { return false; }
-    })();
+    const wslEnv = isWsl();
     let manifestPaths = [];
     let shimPath = null;
     if (wslEnv) {
@@ -871,10 +863,7 @@ module.exports = async function doctor(argv, ctx) {
     const s = section('OS-level sandbox', 'wraps `blankScript: sandbox: strict` runs in an OS confinement layer');
     if (process.platform === 'linux') {
       const bwrap = findOnPath('bwrap');
-      const wslEnv = !!process.env.WSL_DISTRO_NAME || (function () {
-        try { return fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft'); }
-        catch { return false; }
-      })();
+      const wslEnv = isWsl();
       const platLabel = wslEnv ? 'WSL2 (Linux)' : 'Linux';
       s.ok(`${platLabel}: bwrap (bubblewrap) on PATH`, !!bwrap);
       sandboxMechanismOK = !!bwrap;

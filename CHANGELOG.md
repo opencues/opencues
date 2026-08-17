@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — a busy machine could fail the shipped-script smoke tests (`@opencues/runtime` 0.31.1 → 0.31.2)
+
+`blank-scripts.test.ts` spawns the **real** shipped `brightness-blank.sh` and `volume-blank.sh` and asserts each returns a bare integer. On WSL those reach a platform backend — brightness goes out to Windows through PowerShell/WMI — which is ~2s idle and considerably worse with the rest of the suite running in parallel, so vitest's 5s default timed out intermittently and presented as a product flake.
+
+That latency is not ours to bound, and the assertion is about the script's **output shape**, not its speed. Both now carry an explicit 30s timeout, so a busy machine no longer decides the verdict.
+
+### Fixed — the hermeticity gate cried wolf on a running host's own writes
+
+`check-test-hermeticity.sh` asks "did a test write to the user's real config?" but was answering a broader question: "did anything under `~/.cues` change?". A live Claude Code or OpenCode session in another terminal answers yes on its own — its commitments poller rewrites `.session-commitments.kick` every few seconds, and a blank that fires updates `.user-blank-state/`. Neither is a test escaping its sandbox, and the gate reported `HERMETICITY VIOLATION` either way, which trains people to skim past the one piece of output that must never be ignored.
+
+Ephemeral runtime state a running host owns is now excluded from the snapshot: the `.session-commitments*` files, `session-commitments/` (and its stash dirs), `.opencues-log`, `.user-blank-state/` and `.user-blank-storage/`. The config surface the gate exists to protect stays watched in full — `OPENCUES.md`, `CUES.md`, `IDENTITY.md`, `.env`, `cues/`, `blanks/`, `auditors/`, `words/`, `katas/`, `scripts/` — so PR #41's class (a test wiping the user's real vendored tmux dir) is still caught. Verified both directions against the real tree: 114 noise lines dropped, 67 config lines still watched, and a hand-checked case list confirming `OPENCUES.md`, `.env` and `cues/**` survive the filter.
+
+### Fixed — two `seed-configs` runs at once could crash the install (`opencues` 0.7.1 → 0.7.2)
+
+The Windows helper-`.exe` compile staged its files at a **fixed** path in the Windows home dir — `<base>.cs` and `<base>.exe` — so two `seed-configs` runs at the same time raced over the same two paths and each one's `finally` deleted the other's file. The observed shape is a TOCTOU: `existsSync(stagedExe)` returns true, the sibling run unlinks it, and the copy then throws `ENOENT`.
+
+And it threw *out*. The block had a `finally` but **no `catch`**, so any failure there — a vanished staging file, a full disk, an unreadable Windows home — propagated and took the whole `seed-configs` run down with it. That turns an optional, Windows-only optimisation into a hard failure of `opencues install`, on a machine where the blanks would have degraded gracefully without the `.exe` anyway.
+
+Staging paths are now unique per invocation, and the compile failure is caught and logged as a warning. Surfaced as a flaky test — `pnpm -r test` runs its files in parallel, which is exactly the concurrent-`seed-configs` condition — and verified by running the affected suites six-up and four-up concurrently, clean each time.
+
+### Fixed — stacked PRs ran no CI at all, and an empty check list looks like a passing one
+
+`pull_request: branches: [master]` matches the PR's **base**, so a stacked PR — one based on another feature branch, which is how a dependent change gets reviewed — matched nothing and produced **zero checks**. GitHub renders that as an empty check list, which is visually indistinguishable from a green one, so #395 reached `mergeable / clean` with no CI behind it and was very nearly merged that way. Retargeting its base to `master` did not help either: that is a `pull_request: edited` event, and `edited` is not in the default type set (`opened` / `synchronize` / `reopened`), so nothing re-triggered. It took closing and reopening the PR to get a run.
+
+The `branches:` filter is gone from `pull_request` — every PR now runs regardless of base. A run on a stacked PR costs one run; not running costs a merge with no evidence. `workflow_dispatch:` is added alongside it, because when #395 had no checks there was also no event that would produce any.
+
+### Fixed — the WSL predicate existed seven times, and two tests could only pass on non-WSL machines (`opencues` 0.7.0 → 0.7.1)
+
+`sync.test.cjs` and `which.test.cjs` simulated "not under WSL" by deleting `WSL_DISTRO_NAME` and `WSL_INTEROP`. Reasonable, and not sufficient: detection also reads `/proc`, which keeps reporting the truth on a real WSL box. So both tests **failed for every WSL developer and passed on CI's Linux runners** — `pre-pr.sh` was red on every change regardless of the change, which is how a gate stops being read.
+
+The cause underneath was duplication. There were **seven** near-copies of the predicate — `sync.cjs`, `which.cjs`, `install.cjs`, `openrouter-oauth.cjs`, chrome's `bin/install.cjs`, and four inline anonymous functions inside `doctor.cjs` — and they had already drifted: most read `/proc/sys/kernel/osrelease`, doctor's read `/proc/version`, and `openrouter-oauth.cjs` checked only the env vars, so it answered **false on a WSL machine** whose shell had not exported them (`wsl.exe -- node …` spawns exactly that shell). That one was a real behavioural bug, not just untidiness.
+
+Detection now lives once in `packages/opencues-cli/src/lib/is-wsl.cjs`, checks both `/proc` files, and carries a test seam (`setWslForTests` / `resetWslForTests`) modelled on the one `@opencues/core` already uses for its CLI-binary probe. Every one of the seven call sites was converted in the same pass. `which.test.cjs` also gains the **positive control** the original pair lacked — asserting the WSL row *appears* under WSL, since "absent" is only meaningful next to "present", and the old assertion would have passed just as happily if the row had been deleted outright.
+
 ## [0.7.0] - 2026-08-17
 
 ### Fixed — a marketplace install of the dsh plugin shipped no browser half (`@opencues/dsh` 0.1.1 → 0.1.2)

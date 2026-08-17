@@ -828,21 +828,36 @@ function compileExe(csc, csFile, outDir, log) {
   } catch { return false; }
   if (!winUser) return false;
   const winTmp = `/mnt/c/Users/${winUser}`;
-  const stagedCs = path.join(winTmp, `${base}.cs`);
-  const stagedExe = path.join(winTmp, `${base}.exe`);
+  // UNIQUE per invocation. This staged at a fixed `<base>.cs` / `<base>.exe`
+  // in the Windows home dir, so two seed-configs runs at once — two installs,
+  // or the test suite running its cases in parallel — raced over the same two
+  // paths and each one's `finally` deleted the other's file. The observed
+  // shape was a TOCTOU: `existsSync(stagedExe)` returned true, the sibling run
+  // unlinked it, and the copy then threw ENOENT.
+  const stamp = `${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
+  const stagedCs = path.join(winTmp, `${base}.${stamp}.cs`);
+  const stagedExe = path.join(winTmp, `${base}.${stamp}.exe`);
   try {
     fs.copyFileSync(csFile, stagedCs);
     const args = ['/nologo', '/optimize'];
     if (base === 'SpeakCtl') {
       args.push('/reference:C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\WPF\\System.Speech.dll');
     }
-    args.push(`/out:C:\\Users\\${winUser}\\${base}.exe`, `C:\\Users\\${winUser}\\${base}.cs`);
+    args.push(`/out:C:\\Users\\${winUser}\\${base}.${stamp}.exe`, `C:\\Users\\${winUser}\\${base}.${stamp}.cs`);
     const r = spawnSync(csc, args, { stdio: 'pipe' });
     if (r.status === 0 && fs.existsSync(stagedExe)) {
       fs.copyFileSync(stagedExe, exe);
       log(`  compiled ${exe}`);
       return true;
     }
+  } catch (err) {
+    // Compiling the helper .exe is an OPTIMISATION — the blanks degrade
+    // gracefully without it. There was a `finally` but no `catch`, so any
+    // failure here (a vanished staging file, a full disk, an unreadable
+    // Windows home) propagated out and took the whole `seed-configs` run
+    // with it. That turns an optional Windows-only step into a hard failure
+    // of `opencues install` on every WSL machine it happens to hit.
+    log(`  warn: could not compile ${base}.exe: ${err.message}`);
   } finally {
     try { fs.unlinkSync(stagedCs); } catch {}
     try { fs.unlinkSync(stagedExe); } catch {}
