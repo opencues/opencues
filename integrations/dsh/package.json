@@ -1,0 +1,54 @@
+{
+  "name": "@opencues/dsh",
+  "version": "0.1.0",
+  "description": "OpenCues for DeepSeek Harness — LLM word alternatives and `_`-gated blank fill-ins in the dsh composer.",
+  "license": "MIT",
+  "homepage": "https://opencues.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/opencues/opencues.git",
+    "directory": "integrations/dsh"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "opencues",
+    "cues",
+    "autocomplete",
+    "writing"
+  ],
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "default-opencues.md",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime"
+      ],
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "prepublishOnly": "node build.mjs"
+  },
+  "devDependencies": {
+    "@opencues/core": "workspace:*",
+    "@opencues/runtime": "workspace:*",
+    "esbuild": "^0.28.2"
+  }
+}
