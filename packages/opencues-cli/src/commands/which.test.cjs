@@ -18,6 +18,7 @@ const path = require('node:path');
 
 const which = require('./which.cjs');
 const { setWslForTests, resetWslForTests } = require('../lib/is-wsl.cjs');
+const { spawnSync } = require('node:child_process');
 
 const REPO_ROOT = path.resolve(__dirname, '../../../..');
 const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
@@ -131,10 +132,24 @@ describe('opencues which — edge cases', () => {
     }
   });
 
-  it('edge: the WSL deploy row APPEARS when under WSL', () => {
-    // The positive control the original pair lacked. Without it, the
-    // assertion above passes just as happily if the row were deleted
-    // outright — "absent" is only meaningful next to "present".
+  // The positive control the original pair lacked: without it, the assertion
+  // above passes just as happily if the row were deleted outright, because
+  // "absent" only means something next to "present".
+  //
+  // It cannot run everywhere, and pretending otherwise is the exact mistake
+  // this file is fixing. The row needs isWsl() AND a working `cmd.exe` — it
+  // reads the Windows username through interop to build the deploy path. So
+  // forcing the predicate true is not sufficient on a Linux CI runner, where
+  // there is no Windows side and the row is correctly omitted. Written without
+  // this guard it failed on CI while passing on WSL, which is the same
+  // machine-dependent shape as the bug it was added to catch, just inverted.
+  const hasWindowsInterop = (() => {
+    try {
+      return spawnSync('cmd.exe', ['/c', 'echo x'], { stdio: 'ignore' }).status === 0;
+    } catch { return false; }
+  })();
+
+  it('edge: the WSL deploy row APPEARS when under WSL', { skip: hasWindowsInterop ? false : 'needs Windows interop (cmd.exe) — absent on a Linux runner' }, () => {
     setWslForTests(true);
     try {
       which([], { REPO_ROOT });
