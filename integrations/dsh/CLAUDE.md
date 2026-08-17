@@ -248,9 +248,26 @@ React-based host, not just dsh:
 1. **One runtime per page.** The dock can remount (session and workspace
    transitions, React double-invoke). A second runtime silently aborts the
    first's in-flight LLM calls. Symptom: every log line doubled and blanks
-   that never land. Guard with a page-level singleton. Note the chrome
-   extension attaching to `localhost:3080` is a *second* instance on top
-   of the plugin, so scope it off that origin.
+   that never land. Guard with a page-level singleton.
+
+   **A page-level singleton is not enough when the second runtime is the
+   chrome extension.** A content script runs in an *isolated world* — its
+   own `window`, so `window.__ocSingleton` is invisible to it and its to us.
+   What is shared is the document: same textarea, same key events, same
+   `CSS.highlights`. Verified with both installed: the extension, keyless on
+   a fresh profile, won the race and wrote
+   `[OpenCues: no API key — open the extension popup]` over the plugin's
+   answer — an error about a credential this host does not even need.
+
+   Solved by `@opencues/core/page-ownership`: the plugin calls
+   `claimPage('dsh')` (sets `data-opencues-host` on `<html>`) and the
+   extension checks `pageClaimedByOther('chrome')` and stands down. **A DOM
+   attribute, because a global cannot cross worlds.** The claim must be read
+   LIVE at each action point, not cached at boot — the extension injects at
+   `document_end` and this plugin boots later, so the claim usually appears
+   *after* it. (The earlier note here said to "scope it off that origin",
+   which was never a real fix: it would only have helped a developer running
+   dsh on a known port, not a user with both installed.)
 
 2. **Normalise key names.** Navigation and Cycling filter on
    `['left','right','up','down']`, not the DOM's `ArrowUp`. An unmapped
