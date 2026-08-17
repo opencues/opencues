@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — a busy machine could fail the shipped-script smoke tests (`@opencues/runtime` 0.31.1 → 0.31.2)
+
+`blank-scripts.test.ts` spawns the **real** shipped `brightness-blank.sh` and `volume-blank.sh` and asserts each returns a bare integer. On WSL those reach a platform backend — brightness goes out to Windows through PowerShell/WMI — which is ~2s idle and considerably worse with the rest of the suite running in parallel, so vitest's 5s default timed out intermittently and presented as a product flake.
+
+That latency is not ours to bound, and the assertion is about the script's **output shape**, not its speed. Both now carry an explicit 30s timeout, so a busy machine no longer decides the verdict.
+
 ### Fixed — the hermeticity gate cried wolf on a running host's own writes
 
 `check-test-hermeticity.sh` asks "did a test write to the user's real config?" but was answering a broader question: "did anything under `~/.cues` change?". A live Claude Code or OpenCode session in another terminal answers yes on its own — its commitments poller rewrites `.session-commitments.kick` every few seconds, and a blank that fires updates `.user-blank-state/`. Neither is a test escaping its sandbox, and the gate reported `HERMETICITY VIOLATION` either way, which trains people to skim past the one piece of output that must never be ignored.
