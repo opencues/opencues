@@ -122,22 +122,31 @@ pull request here. That is exactly why they are written down.
    CLI / shell / Chrome and *not* DeepSeek Harness — so the topic alone would
    publish us to a dsh registry with a description that never mentions dsh.
 4. **`awesome-dsh-plugin`** (optional, but it is what several registries and
-   the in-dsh plugin market read from). One YAML file at
-   `data/plugins/opencues__opencues.yml`, then
-   `npm ci && node scripts/generate-readme.mjs`:
+   the in-dsh plugin market read from — ~1000 entries). One YAML file, named
+   by their monorepo convention `<owner>__<repo>--<sub-path>.yml`, so for us
+   `data/plugins/opencues__opencues--integrations-dsh.yml`, then
+   `npm ci && node scripts/generate-readme.mjs` and commit the regenerated
+   READMEs alongside it:
 
    ```yaml
    url: https://github.com/opencues/opencues/tree/master/integrations/dsh
    name: opencues/opencues#integrations-dsh
-   category: <pick from their list>
+   category: ui
    description:
-     en: Word alternatives and underscore-gated blank fill-ins in the composer. Ends a line with _ to fill it; flags misspellings as you type. Routes through the model dsh is already configured with, so it needs no API key.
+     en: Word alternatives and underscore-gated fill-ins in the composer. End a line with _ and it is filled; misspellings are flagged as you type. Routes through the model dsh is already configured with, so it needs no API key.
    ```
 
-   Their stated bar: `dsh.bundle` declared in `package.json` (we declare
-   `bundle` *and* `client`), repo at least a day old with 10+ commits, real
-   working code, and a description with **no marketing language** — hence the
-   flat phrasing above.
+   Only `description.en` is required — a maintainer adds the `zh`. `category`
+   is one of `ui usage theme model session memory tools browser vision voice
+   docs skill workflow git notify dev security remote market fun`; `ui` is the
+   composer-surface bucket and the set is explicitly not fixed, so expect a
+   maintainer may move it. **Quote any description containing `: `** or YAML
+   reads it as a nested key.
+
+   Their stated bar: `dsh.bundle` declared in `package.json` — *"most rejected
+   submissions declare only `dsh.client`"*, and we declare both — plus a repo
+   at least a day old with 10+ commits, real working code, and **no marketing
+   language**, which is why the phrasing above is flat and mechanical.
 
 ## Status
 

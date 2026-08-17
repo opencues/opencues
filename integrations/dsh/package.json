@@ -17,6 +17,21 @@
     "autocomplete",
     "writing"
   ],
+  "//publishConfig": [
+    "Both fields are load-bearing and neither is a default we can rely on.",
+    "access: a SCOPED package publishes RESTRICTED unless told otherwise, so",
+    "  omitting this would put @opencues/dsh on npm as a private package and",
+    "  `dsh plugin add @opencues/dsh` would 404 for everyone — the one install",
+    "  path this integration has.",
+    "registry: every sibling @opencues/* integration points publishConfig at",
+    "  npm.pkg.github.com, and an ambient .npmrc can set one too. Stating the",
+    "  public registry here means this package cannot be silently published to",
+    "  the wrong one by inherited config."
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
   "type": "module",
   "main": "index.js",
   "exports": {
