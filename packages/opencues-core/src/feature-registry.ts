@@ -1,3 +1,4 @@
+import { BROWSER_HOSTS } from './host-compat';
 import { getProvider } from './llm-provider';
 
 // Single source of truth for OpenCues' optional features + the config
@@ -856,7 +857,12 @@ export const MENU_TUNABLES: readonly MenuTunableSpec[] = [
     scalar: 'dim-mix',
     group: 'Appearance',
     menuTip: 'How far the dim (unfocused) colour is mixed toward the page background. 0 = identical to host text colour; 100 = fully blended (invisible).',
-    hostScope: ['chrome'],
+    // Every BROWSER host, not chrome specifically: the setting exists
+    // because the dim colour is mixed toward a *page* background, which is
+    // true of any host rendering into a DOM. `statusbar-position` below
+    // stays chrome-only on purpose — that one is about a surface chrome
+    // draws, not about being in a browser.
+    hostScope: BROWSER_HOSTS,
     // Default first (chrome's derive-colours default is dimMix 0.45).
     values: [
       { id: '45',  description: 'Default — moderate fade' },

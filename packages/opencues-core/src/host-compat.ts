@@ -31,7 +31,7 @@
  */
 
 /** Every integration host. Keep alphabetical for stable equality checks. */
-export const HOSTS = ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell', 'windows'] as const;
+export const HOSTS = ['chrome', 'claude-code', 'dsh', 'gemini-cli', 'opencode', 'shell', 'windows'] as const;
 export type Host = typeof HOSTS[number];
 
 /** Hosts that can spawn subprocesses + access the filesystem WITHOUT an
@@ -39,6 +39,29 @@ export type Host = typeof HOSTS[number];
  *  chrome-host (the native-messaging bridge) is installed — so chrome's
  *  capability is runtime-detected, not a static property. */
 export const NATIVE_HOSTS: readonly Host[] = ['claude-code', 'gemini-cli', 'opencode', 'shell', 'windows'];
+
+/**
+ * Hosts that run inside a web page.
+ *
+ * Distinct from "not native": what these share is a DOM, a browser's own
+ * keybindings, and page-derived colours — not merely the absence of a
+ * subprocess. Several behaviours are browser-motivated and were written as
+ * `hostName === 'chrome'` while chrome was the only browser host: the
+ * ctrl-alt keymap (because ctrl-shift+arrow is the browser's own
+ * extend-selection-by-word), and `dim-mix` (because the dim colour is mixed
+ * toward a *page* background). Those are properties of being in a browser,
+ * so a second browser host must inherit them by construction rather than by
+ * happening to call itself `chrome`.
+ *
+ * Ask `isBrowserHost()`; a bare `=== 'chrome'` in new code is almost always
+ * this question asked wrongly.
+ */
+export const BROWSER_HOSTS: readonly Host[] = ['chrome', 'dsh'];
+
+/** Does this host render inside a web page? See `BROWSER_HOSTS`. */
+export function isBrowserHost(hostName: string): boolean {
+  return (BROWSER_HOSTS as readonly string[]).includes(hostName);
+}
 
 /**
  * The subset of frontmatter fields host-compat resolution looks at. Accepts
@@ -166,6 +189,8 @@ export const HOST_ALIASES: Readonly<Record<string, Host>> = {
   'oc-edit': 'shell',
   'win': 'windows',
   'oc-windows': 'windows',
+  'deepseek': 'dsh',
+  'deepseek-harness': 'dsh',
 };
 
 /**

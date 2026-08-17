@@ -3,7 +3,7 @@
 // host's navigation + cycling handlers should match against.
 //
 // `auto` resolution:
-//   - chrome (hostName === 'chrome'): always 'ctrl-alt'.
+//   - browser hosts (`isBrowserHost` — chrome, dsh): always 'ctrl-alt'.
 //     ctrl-shift+arrow is the canonical "extend text selection by word"
 //     shortcut in every browser textarea / contenteditable. Stealing
 //     it would clobber user muscle memory for a primary action — not
@@ -24,6 +24,8 @@
 // Explicit `ctrl-alt` / `ctrl-shift` always wins over `auto`. The
 // menu still lets users override the auto pick from the cycling UI.
 
+import { isBrowserHost } from '@opencues/core';
+
 export type NavKeymapScalar = 'auto' | 'ctrl-alt' | 'ctrl-shift';
 export type ResolvedNavKeymap = 'ctrl-alt' | 'ctrl-shift';
 
@@ -31,12 +33,17 @@ export function resolveNavKeymap(
   configured: NavKeymapScalar,
   hostName: string,
 ): ResolvedNavKeymap {
-  // Chrome ALWAYS gets ctrl-alt — ctrl-shift+arrow is the canonical
+  // Browser hosts ALWAYS get ctrl-alt — ctrl-shift+arrow is the canonical
   // "extend selection by word" shortcut in every browser textarea /
   // contenteditable. The chrome adapter band also skips the ctrl-shift
   // subscription entirely (see navigation.ts / cycling.ts); this is the
   // belt-and-braces second check in the resolver itself.
-  if (hostName === 'chrome') return 'ctrl-alt';
+  //
+  // Asked as "is this a browser?" rather than `=== 'chrome'`: the reason is
+  // the browser's own keybinding, so every browser host needs it, and the
+  // second one (DeepSeek Harness) would otherwise have inherited a
+  // ctrl-shift keymap that the page steals from it.
+  if (isBrowserHost(hostName)) return 'ctrl-alt';
   if (configured === 'ctrl-alt' || configured === 'ctrl-shift') return configured;
   return 'ctrl-alt';
 }

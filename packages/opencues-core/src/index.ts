@@ -276,6 +276,8 @@ export {
   formatHostList,
   HOSTS,
   NATIVE_HOSTS,
+  BROWSER_HOSTS,
+  isBrowserHost,
   HOST_ALIASES,
   resolveHost,
   type Host,

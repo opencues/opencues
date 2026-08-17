@@ -17,6 +17,9 @@ import {
   formatHostList,
   HOSTS,
   NATIVE_HOSTS,
+  BROWSER_HOSTS,
+  isBrowserHost,
+  resolveHost,
 } from './host-compat';
 
 const SORTED_HOSTS = [...HOSTS].sort();
@@ -81,7 +84,12 @@ describe('inferHostCompat: explicit on-host (allow-list)', () => {
 describe('inferHostCompat: explicit not-on-host (deny)', () => {
   it('not-on-host: [chrome] removes chrome from default-all', () => {
     const r = inferHostCompat({ 'not-on-host': ['chrome'] });
-    assert.deepStrictEqual(r.hosts, SORTED_NATIVE);
+    // Deliberately "every host except chrome" rather than SORTED_NATIVE.
+    // Those were the same list only while chrome was the sole non-native
+    // host, and this assertion is about the DENY working — spelling it as
+    // the native list made it a hidden pin on "chrome is the only browser",
+    // which broke the day a second browser host (dsh) was added.
+    assert.deepStrictEqual(r.hosts, SORTED_HOSTS.filter(h => h !== 'chrome'));
     assert.strictEqual(r.source, 'not-on-host');
   });
 
@@ -279,5 +287,59 @@ describe('structuralAmbientOnly: whitelist redaction', () => {
     // The whole point: a redacted (mode-off) ambient must still drive on-field.
     const redacted = structuralAmbientOnly({ label: 'Search', singleLine: true });
     assert.strictEqual(inferFieldCompat({ notOnField: ['single-line'] }, redacted), false);
+  });
+});
+
+/**
+ * Browser hosts.
+ *
+ * Several behaviours are browser-motivated and were written as
+ * `hostName === 'chrome'` while chrome was the only browser host — the
+ * ctrl-alt keymap (ctrl-shift+arrow is the browser's own extend-selection)
+ * and `dim-mix` (the dim colour mixes toward a *page* background). A second
+ * browser host has to inherit those by construction, not by being spelled
+ * `chrome`.
+ */
+describe('BROWSER_HOSTS / isBrowserHost', () => {
+  it('every host is either native or browser, never both, never neither', () => {
+    // The real invariant. Catches a new host added to HOSTS and to neither
+    // list, which would silently get terminal keybindings in a browser (or
+    // the reverse) with nothing failing.
+    for (const h of HOSTS) {
+      const native = NATIVE_HOSTS.includes(h);
+      const browser = BROWSER_HOSTS.includes(h);
+      assert.ok(native !== browser, `${h} must be exactly one of NATIVE_HOSTS / BROWSER_HOSTS (native=${native}, browser=${browser})`);
+    }
+  });
+
+  it('recognises the browser hosts and rejects the rest', () => {
+    assert.strictEqual(isBrowserHost('chrome'), true);
+    assert.strictEqual(isBrowserHost('dsh'), true);
+    assert.strictEqual(isBrowserHost('claude-code'), false);
+    assert.strictEqual(isBrowserHost('shell'), false);
+  });
+
+  it('is false for an unknown name rather than throwing', () => {
+    // Callers pass `adapter.hostName`, a free-form string a host supplies.
+    assert.strictEqual(isBrowserHost('not-a-host'), false);
+    assert.strictEqual(isBrowserHost(''), false);
+  });
+});
+
+describe('dsh host registration', () => {
+  it('is a known host, so on-host: [dsh] resolves', () => {
+    const r = inferHostCompat({ 'on-host': ['dsh'] });
+    assert.deepStrictEqual(r.hosts, ['dsh']);
+    assert.strictEqual(r.source, 'on-host');
+  });
+
+  it('is not native — it has no subprocess or filesystem of its own', () => {
+    assert.ok(!NATIVE_HOSTS.includes('dsh'));
+  });
+
+  it('resolves its aliases', () => {
+    assert.strictEqual(resolveHost('deepseek'), 'dsh');
+    assert.strictEqual(resolveHost('deepseek-harness'), 'dsh');
+    assert.strictEqual(resolveHost('dsh'), 'dsh');
   });
 });
