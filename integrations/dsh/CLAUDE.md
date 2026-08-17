@@ -473,6 +473,64 @@ that write.
 (`Ctrl+Alt+→`). Pressing it with nothing active correctly returns
 not-consumed. That is not a bug.
 
+## Where this plugin is listed
+
+Published as `@opencues/dsh` on npm (2026-08-17, v0.1.1). The ecosystem has
+roughly a dozen directories, and they split into two kinds — which is the
+only thing worth remembering here, because it decides whether a new release
+needs any action at all.
+
+**Auto-collected from the `dsh-plugin` GitHub topic.** Nothing to submit;
+the topic on `opencues/opencues` is the entire mechanism, and it is also the
+one dsh's own README endorses.
+
+| Surface | Refresh |
+|---|---|
+| [DSH-Plugins-Marketplace](https://github.com/bradeGithub/DSH-Plugins-Marketplace) (in-GUI, one-click install) | CI every 2h |
+| [AdamPlatin123/awesome-dsh-plugins](https://github.com/AdamPlatin123/awesome-dsh-plugins) | scan every 6h |
+| [Zhiyuan-Fan/Awesome-DeepSeek-Harness-Plugins](https://github.com/Zhiyuan-Fan/Awesome-DeepSeek-Harness-Plugins) | curated daily |
+| [bruc3van/awesome-dsh-plugin](https://github.com/bruc3van/awesome-dsh-plugin) | scraped daily, then hand-verified |
+| dshmarketplace.dev, dshplugin.app, dshplugin.org | index the topic |
+
+**Hand-curated, submitted by PR** (2026-08-17):
+
+| List | PR | Notes |
+|---|---|---|
+| [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin) (7.5k★) | [#1508](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/1508) | **The authoritative catalog.** One YAML at `data/plugins/opencues__opencues--integrations-dsh.yml`, then `npm ci && node scripts/generate-readme.mjs`. [dsh-market](https://github.com/dsh-market/dsh-market) reads its `plugins.json` daily, so this entry is what puts OpenCues in the in-dsh market — do not submit to dsh-market directly, it says so itself |
+| [0xsline/awesome-deepseek-harness](https://github.com/0xsline/awesome-deepseek-harness) (687★) | [#374](https://github.com/0xsline/awesome-deepseek-harness/pull/374) | Hand-edited README; **both `README.md` and `README.zh-CN.md` must be updated together**. Category: `Input & Editing` |
+| [Anil-matcha/awesome-dsh-plugin](https://github.com/Anil-matcha/awesome-dsh-plugin) (927★) | [#26](https://github.com/Anil-matcha/awesome-dsh-plugin/pull/26) | Single README, alphabetical within section, `—` separator. No input category; `UI Enhancements` is where composer plugins live |
+
+**Deliberately not submitted:**
+[Dominic789654/awesome-deepseek-harness](https://github.com/Dominic789654/awesome-deepseek-harness)
+requires a **`dsh`** topic, not `dsh-plugin`. GitHub caps a repo at 20 topics
+and `opencues/opencues` is at exactly 20 — `dsh-plugin` already cost us
+`gpt-oss`. Spending a second slot for one 123★ list is a judgement call, not
+an obvious win, so it is Wilfred's to make rather than something to do
+quietly.
+
+### ⚠ A scraped install can get a plugin with no browser half
+
+The marketplaces install by **cloning the repo** and running
+`npm install --omit=dev --ignore-scripts`, then copying the result into
+`~/.dsh/profiles/web/node_modules/<pkg>`. `client.js` is a build artifact —
+gitignored, produced by `prepublishOnly` — so it exists in the **npm
+tarball** and *not* in a git clone, and `--ignore-scripts` guarantees it will
+not be built either.
+
+A clone-based install therefore yields the node half with no browser half:
+the config route answers, and nothing paints or fills. The documented path
+(`dsh plugin add @opencues/dsh`) resolves the npm tarball and is unaffected,
+and their spec does say the npm package name is the install target — but the
+pipeline description mentions cloning too, so treat this as unverified rather
+than safe. Two ways out if a marketplace install is ever reported broken:
+commit `client.js` (1.7MB of derived output, against the grain of everything
+else here), or ship a `prepare` script — noting `--ignore-scripts` defeats
+that as well. Verify before choosing.
+
+Their scraper does handle monorepos: `findPluginRoots` walks to depth 3 and
+requires each sub-package to declare `dsh` itself, which `integrations/dsh`
+(depth 2) does.
+
 ## Known gaps
 
 - **Inline notes** as above.

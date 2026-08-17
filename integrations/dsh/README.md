@@ -148,6 +148,13 @@ pull request here. That is exactly why they are written down.
    at least a day old with 10+ commits, real working code, and **no marketing
    language**, which is why the phrasing above is flat and mechanical.
 
+**Steps 3 and 4 are one-time, not per-release.** The topic stays set, and the
+directories that matter either re-scan it on a timer or read the curated list.
+[CLAUDE.md § Where this plugin is listed](./CLAUDE.md#where-this-plugin-is-listed)
+records every surface, which ones need a PR versus collect themselves, the one
+we deliberately skipped and why, and a caveat about scraped installs that a
+release should not re-learn the hard way.
+
 ## Status
 
 First release. Known gaps:
