@@ -68,6 +68,12 @@ console.log(`baked ${Object.keys(DEFAULTS).length} default config file(s)`)
 const result = await esbuild.build({
   entryPoints: [join(here, 'src/plugin.js')],
   bundle: true,
+  // Minified because this artifact is COMMITTED (see .gitignore's note), so
+  // its size is a per-change cost in git history, not just a download. Cuts
+  // ~1.7MB to ~1.0MB, and the page loads it on every dsh boot regardless.
+  // esbuild's output is byte-reproducible for identical inputs, which is what
+  // lets check-dsh-bundle-fresh.sh detect a stale commit by rebuilding.
+  minify: true,
   format: 'cjs',
   platform: 'browser',
   target: 'es2022',

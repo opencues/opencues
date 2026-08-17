@@ -101,6 +101,12 @@ fi
 # ─── 4. Chrome bundle assertion ─────────────────────────────────────
 step "chrome bundle assertion" bash scripts/check-chrome-bundle.sh
 
+# ─── 4a. dsh bundle freshness ───────────────────────────────────────
+# The dsh bundle is the one build artifact this repo COMMITS, because the
+# dsh marketplaces install by cloning with --ignore-scripts. Committed
+# derived output goes stale silently, so it is gated.
+step "dsh bundle freshness" bash scripts/check-dsh-bundle-fresh.sh
+
 # ─── 4b. CC patch boot smoke ────────────────────────────────────────
 # The CC patch emits a JS string injected into cli.js. Source typechecks
 # don't catch identifier scope errors in that emitted string. June 2026
