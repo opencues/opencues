@@ -61,7 +61,7 @@ Rows with `_` are **blanks**: you ask, the model fills in. Rows without are **cu
 ```bash
 npm install -g opencues              # needs Node 22+ and git
 opencues set-key cerebras csk-...    # cerebras.ai — free tier, lowest latency
-opencues install claude-code         # or: opencode | gemini-cli | chrome | shell
+opencues install claude-code         # or: opencode | gemini-cli | chrome | shell | dsh
 claude-cues                          # launch — native `claude` is untouched
 ```
 
@@ -86,8 +86,12 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
 | Gemini CLI | Beta | `opencues install gemini-cli` |
 | Chrome | Beta | `opencues install chrome` |
 | Shell | Beta | `opencues install shell` |
+| DeepSeek Harness | Beta | `dsh plugin --profile web add @opencues/dsh` |
 
 Each pins its own upstream fork and never touches your native host install.
+DeepSeek Harness is the exception: it has a real plugin system, so there is no
+fork to pin and no OpenCues CLI step — see
+[`integrations/dsh/README.md`](integrations/dsh/README.md).
 
 > ⚠️ **Windows**: not supported natively, run inside WSL2 (see [`docs/install.md`](docs/install.md)).
 

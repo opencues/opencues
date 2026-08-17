@@ -1,17 +1,29 @@
 ---
-last_updated: 2026-05-14
+last_updated: 2026-08-17
 ---
 
 # Host Compatibility
 
-The OpenStandard runs on five integration hosts — `claude-code`, `opencode`,
-`chrome`, `gemini-cli`, `terminal` — that share the same `.md` config
-format. Native hosts (CC, OC, gemini-cli, terminal) can spawn
-subprocesses and read the filesystem unconditionally. Chrome can too,
-but only when chrome-host (the native-messaging bridge) is installed —
-so chrome's spawn capability is *runtime-detected*, not a static
-property. `terminal` is the standalone Bun + OpenTUI app (`oc-edit`);
-the others patch an upstream host.
+The OpenStandard runs on seven integration hosts — `claude-code`,
+`opencode`, `gemini-cli`, `shell`, `windows`, `chrome`, `dsh` — that share
+the same `.md` config format.
+
+They split two ways, and the split is what `on-host:` is really choosing
+between:
+
+- **Native hosts** (`claude-code`, `opencode`, `gemini-cli`, `shell`,
+  `windows`) spawn subprocesses and read the filesystem unconditionally.
+  `shell` is the standalone Bun + OpenTUI app (`oc-edit`); `windows` is the
+  system-wide WSL daemon + Windows shim; the rest patch an upstream host.
+- **Browser hosts** (`chrome`, `dsh`) render inside a web page, so they
+  share a DOM, the browser's own keybindings, and page-derived colours.
+  `chrome` is the extension; `dsh` is the DeepSeek Harness plugin. Chrome
+  *can* spawn subprocesses, but only when chrome-host (the
+  native-messaging bridge) is installed — so that capability is
+  *runtime-detected*, not a static property.
+
+`shell` has one deprecated alias, `terminal`, which conformant runtimes
+resolve to `shell`.
 
 A cue or blank can declare which hosts it works on, but most entries
 don't need to: **every entry advertises as compatible with every host by
@@ -102,7 +114,7 @@ not-on-host: chrome, opencode
 ---
 ```
 
-Valid host names: **`chrome`**, **`claude-code`**, **`gemini-cli`**, **`opencode`**, **`shell`** (alias `terminal` kept for back-compat in `on-host:`/`not-on-host:` directives).
+Valid host names: **`chrome`**, **`claude-code`**, **`dsh`**, **`gemini-cli`**, **`opencode`**, **`shell`**, **`windows`** (alias `terminal` → `shell`, kept for back-compat in `on-host:`/`not-on-host:` directives; `deepseek` / `deepseek-harness` → `dsh`).
 
 Unknown names are silently dropped at runtime; `opencues validate` prints
 warnings about them so typos are caught.
@@ -114,22 +126,33 @@ warnings about them so typos are caught.
 `@opencues/core`:
 
 ```ts
-import { inferHostCompat, formatHostList, HOSTS, NATIVE_HOSTS } from '@opencues/core';
+import {
+  inferHostCompat, formatHostList,
+  HOSTS, NATIVE_HOSTS, BROWSER_HOSTS, isBrowserHost,
+} from '@opencues/core';
 
 inferHostCompat({});
-// → { hosts: ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell'], all: true, source: 'auto' }
+// → { hosts: ['chrome', 'claude-code', 'dsh', 'gemini-cli', 'opencode', 'shell', 'windows'],
+//     all: true, source: 'auto' }
 
 inferHostCompat({ 'on-host': ['chrome'] });
 // → { hosts: ['chrome'], all: false, source: 'on-host' }
 
 inferHostCompat({ 'not-on-host': ['chrome'] });
-// → { hosts: ['claude-code', 'gemini-cli', 'opencode', 'shell'], all: false, source: 'not-on-host' }
+// → { hosts: ['claude-code', 'dsh', 'gemini-cli', 'opencode', 'shell', 'windows'],
+//     all: false, source: 'not-on-host' }
 
 formatHostList(['claude-code', 'gemini-cli', 'opencode', 'shell']);
 // → 'claude-code, gemini-cli, opencode, shell'
-formatHostList(['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell']);
+formatHostList([...HOSTS]);
 // → 'all'
 ```
+
+Every host is in exactly one of `NATIVE_HOSTS` / `BROWSER_HOSTS` (pinned by
+test). Ask `isBrowserHost(name)` rather than comparing against `'chrome'`:
+behaviours that exist *because the host is in a browser* — the ctrl-alt
+keymap, `dim-mix` — must apply to every browser host, and a name comparison
+silently excludes the next one.
 
 | Constant | Value |
 |---|---|
