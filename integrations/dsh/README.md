@@ -97,6 +97,48 @@ pnpm --filter @opencues/dsh build          # writes client.js + default-opencues
 dsh plugin --profile web add /path/to/opencues/integrations/dsh
 ```
 
+### Shipping a release of this plugin
+
+Four steps, and **only the first is inside this repo** — the rest are npm, a
+GitHub repo setting, and an external PR, so none of them can be carried by a
+pull request here. That is exactly why they are written down.
+
+1. **Bump + changelog** — `integrations/dsh/package.json`, root `CHANGELOG.md`.
+2. **Publish** — `cd integrations/dsh && npm publish`. `prepublishOnly` runs
+   `build.mjs`, so the tarball carries `client.js` + `default-opencues.md`
+   prebuilt. Verify with `npm pack` first: it should list exactly
+   `client.js`, `index.js`, `package.json`, `default-opencues.md`,
+   `cordis.patch.yml`, `README.md` and declare **no `dependencies`**.
+   Publishing prebuilt is what lets users skip pnpm's `allowBuilds`
+   build-approval prompt.
+3. **The `dsh-plugin` GitHub topic** on `opencues/opencues`. This is the one
+   discoverability mechanism dsh itself endorses (their README) and the one
+   the community aggregators auto-collect from — dshmarketplace.dev indexes
+   the whole topic. A monorepo is fine; the topic lives on the repo, not the
+   subdirectory.
+
+   ⚠ **Fix the repo description in the same pass.** Auto-collected listings
+   quote it verbatim, and it currently names Claude Code / OpenCode / Gemini
+   CLI / shell / Chrome and *not* DeepSeek Harness — so the topic alone would
+   publish us to a dsh registry with a description that never mentions dsh.
+4. **`awesome-dsh-plugin`** (optional, but it is what several registries and
+   the in-dsh plugin market read from). One YAML file at
+   `data/plugins/opencues__opencues.yml`, then
+   `npm ci && node scripts/generate-readme.mjs`:
+
+   ```yaml
+   url: https://github.com/opencues/opencues/tree/master/integrations/dsh
+   name: opencues/opencues#integrations-dsh
+   category: <pick from their list>
+   description:
+     en: Word alternatives and underscore-gated blank fill-ins in the composer. Ends a line with _ to fill it; flags misspellings as you type. Routes through the model dsh is already configured with, so it needs no API key.
+   ```
+
+   Their stated bar: `dsh.bundle` declared in `package.json` (we declare
+   `bundle` *and* `client`), repo at least a day old with 10+ commits, real
+   working code, and a description with **no marketing language** — hence the
+   flat phrasing above.
+
 ## Status
 
 First release. Known gaps:
