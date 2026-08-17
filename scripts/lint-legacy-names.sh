@@ -178,6 +178,27 @@ DEFAULTS_MD=$(find defaults -name '*.md' 2>/dev/null \
   | sort)
 FILES="$FILES"$'\n'"$DEFAULTS_MD"
 
+# Drop anything git ignores. The path exclusions above name the build
+# outputs we happened to know about (`dist/`, `.cache/`), which misses any
+# artifact that does not live in a directory with one of those names —
+# `integrations/dsh/client.js` is a bundle at the package root, and it
+# tripped this lint on `param-safe` back-compat reads inside the runtime  # LEGACY-NAME-ALLOW: naming the pattern that motivated this filter
+# code esbuild had inlined into it. Those are migration code doing its job,
+# in a file that is not committed and therefore cannot ship a stale rename.
+# Asking git is the general form of the question the path list was
+# approximating, so every future artifact is covered without a new -not.
+if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then
+  TRACKED=$(printf '%s\n' "$FILES" | grep -v '^$' \
+    | git check-ignore --stdin --non-matching --verbose 2>/dev/null \
+    | grep '^::' | sed 's/^::\t//' || true)
+  # Only substitute when check-ignore actually answered — an empty result
+  # here would otherwise silently lint nothing at all, which is the worst
+  # possible failure mode for a lint (green because it looked at zero files).
+  if [ -n "$TRACKED" ]; then
+    FILES="$TRACKED"
+  fi
+fi
+
 # Combine all banned patterns into one ERE for a single grep pass per file.
 COMBINED=$(IFS='|'; echo "${BANNED_PATTERNS[*]}")
 

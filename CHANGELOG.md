@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — DeepSeek Harness integration (`@opencues/dsh` 0.1.0, `@opencues/core` 0.44.0 → 0.45.0, `@opencues/runtime` 0.31.0 → 0.31.1, `opencues` 0.6.2 → 0.7.0)
+
+OpenCues runs in [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)'s composer, and it is **the first integration that is a first-class plugin of its host** rather than a patch, a fork, or a bundle we mirror into place:
+
+```
+dsh plugin --profile web add @opencues/dsh
+```
+
+That is the whole install. No version pin, no binary surgery, no separate host process, no `opencues install` step — dsh has a real plugin system and this uses it. Their composer turns out to already be an overlay editor (a transparent `<textarea>` over a backdrop of real DOM text nodes), so `adapters/chrome/v1` drives it unchanged, and the CSS Custom Highlight API paints per-word ranges with no DOM mutation of ours.
+
+**`@opencues/dsh` is published**, and structurally must be: an unpublished package means no install path. It carries **no `dependencies`** — `build.mjs` inlines `@opencues/{core,runtime}` into the browser bundle at publish time, which is exactly what lets those two stay private. Publishing prebuilt is also the security choice. The alternative (`github:` install) requires the user to add the package to pnpm's `allowBuilds`, which is *permission to execute the package's code on their machine at install time, outside any sandbox*. We ship artifacts rather than ask for that.
+
+**No API key is needed**, because the default routes every call through the model dsh already has configured, via core's `harness` provider. No credential ever reaches the page either — which matters more here than on most hosts, since dsh is a plugin host and a key handed to the page is a key handed to every plugin installed. `~1.0s` on the host model against `~0.3s` on a dedicated provider; the settings tab states the trade-off and lets the user pick rather than deciding for them. That tab also carries every OpenCues feature scalar, generated from the registry and written to the real `~/.cues/OPENCUES.md` — a browser host has no terminal to fall back to, so "edit the file" is not an answer.
+
+**`transport: 'cli'` does not mean "a binary exists"** — a latent conflation the `harness` provider exposed, which had already reached user-visible output. Three sites assumed a CLI-transport provider has an executable of the same name on PATH, via an `?? providerId` fallback that reads as accommodating and behaves as a landmine: `opencues doctor` probed for a `harness` binary, found none, and told the user to **install** it. `subscriptionCliBinary(id)` now answers binary-or-`null`, `defaultCliAvailable` returns false for a host-bound provider instead of shelling out for its own name, and a test fails any CLI-transport provider that is neither mapped to a binary nor explicitly declared host-bound.
+
+**`dsh` is a host, and browser-ness is now a property rather than a name.** Several behaviours were written as `hostName === 'chrome'` while chrome was the only browser host — the ctrl-alt keymap (because ctrl-shift+arrow is the *browser's* own extend-selection-by-word) and `dim-mix` (because the dim colour mixes toward a *page* background). Both are consequences of being in a browser, so `BROWSER_HOSTS` + `isBrowserHost()` now carry them and a second browser host inherits them by construction; spelled as a name comparison, dsh would have silently got a keymap the page steals from it, with navigation appearing to do nothing and no error to explain why. `statusbar-position` stays chrome-only on purpose — that one is about a surface chrome draws, not about being in a browser. A test asserts every host is exactly one of native/browser, so a future host added to neither list fails rather than quietly inheriting terminal semantics. No `SPEC_VERSION` bump: `spec/core.md` declares `HOSTS` non-normative and explicitly permits runtime-defined host names, which `windows` already relies on.
+
+CLI: `opencues install dsh` / `uninstall dsh` / `run dsh` (plus `deepseek` aliases) and a `dsh` row in `doctor`'s bundled-runtime section. The installer is deliberately a **thin wrapper that hands off to `dsh plugin add`** rather than writing into `$DSH_HOME/profiles/` itself — that directory is dsh's to manage, and reaching into it would be the kind of second install path that later disagrees with the first. `opencues run dsh` earns its keep on one step: `ensureFreshBundle` rebuilds a stale bundle before launching, and a stale bundle here is completely silent because it is served per page load.
+
+Verified against the real published shape — `npm pack`, then `dsh plugin add ./opencues-dsh-0.1.0.tgz` into an empty `$HOME` with **every OpenCues provider key stripped from the environment**: installs in 1.5s with no build prompt, loads 29 baked defaults, builds 7 sources, and fills `the capital of iceland is _` → `Reykjavik` on DeepSeek's model. Known gaps: inline notes float as an overlay rather than splicing into the line, and Firefox is untested (feature-detects `CSS.highlights` and degrades).
+
 ### Added — a host can supply the transport its network blanks fetch through (`@opencues/runtime` 0.30.4 → 0.31.0)
 
 `BuiltinBlankContext.fetchFn` reaches the six network-backed built-ins — hackernews, stocks, weather, location, dictionary, crypto. Each of them already accepted a `fetchFn`; until now the registry gave a host no way to hand one over, so they captured the global and that was that.

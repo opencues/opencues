@@ -184,7 +184,7 @@ function loadHostResolver(ctx) {
     return { HOSTS: core.HOSTS.slice().sort(), resolve: core.resolveHost };
   } catch {
     return {
-      HOSTS: ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell', 'windows'],
+      HOSTS: ['chrome', 'claude-code', 'dsh', 'gemini-cli', 'opencode', 'shell', 'windows'],
       resolve: (n) => ({
         'claude-code': 'claude-code', 'claudecode': 'claude-code', 'claude': 'claude-code', 'cc': 'claude-code',
         'opencode': 'opencode', 'oc': 'opencode',
@@ -192,6 +192,7 @@ function loadHostResolver(ctx) {
         'gemini-cli': 'gemini-cli', 'geminicli': 'gemini-cli', 'gemini': 'gemini-cli',
         'shell': 'shell', 'term': 'shell', 'oc-edit': 'shell',
         'windows': 'windows', 'win': 'windows', 'oc-windows': 'windows',
+        'dsh': 'dsh', 'deepseek': 'dsh', 'deepseek-harness': 'dsh',
       })[n?.toLowerCase?.()] ?? null,
     };
   }
@@ -283,6 +284,7 @@ module.exports = async function run(argv, ctx) {
   if (folder === 'gemini-cli') return runGemini(passthrough, argv, ctx);
   if (folder === 'shell') return runShell(passthrough, ctx);
   if (folder === 'windows') return runWindows(passthrough, ctx);
+  if (folder === 'dsh') return runDsh(passthrough, ctx);
 };
 
 /**
@@ -639,6 +641,29 @@ function runChrome(ctx) {
   console.log(style.dim('If already loaded, reload the page you want OpenCues active on.'));
 }
 
+// dsh owns its own launch (`dsh --profile <name>`), so this is a passthrough
+// exec rather than anything OpenCues-specific. The value of routing it
+// through `opencues run` is the step BEFORE the exec: `ensureFreshBundle`
+// rebuilds a stale bundle first. That matters more here than on the
+// terminal hosts, because dsh's bundle inlines core+runtime and serves it
+// per page load — a stale one is completely silent.
+function runDsh(passthrough, ctx) {
+  const hasProfile = passthrough.some(a => a === '--profile' || a.startsWith('--profile='));
+  const argsOut = hasProfile ? passthrough : ['--profile', 'web', ...passthrough];
+  printLaunchBanner(ctx, 'dsh', [
+    ['host', 'dsh  ' + style.dim('(DeepSeek Harness web app — reload the tab after a rebuild)')],
+    ['command', `dsh ${argsOut.join(' ')}`.trim()],
+  ]);
+  const result = spawnSync('dsh', argsOut, { stdio: 'inherit' });
+  if (result.error && result.error.code === 'ENOENT') {
+    console.error(`${style.tag('err')} \`dsh\` not found on PATH`);
+    console.error(`     dsh is DeepSeek's own CLI, not something OpenCues installs.`);
+    console.error(`     See ${style.bold('https://github.com/deepseek-ai/deepseek-harness')}`);
+    process.exit(1);
+  }
+  exitFromSpawn(result, 'dsh');
+}
+
 function printHelp() {
   console.log('opencues run <host> [opencues-flags] [-- host-flags]');
   console.log('');
@@ -655,6 +680,7 @@ function printHelp() {
   console.log('  chrome        print Chrome reload instructions (no programmatic launch)');
   console.log('  gemini-cli    node packages/cli/dist/index.js inside the fork (default: ~/.opencues/forks/gemini-cli)');
   console.log('  shell         integrations/shell/bin/oc-shell  (wraps $SHELL in tmux; Alt+Shift+↑ for the input box)');
+  console.log('  dsh           dsh --profile web  (DeepSeek Harness; rebuilds a stale bundle first, then reload the tab)');
   console.log('');
   console.log('Opencues-owned flags (consumed by `opencues run`, NOT forwarded):');
   console.log('  --bin <name>      (claude-code only) override which binary to exec');
