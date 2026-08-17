@@ -31,6 +31,7 @@ import {
   resolveFocusedFromEvent as _resolveFromEvent,
   resolveFocusedElement as _resolveFromState,
 } from './shadow-focus';
+import { deferToEmbeddedHost, noteDeferralOnce } from './opencues-bootstrap';
 
 function isTextInput(el: HTMLElement): boolean {
   return el.isContentEditable || isNormalInput(el);
@@ -118,6 +119,14 @@ function clearDerivedColours(_el: HTMLElement): void {
 
 async function init(): Promise<void> {
   log.info('[opencues] content script loaded');
+
+  // Fast path for a page that already declares its own OpenCues host (a
+  // reload, or a plugin that claims during document parse): don't boot a
+  // runtime at all. This is an optimisation, not the guard — the claim
+  // usually arrives after us, which is why the real defence is the live
+  // re-read inside notifyOpenCuesTextChange + the key listener.
+  if (deferToEmbeddedHost()) { noteDeferralOnce(); return; }
+
   const config = await loadConfig();
 
   // Boot the runtime with config from chrome.storage. The runtime

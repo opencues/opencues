@@ -1,0 +1,13 @@
+# The bundle layer dsh applies when a profile lists this package.
+#
+# One plugin row: the node half (index.js), which serves the config tree and
+# the LLM bridge over dsh's own web server. The browser half is NOT a row —
+# it ships via exports["./client"] and is discovered through package.json's
+# `dsh.client` declaration, then served to the page from /plugins.
+#
+# `name` must be the package name so Node resolution finds the installed
+# code (a relative source path only works for a --patch overlay in a
+# checkout, not for an installed bundle).
+- insert:
+    - id: opencues
+      name: '@opencues/dsh'

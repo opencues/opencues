@@ -1,0 +1,6 @@
+# Build artifacts. Both are PUBLISHED (they are in package.json's `files`
+# and produced by `prepublishOnly`), which is what lets a user install with
+# no build step and therefore no pnpm `allowBuilds` grant — see README
+# § Distribution. They are not committed, because they are derived.
+client.js
+default-opencues.md

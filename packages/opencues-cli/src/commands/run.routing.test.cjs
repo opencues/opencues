@@ -124,7 +124,13 @@ describe('run dispatch — --help / missing host / unknown host', () => {
     await assert.rejects(() => run([], { REPO_ROOT: fakeRepoRoot }), /__EXIT_2__/);
     const out = errs.join('\n');
     assert.match(out, /missing <host>/);
-    assert.match(out, /chrome, claude-code, gemini-cli, opencode, shell/);
+    // Per host rather than one comma-joined substring: the old form failed
+    // whenever a host was ADDED, which is not a regression, and said
+    // nothing about what was actually wrong. Same fix as the twin
+    // assertion in install.routing.test.cjs.
+    for (const host of ['chrome', 'claude-code', 'dsh', 'gemini-cli', 'opencode', 'shell', 'windows']) {
+      assert.ok(out.includes(host), `missing-host error should name ${host}; got: ${out}`);
+    }
   });
 
   it('unknown host name exits 2, naming the bad value', async () => {

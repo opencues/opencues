@@ -32,6 +32,7 @@ host and the runtime.
 - **OpenCode** (`integrations/opencode/`) — patches OpenCode 1.14.x (current pin 1.14.17, see `integrations/opencode/pin.json`); runtime loaded inline
 - **Chrome** (`integrations/chrome/`) — MV3 extension; CSS Custom Highlight API for in-page rendering
 - **Gemini CLI** (`integrations/gemini-cli/`) — patches Gemini CLI 0.41.x; React/Ink host with a render-kick + ZWS-toggle pull model. See its CLAUDE.md for the React quirks (it's the first React/Ink host so the integration was non-trivial).
+- **DeepSeek Harness** (`integrations/dsh/`) — the **only integration that is a first-class plugin of its host** rather than a patch or a fork: `dsh plugin --profile web add @opencues/dsh`, no version pin, nothing to patch. dsh's composer is already an overlay editor, so `adapters/chrome/v1` drives it unchanged (second host on that band; `isBrowserHost()` is what they share, not the name `chrome`). Two LLM modes — the **host's own model** via core's `harness` provider (no OpenCues key, credentials never enter the page) or OpenCues' own per-bucket routing. Ships the shipped defaults baked in, so it works with no `~/.cues` at all. See its CLAUDE.md for the browser-host contract findings and the fresh-user journey bugs.
 - **Shell** (`integrations/shell/`) — standalone Bun + OpenTUI + SolidJS app. User-facing entry point is `oc-shell` (wraps the user's interactive shell in a private tmux session with an Alt+Shift+↑ input box); `oc-edit` is the internal Bun host lazy-spawned inside that session and is not directly user-invokable. **Self-owned host** — no upstream fork to patch. Built on the same OpenTUI primitives as OpenCode, so the adapter band (`adapters/shell/v1/`) is structurally a near-clone of `adapters/oc/v1.14/`. Canonical host name: `shell` (alias `terminal` kept for back-compat in `on-host:` directives).
 
 > Re-org in progress — folders rename to `cc/`, `oc/`, `chrome/` in Stage 4 of
@@ -701,19 +702,22 @@ done
 |---|---|---|---|
 | `SPEC.md` (open-standard) | `cues-spec` | 0.11 (draft) | exported as `SPEC_VERSION` from `@opencues/core` |
 | `package.json` (monorepo root) | `opencues` | 0.1.0 | private |
-| `packages/opencues-core/` | `@opencues/core` | 0.43.0 | private |
-| `packages/opencues-runtime/` | `@opencues/runtime` | 0.30.3 | private |
-| `packages/opencues-cli/` | `opencues` (real CLI) | 0.6.1 | **PUBLISHED on npm** |
+| `packages/opencues-core/` | `@opencues/core` | 0.46.0 | private |
+| `packages/opencues-runtime/` | `@opencues/runtime` | 0.31.1 | private |
+| `packages/opencues-cli/` | `opencues` (real CLI) | 0.7.0 | **PUBLISHED on npm** |
 | `integrations/claude-code/` | `@opencues/claude-code` | 0.2.11 | private |
 | `integrations/opencode/` | `@opencues/opencode` | 0.2.15 | private |
-| `integrations/chrome/` | `@opencues/chrome` | 0.2.165 | private |
+| `integrations/chrome/` | `@opencues/chrome` | 0.2.166 | private |
 | `integrations/gemini-cli/` | `@opencues/gemini-cli` | 0.2.11 | private |
 | `integrations/shell/` | `@opencues/shell` | 0.2.21 | private |
 | `integrations/windows/` | `@opencues/windows` | 0.2.4 | private |
+| `integrations/dsh/` | `@opencues/dsh` | 0.1.1 | **PUBLISHABLE** — dsh installs plugins from npm |
 
 The bare `opencues` name on npm is the real CLI (`packages/opencues-cli/`, **published** — v0.6.0 superseded the retired parking placeholder's v0.0.1; the old `packages/opencues-park/` source was deleted post-publish, July 2026). The npm org grants access via the `developers` team.
 
 The `@opencues/*` library packages remain `private: true`. Flipping one to publishable requires removing `"private": true` AND repointing (or removing) its `publishConfig` block (most currently target `npm.pkg.github.com`).
+
+**`@opencues/dsh` is the exception, and structurally has to be.** dsh installs plugins as npm packages (`dsh plugin --profile web add @opencues/dsh`), so an unpublished package means no install path at all. It carries no `dependencies`: `build.mjs` inlines `@opencues/{core,runtime}` into `client.js` at publish time, which is exactly what lets those two stay private. Publishing prebuilt is also a security choice — the `github:` install route would require users to grant pnpm `allowBuilds`, i.e. arbitrary code execution at install time. See `integrations/dsh/README.md` § Distribution.
 
 ## Cerebras-specific features
 

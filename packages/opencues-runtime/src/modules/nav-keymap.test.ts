@@ -52,3 +52,22 @@ describe('resolveNavKeymap', () => {
     expect(resolveNavKeymap('auto', 'chrome')).toBe('ctrl-alt');
   });
 });
+
+describe('resolveNavKeymap — every browser host, not just chrome', () => {
+  // The rule is "the browser owns ctrl-shift+arrow", so it belongs to
+  // browser-ness rather than to the name `chrome`. Written as
+  // `hostName === 'chrome'` it silently gave the second browser host
+  // (DeepSeek Harness) a keymap the page steals from it — navigation would
+  // appear to do nothing, with no error to explain why.
+  for (const host of ['chrome', 'dsh']) {
+    it(`${host}: forces ctrl-alt even when ctrl-shift is configured`, () => {
+      expect(resolveNavKeymap('auto', host)).toBe('ctrl-alt');
+      expect(resolveNavKeymap('ctrl-shift', host)).toBe('ctrl-alt');
+    });
+  }
+
+  it('a terminal host still honours an explicit ctrl-shift', () => {
+    // The guard must not have widened into "nobody may pick ctrl-shift".
+    expect(resolveNavKeymap('ctrl-shift', 'claude-code')).toBe('ctrl-shift');
+  });
+});

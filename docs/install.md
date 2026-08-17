@@ -62,6 +62,7 @@ brew install bash tmux brightness  # bash 4+ optional but recommended
 | `chrome`      | Chrome 121+ | `chrome://version` |
 | `gemini-cli`  | Node 22+ (installer clones a Gemini CLI 0.41.x fork itself) | `node --version` |
 | `shell`       | [bun](https://bun.sh/) (`oc-edit`/`oc-editd` are bun apps) + tmux 3.2+ (`oc-shell`'s display-popup). Preflight offers to vendor either into `~/.opencues/vendor/` if missing. | `bun --version`, `tmux -V` |
+| `dsh`         | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) — its own plugin system does the install, so OpenCues clones no fork here | `dsh --version` |
 
 A Claude-Code-only user never needs bun. An OpenCode user needs bun because OpenCode itself is a bun app, not because OpenCues requires it.
 
@@ -107,6 +108,7 @@ pnpm exec opencues run shell
 | **Chrome** | `opencues install chrome` (+ `opencues install chrome-host` for live `~/.cues/` sync) | Chrome 121+ | Load unpacked at `chrome://extensions` (path printed by installer) |
 | **Gemini CLI** | `opencues install gemini-cli` | Gemini CLI 0.41.x | `opencues run gemini-cli` |
 | **Shell** | `opencues install shell` | No upstream fork — self-owned host | `opencues run shell` (or `oc-shell` once on PATH) |
+| **DeepSeek Harness** | `dsh plugin --profile web add @opencues/dsh` (no OpenCues CLI step; `opencues install dsh` exists only to build from a checkout) | dsh 0.1.x | `dsh --profile web`, then reload the tab |
 
 Per-host install detail, paths touched, uninstall flow: each integration's own README (linked above).
 
@@ -122,6 +124,7 @@ Every `opencues install <host>` is one command, end-to-end — no manual `bun in
 | `chrome-host` | Drop a local native-messaging host + register it with Chrome (manifest + WSL `.bat` shim + HKCU registry on Windows). Requires `--extension-id <id>` from `chrome://extensions`. After install, edits to `~/.cues/` push into every open tab in ~300ms — no rebuild, no refresh. | ✗ — Chrome spawns the host on demand |
 | `gemini-cli` | Clone the fork + `npm install` fork deps + build our runtime + install into fork's `node_modules/@opencues/` + patch 4 source files (3 TSX + esbuild config) + `npm run build` the fork | ✓ |
 | `shell` | `seed-configs` (shared `~/.cues/`) + preflight offers to vendor bun/tmux into `~/.opencues/vendor/` if missing + build our runtime + install `oc-shell`/`oc-edit`/`oc-editd` on PATH. No upstream fork to patch — self-owned host. | ✓ (runs `oc-shell`, which lazy-spawns `oc-edit`) |
+| `dsh` | `seed-configs` (shared `~/.cues/`) + build our runtime + bundle the browser half into `client.js` (core + runtime inlined) + hand off to `dsh plugin add`. Writes nothing into `$DSH_HOME/profiles/` itself — that is dsh's to manage. | ✓ |
 
 ## Where things land
 

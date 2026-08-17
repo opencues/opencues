@@ -101,7 +101,34 @@ describe('install dispatch — --help / missing host / unknown host', () => {
     await assert.rejects(() => install([], { REPO_ROOT: fakeRepoRoot }), /__EXIT_2__/);
     const out = errs.join('\n');
     assert.match(out, /missing <host>/);
-    assert.match(out, /chrome, claude-code, gemini-cli, opencode, shell/);
+    // Per host, not as one contiguous substring. The old form pinned the
+    // exact comma-joined prefix, so it failed on any host being ADDED —
+    // which is not a regression, and the failure said nothing about what
+    // was actually wrong. Each host named individually keeps the intent
+    // ("every known host is offered") and survives the list growing.
+    for (const host of ['chrome', 'claude-code', 'dsh', 'gemini-cli', 'opencode', 'shell', 'windows']) {
+      assert.ok(out.includes(host), `missing-host error should name ${host}; got: ${out}`);
+    }
+    assert.match(out, /--all/);
+  });
+
+  it('the fallback host list matches core\'s HOSTS', () => {
+    // This suite deliberately runs with no core dist, forcing install.cjs's
+    // pre-build FALLBACK resolver — a hand-maintained copy of core's HOSTS.
+    // Two copies of a list is a drift surface, so pin them together: adding
+    // a host to core and forgetting the fallback would otherwise mean
+    // `opencues install <new-host>` worked normally and then mysteriously
+    // reported "unknown host" on any machine that had not built core yet.
+    let core;
+    try {
+      core = require('../../../opencues-core/dist/host-compat.js');
+    } catch {
+      // Core not built in this environment — nothing to compare against,
+      // and failing here would make the suite depend on build order.
+      return;
+    }
+    const fallback = ['chrome', 'claude-code', 'dsh', 'gemini-cli', 'opencode', 'shell', 'windows'];
+    assert.deepStrictEqual(core.HOSTS.slice().sort(), fallback.slice().sort());
   });
 
   it('unknown host name exits 2, naming the bad value', async () => {

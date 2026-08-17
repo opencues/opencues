@@ -234,6 +234,10 @@ function enumerateInstalledHosts(ctx) {
     { host: 'gemini-cli',        root: supportDir('gemini-cli', resolveForkDir('gemini-cli')) },
     { host: 'shell',             root: path.join(ctx.REPO_ROOT, 'integrations/shell/node_modules/@opencues') },
     { host: 'chrome',            root: path.join(ctx.REPO_ROOT, 'integrations/chrome/dist') },
+    // dsh's served bundle INLINES core+runtime at build time, so a stale
+    // bundle is exactly the drift this detects — the browser is running
+    // whatever esbuild last saw, and nothing at page load would say so.
+    { host: 'dsh',               root: path.join(ctx.REPO_ROOT, 'integrations/dsh/node_modules/@opencues') },
   ];
   const results = [];
   for (const c of candidates) {

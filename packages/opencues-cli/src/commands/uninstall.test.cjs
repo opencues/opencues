@@ -124,7 +124,9 @@ function readLastArgs(folder) {
   return JSON.parse(fs.readFileSync(p, 'utf8'));
 }
 
-const ALL_FOLDERS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell'];
+// Must stay in step with uninstall.cjs's HOST_FOLDERS — `--all` is only
+// meaningfully tested if this fixture is the same set the command expands to.
+const ALL_FOLDERS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell', 'dsh'];
 
 function ctx() {
   return { REPO_ROOT: fakeRepoRoot, pkg: { version: 'test' } };

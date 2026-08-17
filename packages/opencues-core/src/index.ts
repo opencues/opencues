@@ -276,6 +276,8 @@ export {
   formatHostList,
   HOSTS,
   NATIVE_HOSTS,
+  BROWSER_HOSTS,
+  isBrowserHost,
   HOST_ALIASES,
   resolveHost,
   type Host,
@@ -283,6 +285,16 @@ export {
   type HostCompatResult,
   type SiteCompatContext,
 } from './host-compat';
+
+// Page ownership — which OpenCues host owns a document, so two hosts in
+// the same page (dsh plugin + chrome extension) don't fight over the
+// buffer. See page-ownership.ts for why this is a DOM attribute.
+export {
+  PAGE_HOST_ATTR,
+  claimPage,
+  pageClaimedBy,
+  pageClaimedByOther,
+} from './page-ownership';
 
 // Cursor sentinel: shared between TransformBlankSource (core) and
 // AgentRewrite (runtime). Single source of truth for the [CURSOR]
