@@ -327,6 +327,51 @@ error to explain it**, which for a plugin someone just installed reads as
 broken. With the fallback the same user gets 97 blanks and that sentence
 fills to `Reykjavik`, on the host's model, with no key anywhere.
 
+### Force that state, and force it as a JOURNEY
+
+`boot-dsh-virgin.sh` is the honest version of this test, and the difference
+from the first attempt is worth stating because the first attempt passed.
+That one emptied `HOME` only, so it still inherited every provider key from
+the developer's shell — "no API keys detected" was never exercised, and
+OpenCues mode looked available in a state where it would not be. The strict
+version unsets `~/.cues`, `<cwd>/.cues`, `OPENCUES_HOME` **and every key any
+OpenCues provider reads**, keeping only `DEEPSEEK_API_KEY`, which a dsh user
+has by definition.
+
+More importantly: **a snapshot of the fresh state passes while the journey
+through it fails.** Four defects surfaced, and three were invisible until a
+step boundary:
+
+1. **The settings tab could not save anything.** The missing *file* was
+   handled; the missing *parent directory* was not, so `writeFile` answered
+   ENOENT — for exactly the users the shipped defaults exist to serve.
+2. **The first write bricked the plugin.** The fallback triggered on
+   `vfs.size === 0`, and the write created `~/.cues/OPENCUES.md`, making the
+   tree non-empty. Next reload: `Resolver: no cuesConfig/blanksConfig,
+   skipping build`. Every cue and blank dead, no error, **caused by using the
+   feature**. Settings are not content, so the trigger is now "no cue or
+   blank DEFINITIONS on disk" (`CUES.md` / `CUE.md` / `BLANK.md`) and the
+   defaults gap-fill rather than replace — which also means a user with a
+   real tree never has a default they deliberately deleted resurrected.
+3. **A sparse write silently disabled two features.** Seeding
+   `---\nvoice-mode: inactive\n---` puts a file on disk, and on-disk wins, so
+   it shadowed the shipped default's explicit `word-cues-mode: on` /
+   `transform-blank-mode: on` — 7 sources became 5. The first write now seeds
+   from the shipped default verbatim (17.8 KB, emitted into the package at
+   build time so the node half has it) and applies the change on top.
+4. **The inline note floated above dsh's settings modal**, as a stray
+   tooltip over unrelated UI. It is a `document.body` overlay, which is what
+   lets it float over the composer without touching dsh's DOM. Fixed by
+   hit-testing the composer rather than sniffing for a dialog selector — that
+   covers modal, drawer, scrolled-out-of-view and collapsed panel for the
+   same price. Found in a screenshot taken to check something else.
+
+Each of 1–3 is the CLAUDE.md install-boundary pattern exactly: individually
+reasonable steps whose *join* is broken. The lesson is not "test the fresh
+state" — that was done — it is **test the fresh state as a sequence, and
+reload between steps**, because state written by step N is what breaks
+step N+1.
+
 ## Credentials
 
 **No API key value ever reaches the page, in either mode.** This matters
@@ -399,6 +444,14 @@ dictionary, hackernews) and the settings tab writing a scalar into the real
 `OPENCUES.md` while refusing a newline-injected value. A headless
 regression suite covered 18 contract assertions.
 
+Separately verified on a **genuinely fresh machine state** (see § Force that
+state): 29 shipped defaults load with nothing on disk, 7 sources build,
+`the capital of iceland is _` → `Reykjavik` and `i has three cats fix typos _`
+→ `i have three cats` on the host's model with **no OpenCues key in the
+environment at all**, a settings write creates `~/.cues/` from the shipped
+default, and the same three blanks still resolve after a reload following
+that write.
+
 `Ctrl+Alt+↑` requires Navigation to have activated a word first
 (`Ctrl+Alt+→`). Pressing it with nothing active correctly returns
 not-consumed. That is not a bug.
@@ -426,7 +479,14 @@ not-consumed. That is not a bug.
 - dsh's theme preference is injected server-side from
   `$DSH_HOME/settings.yaml` (`ui-theme.preference`), so Playwright's
   `colorScheme` emulation does **not** flip it. Edit the file and restart.
-- The loading animator replaces `_` with a spinner glyph, so "no trailing
-  underscore" is TRUE mid-call. Any settle predicate must exclude
-  `[_▖▘▝▗]` or a test will race ahead and clear the buffer under an
-  in-flight request.
+- The loading animator replaces `_` with a frame glyph, so "no trailing
+  underscore" is TRUE mid-call and a test will race ahead and clear the
+  buffer under an in-flight request. **Do not settle on a frame-glyph
+  denylist** — that needs the frame set, and the DEFAULT animation is
+  `BOUNCE_FRAMES = ['_', '-', '‾', '-']`, not the spinner `▖▘▝▗`. An earlier
+  version of this note listed only the spinner set, and on a fresh user (no
+  OPENCUES.md selecting an animation) that predicate read `-` as settled and
+  reported `the capital of iceland is -` as the *result* of a fluid-blank —
+  a fake product bug, twice. Settle on **"value unchanged across 3
+  consecutive polls, and different from what was typed"**: it needs to know
+  nothing about the animator, so it cannot go stale when the frames change.
