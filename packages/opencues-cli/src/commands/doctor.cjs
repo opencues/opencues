@@ -1105,9 +1105,19 @@ module.exports = async function doctor(argv, ctx) {
       for (const adapter of cliProviders) {
         // Binary per CLI-transport provider — from core's registry map
         // (the same one pickAutoProvider's zero-key subscription rung
-        // probes), defaulting to the id for any future CLI provider
-        // whose binary matches its id.
-        const bin = providers.SUBSCRIPTION_CLI_BINARIES?.[adapter.id] || adapter.id;
+        // probes). `null` means the provider is not binary-backed at
+        // all: `harness` owns its dispatch the same way a subscription
+        // CLI does, but the dispatch is bound in-process by the running
+        // host, so PATH has nothing to say about it. Probing anyway
+        // invented a `harness` executable and told the user to install
+        // it. Report the state honestly instead.
+        const bin = providers.subscriptionCliBinary
+          ? providers.subscriptionCliBinary(adapter.id)
+          : (providers.SUBSCRIPTION_CLI_BINARIES?.[adapter.id] ?? null);
+        if (!bin) {
+          s.info(adapter.displayName, dim('(bound by the host at runtime — nothing to install)'));
+          continue;
+        }
         const which = spawnSync('which', [bin], { encoding: 'utf8' });
         const installed = which.status === 0;
         s.ok(`${adapter.displayName} (${bin} on PATH)`, installed);

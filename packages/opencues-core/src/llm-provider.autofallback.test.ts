@@ -8,7 +8,14 @@
  */
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
-import { pickAutoProvider, SUBSCRIPTION_AUTO_FALLBACK, SUBSCRIPTION_CLI_BINARIES } from './llm-provider';
+import {
+  defaultCliAvailable,
+  listProviders,
+  pickAutoProvider,
+  SUBSCRIPTION_AUTO_FALLBACK,
+  SUBSCRIPTION_CLI_BINARIES,
+  subscriptionCliBinary,
+} from './llm-provider';
 
 const NONE = () => false;
 const ALL = () => true;
@@ -48,6 +55,46 @@ describe('pickAutoProvider — subscription-CLI rung', () => {
   it('binary map covers every fallback provider', () => {
     for (const id of SUBSCRIPTION_AUTO_FALLBACK) {
       assert.ok(SUBSCRIPTION_CLI_BINARIES[id], `${id} missing from SUBSCRIPTION_CLI_BINARIES — the probe would look for a binary named "${id}"`);
+    }
+  });
+});
+
+/**
+ * `transport: 'cli'` says only "this provider owns its dispatch". It does
+ * NOT say "a binary of the same name is on PATH" — `harness` is bound
+ * in-process by the running host. The two were conflated by an
+ * `?? providerId` fallback that read as accommodating and behaved as a
+ * landmine: doctor probed for a `harness` executable, found none, and
+ * told the user to install one.
+ */
+describe('subscriptionCliBinary — binary-backed vs host-bound', () => {
+  it('answers null for a CLI-transport provider with no binary', () => {
+    assert.strictEqual(subscriptionCliBinary('harness'), null);
+    assert.strictEqual(subscriptionCliBinary('claude-code-cli'), 'claude');
+  });
+
+  it('never invents a binary name from the provider id', () => {
+    // The whole bug in one assertion: any unmapped id must answer null
+    // rather than echoing itself back as an executable to go look for.
+    assert.strictEqual(subscriptionCliBinary('some-future-provider'), null);
+  });
+
+  it('defaultCliAvailable is false for a host-bound provider, whatever PATH holds', () => {
+    // Not "false because the binary is missing" — false because the
+    // question is about the host process, and PATH cannot answer it.
+    assert.strictEqual(defaultCliAvailable('harness'), false);
+  });
+
+  it('every CLI-transport provider is either mapped to a binary or host-bound', () => {
+    // Guards the third state: a binary-backed provider that nobody added
+    // to the map would silently become "host-bound, nothing to install".
+    const HOST_BOUND = new Set(['harness']);
+    for (const p of listProviders().filter(p => p.transport === 'cli')) {
+      const bin = subscriptionCliBinary(p.id);
+      assert.ok(
+        bin || HOST_BOUND.has(p.id),
+        `${p.id} is CLI-transport with no binary and is not declared host-bound — add it to SUBSCRIPTION_CLI_BINARIES, or to HOST_BOUND here if its dispatch really is bound in-process`,
+      );
     }
   });
 });

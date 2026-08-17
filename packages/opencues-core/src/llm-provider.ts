@@ -1627,6 +1627,26 @@ export const SUBSCRIPTION_CLI_BINARIES: Readonly<Record<string, string>> = {
 };
 
 /**
+ * The binary that proves a CLI-transport provider can work — or `null`
+ * when the provider is not backed by one at all.
+ *
+ * `transport: 'cli'` means only "this provider owns its own dispatch and
+ * returns assistant text directly". That is true of a subscription CLI,
+ * and equally true of `harness`, whose dispatch is bound in-process by
+ * the host at boot. Conflating the two makes a PATH probe for an
+ * executable that will never exist, and — the part that actually reached
+ * a user — tells them to go install it.
+ *
+ * Ask this rather than reading the map with an `?? providerId` fallback.
+ * That fallback looks accommodating (a future provider whose binary
+ * happens to match its id) and is really a landmine: a provider that is
+ * NOT binary-backed silently acquires a probe for its own name.
+ */
+export function subscriptionCliBinary(providerId: string): string | null {
+  return SUBSCRIPTION_CLI_BINARIES[providerId] ?? null;
+}
+
+/**
  * Zero-key auto-fallback order for subscription-CLI providers. Claude
  * first: the flagship integration patches the `claude` binary itself,
  * so a CC user by definition has it installed + authenticated.
@@ -1654,12 +1674,17 @@ export function setCliAvailabilityForTests(providerId: string, available: boolea
  * false, so the subscription rung never fires there (chrome has no
  * subprocess transport anyway). Binary names come from the constant
  * map above, never from user input.
+ *
+ * A CLI-transport provider with no binary (`harness`) answers false:
+ * nothing on PATH could prove or disprove it, since whether it works is
+ * a question about the running host process, not the filesystem.
  */
 export function defaultCliAvailable(providerId: string): boolean {
   if (typeof process === 'undefined' || !process.versions?.node) return false;
   const cached = _cliAvailabilityCache.get(providerId);
   if (cached !== undefined) return cached;
-  const bin = SUBSCRIPTION_CLI_BINARIES[providerId] ?? providerId;
+  const bin = subscriptionCliBinary(providerId);
+  if (!bin) return false;
   let ok = false;
   try {
     // Lazy require — `node:child_process` is external in the chrome
@@ -2367,18 +2392,24 @@ export function setCoreWarn(fn: CoreWarnFn | null): void {
   _coreWarn = fn ?? _defaultCoreWarn;
 }
 
-// One-time notice when the zero-key subscription-CLI rung is routing
+// One-time notice when a zero-key CLI-transport rung is routing
 // dispatches. Info-grade, not an error — the setup WORKS; the line
 // exists so the provider switch is visible and the faster path named.
 let _notifiedSubscriptionFallback = false;
 function notifySubscriptionFallbackOnce(providerId: string): void {
   if (_notifiedSubscriptionFallback) return;
   _notifiedSubscriptionFallback = true;
-  const bin = SUBSCRIPTION_CLI_BINARIES[providerId] ?? providerId;
-  _coreWarn(
-    `[opencues] no API keys found — routing LLM calls through your ${bin} subscription (${providerId}). ` +
-    `Works out of the box; for faster suggestions add an API key: opencues set-key`,
-  );
+  const bin = subscriptionCliBinary(providerId);
+  // A host bridge is not a subscription and has no binary, so the
+  // subscription wording would name a thing the user does not have and
+  // send them to `set-key` for a route that deliberately needs no key.
+  // Whether to add one is still worth saying — it is the faster path —
+  // but it is an upgrade here, not a fix.
+  _coreWarn(bin
+    ? `[opencues] no API keys found — routing LLM calls through your ${bin} subscription (${providerId}). ` +
+      `Works out of the box; for faster suggestions add an API key: opencues set-key`
+    : `[opencues] no API keys found — routing LLM calls through this app's own model (${providerId}). ` +
+      `Works out of the box; for faster suggestions add an API key: opencues set-key`);
 }
 
 // Dedup set for the one-time runtime warning. Keyed by `${id}|${url}`.

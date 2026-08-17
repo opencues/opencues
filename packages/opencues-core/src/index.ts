@@ -180,6 +180,7 @@ export {
   PROVIDER_AUTO_ORDER,
   SUBSCRIPTION_AUTO_FALLBACK,
   SUBSCRIPTION_CLI_BINARIES,
+  subscriptionCliBinary,
   pickAutoProvider,
   defaultCliAvailable,
   resetCliAvailabilityCacheForTests,
