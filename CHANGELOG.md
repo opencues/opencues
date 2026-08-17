@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — `process.env.HOME` took down every script-backed blank on a browser host (`@opencues/runtime` 0.30.3 → 0.30.4)
+
+Five sites in `blank-fill.ts` and `cycling.ts` read `process.env.HOME ?? '~'` to expand a `blankScript`'s leading `~`. A browser has no `process`, so that is not a missing value, it is a `ReferenceError` — and every one of those sites sits inside a handler, so it did not fail one blank, it took the enclosing text-change or script-set handler down with it. The symptom is nothing: `nvidia _`, `weather in london _` and `hackernews _` sat inert while `dictionary _` (which reaches no script path) worked, which reads like six broken blanks rather than one broken line.
+
+The reason it survived this long is more interesting than the bug. Chrome `define`s `process.env.HOME` in its own esbuild config, so chrome was fine — and `lint-runtime-browser-safe.sh` **exempted the name on that basis**, alongside `DEBUG_OPENCUES`. That exemption quietly made "replicate chrome's define list" a requirement of every future browser host, enforced by nothing and written down nowhere. DeepSeek Harness did not, and could not have known to. The guard now lives in the runtime as `lib/home-dir.ts:homeDir()`, the exemption is gone from the lint, and the lint was verified to catch the old shape by reintroducing it.
+
 ### Added — `harness` provider: run OpenCues on the host's own model, with no OpenCues key (`@opencues/core` 0.43.0 → 0.44.0)
 
 A host that already has a configured LLM can now serve OpenCues' calls itself. `registerHarnessDispatch(fn)` binds a dispatch function; the new `harness` provider routes through it. Three consequences: a user needs **no OpenCues API key at all**, credentials stay in the host process and never reach a browser, and the host's own retry policy, provider UI and token metering apply to cue traffic.
