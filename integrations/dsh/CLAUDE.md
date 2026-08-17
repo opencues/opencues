@@ -508,28 +508,53 @@ and `opencues/opencues` is at exactly 20 — `dsh-plugin` already cost us
 an obvious win, so it is Wilfred's to make rather than something to do
 quietly.
 
-### ⚠ A scraped install can get a plugin with no browser half
+### Why `client.js` is committed (the marketplaces do not use npm)
 
-The marketplaces install by **cloning the repo** and running
-`npm install --omit=dev --ignore-scripts`, then copying the result into
-`~/.dsh/profiles/web/node_modules/<pkg>`. `client.js` is a build artifact —
-gitignored, produced by `prepublishOnly` — so it exists in the **npm
-tarball** and *not* in a git clone, and `--ignore-scripts` guarantees it will
-not be built either.
+**The marketplaces install by CLONING this repo**, not from npm. Read from
+`lib/index.js` of DSH-Plugins-Marketplace rather than inferred from its prose:
+it runs `npm install --omit=dev --ignore-scripts`, with
+**`allowScripts=false` as the safe default**, then copies the result into
+`~/.dsh/profiles/web/node_modules/<pkg>`. Its own fallback message states the
+expectation outright — *"using the build artifacts committed in the repo"*.
 
-A clone-based install therefore yields the node half with no browser half:
-the config route answers, and nothing paints or fills. The documented path
-(`dsh plugin add @opencues/dsh`) resolves the npm tarball and is unaffected,
-and their spec does say the npm package name is the install target — but the
-pipeline description mentions cloning too, so treat this as unverified rather
-than safe. Two ways out if a marketplace install is ever reported broken:
-commit `client.js` (1.7MB of derived output, against the grain of everything
-else here), or ship a `prepare` script — noting `--ignore-scripts` defeats
-that as well. Verify before choosing.
+So a gitignored bundle would simply not exist on that path: `prepublishOnly`
+never runs, `--ignore-scripts` guarantees nothing builds it, and the user gets
+the node half with no browser half. The config route answers, and nothing ever
+paints or fills — a broken install with no error anywhere. They have already
+been bitten by this bug class by another plugin (their issue #54, where a
+package's content lived only in the published tarball), which is why
+`installNpmTargetToTemp` exists as a fallback at all.
+
+**Hence `client.js` and `default-opencues.md` are committed**, which is the
+opposite of what this repo does everywhere else — `integrations/chrome/dist/`
+is not committed. That is not a change of principle: chrome is not distributed
+by clone-scraping marketplaces, and dsh is.
+
+Two things pay for it:
+
+- **`minify: true`** in `build.mjs` — 1.71MB → 1.01MB, so the per-change cost
+  in git history is halved, and every dsh page load gets the smaller bundle.
+- **`scripts/check-dsh-bundle-fresh.sh`** — committed derived output goes
+  stale silently, which is the worst failure mode in this codebase's history.
+  esbuild is byte-reproducible for identical inputs (two consecutive builds
+  hash identically), so the gate rebuilds and diffs: exact, not heuristic. It
+  builds core + runtime first, because the bundle inlines their dist and a
+  stale dist would otherwise let a genuinely stale bundle pass. Runs in
+  `pre-pr.sh` and CI.
+
+**If you change anything under `src/`, rebuild and commit the bundle with it.**
+
+Verified by reproducing the marketplace path exactly — `git clone`, copy the
+plugin directory into a profile, no npm tarball anywhere, no build step: 29
+shipped defaults load, 7 sources build, and `the capital of iceland is _` fills
+to `Reykjavik`.
 
 Their scraper does handle monorepos: `findPluginRoots` walks to depth 3 and
 requires each sub-package to declare `dsh` itself, which `integrations/dsh`
-(depth 2) does.
+(depth 2) does. Note their CLI-hint detection reads the **repo root**
+`package.json`, whose name is `opencues`, not `@opencues/dsh` — so the npm
+path is found via the install command in the root README rather than the
+manifest. One more reason not to depend on the npm path being taken.
 
 ## Known gaps
 

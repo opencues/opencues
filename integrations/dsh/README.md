@@ -151,9 +151,13 @@ pull request here. That is exactly why they are written down.
 **Steps 3 and 4 are one-time, not per-release.** The topic stays set, and the
 directories that matter either re-scan it on a timer or read the curated list.
 [CLAUDE.md § Where this plugin is listed](./CLAUDE.md#where-this-plugin-is-listed)
-records every surface, which ones need a PR versus collect themselves, the one
-we deliberately skipped and why, and a caveat about scraped installs that a
-release should not re-learn the hard way.
+records every surface and which ones need a PR versus collect themselves.
+
+**Step 0, every time you touch `src/`: rebuild and commit `client.js`.** It is
+a build artifact that is deliberately committed, because the marketplaces
+install by cloning this repo with `--ignore-scripts` — so what is committed
+here is literally what those users run. `scripts/check-dsh-bundle-fresh.sh`
+fails the build if it drifts.
 
 ## Status
 
