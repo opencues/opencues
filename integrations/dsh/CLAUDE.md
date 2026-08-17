@@ -499,14 +499,15 @@ one dsh's own README endorses.
 | [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin) (7.5k★) | [#1508](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/1508) | **The authoritative catalog.** One YAML at `data/plugins/opencues__opencues--integrations-dsh.yml`, then `npm ci && node scripts/generate-readme.mjs`. [dsh-market](https://github.com/dsh-market/dsh-market) reads its `plugins.json` daily, so this entry is what puts OpenCues in the in-dsh market — do not submit to dsh-market directly, it says so itself |
 | [0xsline/awesome-deepseek-harness](https://github.com/0xsline/awesome-deepseek-harness) (687★) | [#374](https://github.com/0xsline/awesome-deepseek-harness/pull/374) | Hand-edited README; **both `README.md` and `README.zh-CN.md` must be updated together**. Category: `Input & Editing` |
 | [Anil-matcha/awesome-dsh-plugin](https://github.com/Anil-matcha/awesome-dsh-plugin) (927★) | [#26](https://github.com/Anil-matcha/awesome-dsh-plugin/pull/26) | Single README, alphabetical within section, `—` separator. No input category; `UI Enhancements` is where composer plugins live |
+| [Dominic789654/awesome-deepseek-harness](https://github.com/Dominic789654/awesome-deepseek-harness) (123★) | [#122](https://github.com/Dominic789654/awesome-deepseek-harness/pull/122) | Requires a **`dsh`** topic rather than `dsh-plugin`. Both READMEs, different separators per language (` — ` en, ` —— ` zh). Category: `UI / Clients` |
 
-**Deliberately not submitted:**
-[Dominic789654/awesome-deepseek-harness](https://github.com/Dominic789654/awesome-deepseek-harness)
-requires a **`dsh`** topic, not `dsh-plugin`. GitHub caps a repo at 20 topics
-and `opencues/opencues` is at exactly 20 — `dsh-plugin` already cost us
-`gpt-oss`. Spending a second slot for one 123★ list is a judgement call, not
-an obvious win, so it is Wilfred's to make rather than something to do
-quietly.
+**The 20-topic cap is the thing to know here.** GitHub allows a repository
+twenty topics and `opencues/opencues` sits at exactly twenty, so every dsh
+topic was a swap, not an addition: `dsh-plugin` cost `gpt-oss`, and `dsh`
+(needed only by the list above) cost `chatgpt`. Adding a third would mean
+dropping something that earns its place, and `dsh-plugin` is the one that
+matters — it is what dsh's own README endorses and what every auto-collector
+scrapes. For scale: ~6,700 repos carry `dsh-plugin`, ~3,300 carry `dsh`.
 
 ### Why `client.js` is committed (the marketplaces do not use npm)
 

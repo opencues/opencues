@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-17
+
 ### Fixed — a marketplace install of the dsh plugin shipped no browser half (`@opencues/dsh` 0.1.1 → 0.1.2)
 
 **The dsh plugin marketplaces do not install from npm.** They clone the repository and run `npm install --omit=dev --ignore-scripts` — with scripts disabled *by default*, for safety — then copy the result into the profile. Read out of `DSH-Plugins-Marketplace`'s `lib/index.js` rather than inferred from its prose; its own fallback message states the expectation outright: *"using the build artifacts committed in the repo"*.
