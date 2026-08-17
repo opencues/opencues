@@ -26,7 +26,7 @@ import type {
 import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common';
 import { createTrustGate } from './trust-gate';
 import { applySiteCompatFilter as siteFilter } from './site-filter';
-import { parseSingleCueMd, listProviders, buildCalendarContextSnapshot } from '@opencues/core';
+import { parseSingleCueMd, listProviders, buildCalendarContextSnapshot, pageClaimedBy, pageClaimedByOther } from '@opencues/core';
 import { ChromeUserBlank } from './user-blank-loader';
 import { createBlankInvoke } from '@opencues/runtime/dist/src/blanks';
 import { wordDiff } from '@opencues/runtime/dist/src/modules/word-diff';
@@ -3239,6 +3239,15 @@ export function notifyOpenCuesTextChange(
   cursorOffset: number,
   source: 'user' | 'runtime' = 'user',
 ): void {
+  // An EMBEDDED OpenCues host owns this page — do not touch its buffer.
+  // See `deferToEmbeddedHost` in content.ts for the full story; the short
+  // version is that a content script runs in an isolated world, so the two
+  // hosts cannot see each other, and unguarded this extension (keyless on a
+  // fresh profile) overwrote a dsh plugin's answer with its own missing-key
+  // error. Checked here rather than only at boot because the claim usually
+  // lands AFTER us: we run at `document_end`, embedded plugins boot later.
+  if (deferToEmbeddedHost()) { noteDeferralOnce(); return; }
+
   let actualSource = sourceReclassifier.reclassify(text, source);
 
   // Undo/redo window — if a recent historyUndo/historyRedo opened the
@@ -3366,6 +3375,41 @@ function normaliseKey(k: string): string {
 }
 
 /**
+ * Stand down when an EMBEDDED OpenCues host owns this page.
+ *
+ * A page can carry its own OpenCues integration — DeepSeek Harness's plugin
+ * is the first — and that host cannot see us, because a content script runs
+ * in an **isolated world** with its own `window`. We share only the document:
+ * same textarea, same key events, same `CSS.highlights`. Unguarded, both
+ * hosts handle every keystroke and write the same buffer. Verified on dsh:
+ * this extension, keyless on a fresh profile, won the race and wrote
+ * `[OpenCues: no API key — open the extension popup]` over the plugin's
+ * answer — an error about a credential that host does not even need, since
+ * it routes through the app's own model.
+ *
+ * The embedded host wins: it knows its editor's real shape, it is
+ * version-matched to it, and it usually has an LLM route already. See
+ * `@opencues/core/page-ownership` for the contract.
+ *
+ * Read LIVE at every action point, never cached at boot. We run at
+ * `document_end` and an embedded plugin generally boots later (framework
+ * mount + async config fetch), so the claim usually appears AFTER us — a
+ * startup-only check would miss the common case entirely.
+ */
+export function deferToEmbeddedHost(): boolean {
+  return pageClaimedByOther('chrome');
+}
+
+// One line, not one per keystroke: the predicate above is consulted on every
+// text change and every key, and the point of standing down is to be quiet.
+let _deferNoticeLogged = false;
+export function noteDeferralOnce(): void {
+  if (_deferNoticeLogged) return;
+  _deferNoticeLogged = true;
+  log.info(`[opencues][chrome] standing down — this page is owned by the "${pageClaimedBy()}" OpenCues host`);
+}
+
+/**
  * Document-level keydown listener (capture phase). Fires before the
  * existing WordNavigator's target listener, so consumed events get
  * blocked via stopPropagation. Installed once per content-script load.
@@ -3373,6 +3417,10 @@ function normaliseKey(k: string): string {
 function installKeyListener(): void {
   document.addEventListener('keydown', (e) => {
     if (!bootResult) return;
+    // Leave Ctrl+Alt+arrow to the page's own OpenCues host. Without this
+    // both hosts consume the same cycle keystroke and the buffer advances
+    // twice per press. Same live-read reasoning as the text-change guard.
+    if (deferToEmbeddedHost()) { noteDeferralOnce(); return; }
     // Only handle events that touch the current target. This avoids
     // hijacking keys on parts of the page outside our contenteditable.
     const target = currentTarget;

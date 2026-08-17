@@ -17,7 +17,7 @@
 // bundles the tree we just built.
 import { boot } from '@opencues/runtime/dist/adapters/chrome/v1/boot.js'
 import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common.js'
-import { registerHarnessDispatch } from '@opencues/core'
+import { claimPage, registerHarnessDispatch } from '@opencues/core'
 import { createDefaultBlanksRegistry, createBlankInvoke } from '@opencues/runtime/dist/src/blanks/index.js'
 
 /**
@@ -281,6 +281,15 @@ function hideNote() {
 
 // ──────────────────────────────────────────────────────── binding plumbing
 export function createOpenCuesHost({ setDraftRef, log = LOG }) {
+  // Claim the document BEFORE anything else, so the window in which the
+  // chrome extension can act on this page unopposed is as short as possible.
+  // The extension injects at `document_end` and re-reads the claim on every
+  // text change and keypress, so it stands down as soon as this lands —
+  // without it, a user with both installed gets two hosts writing the same
+  // buffer, and the keyless one can overwrite good output with a missing-key
+  // error. See @opencues/core/page-ownership.
+  claimPage('dsh')
+
   const keyHandlers = new Set()
   const textHandlers = new Set()
   const cursorHandlers = new Set()

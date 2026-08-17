@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — two OpenCues hosts in one page fought over the buffer (`@opencues/core` 0.45.0 → 0.46.0, `@opencues/chrome` 0.2.165 → 0.2.166, `@opencues/dsh` 0.1.0 → 0.1.1)
+
+A user with **both** the chrome extension and the dsh plugin installed had two OpenCues runtimes driving the same composer, and they could not see each other: a content script runs in an **isolated world** with its own `window`, so the page-level singleton each host uses to survive its own remounts is invisible across the boundary. What they share is the document — same textarea, same key events, same `CSS.highlights`.
+
+The result was not cosmetic. Verified with both loaded: the extension, keyless on a fresh profile, won the race and wrote
+
+```
+the capital of iceland is [OpenCues: no API key — open the extension popup]
+```
+
+over the plugin's `Reykjavik` — an error about a credential that host does not even need, since it routes through the app's own model.
+
+`@opencues/core/page-ownership` is the contract. An embedded host (a dsh plugin; any future web-IDE integration) calls `claimPage(hostName)`, which sets `data-opencues-host` on `<html>`; a host attaching from outside calls `pageClaimedByOther(hostName)` and stands down. **A DOM attribute rather than a global, because a global cannot cross worlds** — that is the whole reason this is not a `window` handshake. Precedence is deliberately one-directional: the embedded host wins, because it knows its editor's real shape, is version-matched to it, and usually has an LLM route already, whereas a generic extension guessing at someone else's composer is the weaker claim.
+
+**Read live at every action point, never cached at boot.** The extension injects at `document_end` while an embedded plugin boots later (framework mount + async config fetch), so the claim usually appears *after* the extension has initialised — a startup-only check would miss the common case. The extension consults it in `notifyOpenCuesTextChange` and in its key listener, plus a cheap boot-time check for the already-claimed case, and logs its deferral exactly once rather than per keystroke.
+
+Verified both directions: with both installed the plugin's fill lands intact and the extension is silent, and **all 22 chrome E2E tests still pass** — including the trust-gate, sensitive-field and site-filter security controls — so the extension is unaffected on pages that carry no claim.
+
+Also fixed a stale expectation in `inline-note.e2e.test.ts`, which asserted the overlay text contained the **cue name**. `inlineNoteText` has no notion of one (no `def.name`, no `sourceName`), so it was never satisfiable by any runtime this repo has shipped; because that suite is run-on-demand rather than a CI gate, it sat failing and made every future real regression in the file look like the same known failure. It now asserts what the paint actually guarantees: the connector, the cycle countdown, that the note previews a destination rather than echoing the input, and that the cue genuinely resolved.
+
 ### Added — DeepSeek Harness integration (`@opencues/dsh` 0.1.0, `@opencues/core` 0.44.0 → 0.45.0, `@opencues/runtime` 0.31.0 → 0.31.1, `opencues` 0.6.2 → 0.7.0)
 
 OpenCues runs in [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)'s composer, and it is **the first integration that is a first-class plugin of its host** rather than a patch, a fork, or a bundle we mirror into place:
