@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — a host can supply the transport its network blanks fetch through (`@opencues/runtime` 0.30.4 → 0.31.0)
+
+`BuiltinBlankContext.fetchFn` reaches the six network-backed built-ins — hackernews, stocks, weather, location, dictionary, crypto. Each of them already accepted a `fetchFn`; until now the registry gave a host no way to hand one over, so they captured the global and that was that.
+
+Browser hosts need it for two independent reasons, and both are load-bearing. A page-context fetch to `finnhub.io` or `api.open-meteo.com` is CORS-blocked, so the call has to hop through a host-side route regardless. And a host that means to keep credentials out of the page hands the blank a **placeholder** key and substitutes the real one inside this transport, somewhere the page cannot read it — which is why the ability to swap the transport, rather than a way to pass a key in, is the right shape. Omitting it changes nothing: every blank stays constructible and captures the global as before. Two registry-drift tests pin both halves, the reaches-every-blank one asserting on the supplied transport being *used* rather than merely accepted.
+
 ### Fixed — `process.env.HOME` took down every script-backed blank on a browser host (`@opencues/runtime` 0.30.3 → 0.30.4)
 
 Five sites in `blank-fill.ts` and `cycling.ts` read `process.env.HOME ?? '~'` to expand a `blankScript`'s leading `~`. A browser has no `process`, so that is not a missing value, it is a `ReferenceError` — and every one of those sites sits inside a handler, so it did not fail one blank, it took the enclosing text-change or script-set handler down with it. The symptom is nothing: `nvidia _`, `weather in london _` and `hackernews _` sat inert while `dictionary _` (which reaches no script path) worked, which reads like six broken blanks rather than one broken line.

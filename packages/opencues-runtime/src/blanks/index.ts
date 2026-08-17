@@ -86,6 +86,24 @@ export interface BuiltinBlankContext {
    */
   readonly finnhubApiKey?: string;
   /**
+   * Transport for every network-backed built-in blank (hackernews,
+   * stocks, weather, dictionary, crypto, location). Same shape as
+   * `globalThis.fetch`; omitted means each blank captures the global.
+   *
+   * Hosts supply this when the global is not the right transport:
+   *
+   *  - **browser hosts** where a page-context fetch to a third-party API
+   *    is blocked by CORS, and must hop through a host-side route;
+   *  - **hosts that keep credentials out of the page** — the blank is
+   *    handed a placeholder key and this transport substitutes the real
+   *    one somewhere the page cannot read (see the DeepSeek Harness
+   *    integration, which does both).
+   *
+   * Every one of these blanks already accepted a `fetchFn`; before this
+   * they simply had no way to receive one through the registry.
+   */
+  readonly fetchFn?: typeof fetch;
+  /**
    * Custom ticker name → symbol overrides for the stocks blank.
    * Chrome-only today.
    */
@@ -166,7 +184,7 @@ export interface BuiltinBlankSpec {
  */
 export const BUILTIN_BLANKS: readonly BuiltinBlankSpec[] = [
   // ── HTTP fetch / external API ────────────────────────────────────
-  { name: 'hackernews',    factory: () => new HackerNewsBlank() },
+  { name: 'hackernews',    factory: ctx => new HackerNewsBlank({ fetchFn: ctx.fetchFn }) },
   // Stocks needs a non-LLM API key (Finnhub). Without it, every quote
   // request would fail at runtime — so we skip registration entirely
   // and the `stocks _` keyword falls through to fluid-blank (or no
@@ -174,14 +192,14 @@ export const BUILTIN_BLANKS: readonly BuiltinBlankSpec[] = [
   // doesn't supply finnhubApiKey gets no stocks blank, regardless of
   // which host it is. Chrome users without a Finnhub key, native hosts
   // without FINNHUB_API_KEY in env — same behaviour.
-  { name: 'stocks',        factory: ctx => ctx.finnhubApiKey ? new StocksBlank({ apiKey: ctx.finnhubApiKey, customTickers: ctx.customTickers }) : null },
-  { name: 'weather',       factory: () => new WeatherBlank() },
-  { name: 'location',      factory: () => new LocationBlank() },
+  { name: 'stocks',        factory: ctx => ctx.finnhubApiKey ? new StocksBlank({ apiKey: ctx.finnhubApiKey, customTickers: ctx.customTickers, fetchFn: ctx.fetchFn }) : null },
+  { name: 'weather',       factory: ctx => new WeatherBlank({ fetchFn: ctx.fetchFn }) },
+  { name: 'location',      factory: ctx => new LocationBlank({ fetchFn: ctx.fetchFn }) },
   { name: 'claude-status', factory: () => new ClaudeStatusBlank() },
 
   // ── Static lookups (offline / cached) ────────────────────────────
-  { name: 'dictionary',    factory: () => new DictionaryBlank() },
-  { name: 'crypto',        factory: () => new CryptoBlank() },
+  { name: 'dictionary',    factory: ctx => new DictionaryBlank({ fetchFn: ctx.fetchFn }) },
+  { name: 'crypto',        factory: ctx => new CryptoBlank({ fetchFn: ctx.fetchFn }) },
   { name: 'countries',     factory: () => new CountriesBlank() },
 
   // NOTE: the legacy bespoke LLM blanks `answer` + `prompt` were removed

@@ -123,3 +123,43 @@ describe('createDefaultBlanksRegistry semantics', () => {
     }
   });
 });
+
+describe('BuiltinBlankContext.fetchFn — host-supplied transport', () => {
+  // Every network-backed blank already accepted a `fetchFn`; until this was
+  // threaded through the registry a host had no way to supply one. Browser
+  // hosts need it twice over: a page-context fetch to a third-party API is
+  // CORS-blocked, and a host that keeps credentials out of the page
+  // substitutes the real key inside this transport.
+  const NETWORK_BLANKS = ['hackernews', 'stocks', 'weather', 'location', 'dictionary', 'crypto'];
+
+  it('reaches every network-backed blank', async () => {
+    const calls: string[] = [];
+    const fetchFn = (async (input: unknown) => {
+      calls.push(String(input));
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({}),
+        text: async () => '{}',
+      } as unknown as Response;
+    }) as unknown as typeof fetch;
+
+    const registry = createDefaultBlanksRegistry({ fetchFn, finnhubApiKey: 'placeholder' });
+
+    for (const name of NETWORK_BLANKS) {
+      const blank = registry.get(name);
+      expect(blank, `${name} should be registered`).toBeTruthy();
+      calls.length = 0;
+      // Keyword AND context: `location` builds its query from the context
+      // words and correctly returns an error without fetching when there
+      // are none, so a keyword-only call would prove nothing about it.
+      try { await blank!.get?.('AAPL', ['london']); } catch { /* the stub's reply shape is not the point */ }
+      expect(calls.length, `${name} must use the supplied transport, not the global`).toBeGreaterThan(0);
+    }
+  });
+
+  it('omitting it leaves every blank constructible (hosts opt in)', () => {
+    const registry = createDefaultBlanksRegistry({ finnhubApiKey: 'k' });
+    for (const name of NETWORK_BLANKS) expect(registry.get(name), name).toBeTruthy();
+  });
+});
