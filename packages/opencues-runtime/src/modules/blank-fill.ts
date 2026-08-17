@@ -10,6 +10,8 @@ import type { BlankWriteInverse, HostAdapter, KeyEvent, TextChangeEvent, Unsubsc
 import { fillSplice, type UndoEntry, type UndoJournal } from '../state/undo-journal';
 import type { ConfigLoader } from './config-loader';
 import { splitWords } from './navigation';
+import { homeDir } from '../lib/home-dir';
+
 import { isBlankConfigCycleable, keywordInWindow, lineOfWords, matchBlankShape, matchDeterministicAction, segmentStart } from '@opencues/core';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
@@ -438,7 +440,7 @@ export class BlankFill {
     // Pre-split words for context extraction (used for every slot).
     const cleaned = text.replace(/[\u200B\u200C]/g, '');
     const words = cleaned.split(/\s+/).filter(Boolean);
-    const home = process.env.HOME ?? '~';
+    const home = homeDir();
 
     for (const slot of slots) {
       // TYPE-BASED ROUTING (opt-in per blank). A blank that DECLARES shapes is
@@ -827,7 +829,7 @@ export class BlankFill {
    */
   private async runBlankSet(blankName: string, value: string, blank: Record<string, unknown>): Promise<void> {
     const script = blank.blankScript as string | undefined;
-    const home = process.env.HOME ?? '~';
+    const home = homeDir();
     const scriptPath = script ? (script.startsWith('~') ? home + script.slice(1) : script) : '';
     const processEnv: Readonly<Record<string, string | undefined>> =
       (typeof process !== 'undefined' && process.env) ? process.env : {};
@@ -866,7 +868,7 @@ export class BlankFill {
    */
   private async runBlankGetValue(blankName: string, blank: Record<string, unknown>): Promise<number | null> {
     const script = blank.blankScript as string | undefined;
-    const home = process.env.HOME ?? '~';
+    const home = homeDir();
     const scriptPath = script ? (script.startsWith('~') ? home + script.slice(1) : script) : '';
     const processEnv: Readonly<Record<string, string | undefined>> =
       (typeof process !== 'undefined' && process.env) ? process.env : {};
@@ -1466,7 +1468,7 @@ export class BlankFill {
       const fillStart = newCursor - pair.length;
       const startWord = newWords.find(w => w.start === fillStart);
       if (startWord) {
-        const home = process.env.HOME ?? '~';
+        const home = homeDir();
         const scriptPath = blank.blankScript
           ? (blank.blankScript.startsWith('~') ? home + blank.blankScript.slice(1) : blank.blankScript)
           : '';

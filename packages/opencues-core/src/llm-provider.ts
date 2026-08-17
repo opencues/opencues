@@ -22,10 +22,11 @@
 
 import { resolveReasoningEffort } from './model-thinking';
 import { hasUsageSinks, reportUsage } from './usage-meter';
+import { HARNESS, isHarnessBridgeReady } from './providers/harness-bridge';
 
-export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'openai-subscription' | 'anthropic' | 'cerebras' | 'claude-code-cli' | 'opencode-zen' | 'ollama';
+export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'openai-subscription' | 'anthropic' | 'cerebras' | 'claude-code-cli' | 'opencode-zen' | 'ollama' | 'harness';
 
-export const PROVIDER_IDS: readonly ProviderId[] = ['groq', 'openrouter', 'gemini', 'openai', 'openai-subscription', 'anthropic', 'cerebras', 'claude-code-cli', 'opencode-zen', 'ollama'];
+export const PROVIDER_IDS: readonly ProviderId[] = ['groq', 'openrouter', 'gemini', 'openai', 'openai-subscription', 'anthropic', 'cerebras', 'claude-code-cli', 'opencode-zen', 'ollama', 'harness'];
 
 /**
  * Legacy provider-id aliases. User configs created before the rename
@@ -1580,6 +1581,7 @@ const PROVIDERS: Readonly<Record<ProviderId, ProviderAdapter>> = {
   'claude-code-cli': CLAUDE_CLI,
   'opencode-zen': OPENCODE_ZEN,
   ollama: OLLAMA,
+  harness: HARNESS,
 };
 
 /**
@@ -1625,6 +1627,26 @@ export const SUBSCRIPTION_CLI_BINARIES: Readonly<Record<string, string>> = {
 };
 
 /**
+ * The binary that proves a CLI-transport provider can work — or `null`
+ * when the provider is not backed by one at all.
+ *
+ * `transport: 'cli'` means only "this provider owns its own dispatch and
+ * returns assistant text directly". That is true of a subscription CLI,
+ * and equally true of `harness`, whose dispatch is bound in-process by
+ * the host at boot. Conflating the two makes a PATH probe for an
+ * executable that will never exist, and — the part that actually reached
+ * a user — tells them to go install it.
+ *
+ * Ask this rather than reading the map with an `?? providerId` fallback.
+ * That fallback looks accommodating (a future provider whose binary
+ * happens to match its id) and is really a landmine: a provider that is
+ * NOT binary-backed silently acquires a probe for its own name.
+ */
+export function subscriptionCliBinary(providerId: string): string | null {
+  return SUBSCRIPTION_CLI_BINARIES[providerId] ?? null;
+}
+
+/**
  * Zero-key auto-fallback order for subscription-CLI providers. Claude
  * first: the flagship integration patches the `claude` binary itself,
  * so a CC user by definition has it installed + authenticated.
@@ -1652,12 +1674,17 @@ export function setCliAvailabilityForTests(providerId: string, available: boolea
  * false, so the subscription rung never fires there (chrome has no
  * subprocess transport anyway). Binary names come from the constant
  * map above, never from user input.
+ *
+ * A CLI-transport provider with no binary (`harness`) answers false:
+ * nothing on PATH could prove or disprove it, since whether it works is
+ * a question about the running host process, not the filesystem.
  */
 export function defaultCliAvailable(providerId: string): boolean {
   if (typeof process === 'undefined' || !process.versions?.node) return false;
   const cached = _cliAvailabilityCache.get(providerId);
   if (cached !== undefined) return cached;
-  const bin = SUBSCRIPTION_CLI_BINARIES[providerId] ?? providerId;
+  const bin = subscriptionCliBinary(providerId);
+  if (!bin) return false;
   let ok = false;
   try {
     // Lazy require — `node:child_process` is external in the chrome
@@ -1695,6 +1722,13 @@ export function pickAutoProvider(
     const adapter = PROVIDERS[id];
     if (adapter && apiKeys[adapter.envKeyName]) return id;
   }
+  // Keyless rung one: a bound harness bridge. Deliberately its own step
+  // rather than an entry in SUBSCRIPTION_AUTO_FALLBACK — that list is
+  // subscription-CLI providers and carries a binary-map invariant, while
+  // the bridge has no binary to probe. It is available exactly when a host
+  // has bound a dispatch, which is also the strongest possible signal of
+  // intent: the user configured that model in the app they are typing in.
+  if (isHarnessBridgeReady()) return 'harness';
   const probe = opts.isCliAvailable ?? defaultCliAvailable;
   for (const id of SUBSCRIPTION_AUTO_FALLBACK) {
     if (PROVIDERS[id] && probe(id)) return id;
@@ -2250,6 +2284,11 @@ export interface ResolvedLLM {
  *     body possible.
  */
 const FALLBACK_PAIRS: Readonly<Record<ProviderId, ProviderId | undefined>> = {
+  // The host owns routing for `harness`, so there is nothing for us to
+  // fall back TO: if the host's dispatch fails, that is the host's model
+  // being unavailable, and silently rerouting to one of our providers
+  // would need a key the user has deliberately not supplied.
+  harness: undefined,
   groq: 'cerebras',
   cerebras: 'groq',
   openrouter: undefined,
@@ -2353,18 +2392,24 @@ export function setCoreWarn(fn: CoreWarnFn | null): void {
   _coreWarn = fn ?? _defaultCoreWarn;
 }
 
-// One-time notice when the zero-key subscription-CLI rung is routing
+// One-time notice when a zero-key CLI-transport rung is routing
 // dispatches. Info-grade, not an error — the setup WORKS; the line
 // exists so the provider switch is visible and the faster path named.
 let _notifiedSubscriptionFallback = false;
 function notifySubscriptionFallbackOnce(providerId: string): void {
   if (_notifiedSubscriptionFallback) return;
   _notifiedSubscriptionFallback = true;
-  const bin = SUBSCRIPTION_CLI_BINARIES[providerId] ?? providerId;
-  _coreWarn(
-    `[opencues] no API keys found — routing LLM calls through your ${bin} subscription (${providerId}). ` +
-    `Works out of the box; for faster suggestions add an API key: opencues set-key`,
-  );
+  const bin = subscriptionCliBinary(providerId);
+  // A host bridge is not a subscription and has no binary, so the
+  // subscription wording would name a thing the user does not have and
+  // send them to `set-key` for a route that deliberately needs no key.
+  // Whether to add one is still worth saying — it is the faster path —
+  // but it is an upgrade here, not a fix.
+  _coreWarn(bin
+    ? `[opencues] no API keys found — routing LLM calls through your ${bin} subscription (${providerId}). ` +
+      `Works out of the box; for faster suggestions add an API key: opencues set-key`
+    : `[opencues] no API keys found — routing LLM calls through this app's own model (${providerId}). ` +
+      `Works out of the box; for faster suggestions add an API key: opencues set-key`);
 }
 
 // Dedup set for the one-time runtime warning. Keyed by `${id}|${url}`.

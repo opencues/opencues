@@ -16,6 +16,7 @@ import { DynDefs, inlineNoteText, markCycledEver, noteHintKey, type WordDef } fr
 import { dismissalTargetOf, forgetOfferRemainingMs, isCueDismissed, pressDismiss } from '../state/cue-dismissals';
 import type { ConfigLoader, BlankEntry } from './config-loader';
 import { splitWords } from './navigation';
+import { homeDir } from '../lib/home-dir';
 import { resolveNavKeymap } from './nav-keymap';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
@@ -915,7 +916,7 @@ export class Cycling {
     // Write back via script set <num> (no suffix — script expects raw
     // number). Sandboxed hosts route through blankInvoke; CLI hosts
     // spawn the configured blankScript.
-    const home = process.env.HOME ?? '~';
+    const home = homeDir();
     const scriptPath = blank.blankScript?.startsWith('~')
       ? home + blank.blankScript.slice(1)
       : blank.blankScript;

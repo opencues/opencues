@@ -50,7 +50,13 @@ for f in $candidates; do
     case "$trimmed" in '*'*|'//'*|'/*'*) continue;; esac           # pure comment
     code="$(printf '%s' "$content" | sed -E 's#//.*##')"
     printf '%s' "$code" | grep -qE "$ACCESS" || continue
-    printf '%s' "$code" | grep -qE "process\.env[.?[]?(HOME|DEBUG_OPENCUES)" && continue  # esbuild define
+    # `DEBUG_OPENCUES` is esbuild-`define`d by chrome's build. `HOME` used
+    # to be exempted here too — that was wrong: the exemption silently
+    # required every FUTURE browser host to replicate chrome's define list,
+    # and DeepSeek Harness (which does not) crashed the whole text-change
+    # handler on `process.env.HOME`, killing every script-backed blank with
+    # no symptom but "nothing happens". Use `homeDir()` from lib/home-dir.
+    printf '%s' "$code" | grep -qE "process\.env[.?[]?DEBUG_OPENCUES" && continue  # esbuild define
     printf '%s' "$content" | grep -qE "BROWSER-SAFE-ALLOW" && continue            # explicit opt-out
     # Guard can be on the access line OR a few lines above (multi-line `&&`
     # conditions, enclosing `if (typeof process !== 'undefined') { … }`).

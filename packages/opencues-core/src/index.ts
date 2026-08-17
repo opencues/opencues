@@ -180,6 +180,7 @@ export {
   PROVIDER_AUTO_ORDER,
   SUBSCRIPTION_AUTO_FALLBACK,
   SUBSCRIPTION_CLI_BINARIES,
+  subscriptionCliBinary,
   pickAutoProvider,
   defaultCliAvailable,
   resetCliAvailabilityCacheForTests,
@@ -499,3 +500,13 @@ export {
 
 export { matchBlankShape, type BlankShapeMatch } from './blank-shapes';
 export { segmentStart } from './segment';
+
+// Host-harness LLM bridge — a host binds its own configured model so
+// OpenCues needs no key of its own. See providers/harness-bridge.ts.
+export {
+  registerHarnessDispatch,
+  isHarnessBridgeReady,
+  harnessBridgeInfo,
+  type HarnessDispatch,
+  type HarnessBridgeInfo,
+} from './providers/harness-bridge';
