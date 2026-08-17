@@ -28,11 +28,18 @@
 # A failure means: you changed src/ (or core/runtime, which are inlined) and
 # did not rebuild. Fix with `pnpm build --filter @opencues/dsh` and commit.
 #
-# Use THAT form, not `pnpm --filter @opencues/dsh build`: the latter runs the
-# package script directly and skips turbo, so it bundles whatever core/runtime
-# dist happens to be on disk. Against a stale dist it silently produces a
-# DIFFERENT bundle (observed: 987kB instead of 1,011kB) — which is also why
-# this script builds them itself below rather than trusting the tree.
+# Prefer THAT form over `pnpm --filter @opencues/dsh build`: the latter runs
+# the package script directly and skips turbo, so it bundles whatever
+# core/runtime dist happens to be on disk rather than building them first.
+#
+# Correction, because the first version of this comment asserted otherwise: no
+# drift was ever actually observed from that. The "different bundle" it
+# claimed was a unit-confusion on my part — build.mjs prints KiB ("987 kB")
+# and `ls` prints bytes (1,011,171), which are the same file. Verified after
+# the fact: identical sha256 either way. The turbo form is still the better
+# habit because it guarantees the inlined packages are current, but it is
+# insurance, not a fix for a demonstrated bug. This script builds them itself
+# below regardless, which is the actual guarantee.
 #
 # Exits 0 clean, 1 stale. Wired into pre-pr.sh and CI.
 
