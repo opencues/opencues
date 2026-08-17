@@ -205,21 +205,44 @@ Contributed into dsh's own Settings > Plugins section through the public
 `settings.plugins.tab` slot, so it sits beside their Plugin configuration
 and Plugin list tabs rather than being a parallel UI.
 
-It deliberately contains only two things: **which model sees your text**
-(harness mode inherits the model configured for the user's agent
-conversation, and they should be told plainly rather than have it inferred
-from a dropdown they never opened) and the routing choice with the measured
-latency attached. Every other OpenCues scalar stays in OPENCUES.md and the
-in-buffer `_` settings blank; mirroring forty scalars into a second surface
-would be a drift surface with no upside.
+It leads with **which model sees your text**, because harness mode inherits
+the model configured for the user's agent conversation and they should be
+told plainly rather than have it inferred from a dropdown they never
+opened. The routing choice carries the measured latency, since the
+trade-off is real.
+
+Below that sits **every OpenCues feature scalar**, in a collapsed
+disclosure. This is a browser host with no terminal to fall back to, so
+"edit OPENCUES.md" is not an answer for someone who installed a plugin —
+and the settings blank is a chicken-and-egg answer, since the features it
+configures include the ones that make typing work.
+
+The list is **generated from `getMenuDefinitions('chrome', parsed)`**, not
+hand-written, which is the only detail here worth defending. `feature-registry.ts`
+already owns which scalars exist, what each accepts, which values are menu
+exposed and which are host scoped; a hand-listed copy would be a second
+surface to keep in step, and the registry exists precisely so that adding
+a feature is one entry and nothing else drifts. `hostName: 'chrome'` is
+correct rather than expedient — the integration runs on the chrome adapter
+band, so host-scoped tunables surface exactly as they do in that band's
+cycling menu. 35 controls today, with no per-scalar code here.
+
+Writes go to the **real `OPENCUES.md`** through a `POST /opencues/settings`
+route, so a choice made here is the same choice the native hosts read.
+Server side it validates the key against kebab-case and refuses any value
+carrying a newline, because a settings write is a file write and a value
+with a `\n` in it is a second scalar. Verified: `voice-mode` round-trips to
+`~/.cues/OPENCUES.md`, and `inactive\nllm-provider: evil` is refused 400.
 
 Mode currently persists in `localStorage`, so it applies instantly and per
 browser. Moving it to a dsh settings namespace would make it follow the
-user's `$DSH_HOME` across ports, and is the obvious next step.
+user's `$DSH_HOME` across ports, and is the obvious next step. (Note the
+asymmetry: feature scalars already live in the shared file and only the
+harness/OpenCues routing choice is browser-local.)
 
 ## Host contract findings
 
-Five bugs cost real time and all five generalise to any asynchronous or
+Six bugs cost real time and all six generalise to any asynchronous or
 React-based host, not just dsh:
 
 1. **One runtime per page.** The dock can remount (session and workspace
@@ -246,6 +269,19 @@ React-based host, not just dsh:
 
 5. **Dedupe notifications.** Repeat `notifyTextChange` calls for unchanged
    text supersede and abort the resolver's own in-flight request.
+
+6. **A bare `process.X` in the runtime is a handler-killer, not a missing
+   value.** Five sites read `process.env.HOME ?? '~'` to expand a
+   `blankScript`'s `~`; in a browser that throws `ReferenceError` and takes
+   the enclosing text-change handler down, so **every** script-backed blank
+   went dead while dictionary (no script path) worked — six broken blanks
+   as the symptom of one broken line, with nothing in any log. Fixed in
+   `@opencues/runtime` 0.30.4 (`lib/home-dir.ts`). Note *why* it survived:
+   chrome esbuild-`define`s `process.env.HOME`, and
+   `lint-runtime-browser-safe.sh` exempted the name on that basis — making
+   "replicate chrome's define list" an unwritten requirement of every
+   future browser host. The exemption is gone. **If you are porting to a
+   new browser host, run that lint rather than trusting chrome's silence.**
 
 Drive the runtime through the **`BootResult`** API (`dispatchKey`,
 `notifyTextChange`, `notifyCursorChange`, `collectRenderDirectives`). The
@@ -323,10 +359,32 @@ script would: four config-route variants return zero values, `window.__oc`
 holds nothing secret-shaped, and the proxy answers 403 to both an
 arbitrary destination and to plaintext http.
 
-**Known gap:** data blanks that call a third-party API from the page with
-their own key (stocks via `FINNHUB_API_KEY`) no longer have one and will
-degrade. Extending the proxy's allowlist to cover them is the fix; it is
-not done.
+**Data blanks go through the same proxy.** `finnhub.io` is allowlisted with
+`FINNHUB_API_KEY` substituted server side, so the stocks blank never holds
+the key — the same placeholder-plus-substitute shape as the LLM path, which
+is why the fix was an allowlist entry rather than a second mechanism.
+Substitution covers both `key=` and `token=` query params, since providers
+disagree on the name.
+
+The keyless data hosts are allowlisted too (hacker-news.firebaseio.com,
+api.open-meteo.com, geocoding-api.open-meteo.com,
+nominatim.openstreetmap.org, api.dictionaryapi.dev, api.coingecko.com,
+status.anthropic.com) for a different reason: no secret is involved, but a
+page-context fetch to any of them is CORS-blocked, so they need the hop
+regardless.
+
+Reaching the blanks needed `BuiltinBlankContext.fetchFn`, added in
+`@opencues/runtime` 0.31.0. Each blank already accepted a `fetchFn`; the
+registry had no way to pass one. Two host-side wiring notes that cost time:
+**`blanks` and `blankInvoke` are both required** — supplying `blanks`
+alone registers them and never invokes them — and this whole path was dead
+behind the `process.env.HOME` ReferenceError described under Host contract
+findings, so fix that first or the allowlist appears not to work.
+
+Verified: `nvidia _` → `NVDA: $225.16`, `weather in london _` →
+`London: 22°C Overcast`, `serendipity dictionary _` → full definition,
+`hackernews _` → current top story, with the config route still reporting
+`{"values":0,"withheld":true}`.
 
 ## What is verified working
 
@@ -336,7 +394,10 @@ dim plus highlight, the runtime's own inline note text, `_`-to-cycle,
 `Ctrl+Alt+→` navigation, `Ctrl+Alt+↑`/`↓` cycling and reverting, typing
 after a substitution, identity-context (12 fields, safe mode), chips via
 our own `@` trigger source, and cerebras prefix caching at 99.2 to 99.6%.
-A headless regression suite covered 18 contract assertions.
+Also the four data blanks over the credential proxy (stocks, weather,
+dictionary, hackernews) and the settings tab writing a scalar into the real
+`OPENCUES.md` while refusing a newline-injected value. A headless
+regression suite covered 18 contract assertions.
 
 `Ctrl+Alt+↑` requires Navigation to have activated a word first
 (`Ctrl+Alt+→`). Pressing it with nothing active correctly returns
