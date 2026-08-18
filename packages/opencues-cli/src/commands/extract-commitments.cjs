@@ -71,7 +71,7 @@ module.exports = async function extractCommitments(argv, ctx) {
   const json = args.includes('--json');
   const quiet = args.includes('--quiet');
   const valFlag = (name) => { const i = args.indexOf(name); return i >= 0 && i + 1 < args.length ? args[i + 1] : null; };
-  // --format cc|gemini (default cc) selects the transcript parser; --turns-file
+  // --format cc|gemini|opencode|dsh (default cc) selects the transcript parser; --turns-file
   // <path> supplies pre-parsed {turns:[{role,text}]} JSON (OpenCode reads its
   // own conversation via the SDK and hands us turns directly). The positional
   // arg is the transcript path — but must not swallow a valued-flag's value.
@@ -92,7 +92,7 @@ module.exports = async function extractCommitments(argv, ctx) {
   const sourcePath = turnsFile || transcriptPath;
   if (!sourcePath) {
     if (json) console.log(JSON.stringify({ ok: false, error: 'missing transcript path' }));
-    else console.error('opencues extract-commitments: usage: opencues extract-commitments <transcript_path> [--format cc|gemini] [--turns-file <path>]');
+    else console.error('opencues extract-commitments: usage: opencues extract-commitments <transcript_path> [--format cc|gemini|opencode|dsh] [--turns-file <path>]');
     return 2;
   }
 
@@ -170,6 +170,11 @@ module.exports = async function extractCommitments(argv, ctx) {
           .filter((t) => t && typeof t.text === 'string' && t.text.trim())
           .map((t) => ({ role: t.role === 'assistant' ? 'assistant' : 'user', text: core.stripHarnessFraming(t.text) }))
           .filter((t) => t.text);
+      } else if (format === 'dsh') {
+        // dsh stores each session as concatenated zstd frames; decode here in
+        // the Node CLI rather than in the browser half, which has no zlib.
+        turns = readDshTurns(sourcePath, core);
+        if (turns === null) return done({ skipped: true, reason: 'dsh session unreadable (node<22.15 lacks zstd?)' });
       } else if (format === 'opencode') {
         // OpenCode stores messages in a SQLite DB; read it here in the Node CLI
         // (node:sqlite) rather than in OpenCode's Bun runtime, which lacks it.
@@ -227,7 +232,16 @@ module.exports = async function extractCommitments(argv, ctx) {
     }
 
     const ext = core.parseExtractionResult(raw);
-    const currentSessionId = path.basename(sourcePath).replace(/\.(jsonl|json)$/i, '');
+    // Session identity. For CC/Gemini the FILENAME is the session id. dsh names
+    // every session file `session.jsonl.zstd` and carries the id in the parent
+    // directory (`session-<uuid>/`), so the filename rule would make every dsh
+    // session look like the same one — `sameSession` always true, and a prior,
+    // unrelated conversation's commitments merged into the new watchlist
+    // instead of resetting. That is precisely the clobber the cwd-scoping
+    // elsewhere exists to prevent.
+    const currentSessionId = format === 'dsh'
+      ? path.basename(path.dirname(sourcePath))
+      : path.basename(sourcePath).replace(/\.(jsonl|json)$/i, '');
 
     // ── Incremental distillation ──────────────────────────────────────────
     // The tail read only sees recent turns, so early decisions age out of every
@@ -329,6 +343,52 @@ function resolveExtractionLLM(core, apiKeys, routing) {
  * parts. Read-only open so it's safe against the live WAL DB. Returns null when
  * node:sqlite is unavailable (node < 22) or the DB can't be opened.
  */
+/**
+ * Read a DeepSeek Harness session into {role,text} turns.
+ *
+ * The file is NOT one zstd stream: dsh appends each record as its OWN zstd
+ * frame, so the file is a run of concatenated frames. Both
+ * `zstdDecompressSync` and `createZstdDecompress()` stop after the first frame
+ * and return only the session header — which decodes cleanly, parses as one
+ * record, and looks exactly like an empty conversation. Frames are located by
+ * their magic number and decoded individually.
+ *
+ * Node >= 22.15 ships zstd in `node:zlib`, so this needs no dependency; older
+ * runtimes return null and the caller skips rather than crashing.
+ */
+function readDshTurns(sessionPath, core, maxBytes = 8 * 1024 * 1024) {
+  let zlib;
+  try { zlib = require('node:zlib'); } catch { return null; }
+  if (typeof zlib.zstdDecompressSync !== 'function') return null;   // node < 22.15
+
+  let buf;
+  try { buf = fs.readFileSync(sessionPath); } catch { return null; }
+  if (!buf.length || buf.length > maxBytes) return null;
+
+  // zstd frame magic: 28 B5 2F FD.
+  const starts = [];
+  for (let i = 0; i + 3 < buf.length; i++) {
+    if (buf[i] === 0x28 && buf[i + 1] === 0xB5 && buf[i + 2] === 0x2F && buf[i + 3] === 0xFD) starts.push(i);
+  }
+  if (!starts.length) return null;
+  starts.push(buf.length);
+
+  let jsonl = '';
+  for (let i = 0; i < starts.length - 1; i++) {
+    try { jsonl += zlib.zstdDecompressSync(buf.subarray(starts[i], starts[i + 1])).toString('utf8'); }
+    catch { /* a torn trailing frame (session still being written) — keep what decoded */ }
+  }
+  if (!jsonl) return null;
+
+  // `core` is passed in: loadCore() without a ctx cannot resolve
+  // `@opencues/core` from packages/opencues-cli (it is not in its
+  // node_modules), so re-resolving here silently returned null and the reader
+  // reported the file as unreadable.
+  return core && typeof core.extractDshTranscriptTurns === 'function'
+    ? core.extractDshTranscriptTurns(jsonl)
+    : null;
+}
+
 function readOpenCodeTurns(dbPath, cwd, maxMessages = 400) {
   let DatabaseSync;
   try { ({ DatabaseSync } = require('node:sqlite')); } catch { return null; }

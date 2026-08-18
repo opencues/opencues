@@ -3,6 +3,7 @@ import {
   buildSessionCommitmentsSnapshot,
   extractTranscriptTurns,
   extractGeminiTranscriptTurns,
+  extractDshTranscriptTurns,
   renderTranscriptForExtraction,
   renderSessionCommitmentsCatalog,
   sessionCommitmentsKey,
@@ -262,5 +263,94 @@ describe('parseSupersededResult', () => {
     expect(parseSupersededResult('here: ["x"]')).toEqual(['x']);
     expect(parseSupersededResult('no json')).toEqual([]);
     expect(parseSupersededResult('')).toEqual([]);
+  });
+});
+
+describe('extractDshTranscriptTurns', () => {
+  // Shapes taken from a real dsh session (decoded from its concatenated zstd
+  // frames), not invented — the injected-record kinds below are exactly what a
+  // two-turn conversation actually contained.
+  const line = (o: unknown) => JSON.stringify(o);
+
+  const REAL_USER = line({
+    type: 'user/message',
+    data: {
+      role: 'user',
+      source: { kind: 'user', rpcId: 'x', clientTimeZone: 'Europe/London' },
+      content: [{ type: 'text', text: 'we use Bun as the runtime, not Node' }],
+    },
+  });
+
+  const ASSISTANT = line({
+    type: 'assistant/message',
+    data: {
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'reasoning', text: 'The user is asking me to just acknowledge.' },
+          { type: 'text', text: 'Acknowledged: Bun is the runtime.' },
+        ],
+      },
+    },
+  });
+
+  it('extracts user + assistant prose', () => {
+    expect(extractDshTranscriptTurns([REAL_USER, ASSISTANT].join('\n'))).toEqual([
+      { role: 'user', text: 'we use Bun as the runtime, not Node' },
+      { role: 'assistant', text: 'Acknowledged: Bun is the runtime.' },
+    ]);
+  });
+
+  it('drops the model\'s reasoning, which dsh types as its own content block', () => {
+    const out = extractDshTranscriptTurns(ASSISTANT);
+    expect(out).toHaveLength(1);
+    expect(out[0].text).not.toMatch(/asking me/);
+  });
+
+  it('drops harness material injected AS user messages', () => {
+    // The trap: dsh writes these as `user/message` records, so only
+    // `source.kind` separates them from something the human typed. Both were
+    // present in a session containing exactly ONE real user turn.
+    const pluginSnapshot = line({
+      type: 'user/message',
+      data: {
+        role: 'user',
+        source: { kind: 'plugin', plugin: '@deepseek-ai/dsh-system-prompt', form: 'snapshot' },
+        content: [{ type: 'text', text: 'Current DSH file policy: workspace-write.' }],
+      },
+    });
+    const skillCatalog = line({
+      type: 'user/message',
+      data: {
+        role: 'user',
+        source: { kind: 'skill-catalog', form: 'catalog', entries: [] },
+        content: [{ type: 'text', text: '<system-reminder> A skill is a reusable set of…' }],
+      },
+    });
+    const out = extractDshTranscriptTurns([pluginSnapshot, REAL_USER, skillCatalog].join('\n'));
+    expect(out).toEqual([{ role: 'user', text: 'we use Bun as the runtime, not Node' }]);
+  });
+
+  it('ignores streaming chunks so replies are not duplicated', () => {
+    // `assistant/chunk` carries the same prose incrementally; the final
+    // `assistant/message` is the assembled version and the only one we read.
+    const chunk = line({ type: 'assistant/chunk', data: { delta: 'Ack' } });
+    expect(extractDshTranscriptTurns([chunk, ASSISTANT].join('\n'))).toHaveLength(1);
+  });
+
+  it('skips infrastructure records and malformed lines', () => {
+    const noise = [
+      line({ type: 'session', version: 1, cwd: '/x' }),
+      line({ type: 'turn/start' }),
+      line({ type: 'request/header' }),
+      line({ type: 'sandbox/mode' }),
+      '{ not json',
+      '',
+    ].join('\n');
+    expect(extractDshTranscriptTurns(noise)).toEqual([]);
+  });
+
+  it('returns [] for empty input', () => {
+    expect(extractDshTranscriptTurns('')).toEqual([]);
   });
 });

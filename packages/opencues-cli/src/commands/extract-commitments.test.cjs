@@ -117,3 +117,72 @@ test('--force bypasses the mode gate (still skips on no key, proving the gate wa
   assert.strictEqual(json.skipped, true);
   assert.match(json.reason, /no extraction LLM/);
 });
+
+// ── dsh: concatenated-zstd sessions ────────────────────────────────────────
+// dsh appends each record as its OWN zstd frame, so a session file is a run of
+// frames rather than one stream. Both zstdDecompressSync and
+// createZstdDecompress() stop after the FIRST frame and hand back just the
+// session header — which decodes cleanly, parses as one record, and is
+// indistinguishable from an empty conversation. These pin the multi-frame read.
+
+const zlib = require('node:zlib');
+const hasZstd = typeof zlib.zstdCompressSync === 'function';
+
+/** Build a dsh session file: one zstd frame per JSONL record. */
+function writeDshSession(dir, records) {
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, 'session.jsonl.zstd');
+  const frames = records.map((r) => zlib.zstdCompressSync(Buffer.from(JSON.stringify(r) + '\n', 'utf8')));
+  fs.writeFileSync(file, Buffer.concat(frames));
+  return file;
+}
+
+const dshHeader = (cwd) => ({ type: 'session', version: 1, id: 's1', cwd, createdAt: Date.now() });
+const dshUser = (text) => ({
+  type: 'user/message',
+  data: { role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text }] },
+});
+
+test('dsh: a multi-frame session is read past the first frame', { skip: !hasZstd }, async () => {
+  const dir = path.join(tmpHome, 'dsh-multi', 'session-aaa');
+  const file = writeDshSession(dir, [dshHeader('/w'), dshUser('we use Bun, not Node')]);
+  writeMode(true, true);
+  const { json } = await run([file, '--format', 'dsh']);
+  // No provider key here, so it reaches the LLM gate rather than the
+  // "no text turns" skip — reaching it at all proves the turns were extracted
+  // from a frame AFTER the first.
+  assert.strictEqual(json.skipped, true);
+  assert.doesNotMatch(json.reason, /no text turns|unreadable/i);
+});
+
+test('dsh: a header-only session yields no turns', { skip: !hasZstd }, async () => {
+  const dir = path.join(tmpHome, 'dsh-empty', 'session-bbb');
+  const file = writeDshSession(dir, [dshHeader('/w')]);
+  writeMode(true, true);
+  const { json } = await run([file, '--format', 'dsh']);
+  assert.match(json.reason, /no text turns/i);
+});
+
+test('dsh: harness-injected user records are not treated as user turns', { skip: !hasZstd }, async () => {
+  // `plugin` and `skill-catalog` records are written as `user/message` too;
+  // only source.kind separates them from something a person typed.
+  const dir = path.join(tmpHome, 'dsh-injected', 'session-ccc');
+  const file = writeDshSession(dir, [
+    dshHeader('/w'),
+    { type: 'user/message', data: { role: 'user', source: { kind: 'plugin' }, content: [{ type: 'text', text: 'Current DSH file policy: workspace-write.' }] } },
+    { type: 'user/message', data: { role: 'user', source: { kind: 'skill-catalog' }, content: [{ type: 'text', text: '<system-reminder> A skill is…' }] } },
+  ]);
+  writeMode(true, true);
+  const { json } = await run([file, '--format', 'dsh']);
+  assert.match(json.reason, /no text turns/i);
+});
+
+test('dsh: session identity comes from the DIRECTORY, not the filename', { skip: !hasZstd }, async () => {
+  // Every dsh session file is named `session.jsonl.zstd`, so a filename-derived
+  // id would make two different sessions look like one — and merge a prior,
+  // unrelated conversation's commitments into the new watchlist.
+  const a = writeDshSession(path.join(tmpHome, 'dsh-id', 'session-111'), [dshHeader('/w'), dshUser('one')]);
+  const b = writeDshSession(path.join(tmpHome, 'dsh-id', 'session-222'), [dshHeader('/w'), dshUser('two')]);
+  assert.strictEqual(path.basename(a), path.basename(b));
+  assert.notStrictEqual(path.basename(path.dirname(a)), path.basename(path.dirname(b)));
+});

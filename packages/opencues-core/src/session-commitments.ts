@@ -343,6 +343,74 @@ export function stripHarnessFraming(text: string): string {
 
 /** Pull only human/model prose from a message's content (string or block array).
  *  Skips tool_use / tool_result / thinking / image blocks entirely. */
+/**
+ * Parse a DeepSeek Harness session into plain user/assistant TEXT turns.
+ *
+ * dsh writes an append-only event log — many record types per session, of which
+ * only two carry conversation:
+ *
+ *   `user/message`      → `data.content[]`
+ *   `assistant/message` → `data.message.content[]`
+ *
+ * Everything else (`turn/start`, `step/end`, `request/header`, `assistant/chunk`,
+ * `session/title-llm-request`, sandbox + approval policy records, …) is
+ * infrastructure and is skipped. The streaming `assistant/chunk` records are
+ * deliberately ignored: the final `assistant/message` carries the same prose
+ * assembled, so reading chunks would duplicate every reply.
+ *
+ * DATA MINIMIZATION. dsh types the model's thinking as its own content block
+ * (`{type:"reasoning"}`) alongside `{type:"text"}`, so `textFromContent` drops
+ * it by construction — the same boundary the CC and Gemini parsers keep, where
+ * only user + assistant PROSE reaches the commitments producer and tool I/O and
+ * thinking never do.
+ *
+ * Takes decoded JSONL. The on-disk file is a run of CONCATENATED ZSTD FRAMES
+ * (one per appended record), which the caller decodes — that step needs
+ * `node:zlib` and this module stays browser-safe.
+ */
+export function extractDshTranscriptTurns(jsonl: string): TranscriptTurn[] {
+  const turns: TranscriptTurn[] = [];
+  if (!jsonl) return turns;
+  for (const line of jsonl.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let obj: unknown;
+    try { obj = JSON.parse(trimmed); } catch { continue; }
+    if (!obj || typeof obj !== 'object') continue;
+    const rec = obj as { type?: unknown; data?: unknown };
+    if (rec.type !== 'user/message' && rec.type !== 'assistant/message') continue;
+    const data = rec.data as { content?: unknown; message?: unknown; source?: unknown } | undefined;
+    if (!data) continue;
+    const role: 'user' | 'assistant' = rec.type === 'user/message' ? 'user' : 'assistant';
+    // ONLY WHAT THE HUMAN TYPED. dsh injects harness material as `user/message`
+    // records too, distinguished solely by `data.source.kind`:
+    //
+    //   `user`          — the person typing. The only kind we want.
+    //   `plugin`        — e.g. @deepseek-ai/dsh-system-prompt's runtime-context
+    //                     snapshot ("Current DSH file policy: workspace-write…").
+    //   `skill-catalog` — the entire installed-skill catalog, every description
+    //                     in full, as one message.
+    //
+    // Without this gate all three reach the commitments producer as things the
+    // user "said": a sandbox policy and a skill catalogue become candidate
+    // decisions to be contradicted later, and the catalogue alone is larger
+    // than most real conversations. Observed on a first real session — the
+    // three-turn transcript was one genuine turn and two injections.
+    if (role === 'user') {
+      const kind = (data.source as { kind?: unknown } | undefined)?.kind;
+      if (kind !== 'user') continue;
+    }
+    // The two records nest their content differently: the user record carries
+    // it directly, the assistant record wraps it in a `message` envelope.
+    const content = role === 'user'
+      ? data.content
+      : (data.message as { content?: unknown } | undefined)?.content;
+    const text = stripHarnessFraming(textFromContent(content));
+    if (text) turns.push({ role, text });
+  }
+  return turns;
+}
+
 function textFromContent(content: unknown): string {
   if (typeof content === 'string') return content.trim();
   if (!Array.isArray(content)) return '';

@@ -377,6 +377,7 @@ export {
   sessionCommitmentsKey,
   extractTranscriptTurns,
   extractGeminiTranscriptTurns,
+  extractDshTranscriptTurns,
   stripHarnessFraming,
   renderTranscriptForExtraction,
   renderSessionCommitmentsCatalog,
