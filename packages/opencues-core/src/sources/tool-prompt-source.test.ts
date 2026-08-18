@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ToolPromptCueSource, parseToolQuestion, renderSingleLineTip, renderAmbientForAsk } from './tool-prompt-source';
+import { ToolPromptCueSource, parseToolQuestion, renderSingleLineTip, renderAmbientForAsk, renderDocumentWindow, ASK_USER_QUESTION_SYSTEM } from './tool-prompt-source';
 import { getProvider } from '../llm-provider';
 import type { CueContext, HttpAdapter } from '../types';
 
@@ -40,14 +40,76 @@ describe('renderAmbientForAsk', () => {
   });
 });
 
+describe('renderDocumentWindow', () => {
+  it('marks the target sentence inside its document', () => {
+    const doc = 'We ship Friday. The API is way faster. p50 went 240ms to 38ms.';
+    const start = doc.indexOf('The API');
+    const out = renderDocumentWindow(doc, start, start + 'The API is way faster.'.length);
+    expect(out).toContain('DOCUMENT');
+    expect(out).toContain('\u27e6The API is way faster.\u27e7');
+    expect(out).toContain('p50 went 240ms');      // the part that makes the question unnecessary
+    expect(out).toContain('We ship Friday.');     // text before the target survives too
+  });
+
+  it('returns empty when the document IS the sentence — no wasted tokens', () => {
+    const only = 'The API is way faster.';
+    expect(renderDocumentWindow(only, 0, only.length)).toBe('');
+  });
+
+  it('bounds a long document and never cuts mid-word', () => {
+    const filler = 'alpha bravo charlie delta echo foxtrot golf hotel india juliet '.repeat(60);
+    const doc = `${filler}The API is way faster.${filler}`;
+    const start = filler.length;
+    const out = renderDocumentWindow(doc, start, start + 'The API is way faster.'.length, 400);
+    expect(out.length).toBeLessThan(900);
+    expect(out).toContain('\u2026');            // elided on both sides
+    // Every whitespace-delimited token in the window is a whole word.
+    const body = out.trimEnd().split('\n').pop().replace(/[\u2026\u27e6\u27e7]/g, ' ');   // the window line only, not the header
+    const words = new Set('alpha bravo charlie delta echo foxtrot golf hotel india juliet The API is way faster.'.split(/\s+/));
+    for (const w of body.split(/\s+/).filter(Boolean)) expect(words.has(w)).toBe(true);
+  });
+});
+
 describe('ToolPromptCueSource + ambient', () => {
-  it('folds ambient page context into the ask call (Chrome grounding)', async () => {
+  // Grounding must reach the model AND sit in the USER message, next to the
+  // selection it is supposed to bind to. The placement is not cosmetic: it rode
+  // in the system message and the questions came back generic, which is the
+  // failure mode docs/architecture/cerebras.md records for exactly this block
+  // ("treats system-side ambient as global background and stops tightly binding
+  // it to the input"). Asserting only "the block was sent somewhere" is what
+  // let that persist, so both halves are pinned here.
+  const runAsk = async () => {
     let sysSeen = '';
-    const capture: HttpAdapter = { post: async (_u, body) => { try { sysSeen = JSON.parse(body as string).messages[0].content; } catch { /* */ } return JSON.stringify({ choices: [{ message: { content: JSON.stringify({ header: 'Evidence', question: 'q?', options: [{ label: 'A', apply: 'x' }] }) } }] }); } };
+    let userSeen = '';
+    const capture: HttpAdapter = { post: async (_u, body) => {
+      try { const m = JSON.parse(body as string).messages; sysSeen = m[0].content; userSeen = m[1].content; } catch { /* */ }
+      return JSON.stringify({ choices: [{ message: { content: JSON.stringify({ header: 'Evidence', question: 'q?', options: [{ label: 'A', apply: 'x' }] }) } }] });
+    } };
     const src = new ToolPromptCueSource({ ...base, httpAdapter: capture });
     await src.getCues({ text: 'the dashboard is way better', words: ['the', 'dashboard', 'is', 'way', 'better'], cursor: 27, ambient: { pageTitle: 'PR #482', label: 'Description' } as never });
-    expect(sysSeen).toContain('PAGE CONTEXT');
-    expect(sysSeen).toContain('PR #482');
+    return { sysSeen, userSeen };
+  };
+
+  it('folds ambient page context into the ask call (Chrome grounding)', async () => {
+    const { userSeen } = await runAsk();
+    expect(userSeen).toContain('PAGE CONTEXT');
+    expect(userSeen).toContain('PR #482');
+  });
+
+  it('sends grounding in the USER message, beside the selection — never system-side', async () => {
+    const { sysSeen, userSeen } = await runAsk();
+    // Assert on the ambient VALUE, not the block header: the tool prompt names
+    // "PAGE CONTEXT" itself when telling the model how to use it, so a header
+    // check here fails on correct code.
+    expect(sysSeen).not.toContain('PR #482');
+    expect(sysSeen).not.toContain('Description');
+    // Same message as the selection, which is the whole point of the placement.
+    expect(userSeen).toContain('SELECTION:');
+  });
+
+  it('keeps the system message to the tool prompt alone, so it prefix-caches', async () => {
+    const { sysSeen } = await runAsk();
+    expect(sysSeen).toBe(ASK_USER_QUESTION_SYSTEM);
   });
 });
 

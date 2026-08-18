@@ -288,7 +288,7 @@ export const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   blankContextMode: 'safe',
   calendarContextMode: 'on',
   sessionContradictionMode: 'on',
-  askCuesMode: 'on',
+  askCuesMode: 'off',
   sentinelLanguage: 'bare',
   inlineCuesMode: 'inline',
   aiCallableAllow: [],
@@ -399,9 +399,17 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   // never thinking) to the cues bucket. Only an explicit `off` disables it.
   const sessionContradictionMode: 'off' | 'on' =
     get('session-contradiction-mode', 'on').toLowerCase() === 'off' ? 'off' : 'on';
-  // AskUserQuestion (tool-prompt) cues — ON by default; only an explicit `off`.
+  // AskUserQuestion (tool-prompt) cues — OFF by default, and this is a
+  // REVERSAL made on evidence, not the original state left alone. It shipped
+  // on-by-default briefly (0.33.0); the August 2026 exploration sweep
+  // (tests/benchmarks/ask-cues/EXPERIMENTS.md) then measured the ceiling on
+  // realistic drafts at ~20-35% useful questions across EVERY inference-time
+  // architecture — the task has no checkable data to verify output against,
+  // unlike session-contradiction (watchlist + verbatim-quote invariants),
+  // which stays on. A default-on cue that is junk two times in three trains
+  // users to ignore the whole rail. Only an explicit `on` enables it.
   const askCuesMode: 'off' | 'on' =
-    get('ask-cues-mode', 'on').toLowerCase() === 'off' ? 'off' : 'on';
+    get('ask-cues-mode', 'off').toLowerCase() === 'on' ? 'on' : 'off';
   // Sentinel grammar — `bare` default keeps every existing user on the
   // flat [TOKEN] path; only an explicit `typed` opts into the richer
   // grammar. Unrecognised value → `bare` (fail-safe, no behavioural diff).
@@ -825,7 +833,7 @@ export class ConfigLoader {
       blankContextMode,
       calendarContextMode: (get('calendar-context-mode', 'on').toLowerCase() === 'off' ? 'off' : 'on') as 'off' | 'on',
       sessionContradictionMode: (get('session-contradiction-mode', 'on').toLowerCase() === 'off' ? 'off' : 'on') as 'off' | 'on',
-      askCuesMode: (get('ask-cues-mode', 'on').toLowerCase() === 'off' ? 'off' : 'on') as 'off' | 'on',
+      askCuesMode: (get('ask-cues-mode', 'off').toLowerCase() === 'on' ? 'on' : 'off') as 'off' | 'on',
       sentinelLanguage: (get('sentinel-language', 'bare').toLowerCase() === 'typed' ? 'typed' : 'bare') as 'bare' | 'typed',
       inlineCuesMode: (get('inline-cues-mode', 'inline').toLowerCase() === 'secondary' ? 'secondary' : 'inline') as 'inline' | 'secondary',
       aiCallableAllow: (get('ai-callable-allow', '') || get('param-safe-allow', '')) // LEGACY-NAME-ALLOW: pre-rename scalar

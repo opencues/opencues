@@ -471,10 +471,10 @@ export const FEATURES: readonly FeatureSpec[] = [
     group: 'Cues',
     camelCase: 'askCuesMode',
     description: 'AskUserQuestion cues — attaches an inline question with cyclable options to the sentence under your cursor, populated by the well-known AskUserQuestion tool prompt. The question is the tip; each option is a cycle alternative (options that carry a concrete rewrite edit the sentence; advisory ones just inform).',
-    menuTip: 'Turn the sentence you\'re on into a question with options: "Substantiate the speed claim with data or qualify it?" → cycle "Add data" / "Qualify claim". Reuses the cue/cycling UI; the AskUserQuestion tool prompt populates it. Ambient (fires on the sentence at your cursor). One LLM call per new sentence (cached). ON by default; the prompt makes silence the default, so most sentences draw nothing.',
+    menuTip: 'Turn the sentence you\'re on into a question with options: "Substantiate the speed claim with data or qualify it?" → cycle "Add data" / "Qualify claim". Reuses the cue/cycling UI; the AskUserQuestion tool prompt populates it. Ambient (fires on the sentence at your cursor). One LLM call per new sentence (cached). OFF by default — benchmarking measured roughly one shown question in three as genuinely useful, and that is not a default-worthy hit rate; turn it on if the trade reads differently to you.',
     values: [
-      { id: 'on',  description: 'Default — the sentence at your cursor gets an AskUserQuestion-shaped cue when there is a question worth asking' },
-      { id: 'off', description: 'Disabled — no tool-prompt question cues' },
+      { id: 'off', description: 'Disabled (default) — no tool-prompt question cues' },
+      { id: 'on',  description: 'Enabled — the sentence at your cursor gets an AskUserQuestion-shaped cue when there is a question worth asking' },
     ],
   },
   {

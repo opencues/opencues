@@ -1,6 +1,6 @@
 {
   "name": "@opencues/chrome",
-  "version": "0.2.168",
+  "version": "0.2.172",
   "license": "Apache-2.0",
   "private": true,
   "description": "OpenCues enables native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",

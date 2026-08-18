@@ -7,7 +7,15 @@ the cue tip; each option is a cycle alternative on the sentence; options that
 carry a concrete rewrite edit the sentence when you land on them, and advisory
 ones just inform.
 
-**ON by default.** The prompt makes silence the default, so most sentences draw nothing. Turn it off with `ask-cues-mode: off`.
+**OFF by default, and here is the honest reason.** It shipped on briefly; then
+an exploration sweep (`tests/benchmarks/ask-cues/EXPERIMENTS.md`) measured, on
+realistic multi-sentence drafts, that roughly **one shown question in three is
+genuinely useful** — and that no inference-time design (whole-document calls,
+candidate ranking, detect-then-generate, discrimination gates, consensus,
+higher reasoning effort) moved that ceiling. Unlike session-contradiction, the
+output has no reference data the runtime can verify it against. A cue that is
+junk two times in three trains you to ignore the rail, so it is opt-in:
+`ask-cues-mode: on`.
 
 ## The idea — borrow a well-known tool prompt to populate cues
 
@@ -48,9 +56,33 @@ way it:
 - **stays quiet** when the sentence is already consistent with the session.
 
 Measured effect (independent Claude judge, `tests/benchmarks/ask-cues/`):
-question quality **1.0/2 → 2.0/2** with context, and every grounded question
-used it. Because the session feeds both features, the producer runs when
-**either** `ask-cues-mode` **or** `session-contradiction-mode` is on.
+context lifts question quality, and it reliably suppresses questions the
+session already answers — restraint is 4/4 in every run of the current suite.
+
+**Grounding is the weak part, and the honest number is not the one this doc
+used to quote.** It claimed "every grounded question used it", from a
+measurement that no longer reproduces. Re-measured August 2026 on eight cases,
+driving the real source: a deterministic check (does the output mention
+anything only the context could have supplied?) scores about **1 in 3** —
+having been **zero** while the grounding block sat in the system message.
+
+August 2026 prompt work closed part of that gap. The dominant failure was the
+**echo** — your sentence handed back as a question ("Just hardcode the API key
+for now." → *"Do you want to hardcode the API key for now?"*). The prompt now
+names it, and requires the options to be materially different courses of
+action, with at least one built from your context when there is any. Phase-2
+question quality went 0.83 → 1.13 on an independent judge with no overlap
+between the two sets of runs, and context mentions 3/8 → 4/8 in every run,
+without asking any more often.
+
+Model choice is not the lever, so a provider switch will not help: `gpt-oss-120b`
+mentions the context 6/16 and `gemma-4-31b` 4/16, both asking on 8/8 cases;
+`claude-haiku` asks on only 1–2 of 8, going quiet rather than asking well. Some
+questions are still generic, and `tests/benchmarks/ask-cues/EXPERIMENTS.md`
+records seven prompt variants including the most promising unfinished lead.
+
+Because the session feeds both features, the producer runs when **either**
+`ask-cues-mode` **or** `session-contradiction-mode` is on.
 
 ## What it looks like
 

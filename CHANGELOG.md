@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — ask-cues reads the document around your sentence (`@opencues/core` 0.49.0 → 0.50.0, `@opencues/chrome` 0.2.170 → 0.2.171, `@opencues/dsh` 0.2.4 → 0.2.5)
+
+The model was being sent **one sentence**. The rest of your draft sat in `context.text` and was never passed. So it could not know that your next line already names the library, or already gives the number the claim needs — and a question whose answer is three words further down the page is worse than no question at all, because it proves the thing did not read on.
+
+It now receives a bounded window of the surrounding text with your sentence marked, and is told to **answer its own question from the document before asking it**.
+
+Measured on a new phase 3 — eight cases where the same kind of sentence sits in a document that either resolves it or does not, including the *same* sentence in both roles so a blanket policy cannot score well:
+
+| Arm | Silent when the document answers it | Useful, of what it showed |
+|---|---|---|
+| no document (what shipped before) | **0/4**, twice | **0/8**, twice |
+| document sent | 2/4 | 1/6 |
+| document + answer-it-first rule | **3/4** | 1/5 |
+
+The first row is the result: without the surrounding text it asked on every case, and **not one of those questions was useful** — every one had already been answered on the page. Coverage of genuinely-open forks stayed 4/4 throughout, so this is restraint, not silence.
+
+Also new: **USEFUL** is now the bench's headline metric — of the questions actually shown, how many the judge scores 2. `FIRING` was the de-facto target before, and demanding a question for every flagged sentence is precisely how you get forced ones. A feature that asks four times and is useful four times beats one that asks twenty times and is useful four times; the second trains you to ignore it.
+
+Next lead, logged in `tests/benchmarks/ask-cues/EXPERIMENTS.md`: the worked examples all phrase their question "How will you mitigate / verify …", and the model has copied the *phrasing* rather than the principle — "We should make the app more user-friendly" now draws "How will you make the app more user-friendly", which is the old echo wearing the new costume. Diversifying the examples' surface forms is the next thing to try.
+
+### Changed — ask-cues asks better questions (`@opencues/core` 0.48.2 → 0.49.0, `@opencues/chrome` 0.2.169 → 0.2.170, `@opencues/dsh` 0.2.3 → 0.2.4)
+
+The questions were often the sentence handed back as a question. *"Just hardcode the API key for now."* drew *"Do you want to hardcode the API key for now?"* — you just said you did. Six of twelve phase-1 cases failed that way, and an interruption with no payload is worse than silence.
+
+The prompt now names that failure and shows four BAD/GOOD pairs, plus one rule: the value is in the OPTIONS, each a materially different course of action, never yes/no. And when the user message carries session or page context, at least one option must be built from it. Both hardcode-the-key and skip-the-tests move from the judge's 0 to its 2 — *"What covers the risk if we skip them?"* with options, rather than asking permission for what was already decided.
+
+Measured, cerebras/gpt-oss-120b, nine runs against three baseline runs: **phase-2 quality 0.83 → 1.13 with no overlap** (every baseline run ≤ 0.88, every new run ≥ 1.00), and context mentions **3/8 → 4/8 in every single run**. Firing (12/12, 8/8) and restraint (8/8, 4/4) are unchanged — it did not buy quality with silence.
+
+**Phase-1 quality is NOT claimed.** It looked like a clear win at 0.83 across six runs, then measured 0.69 across the next three on identical bytes. That metric averages 12 judge calls and still swings ±0.15, so anything under that is nothing, and the ranking of variants by it was worth less than it appeared.
+
+Seven variants are logged in `tests/benchmarks/ask-cues/EXPERIMENTS.md`, including the strongest single result — a "name the fork" rule reaching phase-2 quality **1.47** while costing phase-1 quality, which two follow-ups failed to explain. That is left as a documented lead rather than shipped half-understood.
+
+**Model choice is not the lever**, which was the first hypothesis and is worth recording as closed: `gpt-oss-120b` mentions context 6/16, `gemma-4-31b` 4/16, both firing 8/8, while `claude-haiku` fires on 1–2 of 8 — abstaining rather than asking generically. No available model turns a generic question into a specific one here.
+
+### Changed — ask-cues grounding context moved to the user message, and the bench that should have caught it (`@opencues/core` 0.48.1 → 0.48.2, `@opencues/chrome` 0.2.168 → 0.2.169, `@opencues/dsh` 0.2.2 → 0.2.3)
+
+The session/page grounding block rode in the **system** message, for prefix-caching reasons. `docs/architecture/cerebras.md` already says not to do that, names the failure mode ("the model treats system-side ambient as global background and stops tightly binding it to the input"), and records the 175/176 → 166/176 fluid-blank regression that taught it. The block even carries chrome's ambient metadata — the exact case that rule was written about. It now travels with the SELECTION in the user message; the system prompt, an order of magnitude larger, still prefix-caches.
+
+**It is a large improvement, and the first version of this entry said the opposite.** Measured against the real code path: context mentions go from **0/21 to 6/16**, and firing from 7/8 to 8/8 in every run. The earlier claim ("directionally better, not provable") came from an A/B whose two arms were the same configuration — see the next entry. The numbers it quoted (7/22 vs 8/23) describe nothing that was ever run.
+
+**The bench was measuring a copy of the source, not the source.** `evalCase` rebuilt the LLM call by hand — `chat(GEN, SYSTEM + contextBlock, "SELECTION: …")` — which nailed the context into the system message permanently, whatever the source did. So after the placement moved, the bench went on measuring the old arrangement, and an A/B of the two placements ran the *same* configuration twice and reported the two arms as indistinguishable. It now drives the real `ToolPromptCueSource`. The tell was there twice — two "different" arms returning identical numbers — and was read as noise both times; what finally caught it was `git stash` reporting "No stash entries found" because the change under test was already committed.
+
+Two more things the bench did badly, both of which cost real runs today. A transient provider error killed the entire run on the first case and printed an EMPTY report — Anthropic returning "Overloaded" destroyed five runs, each of which looked like a result rather than an outage; failures are now caught per case. And a degraded run now says `⚠ N/M case(s) FAILED to generate`, so partial data can never be mistaken for a clean sweep.
+
+**The sample size was the other defect.** Phase 2 had three grounding-eligible cases and a subjective judge boolean, which on *identical code* produced 0/3, 1/3, 0/3 in one sitting and 1/2, 1/3, 1/3 in another — range enough to manufacture a win or hide a regression, and it did exactly that to one attempt at tuning this prompt (the tweak "improved" grounding, then scored worse than the code it replaced; it was reverted after it turned out to cost phase-1 firing 35/36 → 31/36 while moving grounding not at all). Phase 2 now runs eight grounding cases plus four silent ones, and reports a second **deterministic** signal beside the judge's: does the output mention anything only the context could have supplied, excluding words already in the user's own sentence? Cruder, but it has no variance, so it is the one to watch.
+
+**Grounding is now ~1 in 3, up from zero — and that is where the model question lands.** Measured on the fixed bench: `gpt-oss-120b` mentions the context 6/16, `gemma-4-31b` 4/16, both firing 8/8. Reaching for a stronger model does not help and makes things worse in a different way — `claude-haiku` fires on only **1–2 of 8** cases, abstaining almost entirely rather than asking generically. So the remaining gap is the task and the prompt, not the model: no available model turns a generic question into a specific one here.
+
+`docs/features/ask-cues.md` claimed "every grounded question used it", which did not reproduce and has been corrected.
+
 ### Fixed — the session-cue prompts told three of four hosts they were Claude Code (`@opencues/core` 0.48.0 → 0.48.1, `@opencues/chrome` 0.2.167 → 0.2.168, `@opencues/dsh` 0.2.1 → 0.2.2)
 
 `Claude Code` was hardcoded into four prompt strings, and session cues now run on four hosts. An OpenCode, Gemini CLI or dsh transcript was introduced to the model as a Claude Code transcript — false on the wire, and a plausible source of bias when extracting decisions from a session that isn't one. The wording is now host-neutral (`an AI coding assistant session transcript`, `this coding session`); the file's own doc comments, which described the feature as Claude-Code-only throughout, were generalised with it.
@@ -21,11 +71,11 @@ Benched before and after in the same session, because these prompts are bench-ga
 
 The ask-cues run surfaced something unrelated and worth chasing separately: **grounding is 0–1 of 3 on both wordings**, against the 3/3 recorded when the feature shipped. Nothing here caused it — the baseline scores the same — but it matters more now that `ask-cues-mode` defaults on, so it wants its own look rather than a footnote.
 
-### Changed — session-contradiction and ask-cues are ON by default (`@opencues/core` 0.47.0 → 0.48.0, `@opencues/runtime` 0.32.0 → 0.33.0, `@opencues/chrome` 0.2.166 → 0.2.167, `@opencues/dsh` 0.2.0 → 0.2.1)
+### Changed — session-contradiction is ON by default; ask-cues was flipped on with it and then reverted on evidence (`@opencues/core` 0.47.0 → 0.48.0 → 0.50.1, `@opencues/runtime` 0.32.0 → 0.33.1, `opencues` 0.7.3 → 0.7.4)
 
-Both shipped off, which meant almost nobody had them. They are the two cues that know something the buffer doesn't — what you decided earlier in the session, and what question the sentence you're writing is quietly begging — and a cue class nobody enables is a cue class that may as well not exist.
+Both shipped off, which meant almost nobody had them. Both were flipped on; **only session-contradiction kept its default.** What changed the second one back was not caution but measurement: the ask-cues exploration sweep (`tests/benchmarks/ask-cues/EXPERIMENTS.md`) put its ceiling on realistic drafts at roughly **one genuinely useful question per three shown**, across every inference-time architecture tried — whole-document calls, candidate ranking, detect-then-generate, discrimination gates, consensus, higher reasoning effort. The structural reason is recorded there too: every cue in this codebase that earns a default verifies LLM output against checkable data, and ask-cues has none — its output is judgement about prose. A cue that is junk two times in three trains users to ignore the whole rail, so it is opt-in again (`ask-cues-mode: on`), with the shipped `OPENCUES.md` stating the number rather than hiding it.
 
-`ask-cues-mode` is the easy half: its prompt makes silence the default (bench: restraint 8/8 after that fix), it is one cached LLM call per new sentence, and it edits nothing without a keystroke.
+Session-contradiction is the opposite case and keeps the default it was given:
 
 **`session-contradiction-mode` deserves a straight answer about what it now does unasked**, because it is the one cue class that reads more than your buffer. A background producer distils your session transcript into a short watchlist of decisions, and that distillation is an LLM call to your cues-bucket provider. What bounds it:
 

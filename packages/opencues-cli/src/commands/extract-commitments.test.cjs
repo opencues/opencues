@@ -47,9 +47,11 @@ async function run(args) {
 // `pinProvider` pins the cues bucket to a keyless HTTP provider (openai) so
 // LLM resolution deterministically lands on keyPresent=false — no auto-fallback
 // to the local subscription CLI, so no real network call in the test.
-// Writes BOTH scalars. The producer runs when EITHER is on, and both now
-// default to on, so writing only `session-contradiction-mode: off` leaves
-// ask-cues defaulting on and the gate open — an "off" case that isn't off.
+// Writes BOTH scalars. The producer runs when EITHER is on, and
+// session-contradiction defaults on, so writing only
+// `ask-cues-mode: off` would leave the gate open — an "off" case that isn't
+// off. (Ask-cues now defaults off again, but the both-scalars discipline
+// stays: it makes the off case off regardless of which default moves next.)
 function writeMode(on, pinProvider) {
   const v = on ? 'on' : 'off';
   let md = `session-contradiction-mode: ${v}\nask-cues-mode: ${v}\n`;
@@ -79,10 +81,14 @@ test('mode off → skip without touching the LLM', async () => {
   assert.match(json.reason, /off/);
 });
 
-test('scalars ABSENT → the gate passes (both default on)', async () => {
-  // The default flip has three independent readers (config-loader's typed
-  // state, resolver's settings map, this gate). This pins the one that
-  // decides whether the session is read at all.
+test('scalars ABSENT → the gate passes (session-contradiction defaults on)', async () => {
+  // The defaults DIFFER per scalar: session-contradiction is on unless 'off',
+  // ask-cues is off unless 'on' (reverted on bench evidence — see
+  // tests/benchmarks/ask-cues/EXPERIMENTS.md). The gate opens when EITHER is
+  // on, so an absent-scalar file still runs the producer — via
+  // session-contradiction alone. Three independent readers must agree
+  // (config-loader's typed state, resolver's settings map, this gate); this
+  // pins the one that decides whether the session is read at all.
   fs.writeFileSync(path.join(tmpHome, 'OPENCUES.md'), 'voice-mode: inactive\n');
   const tp = writeTranscript('absent.jsonl', ['{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{}}]}}']);
   const { json } = await run([tp]);

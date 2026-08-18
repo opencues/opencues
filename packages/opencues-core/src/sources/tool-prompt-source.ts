@@ -68,7 +68,9 @@ export interface ToolPrompt {
  */
 export const ASK_USER_QUESTION_SYSTEM = `You are the AskUserQuestion tool, repurposed to OPTIONALLY attach one inline question to a sentence a user is writing. This fires on EVERY sentence, so your DEFAULT is SILENCE.
 
-Attach a question ONLY when the sentence hinges on a decision that is genuinely the writer's to make — one you cannot resolve from the sentence itself, from the CONTEXT below (session and/or page), or from a sensible default. If a sensible default settles it, or the context already answers it, STAY SILENT. Over-asking destroys trust — a needless question is far worse than a missed one.
+Attach a question ONLY when the sentence hinges on a decision that is genuinely the writer's to make — one you cannot resolve from the sentence itself, from the DOCUMENT around it, from the CONTEXT accompanying it (session and/or page), or from a sensible default.
+
+BEFORE YOU ASK, ANSWER YOUR OWN QUESTION FROM THE DOCUMENT. Draft the question, then search the surrounding text for its answer. If the answer is there — in any sentence, before or after — the writer has already handled it and you must ABSTAIN. Writers routinely make a loose claim and then support it in the very next line; flagging the loose half is the single most annoying thing you can do, because it proves you did not read on. "The API is way faster" is FINE when the next sentence gives the p50. "I'll deal with errors later" is FINE when the next sentence says what happens until then. Only the genuinely unanswered fork earns an interruption. If a sensible default settles it, or the context already answers it, STAY SILENT. Over-asking destroys trust — a needless question is far worse than a missed one.
 
 ABSTAIN — output exactly {"question":"","options":[]} — for anything that is:
 - a clear factual statement, a definition, a settled choice, or a precise value ("returns the sum of two integers", "we use PostgreSQL 16", "config is at ~/.cues/OPENCUES.md")
@@ -84,7 +86,27 @@ ASK only when the sentence genuinely has ONE of these:
 - a risky shortcut ("hardcode the API key", "skip the tests", "delete it and start over")
 - a real ambiguity the writer must resolve ("sometime next month", "the library everyone's using")
 
-USE THE CONTEXT (when provided below): SESSION CONTEXT tells you what the developer is working on and has decided; PAGE CONTEXT tells you what page/field they're writing in (in a browser, where there is no session). Ground your question in whatever is given — make options concrete to their actual project or page, and RESOLVE ambiguity from it rather than asking (if the context already answers which library / which module / what page, the sentence is NOT ambiguous — stay silent). Only ask when the fork is still genuinely open given everything provided.
+THE QUESTION MUST ADD SOMETHING THE SENTENCE DOES NOT ALREADY CONTAIN.
+Restating the sentence as a question is the failure mode to avoid above all others. Its answer is already on the page, so it interrupts and gives nothing back. It is never acceptable:
+
+  "Just hardcode the API key for now."
+    BAD  "Do you want to hardcode the API key for now?"   ← they just said they do
+    GOOD "How will you mitigate the risk?"  options: "Read from env now" / "Hardcode, rotate before launch"
+  "Let's use the library everyone's using"
+    BAD  "Which library should we use?"                    ← that is their sentence, inverted
+    GOOD "Which one did you mean?"  options: NAME two or three real candidates for that job
+  "The launch is sometime next month."
+    BAD  "When exactly next month should the launch occur?"
+    GOOD "Which week are we committing to?"  options: "Early in the month" / "After the audit lands"
+  "We can probably skip the tests this time."
+    BAD  "Do you want to skip the tests for this change?"
+    GOOD "What covers the risk if we skip them?"  options: "Run the smoke suite only" / "Ship behind a flag"
+
+THE VALUE IS IN THE OPTIONS. Each must be a materially different course of action the writer could actually take — never yes/no, never "do the thing you just said" versus "don't". A question whose options are a rephrasing of each other is as bad as no question. If you cannot produce at least two genuinely different courses of action, STAY SILENT: a question you cannot make useful is one you should not ask.
+
+Those examples have no context to work from, so their options are generic. When the user message DOES carry session or page context, the options are where it shows: at least one must be built from the developer's own runtime, module or constraints, so the question could not have been asked of any other project.
+
+USE THE CONTEXT (when the user message carries any): SESSION CONTEXT tells you what the developer is working on and has decided; PAGE CONTEXT tells you what page/field they're writing in (in a browser, where there is no session). Ground your question in whatever is given — make options concrete to their actual project or page, and RESOLVE ambiguity from it rather than asking (if the context already answers which library / which module / what page, the sentence is NOT ambiguous — stay silent). Only ask when the fork is still genuinely open given everything provided.
 
 Do NOT hunt for contradictions with the context (a dependency added after "no new deps", an out-of-scope module) — a dedicated cue owns that. Your job is the OPEN question the context can't already resolve.
 
@@ -164,12 +186,14 @@ export class ToolPromptCueSource implements CueSource {
 
     // Cache on selection + context: a context change (new decisions) re-asks
     // even on an unchanged sentence, but sitting in one sentence reuses.
-    const cacheKey = `${sel.text} ${contextBlock}`;
+    const docBlock = renderDocumentWindow(text, sel.start, sel.end);
+
+    const cacheKey = `${sel.text} ${contextBlock} ${docBlock}`;
     let q: ToolQuestion | null;
     if (cacheKey === this._lastSel && this._lastQuestion !== undefined) {
       q = this._lastQuestion;   // same sentence + context → reuse (no LLM call)
     } else {
-      try { q = await this.ask(sel.text, contextBlock, context.signal); }
+      try { q = await this.ask(sel.text, `${contextBlock}${docBlock}`, context.signal); }
       catch (e) {
         const err = e as Error;
         // An abort is a superseded resolve (the user kept typing), NOT a
@@ -245,10 +269,32 @@ export class ToolPromptCueSource implements CueSource {
       {
         model: this.cfg.model,
         messages: [
-          // Session context rides in the SYSTEM message (session-stable → cerebras
-          // prefix-caches it); the per-call selection is the USER message.
-          { role: 'system', content: `${this.tool.systemPrompt}${contextBlock}` },
-          { role: 'user', content: `SELECTION: ${selection}` },
+          // The system message is the tool prompt ALONE — big, stable, and the
+          // thing worth prefix-caching (cerebras reuses it across every call in
+          // a session).
+          //
+          // The grounding block goes with the SELECTION, in the USER message,
+          // and that placement is load-bearing rather than incidental. It rode
+          // in the system message for prefix-caching reasons and the questions
+          // came back generic: "What specific performance improvement are you
+          // targeting?" instead of anything about this user's Bun cache. That
+          // is the documented cerebras failure mode — see
+          // docs/architecture/cerebras.md § "Ambient MUST stay user-side",
+          // where moving ambient to system cost the fluid-blank bench
+          // 175/176 → 166/176, with the note that the model "treats
+          // system-side ambient as global background and stops tightly binding
+          // it to the input". Grounding IS binding: the whole job of this
+          // block is to make the question specific to the sentence beside it.
+          //
+          // Note the block also carries chrome's AMBIENT metadata — literally
+          // the case that rule was written about — so this was the same bug
+          // twice over.
+          //
+          // Cost of the move: the grounding block (a summary + a few one-line
+          // decisions) drops out of the cached prefix. The system prompt, which
+          // is an order of magnitude larger, still caches.
+          { role: 'system', content: this.tool.systemPrompt },
+          { role: 'user', content: `${contextBlock ? `${contextBlock.trim()}\n\n` : ''}SELECTION: ${selection}` },
         ],
         maxTokens: 500,
         temperature: 0,
@@ -258,6 +304,37 @@ export class ToolPromptCueSource implements CueSource {
     );
     return parseToolQuestion(raw);
   }
+}
+
+/**
+ * The surrounding DOCUMENT, with the target sentence marked.
+ *
+ * Until now the model was handed one sentence and nothing else, which made one
+ * class of question unanswerable and another unavoidable. It could not know
+ * that the next line already names the library, or that the paragraph below
+ * already gives the number the claim needs \u2014 so it asked anyway, and a
+ * question whose answer is three words further down the page is worse than
+ * silence. It also had no material from which to build a specific question.
+ *
+ * Bounded to a window around the selection: a long document would otherwise
+ * dominate the prompt and blow the latency budget for a cue that fires per
+ * sentence. Returns '' when the document IS essentially just the selection, so
+ * a one-line draft costs no extra tokens.
+ */
+export function renderDocumentWindow(text: string, start: number, end: number, budget = 1200): string {
+  const sentence = text.slice(start, end);
+  const rest = (text.slice(0, start) + text.slice(end)).trim();
+  if (rest.length < 12) return '';        // nothing meaningful around it
+  const room = Math.max(0, budget - sentence.length);
+  let a = Math.max(0, start - Math.floor(room / 2));
+  let b = Math.min(text.length, end + Math.ceil(room / 2));
+  // Snap outward to whitespace so the window never opens or closes mid-word,
+  // which reads as corruption.
+  while (a > 0 && !/\s/.test(text[a - 1])) a--;
+  while (b < text.length && !/\s/.test(text[b])) b++;
+  const head = a > 0 ? '\u2026' : '';
+  const tail = b < text.length ? '\u2026' : '';
+  return `\n\nDOCUMENT they are writing \u2014 the sentence in question is marked \u27e6\u27e7. Read it BEFORE deciding: if the surrounding text already answers your question, the writer has not left that fork open and you must STAY SILENT. Otherwise use it to make the question specific.\n${head}${text.slice(a, start)}\u27e6${sentence}\u27e7${text.slice(end, b)}${tail}`;
 }
 
 /**
