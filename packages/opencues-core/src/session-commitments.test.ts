@@ -3,6 +3,7 @@ import {
   buildSessionCommitmentsSnapshot,
   extractTranscriptTurns,
   extractGeminiTranscriptTurns,
+  extractDshTranscriptTurns,
   renderTranscriptForExtraction,
   renderSessionCommitmentsCatalog,
   sessionCommitmentsKey,
@@ -193,6 +194,7 @@ describe('sessionCommitmentsKey', () => {
 import {
   mergeSessionCommitments,
   normalizeCommitmentStatement,
+  commitmentDedupeKey,
   parseSupersededResult,
 } from './session-commitments';
 
@@ -254,6 +256,60 @@ describe('normalizeCommitmentStatement', () => {
     expect(normalizeCommitmentStatement('Use  Bun, not Node.')).toBe('use bun not node');
     expect(normalizeCommitmentStatement('use bun not node')).toBe('use bun not node');
   });
+
+  it('keeps a leading article — it is the persisted dismissal key', () => {
+    // Widening THIS function would silently invalidate dismissals already on
+    // disk. The looser key lives in commitmentDedupeKey instead.
+    expect(normalizeCommitmentStatement('The runtime is Bun'))
+      .not.toBe(normalizeCommitmentStatement('Runtime is Bun'));
+  });
+});
+
+describe('commitmentDedupeKey', () => {
+  it('collapses a leading-article rephrasing of the same decision', () => {
+    expect(commitmentDedupeKey('The runtime is Bun, not Node.'))
+      .toBe(commitmentDedupeKey('Runtime is Bun, not Node.'));
+    expect(commitmentDedupeKey('A worker pool handles the queue'))
+      .toBe(commitmentDedupeKey('worker pool handles the queue'));
+  });
+
+  it('does not collapse decisions that merely start alike', () => {
+    expect(commitmentDedupeKey('The runtime is Bun'))
+      .not.toBe(commitmentDedupeKey('The runtime is Node'));
+  });
+
+  it('strips only a LEADING article, never one mid-statement', () => {
+    expect(commitmentDedupeKey('Tests live in the tests dir'))
+      .toBe('tests live in the tests dir');
+  });
+});
+
+describe('mergeSessionCommitments — near-duplicate suppression', () => {
+  // Regression: the producer re-distils on every tick, so the same decision
+  // comes back reworded, and the exact-match key kept both. Measured against
+  // the live matcher, a watchlist holding ONLY that near-duplicate pair
+  // flagged a contradicting draft 0/3 where a single entry flagged 3/3 — the
+  // feature went silent with no error. Merge is where that is cheap to stop.
+  const c = (statement: string) => ({ category: 'stack', statement });
+
+  it('keeps one entry when a tick rephrases a decision with an article', () => {
+    const m = mergeSessionCommitments(
+      [c('Runtime is Bun, not Node.')],
+      [c('The runtime is Bun, not Node.')],
+      [],
+    );
+    expect(m).toHaveLength(1);
+    expect(m[0].statement).toBe('The runtime is Bun, not Node.');  // fresh phrasing wins
+  });
+
+  it('supersession still drops a prior stated with an article', () => {
+    const m = mergeSessionCommitments(
+      [c('The store is Postgres')],
+      [c('Switch the store to SQLite')],
+      ['Store is Postgres'],
+    );
+    expect(m.map((x) => x.statement)).toEqual(['Switch the store to SQLite']);
+  });
 });
 
 describe('parseSupersededResult', () => {
@@ -262,5 +318,94 @@ describe('parseSupersededResult', () => {
     expect(parseSupersededResult('here: ["x"]')).toEqual(['x']);
     expect(parseSupersededResult('no json')).toEqual([]);
     expect(parseSupersededResult('')).toEqual([]);
+  });
+});
+
+describe('extractDshTranscriptTurns', () => {
+  // Shapes taken from a real dsh session (decoded from its concatenated zstd
+  // frames), not invented — the injected-record kinds below are exactly what a
+  // two-turn conversation actually contained.
+  const line = (o: unknown) => JSON.stringify(o);
+
+  const REAL_USER = line({
+    type: 'user/message',
+    data: {
+      role: 'user',
+      source: { kind: 'user', rpcId: 'x', clientTimeZone: 'Europe/London' },
+      content: [{ type: 'text', text: 'we use Bun as the runtime, not Node' }],
+    },
+  });
+
+  const ASSISTANT = line({
+    type: 'assistant/message',
+    data: {
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'reasoning', text: 'The user is asking me to just acknowledge.' },
+          { type: 'text', text: 'Acknowledged: Bun is the runtime.' },
+        ],
+      },
+    },
+  });
+
+  it('extracts user + assistant prose', () => {
+    expect(extractDshTranscriptTurns([REAL_USER, ASSISTANT].join('\n'))).toEqual([
+      { role: 'user', text: 'we use Bun as the runtime, not Node' },
+      { role: 'assistant', text: 'Acknowledged: Bun is the runtime.' },
+    ]);
+  });
+
+  it('drops the model\'s reasoning, which dsh types as its own content block', () => {
+    const out = extractDshTranscriptTurns(ASSISTANT);
+    expect(out).toHaveLength(1);
+    expect(out[0].text).not.toMatch(/asking me/);
+  });
+
+  it('drops harness material injected AS user messages', () => {
+    // The trap: dsh writes these as `user/message` records, so only
+    // `source.kind` separates them from something the human typed. Both were
+    // present in a session containing exactly ONE real user turn.
+    const pluginSnapshot = line({
+      type: 'user/message',
+      data: {
+        role: 'user',
+        source: { kind: 'plugin', plugin: '@deepseek-ai/dsh-system-prompt', form: 'snapshot' },
+        content: [{ type: 'text', text: 'Current DSH file policy: workspace-write.' }],
+      },
+    });
+    const skillCatalog = line({
+      type: 'user/message',
+      data: {
+        role: 'user',
+        source: { kind: 'skill-catalog', form: 'catalog', entries: [] },
+        content: [{ type: 'text', text: '<system-reminder> A skill is a reusable set of…' }],
+      },
+    });
+    const out = extractDshTranscriptTurns([pluginSnapshot, REAL_USER, skillCatalog].join('\n'));
+    expect(out).toEqual([{ role: 'user', text: 'we use Bun as the runtime, not Node' }]);
+  });
+
+  it('ignores streaming chunks so replies are not duplicated', () => {
+    // `assistant/chunk` carries the same prose incrementally; the final
+    // `assistant/message` is the assembled version and the only one we read.
+    const chunk = line({ type: 'assistant/chunk', data: { delta: 'Ack' } });
+    expect(extractDshTranscriptTurns([chunk, ASSISTANT].join('\n'))).toHaveLength(1);
+  });
+
+  it('skips infrastructure records and malformed lines', () => {
+    const noise = [
+      line({ type: 'session', version: 1, cwd: '/x' }),
+      line({ type: 'turn/start' }),
+      line({ type: 'request/header' }),
+      line({ type: 'sandbox/mode' }),
+      '{ not json',
+      '',
+    ].join('\n');
+    expect(extractDshTranscriptTurns(noise)).toEqual([]);
+  });
+
+  it('returns [] for empty input', () => {
+    expect(extractDshTranscriptTurns('')).toEqual([]);
   });
 });

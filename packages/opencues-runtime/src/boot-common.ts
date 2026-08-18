@@ -1177,6 +1177,77 @@ export function startUsageMeter(
  * good enough for a single active session without replicating Gemini's
  * project-id hashing. Node-only.
  */
+/**
+ * Newest DeepSeek Harness session file for `cwd`, or null.
+ *
+ * Layout: `$DSH_HOME/sessions/<cwd-slug>/session-<uuid>/session.jsonl.zstd`.
+ * The slug is lossy, so rather than trying to reverse it we read each
+ * candidate's FIRST record — the `type:"session"` header carries the real
+ * `cwd` verbatim — and match on that. Header-only decode is cheap: it is the
+ * first zstd frame, a couple of hundred bytes.
+ *
+ * `maxAgeMs` keeps a long-dead session from being distilled as if it were the
+ * conversation in front of the user, matching the CC and Gemini locators.
+ */
+export function locateNewestDshSession(
+  cwd?: string,
+  maxAgeMs = 10 * 60_000,
+): { path: string; cwd: string | null } | null {
+  if (typeof process === 'undefined' || !process.versions?.node) return null;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require('node:path') as typeof import('node:path');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const os = require('node:os') as typeof import('node:os');
+  let zlib: typeof import('node:zlib');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  try { zlib = require('node:zlib') as typeof import('node:zlib'); } catch { return null; }
+  if (typeof zlib.zstdDecompressSync !== 'function') return null;
+
+  const home = process.env['DSH_HOME']?.trim() || path.join(os.homedir(), '.dsh');  // BROWSER-SAFE-ALLOW: fn is Node-only, guarded at entry by process.versions.node
+  const root = path.join(home, 'sessions');
+
+  /** Decode ONLY the first frame and read the header's `cwd`. */
+  const headerCwd = (file: string): string | null => {
+    try {
+      const buf = fs.readFileSync(file);
+      // Second frame start = end of the first; slice there so the decoder sees
+      // exactly one frame (it stops at the first anyway, but be explicit).
+      let end = buf.length;
+      for (let i = 4; i + 3 < buf.length; i++) {
+        if (buf[i] === 0x28 && buf[i + 1] === 0xB5 && buf[i + 2] === 0x2F && buf[i + 3] === 0xFD) { end = i; break; }
+      }
+      const line = zlib.zstdDecompressSync(buf.subarray(0, end)).toString('utf8').split('\n')[0];
+      const rec = JSON.parse(line) as { type?: string; cwd?: string };
+      return rec && rec.type === 'session' && typeof rec.cwd === 'string' ? rec.cwd : null;
+    } catch { return null; }
+  };
+
+  let best: { p: string; m: number; c: string | null } | null = null;
+  let slugs: string[];
+  try { slugs = fs.readdirSync(root); } catch { return null; }
+  for (const slug of slugs) {
+    let sessions: string[];
+    try { sessions = fs.readdirSync(path.join(root, slug)); } catch { continue; }
+    for (const sess of sessions) {
+      const file = path.join(root, slug, sess, 'session.jsonl.zstd');
+      let mtime: number;
+      try { mtime = fs.statSync(file).mtimeMs; } catch { continue; }
+      if (Date.now() - mtime > maxAgeMs) continue;
+      if (best && mtime <= best.m) continue;          // cheaper than decoding
+      const owner = headerCwd(file);
+      if (cwd && owner !== cwd) continue;
+      best = { p: file, m: mtime, c: owner };
+    }
+  }
+  // The session's OWN cwd comes back with it. On dsh the server process runs
+  // from wherever it was launched, while each session records the workspace it
+  // belongs to — so `process.cwd()` is the wrong key for a per-cwd watchlist
+  // and would read (or write) another project's file.
+  return best ? { path: best.p, cwd: best.c } : null;
+}
+
 export function locateNewestGeminiChat(cwd?: string, maxAgeMs = 10 * 60_000): string | null {
   if (typeof process === 'undefined' || !process.versions?.node) return null;
   // eslint-disable-next-line @typescript-eslint/no-var-requires

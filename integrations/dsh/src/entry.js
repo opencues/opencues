@@ -376,7 +376,34 @@ export function createOpenCuesHost({ setDraftRef, log = LOG }) {
     showNote(merged.inlineNote ?? null)
   }
 
+  // Session-commitments watchlist. The chrome band takes a MUTABLE HOLDER and
+  // re-reads its fields every resolve pass, so refreshing means mutating this
+  // object in place — replacing it would leave the resolver holding the old one.
+  //
+  // The node half distils the dsh session and serves the result; this side only
+  // polls. That split is what makes the feature possible here at all: reading
+  // `$DSH_HOME/sessions/**` needs a filesystem, which the browser does not have.
+  const sessionCommitments = { commitments: [], summary: undefined, ingestedAt: undefined, sessionId: undefined }
+  const refreshCommitments = async () => {
+    try {
+      const snap = await window.fetch('/opencues/session-commitments').then(r => r.json())
+      if (!snap || !Array.isArray(snap.commitments)) return
+      const changed = snap.commitments.length !== sessionCommitments.commitments.length
+        || snap.sessionId !== sessionCommitments.sessionId
+      sessionCommitments.commitments = snap.commitments
+      sessionCommitments.summary = snap.summary
+      sessionCommitments.ingestedAt = snap.ingestedAt
+      sessionCommitments.sessionId = snap.sessionId
+      if (changed) log(`session commitments: ${snap.commitments.length} decision(s) on the watchlist`)
+    } catch { /* route absent or offline — stay with what we have */ }
+  }
+  // Poll on the same order as the producer's kick; the producer self-debounces,
+  // so a poll that finds nothing new is just a cheap 200.
+  refreshCommitments()
+  setInterval(refreshCommitments, 20_000)
+
   const host = {
+    sessionCommitments,
     hostVersion: '0.1.0',
     cwd: '/dsh',
     getText,

@@ -172,6 +172,34 @@ export function normalizeCommitmentStatement(s: string): string {
 }
 
 /**
+ * The MERGE-time dedup key: `normalizeCommitmentStatement` plus a leading
+ * article. Distillation is an LLM call, so the same decision comes back
+ * phrased slightly differently on different ticks — "Runtime is Bun, not
+ * Node." on one and "The runtime is Bun, not Node." on the next — and the
+ * exact-match key keeps both.
+ *
+ * That is not merely untidy. Measured against the live matcher (cerebras /
+ * gemma-4-31b, temp 0, 3 runs each): one commitment flags the contradicting
+ * draft 3/3, two DISTINCT commitments flag it 3/3, and the near-duplicate
+ * PAIR flags it 0/3. A watchlist that says the same thing twice and nothing
+ * else reads to the model as something other than a decision list, and the
+ * feature goes silent — with no error, on the machine where it was working an
+ * hour earlier.
+ *
+ * Deliberately NOT folded into `normalizeCommitmentStatement`: that function
+ * is also the persisted cue-dismissal key (`dismissalKey`, pinned by test), so
+ * widening it would silently invalidate dismissals users already recorded.
+ * Merging is in-process and has no such history to honour.
+ *
+ * Kept to articles on purpose. Every additional equivalence is a chance to
+ * collapse two decisions that genuinely differ, and a lost decision is a worse
+ * failure than a duplicated one.
+ */
+export function commitmentDedupeKey(s: string): string {
+  return normalizeCommitmentStatement(s).replace(/^(?:the|a|an) /, '');
+}
+
+/**
  * Deterministically merge an accumulated PRIOR watchlist with a FRESH
  * tail-distillation, dropping any prior statement the caller marked SUPERSEDED.
  * Preservation is guaranteed: a prior decision survives unless it is explicitly
@@ -185,13 +213,13 @@ export function mergeSessionCommitments(
   fresh: ReadonlyArray<{ category?: string; statement?: string }>,
   superseded: ReadonlyArray<string> = [],
 ): Array<{ category?: string; statement?: string }> {
-  const dropped = new Set(superseded.map(normalizeCommitmentStatement).filter(Boolean));
+  const dropped = new Set(superseded.map(commitmentDedupeKey).filter(Boolean));
   const seen = new Set<string>();
   const out: Array<{ category?: string; statement?: string }> = [];
   // Fresh first (newest wins on dup + survives the cap), then surviving prior.
   for (const c of [...fresh, ...prior]) {
     if (!c || typeof c.statement !== 'string') continue;
-    const norm = normalizeCommitmentStatement(c.statement);
+    const norm = commitmentDedupeKey(c.statement);
     if (!norm || dropped.has(norm) || seen.has(norm)) continue;
     seen.add(norm);
     out.push({ category: c.category, statement: c.statement });
@@ -343,6 +371,74 @@ export function stripHarnessFraming(text: string): string {
 
 /** Pull only human/model prose from a message's content (string or block array).
  *  Skips tool_use / tool_result / thinking / image blocks entirely. */
+/**
+ * Parse a DeepSeek Harness session into plain user/assistant TEXT turns.
+ *
+ * dsh writes an append-only event log — many record types per session, of which
+ * only two carry conversation:
+ *
+ *   `user/message`      → `data.content[]`
+ *   `assistant/message` → `data.message.content[]`
+ *
+ * Everything else (`turn/start`, `step/end`, `request/header`, `assistant/chunk`,
+ * `session/title-llm-request`, sandbox + approval policy records, …) is
+ * infrastructure and is skipped. The streaming `assistant/chunk` records are
+ * deliberately ignored: the final `assistant/message` carries the same prose
+ * assembled, so reading chunks would duplicate every reply.
+ *
+ * DATA MINIMIZATION. dsh types the model's thinking as its own content block
+ * (`{type:"reasoning"}`) alongside `{type:"text"}`, so `textFromContent` drops
+ * it by construction — the same boundary the CC and Gemini parsers keep, where
+ * only user + assistant PROSE reaches the commitments producer and tool I/O and
+ * thinking never do.
+ *
+ * Takes decoded JSONL. The on-disk file is a run of CONCATENATED ZSTD FRAMES
+ * (one per appended record), which the caller decodes — that step needs
+ * `node:zlib` and this module stays browser-safe.
+ */
+export function extractDshTranscriptTurns(jsonl: string): TranscriptTurn[] {
+  const turns: TranscriptTurn[] = [];
+  if (!jsonl) return turns;
+  for (const line of jsonl.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let obj: unknown;
+    try { obj = JSON.parse(trimmed); } catch { continue; }
+    if (!obj || typeof obj !== 'object') continue;
+    const rec = obj as { type?: unknown; data?: unknown };
+    if (rec.type !== 'user/message' && rec.type !== 'assistant/message') continue;
+    const data = rec.data as { content?: unknown; message?: unknown; source?: unknown } | undefined;
+    if (!data) continue;
+    const role: 'user' | 'assistant' = rec.type === 'user/message' ? 'user' : 'assistant';
+    // ONLY WHAT THE HUMAN TYPED. dsh injects harness material as `user/message`
+    // records too, distinguished solely by `data.source.kind`:
+    //
+    //   `user`          — the person typing. The only kind we want.
+    //   `plugin`        — e.g. @deepseek-ai/dsh-system-prompt's runtime-context
+    //                     snapshot ("Current DSH file policy: workspace-write…").
+    //   `skill-catalog` — the entire installed-skill catalog, every description
+    //                     in full, as one message.
+    //
+    // Without this gate all three reach the commitments producer as things the
+    // user "said": a sandbox policy and a skill catalogue become candidate
+    // decisions to be contradicted later, and the catalogue alone is larger
+    // than most real conversations. Observed on a first real session — the
+    // three-turn transcript was one genuine turn and two injections.
+    if (role === 'user') {
+      const kind = (data.source as { kind?: unknown } | undefined)?.kind;
+      if (kind !== 'user') continue;
+    }
+    // The two records nest their content differently: the user record carries
+    // it directly, the assistant record wraps it in a `message` envelope.
+    const content = role === 'user'
+      ? data.content
+      : (data.message as { content?: unknown } | undefined)?.content;
+    const text = stripHarnessFraming(textFromContent(content));
+    if (text) turns.push({ role, text });
+  }
+  return turns;
+}
+
 function textFromContent(content: unknown): string {
   if (typeof content === 'string') return content.trim();
   if (!Array.isArray(content)) return '';
