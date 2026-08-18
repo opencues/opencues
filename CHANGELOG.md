@@ -21,6 +21,10 @@ The watchlist is keyed on the **session's own recorded cwd**, not `process.cwd()
 
 Everything optional now resolves through one `createRequire(import.meta.url)`, and a boot-time `console.warn` names the reason when the feature really is inert. It is called `nodeRequire` rather than `req` for a second reason found on the way: every route handler in that file takes the HTTP request as `req`, so the short name is shadowed inside exactly the handlers that need it, and the resulting "req is not a function" lands in the same catch — a second way to look uninstalled while installed.
 
+### Fixed — a machine without the `dsh` CLI reported a permanently stale dsh bundle (`@opencues/dsh` 0.1.2 → 0.2.0)
+
+The drift marker was written after the handoff to `dsh plugin add`, so when `dsh` was not on PATH the installer exited before writing it — and `opencues doctor` then reported a stale bundle for one that was current, with no way to clear it by re-running the installer. The marker records which `@opencues/{core,runtime}` the built artifact carries, which is true as soon as the bundle exists, so it is now written there. Registration failing is still an error and still exits non-zero; it just no longer makes the drift report lie.
+
 ### Fixed — a rephrased decision silently switched the contradiction matcher off (`@opencues/core` 0.46.0 → 0.47.0)
 
 Distillation is an LLM call, so the same decision comes back worded differently on different ticks — "Runtime is Bun, not Node." on one and "The runtime is Bun, not Node." on the next — and the exact-match merge key kept both.

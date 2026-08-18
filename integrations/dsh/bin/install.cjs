@@ -88,6 +88,20 @@ function doInstall() {
     process.exit(bundled.status || 1);
   }
 
+  // Drift marker, written HERE — as soon as the bundle exists, before the
+  // handoff. It records which @opencues/{core,runtime} the built artifact
+  // carries, which is now true regardless of whether dsh is on this machine's
+  // PATH. Writing it after the handoff instead meant a developer without the
+  // dsh CLI got a permanently stale `doctor` row for a bundle that was in fact
+  // current, and no amount of re-running the installer cleared it.
+  //
+  // Lives beside the built artifact rather than in dsh's profile dir, for the
+  // same reason the install hands off: that directory is dsh's.
+  try {
+    const { writeMarker } = require(path.join(REPO_ROOT, 'packages/opencues-cli/src/lib/version-markers.cjs'));
+    writeMarker('dsh', path.join(PKG_DIR, 'node_modules', '@opencues'), { pkg, REPO_ROOT });
+  } catch { /* non-fatal — drift detection degrades, the install is fine */ }
+
   // Hand off to dsh. `dsh` on PATH is the one hard requirement, and the
   // message says so rather than letting spawnSync's ENOENT surface raw.
   const added = spawnSync('dsh', ['plugin', '--profile', profile, 'add', PKG_DIR], { stdio: 'inherit' });
@@ -103,14 +117,6 @@ function doInstall() {
     console.error(`\n\`dsh plugin add\` failed (exit ${added.status}). To roll back: opencues uninstall dsh`);
     process.exit(added.status || 1);
   }
-
-  // Drift marker, so `opencues run`/`doctor` can see a stale bundle. Lives
-  // beside the built artifact rather than in dsh's profile dir, for the
-  // same reason the install hands off: that directory is dsh's.
-  try {
-    const { writeMarker } = require(path.join(REPO_ROOT, 'packages/opencues-cli/src/lib/version-markers.cjs'));
-    writeMarker('dsh', path.join(PKG_DIR, 'node_modules', '@opencues'), { pkg, REPO_ROOT });
-  } catch { /* non-fatal — drift detection degrades, the install is fine */ }
 
   printLaunchSummary(profile);
 }
