@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the spelling mark stopped leading every word-cue (`@opencues/runtime` 0.34.1 → 0.34.2, `@opencues/chrome` 0.2.175 → 0.2.176, `@opencues/dsh` 0.2.9 → 0.2.10)
+
+The inline note has one rule: an **emoji leads a notification** (something is
+flagged) and a **bare count leads an improvement** (nothing is wrong, there is
+just a better option). `inlineNoteText`'s plain-word-cue branch was
+`if (!def.blankName)`, which catches EVERY word-cue and not only the spelling
+one it was written for, so a legal or medical alternative was announced with
+`✍️` - telling the reader their word was a mistake when a synonym was merely on
+offer. `attorney → lawyer` is an improvement.
+
+`WordDef` now carries `cueSource` (the producing cue's `CueResult.source`,
+stamped where the resolver registers a word-cue def), and the mark is emitted
+only for `spelling`. A def with no recorded source is treated as an improvement:
+a note that fails to flag an error is a smaller lie than one that calls a
+synonym a mistake.
+
+Found while writing the cycling reference page, which had been documenting the
+behaviour the docs describe rather than the behaviour the code had.
+
 ### Fixed — the loading animator no longer strands its glyph in the buffer (`@opencues/runtime` 0.34.0 → 0.34.1, `@opencues/chrome` 0.2.174 → 0.2.175, `@opencues/dsh` 0.2.8 → 0.2.9)
 
 Type into a `_` slot while its blank is still in flight and the spinner character was left behind for good: `weather ▘!!`. The animator gives up whenever the slot's word stops being one of its frames — the documented behaviour, since the substitution path is expected to take the word — but it gave up *without putting `_` back*, so the blank it was animating could never resolve either. There was no `_` left to splice into. Two ways to reach it, both fixed:
