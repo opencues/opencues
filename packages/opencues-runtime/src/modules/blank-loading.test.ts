@@ -865,3 +865,106 @@ describe('getActiveColoredRanges — painted-vs-logical coordinate mapping', () 
     expect(ranges[0]).toMatchObject({ start: 3, end: 5, wordIndex: 1 });
   });
 });
+
+describe('BlankLoadingAnimator — recovery when the user types into the slot', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  // Regression: the animator gave up silently when the slot word stopped
+  // being a bare frame character, which orphaned its glyph in the buffer —
+  // the substitution path then had no `_` left to fill, so the blank could
+  // never resolve. Found on DeepSeek Harness, whose async write path widens
+  // the window, but the give-up path itself is host-agnostic.
+  it('peels its own glyph back out when the user types beside it (tick path)', () => {
+    const { adapter, setTextCalls, setBufferDirect } = makeAdapter('weather _');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
+    a.start(1);
+    vi.advanceTimersByTime(100);              // writes 'weather -'
+    expect(setTextCalls).toEqual(['weather -']);
+
+    setBufferDirect('weather -!!');           // user types `!!` right after the slot
+    vi.advanceTimersByTime(100);              // tick sees a non-frame word
+
+    expect(setTextCalls.at(-1)).toBe('weather _!!');
+    expect(a.active).toBe(false);             // still gives up, just cleanly
+  });
+
+  it('peels its own glyph back out on stop() too', () => {
+    const { adapter, setTextCalls, setBufferDirect } = makeAdapter('weather _');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
+    a.start(1);
+    vi.advanceTimersByTime(100);              // 'weather -'
+    setBufferDirect('weather -x');            // user typed into the slot word
+    a.stop(1);
+    expect(setTextCalls.at(-1)).toBe('weather _x');
+  });
+
+  it('leaves the buffer alone when the substitution path took the word', () => {
+    const { adapter, setTextCalls, setBufferDirect } = makeAdapter('weather _');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
+    a.start(1);
+    vi.advanceTimersByTime(100);              // 'weather -'
+    const before = setTextCalls.length;
+    setBufferDirect('weather 18°C');          // answer spliced in; no glyph left
+    vi.advanceTimersByTime(100);
+    expect(setTextCalls.length).toBe(before); // nothing written
+  });
+
+  it('never rewrites a character the user typed that merely looks like a frame', () => {
+    // Recovery matches the EXACT char this slot last wrote, not the frame
+    // set — bounce/flipper frames are ordinary ASCII, so a user's own `-`
+    // must survive untouched.
+    const { adapter, setTextCalls, setBufferDirect } = makeAdapter('weather _');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
+    a.start(1);
+    vi.advanceTimersByTime(100);              // last written: '-'
+    vi.advanceTimersByTime(100);              // last written: '‾'
+    const before = setTextCalls.length;
+    setBufferDirect('weather a-b');           // user text containing '-', but no '‾'
+    vi.advanceTimersByTime(100);
+    expect(setTextCalls.length).toBe(before); // untouched
+  });
+
+  it('rescues its glyph when an edit BEFORE the slot shifted every word index', () => {
+    // braille-rotate writes non-ASCII marks, so a single occurrence in the
+    // buffer is unambiguously ours even once the tracked index is wrong.
+    const { adapter, setTextCalls, setBufferDirect } = makeAdapter('weather _');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'braille-rotate', frameIntervalMs: () => 100 });
+    a.start(1);
+    vi.advanceTimersByTime(100);              // 'weather ⠁'
+    setBufferDirect('X weather ⠁');           // user typed a word at the start
+    vi.advanceTimersByTime(100);              // index 1 is now 'weather'
+    expect(setTextCalls.at(-1)).toBe('X weather _');
+  });
+
+  it('refuses the displaced rescue for ASCII frames (user could have typed one)', () => {
+    const { adapter, setTextCalls, setBufferDirect } = makeAdapter('weather _');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
+    a.start(1);
+    vi.advanceTimersByTime(100);              // 'weather -'
+    const before = setTextCalls.length;
+    setBufferDirect('X weather -');           // shifted, but '-' is ambiguous
+    vi.advanceTimersByTime(100);
+    expect(setTextCalls.length).toBe(before); // left alone
+  });
+
+  it('refuses the displaced rescue when the glyph appears more than once', () => {
+    const { adapter, setTextCalls, setBufferDirect } = makeAdapter('weather _');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'braille-rotate', frameIntervalMs: () => 100 });
+    a.start(1);
+    vi.advanceTimersByTime(100);              // 'weather ⠁'
+    const before = setTextCalls.length;
+    setBufferDirect('⠁ weather ⠁');           // user pasted the same mark
+    vi.advanceTimersByTime(100);
+    expect(setTextCalls.length).toBe(before); // ambiguous — untouched
+  });
+
+  it('does nothing when it never wrote a frame yet', () => {
+    const { adapter, setTextCalls, setBufferDirect } = makeAdapter('weather _');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
+    a.start(1);
+    setBufferDirect('weather xy');            // user typed before the first tick
+    vi.advanceTimersByTime(100);
+    expect(setTextCalls).toEqual([]);
+  });
+});
