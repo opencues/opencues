@@ -23,9 +23,17 @@ const https = require('node:https');
 const checkKeys = require('./check-keys.cjs');
 
 const REPO_ROOT = path.resolve(__dirname, '../../../..');
+// DERIVED from the provider registry, not hardcoded — the hardcoded seven
+// drifted the day an eighth provider landed: adding deepseek made core's
+// key-detection recognise DEEPSEEK_API_KEY, a developer's shell exporting it
+// leaked through this sanitize list, and the no-network assertion below
+// failed on that machine while CI (no such key) stayed green. Deriving the
+// list means the NEXT provider is scrubbed automatically. FINNHUB is the one
+// non-LLM key check-keys also probes, so it rides along explicitly.
+const coreForKeys = require(path.resolve(__dirname, '../../../opencues-core/dist/index.js'));
 const PROVIDER_ENV_KEYS = [
-  'GROQ_API_KEY', 'CEREBRAS_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY',
-  'OPENROUTER_API_KEY', 'GEMINI_API_KEY', 'FINNHUB_API_KEY',
+  ...new Set(coreForKeys.listProviders().map((pv) => pv.envKeyName).filter(Boolean)),
+  'FINNHUB_API_KEY',
 ];
 
 let realHome, realUserProfile;
