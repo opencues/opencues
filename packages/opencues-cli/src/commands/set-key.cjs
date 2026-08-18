@@ -24,6 +24,7 @@ const FALLBACK_PROVIDERS = {
   openai:       'OPENAI_API_KEY',
   openrouter:   'OPENROUTER_API_KEY',
   'opencode-zen': 'OPENCODE_ZEN_API_KEY',
+  kimi:         'MOONSHOT_API_KEY',
 };
 
 // Provider → env-var map, registry-driven per the CLI convention.

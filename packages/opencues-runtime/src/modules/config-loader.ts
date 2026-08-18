@@ -316,6 +316,7 @@ const VALID_BUCKET_PROVIDERS = new Set([
   'inherit',
   'groq', 'openrouter', 'gemini', 'openai', 'openai-subscription',
   'anthropic', 'cerebras', 'claude-code-cli', 'opencode-zen', 'ollama',
+  'kimi',
 ]);
 
 function bucketProvider(raw: string): string {

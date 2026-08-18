@@ -69,7 +69,7 @@ Frontmatter keys at the top of `~/.cues/OPENCUES.md`. The same scalars are cycla
 | `ambient-context-mode` | `on` / `off` | `off` | (Chrome only) Forward focused field's label / placeholder / page-title to fluid-blank for disambiguating lookups. |
 | `identity-context-mode` | `off` / `safe` / `raw` | `safe` | Inject `~/.cues/IDENTITY.md` personal data into fluid-blank as identity-context tokens. `safe` = tokens-only catalog, values substituted post-LLM; `raw` = values inlined into the prompt. Defaulted to `off` before PR #161 (2026-06-18). |
 | `agent-debounce-ms` | number | `1000` | Pause-after-keystroke before the inline agent fires. Misparse → 1000. |
-| `llm-provider` | `cerebras` / `groq` / `openai` / `anthropic` / `openrouter` / `gemini` (+ `opencode-zen` / `ollama` / `claude-code-cli`, file-edit-only) | `cerebras` | Global fallback LLM provider, used by any bucket left on `inherit`. |
+| `llm-provider` | `cerebras` / `groq` / `openai` / `anthropic` / `openrouter` / `gemini` (+ `opencode-zen` / `ollama` / `claude-code-cli` / `kimi`, file-edit-only) | `cerebras` | Global fallback LLM provider, used by any bucket left on `inherit`. |
 | `llm-model` | string | provider-default | Default model for the global provider. |
 | `blank-context-mode` | `off` / `safe` / `raw` | `safe` | Local blanks (weather, stocks, ...) surfaced as ambient catalog context for fluid-blank/transform-blank. Same mode semantics as `identity-context-mode`; defaulted to `off` before PR #161. |
 | `integration-weave-mode` | `on` / `off` | `off` | Let a blank with `integration-weave: true` weave its output into surrounding prose via one LLM call, instead of the static `{value}` template. |
