@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added — DeepSeek provider (`@opencues/core` 0.52.0 → 0.53.0, `@opencues/chrome` 0.2.176 → 0.2.177, `@opencues/dsh` 0.2.10 → 0.2.11)
+### Added — DeepSeek provider (`@opencues/core` 0.52.0 → 0.53.0, `opencues` 0.7.5 → 0.7.6, `@opencues/chrome` 0.2.176 → 0.2.177, `@opencues/dsh` 0.2.10 → 0.2.11)
 
 New built-in `deepseek` provider — OpenAI-compatible chat-completions at
 `api.deepseek.com`, serving `deepseek-v4-flash` (default, the 0731 build:
