@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.5] - 2026-08-18
+
 ### Added — nine default rules ship on the watchlist (`@opencues/core` 0.51.0 → 0.52.0, `@opencues/chrome` 0.2.173 → 0.2.174, `@opencues/dsh` 0.2.7 → 0.2.8)
 
 `opencues seed-configs` now seeds a `~/.cues/RULES.md` with nine always-on rules — the hard-and-fast floor: secrets never in code/config/logs, no real credentials pasted into chats or AI prompts, no committed `.env`, no destructive commands against production, no hand-edited production data, backup before anything irreversible, no skipping failing tests to green CI, no un-anonymized production data in dev, and no blanket unattended-destructive permissions for agents.
@@ -15,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 They flag, they never block, and they're yours: each cue dismisses with `_` like any other, the file is plain markdown you edit freely, and an edited file is never touched by re-seeding — the template says to empty the bullets rather than delete the file, since a deleted file reseeds on the next install. Existing installs receive the file on their next `opencues seed-configs` / `opencues install`; nine defaults leave fifteen watchlist slots for your own rules and session decisions.
 
-**`opencues rules` manages the set without opening an editor** (`opencues` 0.7.4 → 0.8.0): `list` shows the merged view in the runtime's own order — project file first, duplicates the dedupe will ignore marked as such — plus `add` (with the same newline/length refusals the dsh settings route uses: one bullet is one rule, not a smuggling channel), `remove <n|substring>` (surgical: one bullet line goes, prose survives; ambiguous substrings list the candidates instead of guessing), `path`, and `--json`. Parsing and editing are the same core functions the runtime ingest loads, so the command cannot drift from what the watchlist actually reads.
+**`opencues rules` manages the set without opening an editor** (`opencues` 0.7.4 → 0.7.5): `list` shows the merged view in the runtime's own order — project file first, duplicates the dedupe will ignore marked as such — plus `add` (with the same newline/length refusals the dsh settings route uses: one bullet is one rule, not a smuggling channel), `remove <n|substring>` (surgical: one bullet line goes, prose survives; ambiguous substrings list the candidates instead of guessing), `path`, and `--json`. Parsing and editing are the same core functions the runtime ingest loads, so the command cannot drift from what the watchlist actually reads.
 
 And a confession that became a test: the first manual verification of the seeding **wrote into the real `~/.cues`**, because `seed-configs` targets `os.homedir()` and only `OPENCUES.md` honours `$OPENCUES_HOME`. The committed tests are hermetic the way that mistake teaches — HOME and USERPROFILE both overridden — and pin the full contract: nine bullets on first seed, an edited file never touched, removal preserving prose, duplicate refusal, and the registry entry itself (removing `RULES.md` from `CORE_TEMPLATES` would silently unship the defaults, so a test fails if it goes).
 
