@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.7] - 2026-08-19
+
 ### Added — dsh serves company rules too (`@opencues/dsh` 0.2.12 → 0.2.13)
 
 `RULES.md` reached the DeepSeek Harness: the plugin's node half now merges project rules (from the **session's** workspace — never the dsh server's own cwd, the same trap this integration fixed once for the watchlist key) and user rules into the same route the browser polls, using the same core parser and merge the native ingest uses — so the route cannot drift from what native hosts serve. Verified live in the composer: "mirror the customer table to us-east-1" draws `⚠ Customer data must stay in eu-west-1` from a project rules file, the compliant phrasing stays silent, project beats user, cross-file duplicates collapse, and user-scope rules serve even before the first session kick. Chrome stays out deliberately — no filesystem, and the security posture prefers it that way.
