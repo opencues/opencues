@@ -172,6 +172,34 @@ export function normalizeCommitmentStatement(s: string): string {
 }
 
 /**
+ * The MERGE-time dedup key: `normalizeCommitmentStatement` plus a leading
+ * article. Distillation is an LLM call, so the same decision comes back
+ * phrased slightly differently on different ticks — "Runtime is Bun, not
+ * Node." on one and "The runtime is Bun, not Node." on the next — and the
+ * exact-match key keeps both.
+ *
+ * That is not merely untidy. Measured against the live matcher (cerebras /
+ * gemma-4-31b, temp 0, 3 runs each): one commitment flags the contradicting
+ * draft 3/3, two DISTINCT commitments flag it 3/3, and the near-duplicate
+ * PAIR flags it 0/3. A watchlist that says the same thing twice and nothing
+ * else reads to the model as something other than a decision list, and the
+ * feature goes silent — with no error, on the machine where it was working an
+ * hour earlier.
+ *
+ * Deliberately NOT folded into `normalizeCommitmentStatement`: that function
+ * is also the persisted cue-dismissal key (`dismissalKey`, pinned by test), so
+ * widening it would silently invalidate dismissals users already recorded.
+ * Merging is in-process and has no such history to honour.
+ *
+ * Kept to articles on purpose. Every additional equivalence is a chance to
+ * collapse two decisions that genuinely differ, and a lost decision is a worse
+ * failure than a duplicated one.
+ */
+export function commitmentDedupeKey(s: string): string {
+  return normalizeCommitmentStatement(s).replace(/^(?:the|a|an) /, '');
+}
+
+/**
  * Deterministically merge an accumulated PRIOR watchlist with a FRESH
  * tail-distillation, dropping any prior statement the caller marked SUPERSEDED.
  * Preservation is guaranteed: a prior decision survives unless it is explicitly
@@ -185,13 +213,13 @@ export function mergeSessionCommitments(
   fresh: ReadonlyArray<{ category?: string; statement?: string }>,
   superseded: ReadonlyArray<string> = [],
 ): Array<{ category?: string; statement?: string }> {
-  const dropped = new Set(superseded.map(normalizeCommitmentStatement).filter(Boolean));
+  const dropped = new Set(superseded.map(commitmentDedupeKey).filter(Boolean));
   const seen = new Set<string>();
   const out: Array<{ category?: string; statement?: string }> = [];
   // Fresh first (newest wins on dup + survives the cap), then surviving prior.
   for (const c of [...fresh, ...prior]) {
     if (!c || typeof c.statement !== 'string') continue;
-    const norm = normalizeCommitmentStatement(c.statement);
+    const norm = commitmentDedupeKey(c.statement);
     if (!norm || dropped.has(norm) || seen.has(norm)) continue;
     seen.add(norm);
     out.push({ category: c.category, statement: c.statement });

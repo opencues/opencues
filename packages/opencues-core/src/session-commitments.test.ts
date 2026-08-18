@@ -194,6 +194,7 @@ describe('sessionCommitmentsKey', () => {
 import {
   mergeSessionCommitments,
   normalizeCommitmentStatement,
+  commitmentDedupeKey,
   parseSupersededResult,
 } from './session-commitments';
 
@@ -254,6 +255,60 @@ describe('normalizeCommitmentStatement', () => {
   it('collapses case/punctuation/whitespace', () => {
     expect(normalizeCommitmentStatement('Use  Bun, not Node.')).toBe('use bun not node');
     expect(normalizeCommitmentStatement('use bun not node')).toBe('use bun not node');
+  });
+
+  it('keeps a leading article — it is the persisted dismissal key', () => {
+    // Widening THIS function would silently invalidate dismissals already on
+    // disk. The looser key lives in commitmentDedupeKey instead.
+    expect(normalizeCommitmentStatement('The runtime is Bun'))
+      .not.toBe(normalizeCommitmentStatement('Runtime is Bun'));
+  });
+});
+
+describe('commitmentDedupeKey', () => {
+  it('collapses a leading-article rephrasing of the same decision', () => {
+    expect(commitmentDedupeKey('The runtime is Bun, not Node.'))
+      .toBe(commitmentDedupeKey('Runtime is Bun, not Node.'));
+    expect(commitmentDedupeKey('A worker pool handles the queue'))
+      .toBe(commitmentDedupeKey('worker pool handles the queue'));
+  });
+
+  it('does not collapse decisions that merely start alike', () => {
+    expect(commitmentDedupeKey('The runtime is Bun'))
+      .not.toBe(commitmentDedupeKey('The runtime is Node'));
+  });
+
+  it('strips only a LEADING article, never one mid-statement', () => {
+    expect(commitmentDedupeKey('Tests live in the tests dir'))
+      .toBe('tests live in the tests dir');
+  });
+});
+
+describe('mergeSessionCommitments — near-duplicate suppression', () => {
+  // Regression: the producer re-distils on every tick, so the same decision
+  // comes back reworded, and the exact-match key kept both. Measured against
+  // the live matcher, a watchlist holding ONLY that near-duplicate pair
+  // flagged a contradicting draft 0/3 where a single entry flagged 3/3 — the
+  // feature went silent with no error. Merge is where that is cheap to stop.
+  const c = (statement: string) => ({ category: 'stack', statement });
+
+  it('keeps one entry when a tick rephrases a decision with an article', () => {
+    const m = mergeSessionCommitments(
+      [c('Runtime is Bun, not Node.')],
+      [c('The runtime is Bun, not Node.')],
+      [],
+    );
+    expect(m).toHaveLength(1);
+    expect(m[0].statement).toBe('The runtime is Bun, not Node.');  // fresh phrasing wins
+  });
+
+  it('supersession still drops a prior stated with an article', () => {
+    const m = mergeSessionCommitments(
+      [c('The store is Postgres')],
+      [c('Switch the store to SQLite')],
+      ['Store is Postgres'],
+    );
+    expect(m.map((x) => x.statement)).toEqual(['Switch the store to SQLite']);
   });
 });
 

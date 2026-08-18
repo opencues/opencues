@@ -473,6 +473,55 @@ that write.
 (`Ctrl+Alt+→`). Pressing it with nothing active correctly returns
 not-consumed. That is not a bug.
 
+Also verified end to end: **session-contradiction** (see the next section).
+Typing `Let's use Node as the runtime for this project.` against a watchlist
+holding `Runtime is Bun, not Node.` paints
+`⚠ 2 | Runtime is Bun, not Node.`, three runs out of three, while the
+agreeing sentence draws only the unrelated more-formal cue. The ask-cue half
+(`sentence-cue:tool-ask`) fires on the same rail.
+
+## Session contradiction: the first browser host that can do it
+
+The feature needs a watchlist distilled from the session transcript, which
+chrome could never have — a web page is not a session. dsh keeps one on disk
+and **this integration has a node half**, so the producer/consumer split the
+native hosts use works here unchanged:
+
+| Half | Job |
+|---|---|
+| **node** | Kicks `opencues extract-commitments <session> --format dsh --cwd <workspace>` on a timer, and serves the result at `/opencues/session-commitments` |
+| **browser** | Polls that route every 20s and mutates the holder the chrome band re-reads each resolve pass |
+
+Four things cost time here, all of them generalising past dsh:
+
+1. **This file is ESM, so `require` is a ReferenceError, not a missing
+   module** — and it lands in the same `catch` written to handle a missing
+   dependency. The producer never ran, the route answered
+   `{"commitments":[]}` forever, and nothing logged, on a machine where
+   everything was installed. Use the module-level `nodeRequire`
+   (`createRequire(import.meta.url)`) for anything optional, and log when a
+   feature really is inert.
+2. **Do not name that binding `req`.** Every route handler in `index.js`
+   takes the HTTP request as `req`, so a short name is shadowed inside
+   exactly the handlers that need it, and "req is not a function" reaches
+   the same catch — a second way to look uninstalled while installed.
+3. **Key the watchlist on the SESSION's cwd, not `process.cwd()`.** A dsh
+   server runs from wherever it was launched; each session records the
+   workspace it belongs to. `locateNewestDshSession` returns `{path, cwd}`
+   for this reason — the header's cwd is the only correct key, and using the
+   server's directory serves an empty list while the right file sits on disk.
+4. **The freshness window is real.** The node half only kicks for a session
+   younger than ~10 minutes, so on a newly opened page the route answers
+   `[]` for a kick or two and then fills. A test that types before that is
+   testing a matcher with nothing to match against.
+
+**The default LLM mode changes the sensitivity, not the wiring.** Through the
+harness bridge, `deepseek-v4-flash` answers `[]` to a prompt that
+cerebras/gemma-4-31b flags 3/3 — confirmed by sending the exact matcher
+prompt through `/opencues/llm` and reading the raw reply. Both paths are
+correctly wired; the host's model is simply more conservative here. Worth
+knowing before concluding the feature is broken.
+
 ## Where this plugin is listed
 
 Published as `@opencues/dsh` on npm (2026-08-17, v0.1.1). The ecosystem has
@@ -577,6 +626,15 @@ manifest. One more reason not to depend on the npm path being taken.
 - Headless Chrome on WSL never commits a compositor frame, so screenshots
   and screencast hang. Run headed against WSLg's display (`DISPLAY=:0`,
   `--enable-unsafe-swiftshader`), the same trick `~/opencues-recording/record.mjs --headed` uses.
+- **The same missing frame stalls CSS transitions, which makes visible UI
+  read as hidden.** The inline note carries `transition: opacity .12s`, and
+  headless it sits at inline `opacity: 1` while `getComputedStyle` reports
+  `0` with a `CSSTransition` stuck at `playState: "running"` indefinitely —
+  20+ seconds later, with no further style mutations. Any is-it-visible
+  assertion then fails on a note that is, product-wise, showing. This cost
+  an hour of chasing a paint bug that did not exist. **Drive anything
+  opacity-animated headed**, or assert on the inline style. Verified both
+  ways against the same build: headed `1`, headless `0`.
 - dsh's theme preference is injected server-side from
   `$DSH_HOME/settings.yaml` (`ui-theme.preference`), so Playwright's
   `colorScheme` emulation does **not** flip it. Edit the file and restart.

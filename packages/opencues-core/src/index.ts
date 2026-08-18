@@ -384,6 +384,7 @@ export {
   renderSessionContextForAsk,
   mergeSessionCommitments,
   normalizeCommitmentStatement,
+  commitmentDedupeKey,
   parseSupersededResult,
   SESSION_COMMITMENTS_EXTRACT_SYSTEM,
   SESSION_COMMITMENTS_SUPERSEDE_SYSTEM,

@@ -1189,7 +1189,10 @@ export function startUsageMeter(
  * `maxAgeMs` keeps a long-dead session from being distilled as if it were the
  * conversation in front of the user, matching the CC and Gemini locators.
  */
-export function locateNewestDshSession(cwd?: string, maxAgeMs = 10 * 60_000): string | null {
+export function locateNewestDshSession(
+  cwd?: string,
+  maxAgeMs = 10 * 60_000,
+): { path: string; cwd: string | null } | null {
   if (typeof process === 'undefined' || !process.versions?.node) return null;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const fs = require('node:fs') as typeof import('node:fs');
@@ -1202,7 +1205,7 @@ export function locateNewestDshSession(cwd?: string, maxAgeMs = 10 * 60_000): st
   try { zlib = require('node:zlib') as typeof import('node:zlib'); } catch { return null; }
   if (typeof zlib.zstdDecompressSync !== 'function') return null;
 
-  const home = process.env.DSH_HOME || path.join(os.homedir(), '.dsh');
+  const home = process.env['DSH_HOME']?.trim() || path.join(os.homedir(), '.dsh');  // BROWSER-SAFE-ALLOW: fn is Node-only, guarded at entry by process.versions.node
   const root = path.join(home, 'sessions');
 
   /** Decode ONLY the first frame and read the header's `cwd`. */
@@ -1221,7 +1224,7 @@ export function locateNewestDshSession(cwd?: string, maxAgeMs = 10 * 60_000): st
     } catch { return null; }
   };
 
-  let best: { p: string; m: number } | null = null;
+  let best: { p: string; m: number; c: string | null } | null = null;
   let slugs: string[];
   try { slugs = fs.readdirSync(root); } catch { return null; }
   for (const slug of slugs) {
@@ -1233,11 +1236,16 @@ export function locateNewestDshSession(cwd?: string, maxAgeMs = 10 * 60_000): st
       try { mtime = fs.statSync(file).mtimeMs; } catch { continue; }
       if (Date.now() - mtime > maxAgeMs) continue;
       if (best && mtime <= best.m) continue;          // cheaper than decoding
-      if (cwd && headerCwd(file) !== cwd) continue;
-      best = { p: file, m: mtime };
+      const owner = headerCwd(file);
+      if (cwd && owner !== cwd) continue;
+      best = { p: file, m: mtime, c: owner };
     }
   }
-  return best ? best.p : null;
+  // The session's OWN cwd comes back with it. On dsh the server process runs
+  // from wherever it was launched, while each session records the workspace it
+  // belongs to — so `process.cwd()` is the wrong key for a per-cwd watchlist
+  // and would read (or write) another project's file.
+  return best ? { path: best.p, cwd: best.c } : null;
 }
 
 export function locateNewestGeminiChat(cwd?: string, maxAgeMs = 10 * 60_000): string | null {

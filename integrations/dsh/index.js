@@ -12,9 +12,30 @@
  * there is no separate host process, no native-messaging manifest, and no
  * mirrored directory.
  */
+import { spawn } from 'node:child_process'
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// When running from a repo checkout the CLI lives two levels up; a published
+// install resolves it from node_modules instead (or not at all → inert).
+const REPO_GUESS = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
+
+/**
+ * This module is ESM, so `require` does not exist here. Every optional
+ * dependency below has to come through this — a bare `require` would throw a
+ * ReferenceError that reads, to the surrounding try/catch, exactly like an
+ * uninstalled package.
+ *
+ * Named `nodeRequire`, not `req`, because every route handler in this file
+ * takes the HTTP request as `req`. The short name shadows inside exactly the
+ * handlers that need it, and the resulting "not a function" lands in the same
+ * catch as a missing package — a second way to look uninstalled while
+ * installed.
+ */
+const nodeRequire = createRequire(import.meta.url)
 
 export const name = 'opencues'
 export const inject = ['webServer', 'llm']
@@ -311,6 +332,104 @@ export function apply(ctx, config = {}) {
     return lines.join('\n')
   }
 
+  // ── Session commitments (session-contradiction + ask-cues grounding) ──
+  //
+  // dsh is the FIRST browser host where this feature can work. It needs a
+  // watchlist distilled from the session transcript, which chrome could never
+  // have — a web page is not a session — but dsh keeps one on disk and this
+  // half is a real Node process that can read it.
+  //
+  // Two jobs: kick the producer on a timer, and serve what it wrote. The
+  // browser half polls the route and mutates its holder, so the resolver sees
+  // a fresh watchlist without a reload.
+  let commitmentsTimer = null;
+  // The workspace of the newest session, learned from its header on each kick.
+  // The route keys the watchlist on this rather than process.cwd().
+  let lastSessionCwd = null;
+  {
+    // Both resolved defensively: a published plugin has neither the runtime
+    // nor the CLI as a dependency (the browser bundle inlines what it needs),
+    // so absence means the feature stays inert rather than throwing at boot.
+    //
+    // THIS FILE IS ESM. A bare `require` here is not a missing module, it is a
+    // ReferenceError — and one caught by the very `catch` meant to handle a
+    // missing dependency, so the feature reports "not installed" on a machine
+    // where everything is installed. That is exactly how the first cut of this
+    // block failed: no watchlist ever reached the browser and nothing logged.
+    let runtime = null;
+    let inertReason = null;
+    try { runtime = nodeRequire('@opencues/runtime/dist/src/boot-common.js'); }
+    catch (err) { inertReason = `runtime not resolvable (${err?.code ?? err?.message})`; }
+    let cliPath = null;
+    for (const c of ['opencues/bin/cli.cjs', join(REPO_GUESS, 'packages/opencues-cli/bin/cli.cjs')]) {
+      try { cliPath = nodeRequire.resolve(c); break; } catch { /* try next */ }
+    }
+    if (runtime && !cliPath) inertReason = 'the opencues CLI is not resolvable'
+    // Say so once, at boot. A silently inert feature is indistinguishable from
+    // a working one that has nothing to report.
+    if (inertReason) {
+      console.warn(`[opencues][dsh] session commitments inert: ${inertReason}. `
+        + 'session-contradiction and ask-cues will have no watchlist to match against.')
+    }
+    const kick = () => {
+      if (!runtime || !cliPath) return;
+      // No cwd filter: the dsh SERVER's cwd is wherever it was launched, which
+      // is not the workspace any session belongs to. Take the newest session
+      // and use ITS recorded cwd as the watchlist key.
+      let found = null;
+      try { found = runtime.locateNewestDshSession(undefined); } catch { /* not fatal */ }
+      if (!found || !found.path) return;
+      lastSessionCwd = found.cwd || lastSessionCwd;
+      // Detached and output-discarded: the producer self-debounces and locks,
+      // so a kick that overlaps another is a no-op rather than a conflict.
+      try {
+        const child = spawn(process.execPath,
+          [cliPath, 'extract-commitments', found.path, '--format', 'dsh',
+            ...(found.cwd ? ['--cwd', found.cwd] : [])],
+          { stdio: 'ignore', detached: true });
+        child.on('error', () => { /* producer missing → feature stays inert */ });
+        child.unref();
+      } catch { /* spawn unavailable → inert */ }
+    };
+    // Same cadence the native bands use. First kick is delayed so boot is not
+    // competing with the harness starting up.
+    commitmentsTimer = setInterval(kick, 45_000);
+    if (commitmentsTimer.unref) commitmentsTimer.unref();
+    setTimeout(kick, 8_000).unref?.();
+  }
+
+  const disposeCommitments = ctx.webServer.register({
+    kind: 'exact',
+    path: '/opencues/session-commitments',
+    async handler(req, res) {
+      // Read the per-cwd watchlist the producer wrote. Absent file → empty
+      // snapshot, which the resolver treats as "nothing to contradict".
+      try {
+        let core = null;
+        try { core = nodeRequire('@opencues/core'); } catch { /* key falls back below */ }
+        const key = core && typeof core.sessionCommitmentsKey === 'function' && lastSessionCwd
+          ? core.sessionCommitmentsKey(lastSessionCwd)
+          : null;
+        const roots = searchPaths.filter(Boolean);
+        for (const root of roots) {
+          // Only the per-cwd file. The flat `session-commitments.json` fallback
+          // is deliberately NOT read: it belongs to whichever host wrote it
+          // last, and serving another project's decisions here would flag the
+          // user against things they never said.
+          if (!key) break;
+          const f = join(root, 'session-commitments', `${key}.json`);
+          try {
+            const raw = await readFile(f, 'utf8');
+            return json(res, 200, JSON.parse(raw));
+          } catch { /* try the next root */ }
+        }
+        return json(res, 200, { commitments: [] });
+      } catch (err) {
+        return json(res, 200, { commitments: [], error: String(err?.message ?? err).slice(0, 200) });
+      }
+    },
+  });
+
   const disposeSettings = ctx.webServer.register({
     kind: 'exact',
     path: '/opencues/settings',
@@ -533,5 +652,5 @@ export function apply(ctx, config = {}) {
 
   // ctx.effect RUNS its callback and treats the RETURN as the disposer, so
   // this must return a teardown function, not call the disposers inline.
-  ctx.effect?.(() => () => { dispose(); disposeInfo(); disposeBench(); disposeLlm(); disposeProxy(); disposeSettings() }, 'opencues: routes')
+  ctx.effect?.(() => () => { dispose(); disposeInfo(); disposeBench(); disposeLlm(); disposeProxy(); disposeSettings(); disposeCommitments(); if (commitmentsTimer) clearInterval(commitmentsTimer) }, 'opencues: routes')
 }

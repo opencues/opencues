@@ -99,6 +99,33 @@ export interface HostInfo extends CommonHostInfo {
     readonly ingestedAt?: string;
   };
   /**
+   * Session-commitments watchlist — the "decisions settled earlier in this
+   * session" list that `session-contradiction` and `ask-cues` reason against.
+   *
+   * Same shape of problem as `calendarContext` and solved the same way: the
+   * watchlist is produced OpenCues-side by `opencues extract-commitments`,
+   * which reads a host transcript from disk. A browser cannot, so the host
+   * BOOTSTRAP supplies the parsed snapshot and this band only consumes it.
+   *
+   * Left undefined by the chrome extension, which has no transcript to distil
+   * — a web page is not a session. DeepSeek Harness DOES have one
+   * (`$DSH_HOME/sessions/<slug>/session-<uuid>/session.jsonl.zstd`), and its
+   * plugin has a Node half that can read it, which is what makes this the
+   * first browser host where the feature is not inert.
+   *
+   * A MUTABLE HOLDER, matching what the native bands pass — the resolver
+   * re-reads its fields every pass, so the bootstrap refreshes the watchlist
+   * by mutating this object in place. A value copied at boot would pin it to
+   * whatever existed before the conversation started, which for a feature
+   * about "decisions made earlier in this session" is always empty.
+   */
+  sessionCommitments?: {
+    commitments: Array<{ id: string; category: string; statement: string }>;
+    summary?: string;
+    ingestedAt?: string;
+    sessionId?: string;
+  };
+  /**
    * Per-current-target capability — does the currently focused
    * element support cycling (Ctrl+Alt+arrow + visual band)?
    * Returns true for contenteditables, false for normal `<input>`
@@ -435,6 +462,7 @@ export function boot(host: HostInfo): BootResult {
     debounceMs: number;
     httpAdapter: unknown;
     calendarContext?: HostInfo['calendarContext'];
+    sessionCommitments?: HostInfo['sessionCommitments'];
     missingKeyFallbackMessage?: string;
     formatLLMErrorAsSubstitute?: (reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'model-not-found' | 'insufficient-credits' | 'bad-request', err?: Error) => string;
   } = {
@@ -451,6 +479,7 @@ export function boot(host: HostInfo): BootResult {
     debounceMs: host.llmDebounceMs ?? 500,
     httpAdapter: host.httpAdapter,
     calendarContext: host.calendarContext,
+    sessionCommitments: host.sessionCommitments,
   };
   if (true) {
     // Pass resolverOpts by reference (NOT spread) so updateLlmConfig's

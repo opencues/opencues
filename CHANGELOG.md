@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — session-contradiction and ask-cues on the DeepSeek Harness (`@opencues/core` 0.46.0 → 0.47.0, `@opencues/runtime` 0.31.2 → 0.32.0, `opencues` 0.7.2 → 0.7.3, `@opencues/dsh` 0.1.2 → 0.2.0)
+
+"You decided X earlier in this session, and what you are about to send says not-X." Until now that needed a session transcript, so it ran on Claude Code, OpenCode and Gemini CLI and was inert everywhere else. **dsh is the first browser host where it works**, because the integration has two halves and only one of them is a browser: the node half reads `$DSH_HOME/sessions/**` and serves the distilled watchlist over a route the client polls. Chrome could never do this — a web page is not a session — and the split is what makes it possible here.
+
+**Reading a dsh session took three findings, none of them guessable from the file name.** A `session.jsonl.zstd` is a run of **concatenated zstd frames**, one per appended record, not a single stream: `zstdDecompressSync` and `createZstdDecompress()` both stop after the first frame and hand back just the `type:"session"` header, which decodes cleanly, parses as one record, and is indistinguishable from an empty conversation. Frames are located by magic number and decoded individually (Node ≥ 22.15 ships zstd, so no dependency). dsh also writes **harness material as `user/message` records**, separated from real input only by `data.source.kind` — a one-turn session held the sentence typed (`user`), a runtime-context snapshot (`plugin`) and the entire installed skill catalogue (`skill-catalog`); ungated, a sandbox policy becomes a candidate decision to be contradicted later and the catalogue alone dominates the 256KB tail. And every dsh session file is *named* `session.jsonl.zstd` with the id in the parent directory, so a filename-derived `sessionId` made every session look like the same one and merged an unrelated conversation's decisions into the current watchlist.
+
+The watchlist is keyed on the **session's own recorded cwd**, not `process.cwd()`. A dsh server runs from wherever it was launched while each session records the workspace it belongs to, so the server's directory is the wrong key and the route served an empty list while the correct file sat on disk.
+
+### Fixed — the dsh plugin is ESM, so every optional `require` reported "not installed" on a machine where everything was installed (`@opencues/dsh` 0.1.2 → 0.2.0)
+
+`integrations/dsh/index.js` is `"type": "module"`. A bare `require(…)` there is not a missing module, it is a **ReferenceError** — and one caught by the very `try/catch` written to handle a missing dependency. The commitments producer never ran, the route answered `{"commitments":[]}` forever, and nothing logged, on a machine where the runtime, the CLI and the watchlist were all present and correct.
+
+Everything optional now resolves through one `createRequire(import.meta.url)`, and a boot-time `console.warn` names the reason when the feature really is inert. It is called `nodeRequire` rather than `req` for a second reason found on the way: every route handler in that file takes the HTTP request as `req`, so the short name is shadowed inside exactly the handlers that need it, and the resulting "req is not a function" lands in the same catch — a second way to look uninstalled while installed.
+
+### Fixed — a rephrased decision silently switched the contradiction matcher off (`@opencues/core` 0.46.0 → 0.47.0)
+
+Distillation is an LLM call, so the same decision comes back worded differently on different ticks — "Runtime is Bun, not Node." on one and "The runtime is Bun, not Node." on the next — and the exact-match merge key kept both.
+
+That is not merely untidy. Measured against the live matcher (cerebras / gemma-4-31b, temp 0, three runs each): **one commitment flags a contradicting draft 3/3, two distinct commitments flag it 3/3, and the near-duplicate pair flags it 0/3.** A watchlist that says the same thing twice and nothing else reads to the model as something other than a decision list, and the feature goes quiet — no error, on the machine where it worked an hour earlier.
+
+Merge now dedupes on `commitmentDedupeKey`, which strips a leading article. Deliberately **not** folded into `normalizeCommitmentStatement`: that function is also the persisted cue-dismissal key, so widening it would silently invalidate dismissals users already recorded. Kept to articles on purpose — every additional equivalence is a chance to collapse two decisions that genuinely differ, and a lost decision is the worse failure.
+
 ### Fixed — a busy machine could fail the shipped-script smoke tests (`@opencues/runtime` 0.31.1 → 0.31.2)
 
 `blank-scripts.test.ts` spawns the **real** shipped `brightness-blank.sh` and `volume-blank.sh` and asserts each returns a bare integer. On WSL those reach a platform backend — brightness goes out to Windows through PowerShell/WMI — which is ~2s idle and considerably worse with the rest of the suite running in parallel, so vitest's 5s default timed out intermittently and presented as a product flake.
