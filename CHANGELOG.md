@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the session-cue prompts told three of four hosts they were Claude Code (`@opencues/core` 0.48.0 → 0.48.1, `@opencues/chrome` 0.2.167 → 0.2.168, `@opencues/dsh` 0.2.1 → 0.2.2)
+
+`Claude Code` was hardcoded into four prompt strings, and session cues now run on four hosts. An OpenCode, Gemini CLI or dsh transcript was introduced to the model as a Claude Code transcript — false on the wire, and a plausible source of bias when extracting decisions from a session that isn't one. The wording is now host-neutral (`an AI coding assistant session transcript`, `this coding session`); the file's own doc comments, which described the feature as Claude-Code-only throughout, were generalised with it.
+
+Benched before and after in the same session, because these prompts are bench-gated:
+
+| Bench | Before | After |
+|---|---|---|
+| session-contradiction (gemma) | recall 8/9 · restraint 9/9 · precision 8/8 | **identical** |
+| extraction, 6 sessions × 3 models | gold 24/24 each · e2e 92% / 96% / 92% | **identical**, marginally fewer input tokens |
+| ask-cues phase 2, 3 runs each | firing 3/3, 2/3, 3/3 · grounded 1/3, 0/2, 0/3 | firing 2/3, 3/3, 3/3 · grounded 0/2, 0/3, 0/3 — same distribution |
+
+The ask-cues run surfaced something unrelated and worth chasing separately: **grounding is 0–1 of 3 on both wordings**, against the 3/3 recorded when the feature shipped. Nothing here caused it — the baseline scores the same — but it matters more now that `ask-cues-mode` defaults on, so it wants its own look rather than a footnote.
+
 ### Changed — session-contradiction and ask-cues are ON by default (`@opencues/core` 0.47.0 → 0.48.0, `@opencues/runtime` 0.32.0 → 0.33.0, `@opencues/chrome` 0.2.166 → 0.2.167, `@opencues/dsh` 0.2.0 → 0.2.1)
 
 Both shipped off, which meant almost nobody had them. They are the two cues that know something the buffer doesn't — what you decided earlier in the session, and what question the sentence you're writing is quietly begging — and a cue class nobody enables is a cue class that may as well not exist.

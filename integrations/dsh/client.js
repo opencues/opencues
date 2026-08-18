@@ -5506,14 +5506,14 @@ Return ONLY JSON: {"superseded": ["<exact PRIOR statement to drop>", \u2026]}  (
 `).trim();if(t&&typeof t=="object"){let e=t;if(typeof e.text=="string")return e.text.trim()}return""}function Ga(t){return t?t.replace(/<(system-reminder|local-command-caveat|local-command-stdout|local-command-stderr|command-name|command-message|command-args|command-contents|user-prompt-submit-hook)>[\s\S]*?<\/\1>/gi," ").replace(/<\/?(command-name|command-message|command-args|local-command-caveat|local-command-stdout|local-command-stderr|system-reminder|user-prompt-submit-hook|command-contents)[^>]*>/gi," ").replace(/[ \t]{2,}/g," ").replace(/[ \t]+\n/g,`
 `).trim():""}function gy(t){let e=[];if(!t)return e;for(let n of t.split(`
 `)){let a=n.trim();if(!a)continue;let r;try{r=JSON.parse(a)}catch{continue}if(!r||typeof r!="object")continue;let i=r;if(i.type!=="user/message"&&i.type!=="assistant/message")continue;let o=i.data;if(!o)continue;let s=i.type==="user/message"?"user":"assistant";if(s==="user"&&o.source?.kind!=="user")continue;let c=s==="user"?o.content:o.message?.content,l=Ga(ku(c));l&&e.push({role:s,text:l})}return e}function ku(t){if(typeof t=="string")return t.trim();if(!Array.isArray(t))return"";let e=[];for(let n of t){if(!n||typeof n!="object")continue;let a=n;if(a.type==="text"&&typeof a.text=="string"){let r=a.text.trim();r&&e.push(r)}}return e.join(`
-`).trim()}oe.SESSION_COMMITMENTS_EXTRACT_SYSTEM=`You read a slice of a Claude Code (an AI coding assistant) session transcript and distil two things: (1) a one-line SUMMARY of what the developer is currently working on, and (2) their load-bearing COMMITMENTS \u2014 the decisions, constraints, and choices that, if silently contradicted later, would waste their time or undo their intent.
+`).trim()}oe.SESSION_COMMITMENTS_EXTRACT_SYSTEM=`You read a slice of an AI coding assistant session transcript and distil two things: (1) a one-line SUMMARY of what the developer is currently working on, and (2) their load-bearing COMMITMENTS \u2014 the decisions, constraints, and choices that, if silently contradicted later, would waste their time or undo their intent.
 
 Output ONLY a JSON object (no prose, no markdown fences):
 {"summary": "<one sentence, \u2264160 chars: what the developer is building / focused on right now>", "commitments": [ {"category": <one of stack|architecture|constraint|memory|scope|decision>, "statement": "<one terse assertion, up to 160 chars>"} ]}
 
 Output {"summary":"","commitments":[]} when the transcript states nothing durable.
 
-The SUMMARY is context for a writing assistant \u2014 plain, concrete, present-tense ("Building a session-contradiction cue for Claude Code; tuning the extraction prompt"). No secrets, no code.
+The SUMMARY is context for a writing assistant \u2014 plain, concrete, present-tense ("Building a session-contradiction cue; tuning the extraction prompt"). No secrets, no code.
 
 Each commitment: {"category": \u2026, "statement": \u2026} as above.
 
@@ -5540,13 +5540,13 @@ RULES (precision over recall \u2014 a wrong watchlist item is worse than a missi
 ${t.commitments.map(n=>`- ${n.statement}`).join(`
 `)}`),e.length===0?"":`
 
-SESSION CONTEXT (what the developer is doing in this Claude Code session \u2014 use it to make your question specific and to stay silent when the sentence is already fine given this context):
+SESSION CONTEXT (what the developer is doing in this coding session \u2014 use it to make your question specific and to stay silent when the sentence is already fine given this context):
 ${e.join(`
 `)}`}function by(t,e){return e==="off"||!t||t.commitments.length===0?"":`
 
-SESSION COMMITMENTS \u2014 decisions, constraints, and choices established earlier in THIS Claude Code session. Each is something the developer chose to do (or not do); silently going against one wastes their time.
+SESSION COMMITMENTS \u2014 decisions, constraints, and choices established earlier in THIS coding session. Each is something the developer chose to do (or not do); silently going against one wastes their time.
 ${t.commitments.map(a=>`- ${a.id} [${a.category}]: ${a.statement}`).join(`
-`)}`}});var Su=M(Tn=>{"use strict";E();Object.defineProperty(Tn,"__esModule",{value:!0});Tn.SessionContradictionSource=Tn.SESSION_CONTRADICTION_MATCH_SYSTEM=void 0;Tn.parseFlags=Eu;var ky=Oe(),Ey=Ha();Tn.SESSION_CONTRADICTION_MATCH_SYSTEM=`You are a fast checker inside a text editor. Your SYSTEM context contains a SESSION COMMITMENTS watchlist \u2014 decisions the developer made earlier in this Claude Code session. The USER message is a DRAFT message the developer is about to send. Find any sentence in the DRAFT that DIRECTLY CONTRADICTS a listed commitment \u2014 i.e. the draft asks for, or asserts, the OPPOSITE of what was decided.
+`)}`}});var Su=M(Tn=>{"use strict";E();Object.defineProperty(Tn,"__esModule",{value:!0});Tn.SessionContradictionSource=Tn.SESSION_CONTRADICTION_MATCH_SYSTEM=void 0;Tn.parseFlags=Eu;var ky=Oe(),Ey=Ha();Tn.SESSION_CONTRADICTION_MATCH_SYSTEM=`You are a fast checker inside a text editor. Your SYSTEM context contains a SESSION COMMITMENTS watchlist \u2014 decisions the developer made earlier in this coding session. The USER message is a DRAFT message the developer is about to send. Find any sentence in the DRAFT that DIRECTLY CONTRADICTS a listed commitment \u2014 i.e. the draft asks for, or asserts, the OPPOSITE of what was decided.
 
 Output ONLY a JSON array (no prose, no markdown fences). Output [] when nothing in the draft contradicts a commitment.
 

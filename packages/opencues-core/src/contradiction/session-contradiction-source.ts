@@ -29,7 +29,7 @@ import type { CueContext, CueResult, CueSource, CueSourceResult, HttpAdapter } f
 import { dispatchChat, type ProviderAdapter } from '../llm-provider';
 import { renderSessionCommitmentsCatalog, type SessionCommitmentsSnapshot } from '../session-commitments';
 
-export const SESSION_CONTRADICTION_MATCH_SYSTEM = `You are a fast checker inside a text editor. Your SYSTEM context contains a SESSION COMMITMENTS watchlist — decisions the developer made earlier in this Claude Code session. The USER message is a DRAFT message the developer is about to send. Find any sentence in the DRAFT that DIRECTLY CONTRADICTS a listed commitment — i.e. the draft asks for, or asserts, the OPPOSITE of what was decided.
+export const SESSION_CONTRADICTION_MATCH_SYSTEM = `You are a fast checker inside a text editor. Your SYSTEM context contains a SESSION COMMITMENTS watchlist — decisions the developer made earlier in this coding session. The USER message is a DRAFT message the developer is about to send. Find any sentence in the DRAFT that DIRECTLY CONTRADICTS a listed commitment — i.e. the draft asks for, or asserts, the OPPOSITE of what was decided.
 
 Output ONLY a JSON array (no prose, no markdown fences). Output [] when nothing in the draft contradicts a commitment.
 

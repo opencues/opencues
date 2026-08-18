@@ -1,6 +1,6 @@
 /**
- * Session-commitments — a REASONING catalog of the Claude-Code-developer
- * decisions worth guarding, distilled from the CC session transcript so a
+ * Session-commitments — a REASONING catalog of the coding-session decisions
+ * worth guarding, distilled from the host's session transcript so a
  * fast realtime matcher can flag when the user's DRAFT message contradicts
  * one of them.
  *
@@ -14,7 +14,7 @@
  *   - `session-contradiction-mode` (this file) is a WATCHLIST matcher — a slow
  *     producer distils the session into a commitments watchlist, and a fast
  *     matcher LLM authors the contradiction against it. The correction IS
- *     LLM-generated. Domain: CC-developer-productivity (stack / memory /
+ *     LLM-generated. Domain: developer productivity (stack / memory /
  *     compaction / architecture / scope decisions).
  *
  * The two-stage split is what makes the realtime half cheap: the matcher isn't
@@ -27,7 +27,7 @@
  * acting.
  *
  * Ingest, don't invoke: the `opencues extract-commitments` producer (kicked by
- * the CC statusline when the transcript grows) writes `session-commitments.json`
+ * each host's boot band when the transcript grows) writes `session-commitments.json`
  * on a cadence; this source only REFERENCES it in the keystroke path.
  *
  * Design: docs/architecture/session-contradiction.md.
@@ -35,7 +35,7 @@
 
 export type SessionContradictionMode = 'off' | 'on';
 
-/** The CC-developer categories a commitment can fall under. Kept as a loose
+/** The developer-concern categories a commitment can fall under. Kept as a loose
  *  union — an unknown category from a future producer is preserved verbatim
  *  and rendered as-is rather than dropped. */
 export type CommitmentCategory =
@@ -70,7 +70,7 @@ export interface SessionCommitmentsSnapshot {
   readonly summary?: string;
   /** ISO string — when the producer last distilled the transcript. */
   readonly ingestedAt?: string;
-  /** The CC session this was distilled from (for staleness / debugging). */
+  /** The host session this was distilled from (for staleness / debugging). */
   readonly sessionId?: string;
 }
 
@@ -303,7 +303,7 @@ export function extractTranscriptTurns(jsonl: string): TranscriptTurn[] {
  * where the assistant role value is `"gemini"` (not `"assistant"`), content is a
  * string or Gemini `{text}` parts, and control lines (`$rewindTo`, `$set`,
  * bare `{sessionId,...}` metadata) are interleaved and must be skipped. Only
- * user + gemini text is kept — same data-minimization as the CC parser.
+ * user + gemini text is kept — same data-minimization as the Claude Code parser.
  */
 export function extractGeminiTranscriptTurns(input: string): TranscriptTurn[] {
   const turns: TranscriptTurn[] = [];
@@ -388,7 +388,7 @@ export function stripHarnessFraming(text: string): string {
  *
  * DATA MINIMIZATION. dsh types the model's thinking as its own content block
  * (`{type:"reasoning"}`) alongside `{type:"text"}`, so `textFromContent` drops
- * it by construction — the same boundary the CC and Gemini parsers keep, where
+ * it by construction — the same boundary the Claude Code and Gemini parsers keep, where
  * only user + assistant PROSE reaches the commitments producer and tool I/O and
  * thinking never do.
  *
@@ -457,18 +457,18 @@ function textFromContent(content: unknown): string {
 
 /**
  * Stage-A extraction prompt — the SLOW producer call turns recent transcript
- * turns into the terse commitments watchlist. CC-developer-productivity focused;
+ * turns into the terse commitments watchlist. Developer-productivity focused;
  * precision over recall; data-minimizing (no secrets, no code — short decision
  * statements only).
  */
-export const SESSION_COMMITMENTS_EXTRACT_SYSTEM = `You read a slice of a Claude Code (an AI coding assistant) session transcript and distil two things: (1) a one-line SUMMARY of what the developer is currently working on, and (2) their load-bearing COMMITMENTS — the decisions, constraints, and choices that, if silently contradicted later, would waste their time or undo their intent.
+export const SESSION_COMMITMENTS_EXTRACT_SYSTEM = `You read a slice of an AI coding assistant session transcript and distil two things: (1) a one-line SUMMARY of what the developer is currently working on, and (2) their load-bearing COMMITMENTS — the decisions, constraints, and choices that, if silently contradicted later, would waste their time or undo their intent.
 
 Output ONLY a JSON object (no prose, no markdown fences):
 {"summary": "<one sentence, ≤160 chars: what the developer is building / focused on right now>", "commitments": [ {"category": <one of stack|architecture|constraint|memory|scope|decision>, "statement": "<one terse assertion, up to 160 chars>"} ]}
 
 Output {"summary":"","commitments":[]} when the transcript states nothing durable.
 
-The SUMMARY is context for a writing assistant — plain, concrete, present-tense ("Building a session-contradiction cue for Claude Code; tuning the extraction prompt"). No secrets, no code.
+The SUMMARY is context for a writing assistant — plain, concrete, present-tense ("Building a session-contradiction cue; tuning the extraction prompt"). No secrets, no code.
 
 Each commitment: {"category": …, "statement": …} as above.
 
@@ -529,7 +529,7 @@ export function renderSessionContextForAsk(snapshot: SessionCommitmentsSnapshot 
     parts.push(`Decisions/constraints so far:\n${snapshot.commitments.map((c) => `- ${c.statement}`).join('\n')}`);
   }
   if (parts.length === 0) return '';
-  return `\n\nSESSION CONTEXT (what the developer is doing in this Claude Code session — use it to make your question specific and to stay silent when the sentence is already fine given this context):\n${parts.join('\n')}`;
+  return `\n\nSESSION CONTEXT (what the developer is doing in this coding session — use it to make your question specific and to stay silent when the sentence is already fine given this context):\n${parts.join('\n')}`;
 }
 
 /**
@@ -544,6 +544,6 @@ export function renderSessionCommitmentsCatalog(
 ): string {
   if (mode === 'off' || !snapshot || snapshot.commitments.length === 0) return '';
   const lines = snapshot.commitments.map((c) => `- ${c.id} [${c.category}]: ${c.statement}`);
-  return `\n\nSESSION COMMITMENTS — decisions, constraints, and choices established earlier in THIS Claude Code session. Each is something the developer chose to do (or not do); silently going against one wastes their time.
+  return `\n\nSESSION COMMITMENTS — decisions, constraints, and choices established earlier in THIS coding session. Each is something the developer chose to do (or not do); silently going against one wastes their time.
 ${lines.join('\n')}`;
 }
