@@ -51,15 +51,27 @@ Measured effect (independent Claude judge, `tests/benchmarks/ask-cues/`):
 context lifts question quality, and it reliably suppresses questions the
 session already answers — restraint is 4/4 in every run of the current suite.
 
-**Grounding itself is the weak part, and the honest number is not the one this
-doc used to quote.** It claimed "every grounded question used it", from a
-measurement that no longer reproduces. Re-measured August 2026 over three runs
-on eight cases: the judge scores roughly **1 in 3**, and a deterministic check
-(does the output mention anything only the context could have supplied?) scores
-about **1 in 5**. Questions come back sensible but generic — "What specific
-performance improvement are you aiming for?" rather than something about *your*
-runtime. Improving that is open work; the bench now has the resolution to tell
-whether an attempt helped.
+**Grounding is the weak part, and the honest number is not the one this doc
+used to quote.** It claimed "every grounded question used it", from a
+measurement that no longer reproduces. Re-measured August 2026 on eight cases,
+driving the real source: a deterministic check (does the output mention
+anything only the context could have supplied?) scores about **1 in 3** —
+having been **zero** while the grounding block sat in the system message.
+
+August 2026 prompt work closed part of that gap. The dominant failure was the
+**echo** — your sentence handed back as a question ("Just hardcode the API key
+for now." → *"Do you want to hardcode the API key for now?"*). The prompt now
+names it, and requires the options to be materially different courses of
+action, with at least one built from your context when there is any. Phase-2
+question quality went 0.83 → 1.13 on an independent judge with no overlap
+between the two sets of runs, and context mentions 3/8 → 4/8 in every run,
+without asking any more often.
+
+Model choice is not the lever, so a provider switch will not help: `gpt-oss-120b`
+mentions the context 6/16 and `gemma-4-31b` 4/16, both asking on 8/8 cases;
+`claude-haiku` asks on only 1–2 of 8, going quiet rather than asking well. Some
+questions are still generic, and `tests/benchmarks/ask-cues/EXPERIMENTS.md`
+records seven prompt variants including the most promising unfinished lead.
 
 Because the session feeds both features, the producer runs when **either**
 `ask-cues-mode` **or** `session-contradiction-mode` is on.

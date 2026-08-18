@@ -16,9 +16,17 @@ const core = await import(path.join(R, 'packages/opencues-core/dist/index.js'));
 const { NodeHttpAdapter } = await import(path.join(R, 'packages/opencues-core/node-http-adapter.js'));
 const http = new NodeHttpAdapter({ maxSockets: 4, timeout: 30000 });
 
-const GEN = process.argv.includes('--gen') && process.argv[process.argv.indexOf('--gen') + 1] === 'haiku'
-  ? { provider: core.getProvider('anthropic'), model: 'claude-haiku-4-5-20251001', key: process.env.ANTHROPIC_API_KEY, name: 'anthropic/haiku' }
-  : { provider: core.getProvider('cerebras'), model: 'gpt-oss-120b', key: process.env.CEREBRAS_API_KEY, name: 'cerebras/gpt-oss-120b' };
+// Generators. `sonnet` exists to answer one question and only one: are generic
+// questions a MODEL ceiling or a PROMPT problem? Note it is also the judge, so
+// read its judge-scored numbers with that in mind — the DETERMINISTIC
+// "mentions context" signal is judge-free and is the fair comparison for it.
+// `gemma` is the live default on this machine, so it is the number that
+// actually describes what users get.
+const genArg = process.argv.includes('--gen') ? process.argv[process.argv.indexOf('--gen') + 1] : '';
+const GEN = genArg === 'haiku'  ? { provider: core.getProvider('anthropic'), model: 'claude-haiku-4-5-20251001', key: process.env.ANTHROPIC_API_KEY, name: 'anthropic/haiku' }
+          : genArg === 'gemma'  ? { provider: core.getProvider('cerebras'), model: 'gemma-4-31b', key: process.env.CEREBRAS_API_KEY, name: 'cerebras/gemma-4-31b' }
+          : genArg === 'sonnet' ? { provider: core.getProvider('anthropic'), model: 'claude-sonnet-4-6', key: process.env.ANTHROPIC_API_KEY, name: 'anthropic/sonnet (judge-family — deterministic metric only)' }
+          :                       { provider: core.getProvider('cerebras'), model: 'gpt-oss-120b', key: process.env.CEREBRAS_API_KEY, name: 'cerebras/gpt-oss-120b' };
 const JUDGE = { provider: core.getProvider('anthropic'), model: 'claude-sonnet-4-6', key: process.env.ANTHROPIC_API_KEY };
 
 // shouldAsk = a thoughtful editor would genuinely want to raise a question
@@ -126,14 +134,46 @@ async function mapLimit(items, n, fn) {
 }
 
 async function evalCase(c, snap) {
-  const ctxBlock = snap ? core.renderSessionContextForAsk(snap) : '';
-  const genRaw = await chat(GEN, `${core.ASK_USER_QUESTION_SYSTEM}${ctxBlock}`, `SELECTION: ${c.s}`, 500);
-  const q = core.parseToolQuestion(genRaw);
+  // Drive the REAL ToolPromptCueSource, not a copy of what it is believed to do.
+  //
+  // This used to rebuild the call by hand — `chat(GEN, SYSTEM + ctxBlock,
+  // "SELECTION: …")` — which pinned the context into the SYSTEM message
+  // forever, independent of the source. When the source moved grounding to the
+  // USER message, the bench went on measuring the old placement, and an A/B of
+  // the two placements returned two indistinguishable arms because it had been
+  // running the SAME configuration twice. A bench that reimplements its subject
+  // measures the reimplementation.
+  const src = new core.ToolPromptCueSource({
+    httpAdapter: http, provider: GEN.provider, model: GEN.model, apiKey: GEN.key,
+  });
+  let q = null;
+  try {
+    const res = await src.getCues({
+      text: c.s, words: c.s.split(/\s+/).filter(Boolean), cursor: c.s.length,
+      ...(snap ? { sessionCommitments: snap } : {}),
+    });
+    q = res.results[0]?.metadata?.toolQuestion ?? null;
+  } catch (e) {
+    // A transient provider error (anthropic "Overloaded") used to kill the whole
+    // run on the first case and print an empty report — five runs lost to it in
+    // one sitting, each looking like a result rather than an outage. Count it
+    // and carry on.
+    return { c, asked: false, q: null, errored: true, error: String(e?.message ?? e).slice(0, 80),
+             warranted: false, quality: null, grounded: null, lexical: null };
+  }
   const asked = !!(q && q.question && q.options.length > 0);
   const outStr = asked ? `Q: ${q.question}\nOPTIONS: ${q.options.map(o => o.label).join(' | ')}` : 'ABSTAINED';
   const ctxForJudge = snap ? `SESSION CONTEXT:\n${core.renderSessionContextForAsk(snap).trim()}\n\n` : '';
-  const jRaw = await chat(JUDGE, JUDGE_SYS, `${ctxForJudge}SELECTION: ${c.s}\n\nASSISTANT OUTPUT:\n${outStr}`, 200);
-  const j = parseObj(jRaw) || {};
+  let j = {};
+  try {
+    const jRaw = await chat(JUDGE, JUDGE_SYS, `${ctxForJudge}SELECTION: ${c.s}\n\nASSISTANT OUTPUT:\n${outStr}`, 200);
+    j = parseObj(jRaw) || {};
+  } catch (e) {
+    // Judge unavailable: the generator's answer still stands, and the
+    // DETERMINISTIC signal below needs no judge at all — so report the case
+    // rather than losing it.
+    j = { judgeError: String(e?.message ?? e).slice(0, 80) };
+  }
   return { c, asked, q, warranted: !!j.warranted, quality: j.quality, grounded: j.grounded, reason: j.reason,
            lexical: asked ? mentionsContext(q) : null };
 }
@@ -163,6 +203,8 @@ function report(title, rows, wantGround) {
     console.log(`MENTIONS CONTEXT (deterministic):  ${lN ? `${lY}/${lN}  (${(100 * lY / lN).toFixed(0)}%)` : 'n/a'}`);
   }
   console.log(`JUDGE agrees w/ my labels:       ${agree}/${rows.length}  (${(100 * agree / rows.length).toFixed(0)}%)`);
+  const errs = rows.filter((r) => r.errored);
+  if (errs.length) console.log(`⚠ ${errs.length}/${rows.length} case(s) FAILED to generate — treat every number above as partial: ${errs[0].error}`);
 }
 
 console.log(`\nask-cues bench — generator ${GEN.name}, judge anthropic/${JUDGE.model}`);

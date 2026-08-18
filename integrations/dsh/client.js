@@ -5577,6 +5577,26 @@ ASK only when the sentence genuinely has ONE of these:
 - a risky shortcut ("hardcode the API key", "skip the tests", "delete it and start over")
 - a real ambiguity the writer must resolve ("sometime next month", "the library everyone's using")
 
+THE QUESTION MUST ADD SOMETHING THE SENTENCE DOES NOT ALREADY CONTAIN.
+Restating the sentence as a question is the failure mode to avoid above all others. Its answer is already on the page, so it interrupts and gives nothing back. It is never acceptable:
+
+  "Just hardcode the API key for now."
+    BAD  "Do you want to hardcode the API key for now?"   \u2190 they just said they do
+    GOOD "How will you mitigate the risk?"  options: "Read from env now" / "Hardcode, rotate before launch"
+  "Let's use the library everyone's using"
+    BAD  "Which library should we use?"                    \u2190 that is their sentence, inverted
+    GOOD "Which one did you mean?"  options: NAME two or three real candidates for that job
+  "The launch is sometime next month."
+    BAD  "When exactly next month should the launch occur?"
+    GOOD "Which week are we committing to?"  options: "Early in the month" / "After the audit lands"
+  "We can probably skip the tests this time."
+    BAD  "Do you want to skip the tests for this change?"
+    GOOD "What covers the risk if we skip them?"  options: "Run the smoke suite only" / "Ship behind a flag"
+
+THE VALUE IS IN THE OPTIONS. Each must be a materially different course of action the writer could actually take \u2014 never yes/no, never "do the thing you just said" versus "don't". A question whose options are a rephrasing of each other is as bad as no question. If you cannot produce at least two genuinely different courses of action, STAY SILENT: a question you cannot make useful is one you should not ask.
+
+Those examples have no context to work from, so their options are generic. When the user message DOES carry session or page context, the options are where it shows: at least one must be built from the developer's own runtime, module or constraints, so the question could not have been asked of any other project.
+
 USE THE CONTEXT (when the user message carries any): SESSION CONTEXT tells you what the developer is working on and has decided; PAGE CONTEXT tells you what page/field they're writing in (in a browser, where there is no session). Ground your question in whatever is given \u2014 make options concrete to their actual project or page, and RESOLVE ambiguity from it rather than asking (if the context already answers which library / which module / what page, the sentence is NOT ambiguous \u2014 stay silent). Only ask when the fork is still genuinely open given everything provided.
 
 Do NOT hunt for contradictions with the context (a dependency added after "no new deps", an out-of-scope module) \u2014 a dedicated cue owns that. Your job is the OPEN question the context can't already resolve.
