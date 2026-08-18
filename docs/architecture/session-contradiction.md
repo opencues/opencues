@@ -213,8 +213,11 @@ of a transcript, skipping Stage A entirely.
   logs a warning instead of silently starving session decisions.
 - **This is advisory, not enforcement**: a passive ⚠ cue, dismissible like any
   other. For hard gates use CI. It polices the PROSE/decision layer.
-- **Hosts**: native bands (via the ingest). dsh's node half serves the scoped
-  snapshot only and does not read `RULES.md` yet; chrome has no filesystem.
+- **Hosts**: native bands (via the ingest) **and dsh** — its node half merges
+  the same two scopes into the `/opencues/session-commitments` route using the
+  same core parser + merge, with PROJECT scope keyed to the SESSION's workspace
+  (`lastSessionCwd`), never the dsh server's own cwd. Chrome remains out: no
+  filesystem, deliberately not bridged.
 - **Threat note**: a project-level `RULES.md` means a cloned repo can put
   entries in the matcher's system prompt. Same class as the watchlist itself
   (security-audit #31): no side-effect channel exists, so worst-case injection
