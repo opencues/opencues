@@ -23,7 +23,8 @@ const http = new NodeHttpAdapter({ maxSockets: 4, timeout: 30000 });
 // `gemma` is the live default on this machine, so it is the number that
 // actually describes what users get.
 const genArg = process.argv.includes('--gen') ? process.argv[process.argv.indexOf('--gen') + 1] : '';
-const GEN = genArg === 'haiku'  ? { provider: core.getProvider('anthropic'), model: 'claude-haiku-4-5-20251001', key: process.env.ANTHROPIC_API_KEY, name: 'anthropic/haiku' }
+const GEN = genArg === 'groq'   ? { provider: core.getProvider('groq'), model: 'openai/gpt-oss-120b', key: process.env.GROQ_API_KEY, name: 'groq/gpt-oss-120b' }
+          : genArg === 'haiku'  ? { provider: core.getProvider('anthropic'), model: 'claude-haiku-4-5-20251001', key: process.env.ANTHROPIC_API_KEY, name: 'anthropic/haiku' }
           : genArg === 'gemma'  ? { provider: core.getProvider('cerebras'), model: 'gemma-4-31b', key: process.env.CEREBRAS_API_KEY, name: 'cerebras/gemma-4-31b' }
           : genArg === 'sonnet' ? { provider: core.getProvider('anthropic'), model: 'claude-sonnet-4-6', key: process.env.ANTHROPIC_API_KEY, name: 'anthropic/sonnet (judge-family — deterministic metric only)' }
           :                       { provider: core.getProvider('cerebras'), model: 'gpt-oss-120b', key: process.env.CEREBRAS_API_KEY, name: 'cerebras/gpt-oss-120b' };
@@ -112,6 +113,123 @@ function mentionsContext(q) {
   return CONTEXT_ONLY_TERMS.some((t) => hay.includes(t));
 }
 
+// PHASE 3 — the sentence sits in a DOCUMENT.
+//
+// Phases 1 and 2 hand over one sentence, which is what the source used to send.
+// That makes half of these questions unanswerable in principle: the writer very
+// often answers their own vagueness in the next line, and a cue that asks
+// anyway is worse than one that says nothing. `silentBecauseDoc: true` marks
+// the cases where the document ALREADY resolves the ambiguity — those are the
+// ones that decide whether reading the document is worth its tokens.
+const DOC_CASES = [
+  // — the document answers it; asking is noise —
+  { doc: "We should use the library everyone's using for schema validation. I'll go with Zod since we already depend on it for the API types.",
+    target: "We should use the library everyone's using for schema validation.", ask: false, silentBecauseDoc: true },
+  { doc: "The new API is way faster than the old one. p50 dropped from 240ms to 38ms across the load test, measured over 10k requests.",
+    target: "The new API is way faster than the old one.", ask: false, silentBecauseDoc: true },
+  { doc: "The launch is sometime next month. We are committing to the 14th, straight after the security audit signs off.",
+    target: "The launch is sometime next month.", ask: false, silentBecauseDoc: true },
+  { doc: "I'll deal with the error handling later. Until then every failure crashes loudly and pages on-call, which is what we want while it is behind the flag.",
+    target: "I'll deal with the error handling later.", ask: false, silentBecauseDoc: true },
+  // — the document does NOT answer it; the fork is genuinely open —
+  { doc: "We're moving the billing module onto the new queue this week. I'll deal with the error handling later. The cutover is Friday and finance is watching the first run.",
+    target: "I'll deal with the error handling later.", ask: true },
+  { doc: "The results were basically perfect. Ship it Monday and we can write the post afterwards.",
+    target: "The results were basically perfect.", ask: true },
+  { doc: "Auth is the last piece before the beta. Just hardcode the API key for now. Then we can get the demo in front of the design partners.",
+    target: "Just hardcode the API key for now.", ask: true },
+  { doc: "The dashboard rewrite is nearly done. We should make the app more user-friendly. Design has not looked at it since the first sketch.",
+    target: "We should make the app more user-friendly.", ask: true },
+];
+
+// PHASE 4 — the WHOLE DRAFT, which is the unit the user actually experiences.
+//
+// Phases 1-3 ask "given this sentence, is the question good?". That cannot
+// compare a per-sentence trigger against a per-draft one, and per-draft is the
+// change being considered: today the source fires on EVERY sentence, because
+// the sentence is a stand-in for a selection no host wires, and because each
+// option's `apply` must replace a span. So the unit of the QUESTION is welded
+// to the unit of the EDIT.
+//
+// This phase walks the cursor through a draft sentence by sentence, exactly as
+// a writer does, and collects everything the user would be shown across the
+// whole piece. The metrics are what a person would actually notice: how many
+// times was I interrupted, and how many of those were worth it.
+//
+// ONE source instance per draft, so the production cache behaves as it does in
+// a real session rather than being reset per sentence.
+const DRAFTS = [
+  { name: 'PR description', text:
+    "This PR moves the cache onto the new queue. The new API is way faster than the old one. " +
+    "I'll deal with the error handling later. We should probably add some kind of metrics. " +
+    "Ship it Monday." },
+  { name: 'design note', text:
+    "We need to pick a store for the session data. Let's use the library everyone's using. " +
+    "It should be fast enough for now. The launch is sometime next month. " +
+    "I'll write the migration once that's settled." },
+  { name: 'message to a colleague', text:
+    "Thanks for the review! I fixed the two things you flagged. " +
+    "The results were basically perfect after that. Just hardcode the API key for now so we can demo. " +
+    "We can probably skip the tests this time." },
+];
+
+// The SAME three themes at realistic document length. The short versions above
+// are 5 sentences; a real PR description, design note or message is 20-30. Two
+// things only show up at this length:
+//
+//   1. A per-sentence trigger scales its interruptions with the DOCUMENT, not
+//      with the number of real decisions in it. Whatever the short version
+//      costs, multiply it.
+//   2. `renderDocumentWindow` is bounded (1200 chars). In a long body the
+//      sentence that ANSWERS a question can fall outside the window, so the
+//      "stay silent, the draft already answers it" property may quietly stop
+//      working at exactly the lengths people actually write.
+//
+// The load-bearing sentences from the short drafts are kept VERBATIM so the two
+// lengths are comparable.
+const LONG_DRAFTS = [
+  { name: 'PR description (full)', text:
+    "This PR moves the session cache off the in-process map and onto the new queue. " +
+    "The motivation is the incident last Thursday, where a single node held stale entries for forty minutes after a deploy. " +
+    "Reviewers should start with the queue adapter, which is the only genuinely new code here. " +
+    "Everything under lib/cache is a move with the imports rewritten. " +
+    "The new API is way faster than the old one. " +
+    "p50 on the read path went from 240ms to 38ms across the load test, measured over 10k requests on the staging box. " +
+    "Writes are unchanged and still go through the same validation. " +
+    "I kept the old interface intact so nothing downstream needs touching in this PR. " +
+    "There is a compatibility shim in lib/cache/legacy.ts that we can delete once the billing service migrates. " +
+    "I'll deal with the error handling later. " +
+    "We should probably add some kind of metrics. " +
+    "The test suite covers the adapter and the shim, though not the failure paths yet. " +
+    "I have not touched the deploy config; that lands in a follow-up once we agree the rollout order. " +
+    "Ship it Monday." },
+  { name: 'design note (full)', text:
+    "We need to pick a store for the session data before the beta. " +
+    "Right now everything lives in memory, which is fine for one node and wrong for three. " +
+    "The access pattern is read-heavy: roughly fifty reads per write, with the write always coming from the auth path. " +
+    "Sessions expire after twelve hours and we never need to query across them. " +
+    "So the requirements are modest, and almost anything would work technically. " +
+    "Let's use the library everyone's using. " +
+    "It should be fast enough for now. " +
+    "The operational cost matters more than the raw latency here, since nobody is paged for a 5ms difference. " +
+    "We already run Postgres for the main application data, so an extra table there costs us no new infrastructure. " +
+    "The launch is sometime next month. " +
+    "I'll write the migration once that's settled. " +
+    "If we do go with a separate store, someone needs to own its backups, and that is not currently anyone's job." },
+  { name: 'message to a colleague (full)', text:
+    "Thanks for the review! " +
+    "I fixed the two things you flagged, and pulled the retry logic out into its own function while I was in there. " +
+    "The nested version was genuinely hard to follow and you were right to call it out. " +
+    "I also added the test case you suggested for the empty-response path. " +
+    "The results were basically perfect after that. " +
+    "One thing I did not do: the config refactor you mentioned at the end. " +
+    "It touches the deploy path and I would rather not put that in the same PR as a behaviour change. " +
+    "Just hardcode the API key for now so we can demo. " +
+    "We can probably skip the tests this time. " +
+    "The demo is Thursday and design partners are in the room, so I care more about it working than about it being tidy. " +
+    "Happy to do a proper pass next week if you think that is the wrong call." },
+];
+
 const JUDGE_SYS = `You are a strict writing editor evaluating an assistant that attaches an OPTIONAL inline question to a sentence a user is writing. It should raise a question ONLY for a genuine, useful fork — a vague/risky claim, an ambiguity, a real decision, or a tension with what the developer already decided (SESSION CONTEXT) — and STAY SILENT when the sentence is clear/fine or already consistent with the context. Over-asking is a failure.
 
 You get optional SESSION CONTEXT, a SELECTION, and the assistant's OUTPUT (a question with options, or ABSTAINED).
@@ -148,8 +266,13 @@ async function evalCase(c, snap) {
   });
   let q = null;
   try {
+    // A doc case sends the whole document with the cursor inside the target
+    // sentence — the shape the real host produces. A plain case is its own
+    // document, exactly as before.
+    const text = c.doc ?? c.s;
+    const at = c.doc ? c.doc.indexOf(c.target) + Math.max(1, Math.floor(c.target.length / 2)) : c.s.length;
     const res = await src.getCues({
-      text: c.s, words: c.s.split(/\s+/).filter(Boolean), cursor: c.s.length,
+      text, words: text.split(/\s+/).filter(Boolean), cursor: at,
       ...(snap ? { sessionCommitments: snap } : {}),
     });
     q = res.results[0]?.metadata?.toolQuestion ?? null;
@@ -164,9 +287,10 @@ async function evalCase(c, snap) {
   const asked = !!(q && q.question && q.options.length > 0);
   const outStr = asked ? `Q: ${q.question}\nOPTIONS: ${q.options.map(o => o.label).join(' | ')}` : 'ABSTAINED';
   const ctxForJudge = snap ? `SESSION CONTEXT:\n${core.renderSessionContextForAsk(snap).trim()}\n\n` : '';
+  const docForJudge = c.doc ? `DOCUMENT:\n${c.doc}\n\n` : '';
   let j = {};
   try {
-    const jRaw = await chat(JUDGE, JUDGE_SYS, `${ctxForJudge}SELECTION: ${c.s}\n\nASSISTANT OUTPUT:\n${outStr}`, 200);
+    const jRaw = await chat(JUDGE, JUDGE_SYS, `${ctxForJudge}${docForJudge}SELECTION: ${c.target ?? c.s}\n\nASSISTANT OUTPUT:\n${outStr}`, 200);
     j = parseObj(jRaw) || {};
   } catch (e) {
     // Judge unavailable: the generator's answer still stands, and the
@@ -190,12 +314,25 @@ function report(title, rows, wantGround) {
     if (wantGround && r.c.ground && r.asked) { gN++; if (r.grounded) gY++; }
     const flag = (r.c.ask === r.asked) ? '  ' : '! ';
     const g = (wantGround && r.asked) ? (r.grounded ? ' [grounded]' : ' [generic] ') : '';
-    console.log(`${flag}[${r.c.ask ? 'ASK ' : 'skip'}->${r.asked ? 'asked ' : 'silent'}] q${typeof r.quality === 'number' ? r.quality : '.'}${g} | ${r.c.s.slice(0, 38).padEnd(38)} | ${r.asked ? r.q.question.slice(0, 44) : '-'}`);
+    console.log(`${flag}[${r.c.ask ? 'ASK ' : 'skip'}->${r.asked ? 'asked ' : 'silent'}] q${typeof r.quality === 'number' ? r.quality : '.'}${g} | ${(r.c.target ?? r.c.s).slice(0, 38).padEnd(38)} | ${r.asked ? r.q.question.slice(0, 44) : '-'}`);
   }
   console.log('-'.repeat(78));
   console.log(`FIRING (should-ask -> asked):    ${fireOnAsk}/${askTot}  (${askTot ? (100 * fireOnAsk / askTot).toFixed(0) : '-'}%)`);
   console.log(`RESTRAINT (fine text -> silent): ${silentOnNo}/${noTot}  (${noTot ? (100 * silentOnNo / noTot).toFixed(0) : '-'}%)`);
   console.log(`QUALITY (independent judge):     ${qN ? (qSum / qN).toFixed(2) : 'n/a'} / 2  (n=${qN})`);
+  // THE HEADLINE METRIC. Of the questions the user is actually shown, how many
+  // are worth the interruption (judge score 2)?
+  //
+  // FIRING was the de-facto target before this, and it was pulling the wrong
+  // way: scoring 12/12 as success demands a question for every flagged
+  // sentence, and a forced question is precisely how you get a 0 or a 1. A
+  // feature that asks four times and is useful four times beats one that asks
+  // twenty times and is useful four times — the second one trains you to
+  // ignore it. Optimise USEFUL, read COVERAGE as the cost.
+  const asked = rows.filter((r) => r.asked).length;
+  const useful = rows.filter((r) => r.asked && r.quality === 2).length;
+  console.log(`USEFUL (of what it showed you):  ${asked ? `${useful}/${asked}  (${(100 * useful / asked).toFixed(0)}%)` : 'n/a'}   ← the one that matters`);
+  console.log(`COVERAGE (asked / should-ask):   ${askTot ? `${fireOnAsk}/${askTot}` : 'n/a'}   (low is fine IF useful is high)`);
   if (wantGround) console.log(`GROUNDED (used the context):     ${gN ? `${gY}/${gN}  (${(100 * gY / gN).toFixed(0)}%)` : 'n/a'}`);
   if (wantGround) {
     const lN = rows.filter((r) => r.c.ground && r.asked).length;
@@ -212,4 +349,92 @@ const isoRows = await mapLimit(CASES, 4, (c) => evalCase(c, undefined));
 report('PHASE 1 — sentence alone (no session context)', isoRows, false);
 const ctxRows = await mapLimit(CTX_CASES, 4, (c) => evalCase(c, CTX));
 report('PHASE 2 — with SESSION CONTEXT (Bun cache, no new deps, cache-module only)', ctxRows, true);
+
+const docRows = await mapLimit(DOC_CASES, 4, (c) => evalCase(c, undefined));
+report('PHASE 3 — the sentence inside a DOCUMENT', docRows, false);
+{
+  // The headline for phase 3: when the document already answers the question,
+  // does it hold its tongue? This is the number that says whether sending the
+  // surrounding text was worth it.
+  const dodgy = docRows.filter((r) => r.c.silentBecauseDoc);
+  const quiet = dodgy.filter((r) => !r.asked).length;
+  console.log(`SILENT WHEN THE DOC ANSWERS IT: ${quiet}/${dodgy.length}  (${dodgy.length ? (100 * quiet / dodgy.length).toFixed(0) : '-'}%)   ← the point of sending the document`);
+}
 console.log('');
+
+
+// ── PHASE 4 — whole-draft interruption load ─────────────────────────────────
+const DRAFT_JUDGE_SYS = `You judge whether an inline question was worth interrupting a writer with, GIVEN THE WHOLE DRAFT they are writing.
+
+Return ONLY JSON: {"quality": <0|1|2>, "reason": "<up to 14 words>"}
+- 2 = genuinely useful: it surfaces an open decision or a real risk the draft leaves unresolved.
+- 1 = ok but skippable.
+- 0 = not worth it: the draft already answers it, or it restates the sentence, or it is decoration.
+Judge against the WHOLE draft, not the single sentence — a question answered anywhere in the draft is a 0.`;
+
+async function runDraft(d) {
+  // One source for the whole draft: the production cache is per-source, so a
+  // fresh instance per sentence would hide any re-asking it prevents.
+  const src = new core.ToolPromptCueSource({
+    httpAdapter: http, provider: GEN.provider, model: GEN.model, apiKey: GEN.key,
+  });
+  const words = d.text.split(/\s+/).filter(Boolean);
+  // Cursor lands mid-sentence, once per sentence, in writing order.
+  const stops = [];
+  const re = /[^.!?]+[.!?]+/g;
+  let m;
+  while ((m = re.exec(d.text)) !== null) stops.push(m.index + Math.floor(m[0].length / 2));
+
+  const shown = [];
+  for (const at of stops) {
+    let q = null;
+    try {
+      const res = await src.getCues({ text: d.text, words, cursor: at });
+      q = res.results[0]?.metadata?.toolQuestion ?? null;
+    } catch { /* transient: counts as no question */ }
+    if (q && q.question && q.options?.length) shown.push(q);
+  }
+
+  // Judge each distinct question against the whole draft.
+  const judged = await mapLimit(shown, 3, async (q) => {
+    try {
+      const raw = await chat(JUDGE, DRAFT_JUDGE_SYS,
+        `DRAFT:\n${d.text}\n\nQUESTION SHOWN:\n${q.question}\nOPTIONS: ${q.options.map((o) => o.label).join(' | ')}`, 200);
+      return parseObj(raw)?.quality ?? 0;
+    } catch { return 0; }
+  });
+  return { name: d.name, sentences: stops.length, shown: shown.length, useful: judged.filter((x) => x === 2).length, questions: shown };
+}
+
+console.log(`\nPHASE 4 — WHOLE DRAFT (what a writer actually experiences)\n${'='.repeat(78)}`);
+const draftRows = [];
+for (const d of DRAFTS) draftRows.push(await runDraft(d));
+let tS = 0, tShown = 0, tUseful = 0;
+for (const r of draftRows) {
+  tS += r.sentences; tShown += r.shown; tUseful += r.useful;
+  console.log(`  ${r.name.padEnd(24)} ${r.sentences} sentences -> ${r.shown} question(s) shown, ${r.useful} useful`);
+  for (const q of r.questions) console.log(`      · ${q.question.slice(0, 62)}`);
+}
+console.log('-'.repeat(78));
+console.log(`INTERRUPTIONS PER DRAFT:  ${(tShown / draftRows.length).toFixed(1)}  (across ${tS} sentences in ${draftRows.length} drafts)`);
+console.log(`USEFUL PER DRAFT:         ${(tUseful / draftRows.length).toFixed(1)}`);
+console.log(`NOISE (shown, not useful): ${tShown - tUseful}/${tShown}  (${tShown ? (100 * (tShown - tUseful) / tShown).toFixed(0) : '-'}%)   <- what a per-sentence trigger costs`);
+
+// ── PHASE 4b — the same themes at full document length ─────────────────────
+console.log(`\nPHASE 4b — SAME THEMES, FULL-LENGTH BODIES\n${'='.repeat(78)}`);
+const longRows = [];
+for (const d of LONG_DRAFTS) longRows.push(await runDraft(d));
+let lS = 0, lShown = 0, lUseful = 0;
+for (const r of longRows) {
+  lS += r.sentences; lShown += r.shown; lUseful += r.useful;
+  console.log(`  ${r.name.padEnd(28)} ${r.sentences} sentences -> ${r.shown} question(s) shown, ${r.useful} useful`);
+  for (const q of r.questions) console.log(`      · ${q.question.slice(0, 62)}`);
+}
+console.log('-'.repeat(78));
+console.log(`INTERRUPTIONS PER DRAFT:  ${(lShown / longRows.length).toFixed(1)}  (across ${lS} sentences in ${longRows.length} drafts)`);
+console.log(`USEFUL PER DRAFT:         ${(lUseful / longRows.length).toFixed(1)}`);
+console.log(`NOISE (shown, not useful): ${lShown - lUseful}/${lShown}  (${lShown ? (100 * (lShown - lUseful) / lShown).toFixed(0) : '-'}%)`);
+console.log('');
+console.log(`SCALING  short: ${tS} sentences -> ${tShown} questions (${(tShown / tS).toFixed(2)} per sentence, ${tUseful} useful)`);
+console.log(`         full : ${lS} sentences -> ${lShown} questions (${(lShown / lS).toFixed(2)} per sentence, ${lUseful} useful)`);
+console.log(`         If questions/sentence holds steady, interruptions scale with DOCUMENT LENGTH rather than with the number of real decisions.`);
