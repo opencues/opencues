@@ -130,6 +130,27 @@ contradiction-cues-mode: on
 # scopes, so nothing fires on casual surfaces it opts out of. Set to `off` to
 # disable the class.
 sentence-cues-mode: on
+# session-contradiction-mode — ON by default. Flags a draft that goes against a
+# decision you made earlier in THIS session ("runtime is Bun, not Node" agreed
+# an hour ago, "switch this to node" typed now). Passive — Ctrl+Alt+up applies
+# the reconciled rewrite, nothing is edited without a keystroke.
+#
+# Worth knowing what it costs, because it is the one cue class that reads your
+# session rather than your buffer: a background producer distils the session
+# transcript into a short watchlist of decisions, and that distillation is an
+# LLM call to your cues-bucket provider. Only user + assistant PROSE reaches
+# it — tool output, tool input and thinking are dropped before anything is
+# sent — and the watchlist itself is a handful of one-line decisions, not the
+# transcript. Inert on hosts with no session transcript (chrome, shell), so
+# there it costs nothing at all. Set to `off` if you would rather no part of
+# the session was read.
+session-contradiction-mode: on
+# ask-cues-mode — ON by default. Turns the sentence at your cursor into a
+# question with cyclable options when there is one worth asking ("Substantiate
+# the speed claim with data or qualify it?"). The prompt makes silence the
+# default, so most sentences draw nothing. One LLM call per new sentence,
+# cached. Set to `off` to disable.
+ask-cues-mode: on
 
 # integration-weave-mode — let a blank with `integration-weave: true` weave
 # its `integration:` output into the surrounding prose with one LLM call,

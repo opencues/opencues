@@ -124,10 +124,20 @@ module.exports = async function extractCommitments(argv, ctx) {
       // The distilled session feeds BOTH session-contradiction (the watchlist)
       // AND ask-cues (the summary + decisions as grounding context), so run the
       // producer when EITHER is on.
-      const sc = (scalars.get('session-contradiction-mode') || 'off').toLowerCase() === 'on';
-      const ac = (scalars.get('ask-cues-mode') || 'off').toLowerCase() === 'on';
+      // Both default ON, so an ABSENT scalar means run — matching
+      // `resolver.ts`'s `!== 'off'` and `config-loader.ts`'s DEFAULT_STATE.
+      // This is the THIRD independent read of these two scalars; they must
+      // agree or the feature half-works in a way nothing reports. It has
+      // already half-worked once: the resolver forwarded a watchlist to a
+      // source it had not built.
+      const sc = (scalars.get('session-contradiction-mode') || 'on').toLowerCase() !== 'off';
+      const ac = (scalars.get('ask-cues-mode') || 'on').toLowerCase() !== 'off';
       if (!sc && !ac) return done({ skipped: true, reason: 'session-contradiction + ask-cues both off' });
-    } catch { /* unreadable settings → treat as off */ return done({ skipped: true, reason: 'settings unreadable' }); }
+      // An unreadable settings file is NOT consent to read the session. The
+      // default applies to a file that simply doesn't mention these scalars,
+      // not to one we failed to parse — a user whose `off` we cannot see is a
+      // user whose `off` we must assume.
+    } catch { return done({ skipped: true, reason: 'settings unreadable' }); }
   }
 
   // Debounce marker (path scoped above).

@@ -183,10 +183,13 @@ one), so it's fenced:
 - **Egress note.** The watchlist (distilled session decisions) crosses to the
   cues-bucket provider — a different provider than the CC model the user is
   already talking to. This is the same trust class as sentence-cues (which
-  already send the user's prose to the cues bucket). Off by default; enabling
-  it is the consent. The watchlist is NOT PII-dehydrated in v1 (these are
-  project decisions, not personal data); revisit before broadening the
-  extraction to personal or credential-bearing content.
+  already send the user's prose to the cues bucket). **ON by default as of
+  core 0.48.0**, so the opt-in consent gate no longer bounds this — the parse
+  boundary does, and it is now the whole of the defence rather than a second
+  layer behind a toggle. Weigh any change to what the producer reads against
+  that. The watchlist is NOT PII-dehydrated in v1 (these are project decisions,
+  not personal data); revisit before broadening the extraction to personal or
+  credential-bearing content.
 
 ## Where to touch
 

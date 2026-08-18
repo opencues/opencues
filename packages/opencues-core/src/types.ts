@@ -168,7 +168,7 @@ export interface CueContext {
 
   /**
    * Ingested session-commitments watchlist. Populated by the runtime when
-   * `session-contradiction-mode: on` (off by default). A REASONING catalog:
+   * `session-contradiction-mode` (ON by default). A REASONING catalog:
    * SessionContradictionSource matches the draft buffer against these
    * developer-decisions and flags a direct contradiction as a passive cue.
    * The producer (`opencues extract-commitments`, kicked by the CC statusline)

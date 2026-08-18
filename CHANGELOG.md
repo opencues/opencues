@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — session-contradiction and ask-cues are ON by default (`@opencues/core` 0.47.0 → 0.48.0, `@opencues/runtime` 0.32.0 → 0.33.0, `@opencues/chrome` 0.2.166 → 0.2.167, `@opencues/dsh` 0.2.0 → 0.2.1)
+
+Both shipped off, which meant almost nobody had them. They are the two cues that know something the buffer doesn't — what you decided earlier in the session, and what question the sentence you're writing is quietly begging — and a cue class nobody enables is a cue class that may as well not exist.
+
+`ask-cues-mode` is the easy half: its prompt makes silence the default (bench: restraint 8/8 after that fix), it is one cached LLM call per new sentence, and it edits nothing without a keystroke.
+
+**`session-contradiction-mode` deserves a straight answer about what it now does unasked**, because it is the one cue class that reads more than your buffer. A background producer distils your session transcript into a short watchlist of decisions, and that distillation is an LLM call to your cues-bucket provider. What bounds it:
+
+- **Only user and assistant PROSE is ever read.** Tool inputs, tool outputs, file contents and thinking blocks are dropped in the per-host parser *before* any bytes reach the LLM — so pasted secrets and file payloads, which is where credentials actually live, never enter the pipeline.
+- **What leaves is the watchlist, not the transcript** — a handful of one-line decisions ("Runtime is Bun, not Node."), from a prompt that refuses to emit secrets or code, scoped per project directory.
+- **It is completely inert on hosts with no session transcript** (chrome, shell), so there it costs nothing at all.
+- **`session-contradiction-mode: off` stops the producer entirely**, and the shipped `OPENCUES.md` now says so with the cost stated plainly rather than left to be discovered.
+
+One scalar, three readers — and that is what nearly shipped this half-working. The typed `OpenCuesState` default, the resolver's settings-map read, and the producer's own self-gate each decide this independently; flipping only the first left the runtime forwarding a watchlist to a source it had never built, with nothing anywhere reporting a problem. All three now agree, the producer's gate is pinned by a test that asserts an ABSENT scalar opens it, and an unreadable settings file still counts as `off` — a user whose `off` we cannot read is a user whose `off` we assume.
+
+Worth being blunt in the audit rather than only the changelog: this **retires the opt-in consent gate** that `security-audit.md` row #31 partly leaned on. The parse boundary was always the load-bearing control — opting in never bought a user extra protection — but it now has to hold on its own, so that row has been rewritten to say so instead of citing a gate that no longer exists.
+
+### Fixed — the cycling menu could advertise a different default than the runtime used (`@opencues/runtime` 0.32.0 → 0.33.0)
+
+The registry announces each feature's default twice: once in the value description a user reads in the menu, once as the value `ConfigLoader` falls back to with nothing on disk. Nothing checked they agreed, so flipping one and not the other would have shipped a menu describing the opposite of what the runtime did — silently, for everyone. A new alignment test pins them together, matching on the `(default)` marker rather than list position, because `identity-context-mode` and `blank-context-mode` deliberately list `off` first while defaulting to `safe`. Verified by deliberately breaking one default and confirming the gate names both sides.
+
 ### Added — session-contradiction and ask-cues on the DeepSeek Harness (`@opencues/core` 0.46.0 → 0.47.0, `@opencues/runtime` 0.31.2 → 0.32.0, `opencues` 0.7.2 → 0.7.3, `@opencues/dsh` 0.1.2 → 0.2.0)
 
 "You decided X earlier in this session, and what you are about to send says not-X." Until now that needed a session transcript, so it ran on Claude Code, OpenCode and Gemini CLI and was inert everywhere else. **dsh is the first browser host where it works**, because the integration has two halves and only one of them is a browser: the node half reads `$DSH_HOME/sessions/**` and serves the distilled watchlist over a route the client polls. Chrome could never do this — a web page is not a session — and the split is what makes it possible here.

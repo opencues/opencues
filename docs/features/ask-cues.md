@@ -7,7 +7,7 @@ the cue tip; each option is a cycle alternative on the sentence; options that
 carry a concrete rewrite edit the sentence when you land on them, and advisory
 ones just inform.
 
-**OFF by default.** Enable with `ask-cues-mode: on`.
+**ON by default.** The prompt makes silence the default, so most sentences draw nothing. Turn it off with `ask-cues-mode: off`.
 
 ## The idea — borrow a well-known tool prompt to populate cues
 

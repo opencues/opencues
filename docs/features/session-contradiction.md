@@ -10,8 +10,10 @@ They surface as a passive `⚠` cue tip on the offending sentence, exactly like
 the other passive cues; the buffer is **never rewritten without your
 keystroke**, and `Ctrl+Alt+↑` swaps in a reconciled rewrite if you want it.
 
-**OFF by default.** Works on any host with a session transcript — **Claude
-Code, OpenCode, and Gemini CLI**. Enable with `session-contradiction-mode: on`.
+**ON by default.** Works on any host with a session transcript — **Claude
+Code, OpenCode, Gemini CLI, and the DeepSeek Harness** — and is completely
+inert on hosts that have none (chrome, shell), where it costs nothing. Turn it
+off with `session-contradiction-mode: off`.
 
 ## How it works — two stages
 
@@ -52,8 +54,12 @@ It errs toward silence — a false alarm on your draft is worse than a missed on
 
 ## Privacy + safety
 
-- **Off by default; enabling it is the consent.** Available on hosts with a
-  session transcript (Claude Code, OpenCode, Gemini CLI).
+- **On by default, and it reads your session — so here is exactly what that
+  means.** This is the one cue class that looks at more than the buffer you are
+  typing in. Everything below is what bounds it; if you would rather no part of
+  the session were read at all, `session-contradiction-mode: off` stops the
+  producer entirely. On hosts with no session transcript (chrome, shell)
+  nothing runs either way.
 - **Data-minimized.** Only your and the assistant's prose feeds the watchlist
   producer; tool inputs/outputs, file contents, and thinking blocks are dropped
   before anything is sent. The watchlist itself is terse decisions, never code or

@@ -1,6 +1,6 @@
 {
   "name": "@opencues/dsh",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "OpenCues for DeepSeek Harness — LLM word alternatives and `_`-gated blank fill-ins in the dsh composer.",
   "license": "MIT",
   "homepage": "https://opencues.com",
