@@ -70,3 +70,34 @@ describe('feature-registry ↔ OpenCuesState alignment', () => {
     }
   }
 });
+
+// The registry announces each feature's default twice over — once in the value
+// description a user reads in the cycling menu ("Default — …" / "… (default)"),
+// once as the value ConfigLoader falls back to with nothing on disk. Nothing
+// checked they agreed, so flipping one and not the other produced a menu that
+// described the opposite of what the runtime did, silently and for everyone.
+//
+// The marked value is NOT always the first one: `identity-context-mode` and
+// `blank-context-mode` deliberately list `off` first (least privilege reads
+// better at the top of a menu) while defaulting to `safe`. So this matches on
+// the marker, never on position.
+describe('feature-registry ↔ OpenCuesState defaults agree', () => {
+  const marked = (f: (typeof FEATURES)[number]) =>
+    f.values.filter((v) => /\(default\)|^default\b/i.test(v.description));
+
+  for (const f of FEATURES) {
+    if (SETTINGS_MAP_ONLY.has(f.camelCase)) continue;
+    const hits = marked(f);
+    if (hits.length === 0) continue;   // not every feature marks one
+
+    it(`${f.scalar} marks exactly one default, and it is what ConfigLoader falls back to`, () => {
+      expect(hits.length,
+        `'${f.scalar}' marks ${hits.length} values as the default (${hits.map((v) => v.id).join(', ')}). Mark exactly one.`,
+      ).toBe(1);
+      expect(String((DEFAULT_OPENCUES_STATE as Record<string, unknown>)[f.camelCase]),
+        `'${f.scalar}' tells the user '${hits[0].id}' is the default, but DEFAULT_OPENCUES_STATE.${f.camelCase} is ` +
+        `'${String((DEFAULT_OPENCUES_STATE as Record<string, unknown>)[f.camelCase])}'. Change both or neither.`,
+      ).toBe(hits[0].id);
+    });
+  }
+});

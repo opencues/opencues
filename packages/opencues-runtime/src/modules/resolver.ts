@@ -88,7 +88,8 @@ export interface ResolverOptions {
    * `opencues extract-commitments` producer distilled from the session
    * transcript). A live holder the host mutates on a cadence; read fresh each
    * resolve and forwarded to SessionContradictionSource via `CueContext`.
-   * Gated by `session-contradiction-mode` (off by default).
+   * Gated by `session-contradiction-mode` (ON by default; inert on a host
+   * with no session transcript, which is what makes that safe).
    */
   readonly sessionCommitments?: {
     readonly commitments: ReadonlyArray<{ id: string; category: string; statement: string }>;
@@ -870,12 +871,22 @@ export class Resolver {
       // disables it. (Absent OR on → enabled.) Cost: one cues-bucket LLM
       // parse per settled sentence, cheap on cerebras's prefix cache.
       enableContradictionCues: settings.get('contradiction-cues-mode') !== 'off',
-      // Session cues stay OPT-IN (`=== 'on'`, off by default): they run an
-      // LLM producer over the session transcript + a per-tick matcher — the
-      // heavier, less-universal features the user deliberately kept off the
-      // on-by-default set.
-      enableSessionContradiction: settings.get('session-contradiction-mode') === 'on',
-      enableAskCues: settings.get('ask-cues-mode') === 'on',
+      // ON by default (`!== 'off'`), same shape as contradiction cues above:
+      // both are passive advisories that never touch the buffer without a
+      // keystroke. Session-contradiction additionally runs an LLM producer
+      // over the session transcript — the cost is real and is stated plainly
+      // in the shipped OPENCUES.md, and `off` stops the producer outright.
+      // It is inert on a host with no transcript (chrome, shell), which is
+      // what makes on-by-default defensible there.
+      //
+      // NOTE these are the settings MAP, deliberately mirroring
+      // `opencuesState.{sessionContradictionMode,askCuesMode}` rather than
+      // reading them. Two independent reads of one scalar is a drift surface,
+      // and it bit: the first cut of the on-by-default change flipped the
+      // typed default alone, so the catalog was forwarded to a source that
+      // was never built. Change BOTH or neither.
+      enableSessionContradiction: settings.get('session-contradiction-mode') !== 'off',
+      enableAskCues: settings.get('ask-cues-mode') !== 'off',
       worldDataFetch: this.options.worldDataFetch,
       pageLocation: this.options.pageLocation,
       weatherLocation: settings.get('weather-location'),
@@ -1474,7 +1485,7 @@ export class Resolver {
         // Session-commitments watchlist (ingested from the CC transcript by the
         // `extract-commitments` producer). Host mutates the holder on a cadence;
         // read fresh here so a re-ingest applies without restart. Gated by
-        // `session-contradiction-mode` (off by default). Not PII-dehydrated —
+        // `session-contradiction-mode` (ON by default). Not PII-dehydrated —
         // these are the user's own project decisions, terse by construction; the
         // producer prompt forbids secrets / code / file contents.
         // Forwarded when EITHER consumer is on: session-contradiction (matches

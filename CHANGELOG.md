@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the session-cue prompts told three of four hosts they were Claude Code (`@opencues/core` 0.48.0 → 0.48.1, `@opencues/chrome` 0.2.167 → 0.2.168, `@opencues/dsh` 0.2.1 → 0.2.2)
+
+`Claude Code` was hardcoded into four prompt strings, and session cues now run on four hosts. An OpenCode, Gemini CLI or dsh transcript was introduced to the model as a Claude Code transcript — false on the wire, and a plausible source of bias when extracting decisions from a session that isn't one. The wording is now host-neutral (`an AI coding assistant session transcript`, `this coding session`); the file's own doc comments, which described the feature as Claude-Code-only throughout, were generalised with it.
+
+Benched before and after in the same session, because these prompts are bench-gated:
+
+| Bench | Before | After |
+|---|---|---|
+| session-contradiction (gemma) | recall 8/9 · restraint 9/9 · precision 8/8 | **identical** |
+| extraction, 6 sessions × 3 models | gold 24/24 each · e2e 92% / 96% / 92% | **identical**, marginally fewer input tokens |
+| ask-cues phase 2, 3 runs each | firing 3/3, 2/3, 3/3 · grounded 1/3, 0/2, 0/3 | firing 2/3, 3/3, 3/3 · grounded 0/2, 0/3, 0/3 — same distribution |
+
+The ask-cues run surfaced something unrelated and worth chasing separately: **grounding is 0–1 of 3 on both wordings**, against the 3/3 recorded when the feature shipped. Nothing here caused it — the baseline scores the same — but it matters more now that `ask-cues-mode` defaults on, so it wants its own look rather than a footnote.
+
+### Changed — session-contradiction and ask-cues are ON by default (`@opencues/core` 0.47.0 → 0.48.0, `@opencues/runtime` 0.32.0 → 0.33.0, `@opencues/chrome` 0.2.166 → 0.2.167, `@opencues/dsh` 0.2.0 → 0.2.1)
+
+Both shipped off, which meant almost nobody had them. They are the two cues that know something the buffer doesn't — what you decided earlier in the session, and what question the sentence you're writing is quietly begging — and a cue class nobody enables is a cue class that may as well not exist.
+
+`ask-cues-mode` is the easy half: its prompt makes silence the default (bench: restraint 8/8 after that fix), it is one cached LLM call per new sentence, and it edits nothing without a keystroke.
+
+**`session-contradiction-mode` deserves a straight answer about what it now does unasked**, because it is the one cue class that reads more than your buffer. A background producer distils your session transcript into a short watchlist of decisions, and that distillation is an LLM call to your cues-bucket provider. What bounds it:
+
+- **Only user and assistant PROSE is ever read.** Tool inputs, tool outputs, file contents and thinking blocks are dropped in the per-host parser *before* any bytes reach the LLM — so pasted secrets and file payloads, which is where credentials actually live, never enter the pipeline.
+- **What leaves is the watchlist, not the transcript** — a handful of one-line decisions ("Runtime is Bun, not Node."), from a prompt that refuses to emit secrets or code, scoped per project directory.
+- **It is completely inert on hosts with no session transcript** (chrome, shell), so there it costs nothing at all.
+- **`session-contradiction-mode: off` stops the producer entirely**, and the shipped `OPENCUES.md` now says so with the cost stated plainly rather than left to be discovered.
+
+One scalar, three readers — and that is what nearly shipped this half-working. The typed `OpenCuesState` default, the resolver's settings-map read, and the producer's own self-gate each decide this independently; flipping only the first left the runtime forwarding a watchlist to a source it had never built, with nothing anywhere reporting a problem. All three now agree, the producer's gate is pinned by a test that asserts an ABSENT scalar opens it, and an unreadable settings file still counts as `off` — a user whose `off` we cannot read is a user whose `off` we assume.
+
+Worth being blunt in the audit rather than only the changelog: this **retires the opt-in consent gate** that `security-audit.md` row #31 partly leaned on. The parse boundary was always the load-bearing control — opting in never bought a user extra protection — but it now has to hold on its own, so that row has been rewritten to say so instead of citing a gate that no longer exists.
+
+### Fixed — the cycling menu could advertise a different default than the runtime used (`@opencues/runtime` 0.32.0 → 0.33.0)
+
+The registry announces each feature's default twice: once in the value description a user reads in the menu, once as the value `ConfigLoader` falls back to with nothing on disk. Nothing checked they agreed, so flipping one and not the other would have shipped a menu describing the opposite of what the runtime did — silently, for everyone. A new alignment test pins them together, matching on the `(default)` marker rather than list position, because `identity-context-mode` and `blank-context-mode` deliberately list `off` first while defaulting to `safe`. Verified by deliberately breaking one default and confirming the gate names both sides.
+
 ### Added — session-contradiction and ask-cues on the DeepSeek Harness (`@opencues/core` 0.46.0 → 0.47.0, `@opencues/runtime` 0.31.2 → 0.32.0, `opencues` 0.7.2 → 0.7.3, `@opencues/dsh` 0.1.2 → 0.2.0)
 
 "You decided X earlier in this session, and what you are about to send says not-X." Until now that needed a session transcript, so it ran on Claude Code, OpenCode and Gemini CLI and was inert everywhere else. **dsh is the first browser host where it works**, because the integration has two halves and only one of them is a browser: the node half reads `$DSH_HOME/sessions/**` and serves the distilled watchlist over a route the client polls. Chrome could never do this — a web page is not a session — and the split is what makes it possible here.

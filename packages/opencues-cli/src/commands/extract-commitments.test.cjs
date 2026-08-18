@@ -47,8 +47,12 @@ async function run(args) {
 // `pinProvider` pins the cues bucket to a keyless HTTP provider (openai) so
 // LLM resolution deterministically lands on keyPresent=false — no auto-fallback
 // to the local subscription CLI, so no real network call in the test.
+// Writes BOTH scalars. The producer runs when EITHER is on, and both now
+// default to on, so writing only `session-contradiction-mode: off` leaves
+// ask-cues defaulting on and the gate open — an "off" case that isn't off.
 function writeMode(on, pinProvider) {
-  let md = `session-contradiction-mode: ${on ? 'on' : 'off'}\n`;
+  const v = on ? 'on' : 'off';
+  let md = `session-contradiction-mode: ${v}\nask-cues-mode: ${v}\n`;
   if (pinProvider) md += `cues-llm-provider: openai\n`;
   fs.writeFileSync(path.join(tmpHome, 'OPENCUES.md'), md);
 }
@@ -73,6 +77,31 @@ test('mode off → skip without touching the LLM', async () => {
   const { json } = await run([tp]);
   assert.strictEqual(json.skipped, true);
   assert.match(json.reason, /off/);
+});
+
+test('scalars ABSENT → the gate passes (both default on)', async () => {
+  // The default flip has three independent readers (config-loader's typed
+  // state, resolver's settings map, this gate). This pins the one that
+  // decides whether the session is read at all.
+  fs.writeFileSync(path.join(tmpHome, 'OPENCUES.md'), 'voice-mode: inactive\n');
+  const tp = writeTranscript('absent.jsonl', ['{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{}}]}}']);
+  const { json } = await run([tp]);
+  assert.strictEqual(json.skipped, true);
+  // Skipped for having no PROSE, which is downstream of the gate — i.e. the
+  // gate let it through. A closed gate would say "both off" instead.
+  assert.match(json.reason, /no text turns/);
+});
+
+test('an UNREADABLE settings file is not consent — still skips', async () => {
+  // A user whose `off` we cannot see is a user whose `off` we assume.
+  const dir = path.join(tmpHome, 'OPENCUES.md');
+  fs.rmSync(dir, { force: true });
+  fs.mkdirSync(dir);   // a directory where a file is expected → read throws
+  const tp = writeTranscript('unreadable.jsonl', ['{"type":"user","message":{"role":"user","content":"use bun"}}']);
+  const { json } = await run([tp]);
+  fs.rmSync(dir, { recursive: true, force: true });
+  assert.strictEqual(json.skipped, true);
+  assert.match(json.reason, /unreadable/);
 });
 
 test('mode on, no text turns → skip + writes debounce marker', async () => {
