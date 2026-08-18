@@ -20,12 +20,21 @@
 
 // Provider selection — defaults to Groq for the canonical benchmark
 // runs; set OPENCUES_BENCH_PROVIDER=gemini-flash-lite to route through
-// the sibling gemini.ts module (Gemini 3.1 Flash Lite). Same chat()
+// the sibling gemini.ts module (Gemini 3.1 Flash Lite), or
+// deepseek-flash to reuse fluid-blank's deepseek adapter. Same chat()
 // signature, same workload — apples-to-apples model comparison.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const _provider = process.env.OPENCUES_BENCH_PROVIDER === 'gemini-flash-lite'
-  ? require('./gemini')
-  : require('./groq');
+function _pickProvider() {
+  switch (process.env.OPENCUES_BENCH_PROVIDER) {
+    case 'gemini-flash-lite': return require('./gemini');
+    // Reused rather than copied — agent-rewrite's chat() contract is
+    // identical to fluid-blank's, and one adapter means a rate-limit or
+    // parse fix lands on every bench at once.
+    case 'deepseek-flash':    return require('../fluid-blank/deepseek');
+    default:                  return require('./groq');
+  }
+}
+const _provider = _pickProvider();
 const chat: typeof import('./groq').chat = _provider.chat;
 const MODEL: string = _provider.MODEL;
 import { CASES, type BenchCase } from './cases';
