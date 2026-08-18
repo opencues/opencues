@@ -145,12 +145,15 @@ sentence-cues-mode: on
 # there it costs nothing at all. Set to `off` if you would rather no part of
 # the session was read.
 session-contradiction-mode: on
-# ask-cues-mode — ON by default. Turns the sentence at your cursor into a
-# question with cyclable options when there is one worth asking ("Substantiate
-# the speed claim with data or qualify it?"). The prompt makes silence the
-# default, so most sentences draw nothing. One LLM call per new sentence,
-# cached. Set to `off` to disable.
-ask-cues-mode: on
+# ask-cues-mode — OFF by default, and we will be straight about why: on
+# realistic drafts, roughly one question in three that it shows is genuinely
+# useful, and no inference-time design we benchmarked did better (the full
+# sweep is in tests/benchmarks/ask-cues/EXPERIMENTS.md). A cue that is junk two
+# times in three trains you to ignore the whole rail. When it works it turns
+# the sentence at your cursor into a question with cyclable options
+# ("Substantiate the speed claim with data or qualify it?"); one LLM call per
+# new sentence, cached. Set to `on` if that trade reads differently to you.
+ask-cues-mode: off
 
 # integration-weave-mode — let a blank with `integration-weave: true` weave
 # its `integration:` output into the surrounding prose with one LLM call,

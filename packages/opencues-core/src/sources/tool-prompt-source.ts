@@ -68,7 +68,9 @@ export interface ToolPrompt {
  */
 export const ASK_USER_QUESTION_SYSTEM = `You are the AskUserQuestion tool, repurposed to OPTIONALLY attach one inline question to a sentence a user is writing. This fires on EVERY sentence, so your DEFAULT is SILENCE.
 
-Attach a question ONLY when the sentence hinges on a decision that is genuinely the writer's to make — one you cannot resolve from the sentence itself, from the CONTEXT accompanying it (session and/or page), or from a sensible default. If a sensible default settles it, or the context already answers it, STAY SILENT. Over-asking destroys trust — a needless question is far worse than a missed one.
+Attach a question ONLY when the sentence hinges on a decision that is genuinely the writer's to make — one you cannot resolve from the sentence itself, from the DOCUMENT around it, from the CONTEXT accompanying it (session and/or page), or from a sensible default.
+
+BEFORE YOU ASK, ANSWER YOUR OWN QUESTION FROM THE DOCUMENT. Draft the question, then search the surrounding text for its answer. If the answer is there — in any sentence, before or after — the writer has already handled it and you must ABSTAIN. Writers routinely make a loose claim and then support it in the very next line; flagging the loose half is the single most annoying thing you can do, because it proves you did not read on. "The API is way faster" is FINE when the next sentence gives the p50. "I'll deal with errors later" is FINE when the next sentence says what happens until then. Only the genuinely unanswered fork earns an interruption. If a sensible default settles it, or the context already answers it, STAY SILENT. Over-asking destroys trust — a needless question is far worse than a missed one.
 
 ABSTAIN — output exactly {"question":"","options":[]} — for anything that is:
 - a clear factual statement, a definition, a settled choice, or a precise value ("returns the sum of two integers", "we use PostgreSQL 16", "config is at ~/.cues/OPENCUES.md")
@@ -184,12 +186,14 @@ export class ToolPromptCueSource implements CueSource {
 
     // Cache on selection + context: a context change (new decisions) re-asks
     // even on an unchanged sentence, but sitting in one sentence reuses.
-    const cacheKey = `${sel.text} ${contextBlock}`;
+    const docBlock = renderDocumentWindow(text, sel.start, sel.end);
+
+    const cacheKey = `${sel.text} ${contextBlock} ${docBlock}`;
     let q: ToolQuestion | null;
     if (cacheKey === this._lastSel && this._lastQuestion !== undefined) {
       q = this._lastQuestion;   // same sentence + context → reuse (no LLM call)
     } else {
-      try { q = await this.ask(sel.text, contextBlock, context.signal); }
+      try { q = await this.ask(sel.text, `${contextBlock}${docBlock}`, context.signal); }
       catch (e) {
         const err = e as Error;
         // An abort is a superseded resolve (the user kept typing), NOT a
@@ -300,6 +304,37 @@ export class ToolPromptCueSource implements CueSource {
     );
     return parseToolQuestion(raw);
   }
+}
+
+/**
+ * The surrounding DOCUMENT, with the target sentence marked.
+ *
+ * Until now the model was handed one sentence and nothing else, which made one
+ * class of question unanswerable and another unavoidable. It could not know
+ * that the next line already names the library, or that the paragraph below
+ * already gives the number the claim needs \u2014 so it asked anyway, and a
+ * question whose answer is three words further down the page is worse than
+ * silence. It also had no material from which to build a specific question.
+ *
+ * Bounded to a window around the selection: a long document would otherwise
+ * dominate the prompt and blow the latency budget for a cue that fires per
+ * sentence. Returns '' when the document IS essentially just the selection, so
+ * a one-line draft costs no extra tokens.
+ */
+export function renderDocumentWindow(text: string, start: number, end: number, budget = 1200): string {
+  const sentence = text.slice(start, end);
+  const rest = (text.slice(0, start) + text.slice(end)).trim();
+  if (rest.length < 12) return '';        // nothing meaningful around it
+  const room = Math.max(0, budget - sentence.length);
+  let a = Math.max(0, start - Math.floor(room / 2));
+  let b = Math.min(text.length, end + Math.ceil(room / 2));
+  // Snap outward to whitespace so the window never opens or closes mid-word,
+  // which reads as corruption.
+  while (a > 0 && !/\s/.test(text[a - 1])) a--;
+  while (b < text.length && !/\s/.test(text[b])) b++;
+  const head = a > 0 ? '\u2026' : '';
+  const tail = b < text.length ? '\u2026' : '';
+  return `\n\nDOCUMENT they are writing \u2014 the sentence in question is marked \u27e6\u27e7. Read it BEFORE deciding: if the surrounding text already answers your question, the writer has not left that fork open and you must STAY SILENT. Otherwise use it to make the question specific.\n${head}${text.slice(a, start)}\u27e6${sentence}\u27e7${text.slice(end, b)}${tail}`;
 }
 
 /**

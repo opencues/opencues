@@ -7,7 +7,15 @@ the cue tip; each option is a cycle alternative on the sentence; options that
 carry a concrete rewrite edit the sentence when you land on them, and advisory
 ones just inform.
 
-**ON by default.** The prompt makes silence the default, so most sentences draw nothing. Turn it off with `ask-cues-mode: off`.
+**OFF by default, and here is the honest reason.** It shipped on briefly; then
+an exploration sweep (`tests/benchmarks/ask-cues/EXPERIMENTS.md`) measured, on
+realistic multi-sentence drafts, that roughly **one shown question in three is
+genuinely useful** — and that no inference-time design (whole-document calls,
+candidate ranking, detect-then-generate, discrimination gates, consensus,
+higher reasoning effort) moved that ceiling. Unlike session-contradiction, the
+output has no reference data the runtime can verify it against. A cue that is
+junk two times in three trains you to ignore the rail, so it is opt-in:
+`ask-cues-mode: on`.
 
 ## The idea — borrow a well-known tool prompt to populate cues
 

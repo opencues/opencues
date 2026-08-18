@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — ask-cues reads the document around your sentence (`@opencues/core` 0.49.0 → 0.50.0, `@opencues/chrome` 0.2.170 → 0.2.171, `@opencues/dsh` 0.2.4 → 0.2.5)
+
+The model was being sent **one sentence**. The rest of your draft sat in `context.text` and was never passed. So it could not know that your next line already names the library, or already gives the number the claim needs — and a question whose answer is three words further down the page is worse than no question at all, because it proves the thing did not read on.
+
+It now receives a bounded window of the surrounding text with your sentence marked, and is told to **answer its own question from the document before asking it**.
+
+Measured on a new phase 3 — eight cases where the same kind of sentence sits in a document that either resolves it or does not, including the *same* sentence in both roles so a blanket policy cannot score well:
+
+| Arm | Silent when the document answers it | Useful, of what it showed |
+|---|---|---|
+| no document (what shipped before) | **0/4**, twice | **0/8**, twice |
+| document sent | 2/4 | 1/6 |
+| document + answer-it-first rule | **3/4** | 1/5 |
+
+The first row is the result: without the surrounding text it asked on every case, and **not one of those questions was useful** — every one had already been answered on the page. Coverage of genuinely-open forks stayed 4/4 throughout, so this is restraint, not silence.
+
+Also new: **USEFUL** is now the bench's headline metric — of the questions actually shown, how many the judge scores 2. `FIRING` was the de-facto target before, and demanding a question for every flagged sentence is precisely how you get forced ones. A feature that asks four times and is useful four times beats one that asks twenty times and is useful four times; the second trains you to ignore it.
+
+Next lead, logged in `tests/benchmarks/ask-cues/EXPERIMENTS.md`: the worked examples all phrase their question "How will you mitigate / verify …", and the model has copied the *phrasing* rather than the principle — "We should make the app more user-friendly" now draws "How will you make the app more user-friendly", which is the old echo wearing the new costume. Diversifying the examples' surface forms is the next thing to try.
+
 ### Changed — ask-cues asks better questions (`@opencues/core` 0.48.2 → 0.49.0, `@opencues/chrome` 0.2.169 → 0.2.170, `@opencues/dsh` 0.2.3 → 0.2.4)
 
 The questions were often the sentence handed back as a question. *"Just hardcode the API key for now."* drew *"Do you want to hardcode the API key for now?"* — you just said you did. Six of twelve phase-1 cases failed that way, and an interruption with no payload is worse than silence.
@@ -51,11 +71,11 @@ Benched before and after in the same session, because these prompts are bench-ga
 
 The ask-cues run surfaced something unrelated and worth chasing separately: **grounding is 0–1 of 3 on both wordings**, against the 3/3 recorded when the feature shipped. Nothing here caused it — the baseline scores the same — but it matters more now that `ask-cues-mode` defaults on, so it wants its own look rather than a footnote.
 
-### Changed — session-contradiction and ask-cues are ON by default (`@opencues/core` 0.47.0 → 0.48.0, `@opencues/runtime` 0.32.0 → 0.33.0, `@opencues/chrome` 0.2.166 → 0.2.167, `@opencues/dsh` 0.2.0 → 0.2.1)
+### Changed — session-contradiction is ON by default; ask-cues was flipped on with it and then reverted on evidence (`@opencues/core` 0.47.0 → 0.48.0 → 0.50.1, `@opencues/runtime` 0.32.0 → 0.33.1, `opencues` 0.7.3 → 0.7.4)
 
-Both shipped off, which meant almost nobody had them. They are the two cues that know something the buffer doesn't — what you decided earlier in the session, and what question the sentence you're writing is quietly begging — and a cue class nobody enables is a cue class that may as well not exist.
+Both shipped off, which meant almost nobody had them. Both were flipped on; **only session-contradiction kept its default.** What changed the second one back was not caution but measurement: the ask-cues exploration sweep (`tests/benchmarks/ask-cues/EXPERIMENTS.md`) put its ceiling on realistic drafts at roughly **one genuinely useful question per three shown**, across every inference-time architecture tried — whole-document calls, candidate ranking, detect-then-generate, discrimination gates, consensus, higher reasoning effort. The structural reason is recorded there too: every cue in this codebase that earns a default verifies LLM output against checkable data, and ask-cues has none — its output is judgement about prose. A cue that is junk two times in three trains users to ignore the whole rail, so it is opt-in again (`ask-cues-mode: on`), with the shipped `OPENCUES.md` stating the number rather than hiding it.
 
-`ask-cues-mode` is the easy half: its prompt makes silence the default (bench: restraint 8/8 after that fix), it is one cached LLM call per new sentence, and it edits nothing without a keystroke.
+Session-contradiction is the opposite case and keeps the default it was given:
 
 **`session-contradiction-mode` deserves a straight answer about what it now does unasked**, because it is the one cue class that reads more than your buffer. A background producer distils your session transcript into a short watchlist of decisions, and that distillation is an LLM call to your cues-bucket provider. What bounds it:
 

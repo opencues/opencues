@@ -871,13 +871,18 @@ export class Resolver {
       // disables it. (Absent OR on → enabled.) Cost: one cues-bucket LLM
       // parse per settled sentence, cheap on cerebras's prefix cache.
       enableContradictionCues: settings.get('contradiction-cues-mode') !== 'off',
-      // ON by default (`!== 'off'`), same shape as contradiction cues above:
-      // both are passive advisories that never touch the buffer without a
-      // keystroke. Session-contradiction additionally runs an LLM producer
-      // over the session transcript — the cost is real and is stated plainly
-      // in the shipped OPENCUES.md, and `off` stops the producer outright.
-      // It is inert on a host with no transcript (chrome, shell), which is
-      // what makes on-by-default defensible there.
+      // Session-contradiction: ON by default (`!== 'off'`) — a passive
+      // advisory whose output is verified against checkable data (watchlist
+      // membership + verbatim buffer quote), which is what earns the default.
+      // The producer cost is stated plainly in the shipped OPENCUES.md and
+      // `off` stops it outright; inert on hosts with no transcript.
+      //
+      // Ask-cues: OFF by default (`=== 'on'`). It briefly shipped on; the
+      // exploration sweep (tests/benchmarks/ask-cues/EXPERIMENTS.md) then
+      // measured ~20-35% useful questions on realistic drafts across every
+      // inference-time architecture — there is no reference data to verify a
+      // question against, and a cue that is junk two times in three trains
+      // users to ignore the rail. Opt-in until that changes.
       //
       // NOTE these are the settings MAP, deliberately mirroring
       // `opencuesState.{sessionContradictionMode,askCuesMode}` rather than
@@ -886,7 +891,7 @@ export class Resolver {
       // typed default alone, so the catalog was forwarded to a source that
       // was never built. Change BOTH or neither.
       enableSessionContradiction: settings.get('session-contradiction-mode') !== 'off',
-      enableAskCues: settings.get('ask-cues-mode') !== 'off',
+      enableAskCues: settings.get('ask-cues-mode') === 'on',
       worldDataFetch: this.options.worldDataFetch,
       pageLocation: this.options.pageLocation,
       weatherLocation: settings.get('weather-location'),

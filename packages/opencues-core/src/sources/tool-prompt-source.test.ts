@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ToolPromptCueSource, parseToolQuestion, renderSingleLineTip, renderAmbientForAsk, ASK_USER_QUESTION_SYSTEM } from './tool-prompt-source';
+import { ToolPromptCueSource, parseToolQuestion, renderSingleLineTip, renderAmbientForAsk, renderDocumentWindow, ASK_USER_QUESTION_SYSTEM } from './tool-prompt-source';
 import { getProvider } from '../llm-provider';
 import type { CueContext, HttpAdapter } from '../types';
 
@@ -37,6 +37,36 @@ describe('renderAmbientForAsk', () => {
   it('is empty when there is no ambient or no useful fields', () => {
     expect(renderAmbientForAsk(undefined)).toBe('');
     expect(renderAmbientForAsk({ inputType: 'text' } as never)).toBe('');
+  });
+});
+
+describe('renderDocumentWindow', () => {
+  it('marks the target sentence inside its document', () => {
+    const doc = 'We ship Friday. The API is way faster. p50 went 240ms to 38ms.';
+    const start = doc.indexOf('The API');
+    const out = renderDocumentWindow(doc, start, start + 'The API is way faster.'.length);
+    expect(out).toContain('DOCUMENT');
+    expect(out).toContain('\u27e6The API is way faster.\u27e7');
+    expect(out).toContain('p50 went 240ms');      // the part that makes the question unnecessary
+    expect(out).toContain('We ship Friday.');     // text before the target survives too
+  });
+
+  it('returns empty when the document IS the sentence — no wasted tokens', () => {
+    const only = 'The API is way faster.';
+    expect(renderDocumentWindow(only, 0, only.length)).toBe('');
+  });
+
+  it('bounds a long document and never cuts mid-word', () => {
+    const filler = 'alpha bravo charlie delta echo foxtrot golf hotel india juliet '.repeat(60);
+    const doc = `${filler}The API is way faster.${filler}`;
+    const start = filler.length;
+    const out = renderDocumentWindow(doc, start, start + 'The API is way faster.'.length, 400);
+    expect(out.length).toBeLessThan(900);
+    expect(out).toContain('\u2026');            // elided on both sides
+    // Every whitespace-delimited token in the window is a whole word.
+    const body = out.trimEnd().split('\n').pop().replace(/[\u2026\u27e6\u27e7]/g, ' ');   // the window line only, not the header
+    const words = new Set('alpha bravo charlie delta echo foxtrot golf hotel india juliet The API is way faster.'.split(/\s+/));
+    for (const w of body.split(/\s+/).filter(Boolean)) expect(words.has(w)).toBe(true);
   });
 });
 
