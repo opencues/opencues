@@ -86,11 +86,11 @@ None of these affect file format or routing — they all sit downstream of the s
 
 ## Multi-provider routing
 
-The OpenCues runtime ships ten built-in LLM providers and routes each LLM call through a settings hierarchy. This is **runtime-specific** — other implementations of the standard are free to ship one provider, ten, or zero, and to use any settings shape.
+The OpenCues runtime ships eleven built-in LLM providers and routes each LLM call through a settings hierarchy. This is **runtime-specific** — other implementations of the standard are free to ship one provider, ten, or zero, and to use any settings shape.
 
 ### Built-in providers
 
-The runtime supports `groq`, `openrouter`, `gemini`, `openai`, `openai-subscription`, `anthropic`, `cerebras`, `claude-code-cli`, `opencode-zen`, `ollama` (`PROVIDER_IDS` in `packages/opencues-core/src/llm-provider.ts`). Each is selected by name; the runtime maps the name to:
+The runtime supports `groq`, `openrouter`, `gemini`, `openai`, `openai-subscription`, `anthropic`, `cerebras`, `claude-code-cli`, `opencode-zen`, `ollama`, `kimi` (`PROVIDER_IDS` in `packages/opencues-core/src/llm-provider.ts`). Each is selected by name; the runtime maps the name to:
 
 - the API endpoint URL,
 - the auth header shape (`Authorization: Bearer …` for OpenAI-compatible hosts; `x-api-key` + `anthropic-version` for Anthropic; `?key=…` query string for Gemini),

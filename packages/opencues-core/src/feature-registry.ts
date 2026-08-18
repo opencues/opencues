@@ -352,6 +352,7 @@ const CUES_PROVIDER_VALUES: readonly ValueSpec[] = [
   { id: 'openrouter', description: 'OpenRouter (multi-model router)', exposeInMenu: false },
   { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
   { id: 'ollama',     description: 'Ollama (local) — private, free, needs a running Ollama server', exposeInMenu: false },
+  { id: 'kimi',      description: 'Kimi (Moonshot AI) — kimi-k2 family, direct API (unbenched)', exposeInMenu: false },
 ];
 const AUDITORS_PROVIDER_VALUES: readonly ValueSpec[] = [
   { id: 'inherit',   description: 'Default — auditors use the global llm-provider (auto-routed when unset)' },
@@ -364,6 +365,7 @@ const AUDITORS_PROVIDER_VALUES: readonly ValueSpec[] = [
   { id: 'openrouter', description: 'OpenRouter (multi-model router)', exposeInMenu: false },
   { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
   { id: 'ollama',     description: 'Ollama (local) — private, free, needs a running Ollama server', exposeInMenu: false },
+  { id: 'kimi',      description: 'Kimi (Moonshot AI) — kimi-k2 family, direct API (unbenched)', exposeInMenu: false },
 ];
 const BLANKS_PROVIDER_VALUES: readonly ValueSpec[] = [
   { id: 'inherit',      description: 'Default — blanks use the global llm-provider' },
@@ -377,6 +379,7 @@ const BLANKS_PROVIDER_VALUES: readonly ValueSpec[] = [
   { id: 'openrouter',   description: 'OpenRouter (multi-model router)', exposeInMenu: false },
   { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
   { id: 'ollama',     description: 'Ollama (local) — private, free, needs a running Ollama server', exposeInMenu: false },
+  { id: 'kimi',      description: 'Kimi (Moonshot AI) — kimi-k2 family, direct API (unbenched)', exposeInMenu: false },
 ];
 
 /**

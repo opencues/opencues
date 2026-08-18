@@ -485,6 +485,77 @@ describe('deepseek provider — OpenAI-shape, reasoning disabled by default', ()
   });
 });
 
+describe('kimi provider — Moonshot AI direct API (OpenAI-shape)', () => {
+  it('buildRequest: api.moonshot.ai URL + bearer auth; k2.6 gets max_completion_tokens, NO temperature, thinking disabled', () => {
+    const built = buildProviderRequest(
+      'kimi',
+      { model: 'kimi-k2.6', messages: [{ role: 'user', content: 'hi' }], maxTokens: 256, temperature: 0 },
+      { apiKey: 'sk-moonshot-test' },
+    );
+    assert.strictEqual(built.url, 'https://api.moonshot.ai/v1/chat/completions');
+    assert.strictEqual(built.headers.Authorization, 'Bearer sk-moonshot-test');
+    const body = JSON.parse(built.body);
+    assert.strictEqual(body.model, 'kimi-k2.6');
+    // Modern kimi models renamed the field and reject `temperature`.
+    assert.strictEqual(body.max_completion_tokens, 256);
+    assert.strictEqual(body.max_tokens, undefined);
+    assert.strictEqual(body.temperature, undefined);
+    // Answer-latency floor: thinking disabled on k2.5/k2.6.
+    assert.deepStrictEqual(body.thinking, { type: 'disabled' });
+  });
+
+  it('buildRequest: kimi-k3 coerces reasoning_effort into the legal low|high set (never medium/none/max-by-default)', () => {
+    const cases: ReadonlyArray<['low' | 'medium' | 'high' | undefined, string]> =
+      [['low', 'low'], ['medium', 'low'], ['high', 'high'], [undefined, 'low']];
+    for (const [given, expected] of cases) {
+      const built = buildProviderRequest(
+        'kimi',
+        { model: 'kimi-k3', messages: [{ role: 'user', content: 'x' }], ...(given ? { reasoningEffort: given } : {}) },
+        { apiKey: 'k' },
+      );
+      const body = JSON.parse(built.body);
+      assert.strictEqual(body.reasoning_effort, expected, `reasoningEffort ${given} → ${expected}`);
+      assert.strictEqual(body.thinking, undefined);
+    }
+  });
+
+  it('buildRequest: never emits seed (undocumented on Moonshot)', () => {
+    const built = buildProviderRequest(
+      'kimi',
+      { model: 'kimi-k2.6', messages: [{ role: 'user', content: 'x' }], seed: 7 },
+      { apiKey: 'k' },
+    );
+    assert.strictEqual(JSON.parse(built.body).seed, undefined);
+  });
+
+  it('buildRequest: legacy moonshot-v1 keeps the plain OpenAI shape (max_tokens + temperature, no thinking field)', () => {
+    const built = buildProviderRequest(
+      'kimi',
+      { model: 'moonshot-v1-8k', messages: [{ role: 'user', content: 'hi' }], maxTokens: 128, temperature: 0 },
+      { apiKey: 'k' },
+    );
+    const body = JSON.parse(built.body);
+    assert.strictEqual(body.max_tokens, 128);
+    assert.strictEqual(body.temperature, 0);
+    assert.strictEqual(body.thinking, undefined);
+    assert.strictEqual(body.reasoning_effort, undefined);
+  });
+
+  it('buildRequest: honours endpoint override (mainland .cn platform)', () => {
+    const built = buildProviderRequest(
+      'kimi',
+      { model: 'kimi-k2.6', messages: [{ role: 'user', content: 'hi' }] },
+      { apiKey: 'k', endpoint: 'https://api.moonshot.cn/v1/chat/completions' },
+    );
+    assert.strictEqual(built.url, 'https://api.moonshot.cn/v1/chat/completions');
+  });
+
+  it('parseResponse: OpenAI-shape (choices[0].message.content)', () => {
+    const raw = JSON.stringify({ choices: [{ message: { content: 'moon' } }] });
+    assert.strictEqual(parseProviderResponse('kimi', raw), 'moon');
+  });
+});
+
 describe('anthropic provider — Messages API (different shape from OpenAI)', () => {
   it('buildRequest: /v1/messages URL, x-api-key header, anthropic-version, browser-access header', () => {
     const built = buildProviderRequest(

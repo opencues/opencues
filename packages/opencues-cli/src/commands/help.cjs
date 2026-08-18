@@ -273,6 +273,7 @@ const PROVIDER_DISPLAY = {
   'opencode-zen': 'OpenCode Zen',
   deepseek: 'DeepSeek',
   ollama: 'Ollama (local)',
+  kimi: 'Kimi (Moonshot AI)',
   harness: "Host harness (uses the app's own model)",
 };
 
@@ -290,6 +291,7 @@ const PROVIDER_DEFAULT_MODEL = {
   'opencode-zen': 'big-pickle',
   deepseek:   'deepseek-v4-flash',
   ollama:     'gemma4:e2b',
+  kimi:       'kimi-k2.6',
   // The host owns model selection for the harness bridge, so there is no
   // default to advertise here.
   harness:    '',
