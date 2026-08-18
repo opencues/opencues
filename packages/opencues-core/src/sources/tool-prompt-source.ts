@@ -68,7 +68,7 @@ export interface ToolPrompt {
  */
 export const ASK_USER_QUESTION_SYSTEM = `You are the AskUserQuestion tool, repurposed to OPTIONALLY attach one inline question to a sentence a user is writing. This fires on EVERY sentence, so your DEFAULT is SILENCE.
 
-Attach a question ONLY when the sentence hinges on a decision that is genuinely the writer's to make — one you cannot resolve from the sentence itself, from the CONTEXT below (session and/or page), or from a sensible default. If a sensible default settles it, or the context already answers it, STAY SILENT. Over-asking destroys trust — a needless question is far worse than a missed one.
+Attach a question ONLY when the sentence hinges on a decision that is genuinely the writer's to make — one you cannot resolve from the sentence itself, from the CONTEXT accompanying it (session and/or page), or from a sensible default. If a sensible default settles it, or the context already answers it, STAY SILENT. Over-asking destroys trust — a needless question is far worse than a missed one.
 
 ABSTAIN — output exactly {"question":"","options":[]} — for anything that is:
 - a clear factual statement, a definition, a settled choice, or a precise value ("returns the sum of two integers", "we use PostgreSQL 16", "config is at ~/.cues/OPENCUES.md")
@@ -84,7 +84,7 @@ ASK only when the sentence genuinely has ONE of these:
 - a risky shortcut ("hardcode the API key", "skip the tests", "delete it and start over")
 - a real ambiguity the writer must resolve ("sometime next month", "the library everyone's using")
 
-USE THE CONTEXT (when provided below): SESSION CONTEXT tells you what the developer is working on and has decided; PAGE CONTEXT tells you what page/field they're writing in (in a browser, where there is no session). Ground your question in whatever is given — make options concrete to their actual project or page, and RESOLVE ambiguity from it rather than asking (if the context already answers which library / which module / what page, the sentence is NOT ambiguous — stay silent). Only ask when the fork is still genuinely open given everything provided.
+USE THE CONTEXT (when the user message carries any): SESSION CONTEXT tells you what the developer is working on and has decided; PAGE CONTEXT tells you what page/field they're writing in (in a browser, where there is no session). Ground your question in whatever is given — make options concrete to their actual project or page, and RESOLVE ambiguity from it rather than asking (if the context already answers which library / which module / what page, the sentence is NOT ambiguous — stay silent). Only ask when the fork is still genuinely open given everything provided.
 
 Do NOT hunt for contradictions with the context (a dependency added after "no new deps", an out-of-scope module) — a dedicated cue owns that. Your job is the OPEN question the context can't already resolve.
 
@@ -245,10 +245,32 @@ export class ToolPromptCueSource implements CueSource {
       {
         model: this.cfg.model,
         messages: [
-          // Session context rides in the SYSTEM message (session-stable → cerebras
-          // prefix-caches it); the per-call selection is the USER message.
-          { role: 'system', content: `${this.tool.systemPrompt}${contextBlock}` },
-          { role: 'user', content: `SELECTION: ${selection}` },
+          // The system message is the tool prompt ALONE — big, stable, and the
+          // thing worth prefix-caching (cerebras reuses it across every call in
+          // a session).
+          //
+          // The grounding block goes with the SELECTION, in the USER message,
+          // and that placement is load-bearing rather than incidental. It rode
+          // in the system message for prefix-caching reasons and the questions
+          // came back generic: "What specific performance improvement are you
+          // targeting?" instead of anything about this user's Bun cache. That
+          // is the documented cerebras failure mode — see
+          // docs/architecture/cerebras.md § "Ambient MUST stay user-side",
+          // where moving ambient to system cost the fluid-blank bench
+          // 175/176 → 166/176, with the note that the model "treats
+          // system-side ambient as global background and stops tightly binding
+          // it to the input". Grounding IS binding: the whole job of this
+          // block is to make the question specific to the sentence beside it.
+          //
+          // Note the block also carries chrome's AMBIENT metadata — literally
+          // the case that rule was written about — so this was the same bug
+          // twice over.
+          //
+          // Cost of the move: the grounding block (a summary + a few one-line
+          // decisions) drops out of the cached prefix. The system prompt, which
+          // is an order of magnitude larger, still caches.
+          { role: 'system', content: this.tool.systemPrompt },
+          { role: 'user', content: `${contextBlock ? `${contextBlock.trim()}\n\n` : ''}SELECTION: ${selection}` },
         ],
         maxTokens: 500,
         temperature: 0,

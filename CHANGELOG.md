@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — ask-cues grounding context moved to the user message, and the bench that should have caught it (`@opencues/core` 0.48.1 → 0.48.2, `@opencues/chrome` 0.2.168 → 0.2.169, `@opencues/dsh` 0.2.2 → 0.2.3)
+
+The session/page grounding block rode in the **system** message, for prefix-caching reasons. `docs/architecture/cerebras.md` already says not to do that, names the failure mode ("the model treats system-side ambient as global background and stops tightly binding it to the input"), and records the 175/176 → 166/176 fluid-blank regression that taught it. The block even carries chrome's ambient metadata — the exact case that rule was written about. It now travels with the SELECTION in the user message; the system prompt, an order of magnitude larger, still prefix-caches.
+
+**What this does not claim is a proven improvement.** Three runs per placement on the widened suite: judge-scored grounding 7/22 vs 8/23, deterministic 3/22 vs 5/23. Directionally better on both, restraint 4/4 in every run of both arms, firing equal or better — so the change is kept on the strength of the documented rule and the absence of any downside, not on a result the bench can support.
+
+**The measurement was the real defect.** Phase 2 had three grounding-eligible cases and a subjective judge boolean, which on *identical code* produced 0/3, 1/3, 0/3 in one sitting and 1/2, 1/3, 1/3 in another — range enough to manufacture a win or hide a regression, and it did exactly that to one attempt at tuning this prompt (the tweak "improved" grounding, then scored worse than the code it replaced; it was reverted after it turned out to cost phase-1 firing 35/36 → 31/36 while moving grounding not at all). Phase 2 now runs eight grounding cases plus four silent ones, and reports a second **deterministic** signal beside the judge's: does the output mention anything only the context could have supplied, excluding words already in the user's own sentence? Cruder, but it has no variance, so it is the one to watch.
+
+**And the feature's grounding is genuinely weak** — about 1 in 3 by judge, 1 in 5 deterministically, on *both* placements. `docs/features/ask-cues.md` claimed "every grounded question used it"; that no longer reproduces at any placement and has been corrected rather than quietly left standing. Questions come back sensible but generic. Fixing that is open work, now with a bench that can adjudicate it.
+
 ### Fixed — the session-cue prompts told three of four hosts they were Claude Code (`@opencues/core` 0.48.0 → 0.48.1, `@opencues/chrome` 0.2.167 → 0.2.168, `@opencues/dsh` 0.2.1 → 0.2.2)
 
 `Claude Code` was hardcoded into four prompt strings, and session cues now run on four hosts. An OpenCode, Gemini CLI or dsh transcript was introduced to the model as a Claude Code transcript — false on the wire, and a plausible source of bias when extracting decisions from a session that isn't one. The wording is now host-neutral (`an AI coding assistant session transcript`, `this coding session`); the file's own doc comments, which described the feature as Claude-Code-only throughout, were generalised with it.

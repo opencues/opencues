@@ -60,13 +60,49 @@ const CTX = { summary: 'Building a cache layer for a Bun service; keeping it dep
 // ask-cues' job is the OPEN, vague question grounded in context — NOT catching
 // contradictions with the context (that's session-contradiction's cue). So the
 // firing cases are vague-but-consistent sentences the context should sharpen.
+// THREE grounding-eligible cases could not support a conclusion. Measured on
+// identical code, the grounded score swung 0/3 → 1/3 → 0/3 and, an hour
+// earlier, 1/2 → 1/3 → 1/3 — a range wide enough to "show" an improvement or a
+// regression from a no-op change, which is exactly what it did to an attempt at
+// tuning this prompt. A judge-scored boolean over 3 samples is a coin, not a
+// measurement. Eight firing cases + four silent ones give two runs enough
+// resolution to tell a real change from the noise.
 const CTX_CASES = [
   { s: 'we should make the cache a lot faster', ask: true, ground: true },       // vague perf → grounds
   { s: 'the eviction logic could be better', ask: true, ground: true },          // vague → grounds
   { s: "let's make the cache more robust somehow", ask: true, ground: true },    // vague → grounds
+  { s: 'we need to sort out the memory situation', ask: true, ground: true },    // vague → grounds (Bun/std-lib only)
+  { s: 'the serialization approach needs work', ask: true, ground: true },       // vague → grounds (no deps)
+  { s: 'we should probably add some kind of metrics', ask: true, ground: true }, // vague → grounds (scope: cache only)
+  { s: 'the concurrency story here is unclear', ask: true, ground: true },       // vague → grounds
+  { s: 'we need a better key strategy', ask: true, ground: true },               // vague → grounds
   { s: 'store the cache entries in a plain Map', ask: false },                   // impl detail → silent
   { s: 'the cache uses an LRU eviction policy', ask: false },                    // clear → silent
+  { s: 'entries expire after 60 seconds', ask: false },                          // precise value → silent
+  { s: 'the module exports a single get/set pair', ask: false },                 // clear → silent
 ];
+
+// A DETERMINISTIC grounding signal, reported next to the judge's.
+//
+// The judge's `grounded` boolean is the honest measure of "did this question
+// meaningfully use the context", but it is one subjective call per case and it
+// swings hard: on IDENTICAL code, pooled scores of 5/20 and 8/23 across three
+// runs each, with individual runs ranging 1/7 to 4/8. That is enough variance
+// to invent an improvement or hide a regression, which is exactly what it did
+// to one attempt at tuning this prompt.
+//
+// This check asks a narrower question with no opinion in it: does the output
+// mention anything only the CONTEXT could have told it? Terms are drawn from
+// the context and exclude words already in the selection (`cache`, `eviction`),
+// so a question echoing the user's own sentence cannot score. Cruder than the
+// judge — a question can name Bun and still be useless — but it has no
+// variance, so it is the one to watch for regressions.
+const CONTEXT_ONLY_TERMS = ['bun', 'npm', 'dependenc', 'standard library', 'std lib', 'stdlib', 'third-party', 'third party'];
+function mentionsContext(q) {
+  const hay = [q.question, ...q.options.flatMap((o) => [o.label, o.description, o.apply])]
+    .filter((x) => typeof x === 'string').join(' ').toLowerCase();
+  return CONTEXT_ONLY_TERMS.some((t) => hay.includes(t));
+}
 
 const JUDGE_SYS = `You are a strict writing editor evaluating an assistant that attaches an OPTIONAL inline question to a sentence a user is writing. It should raise a question ONLY for a genuine, useful fork — a vague/risky claim, an ambiguity, a real decision, or a tension with what the developer already decided (SESSION CONTEXT) — and STAY SILENT when the sentence is clear/fine or already consistent with the context. Over-asking is a failure.
 
@@ -98,7 +134,8 @@ async function evalCase(c, snap) {
   const ctxForJudge = snap ? `SESSION CONTEXT:\n${core.renderSessionContextForAsk(snap).trim()}\n\n` : '';
   const jRaw = await chat(JUDGE, JUDGE_SYS, `${ctxForJudge}SELECTION: ${c.s}\n\nASSISTANT OUTPUT:\n${outStr}`, 200);
   const j = parseObj(jRaw) || {};
-  return { c, asked, q, warranted: !!j.warranted, quality: j.quality, grounded: j.grounded, reason: j.reason };
+  return { c, asked, q, warranted: !!j.warranted, quality: j.quality, grounded: j.grounded, reason: j.reason,
+           lexical: asked ? mentionsContext(q) : null };
 }
 
 function report(title, rows, wantGround) {
@@ -120,6 +157,11 @@ function report(title, rows, wantGround) {
   console.log(`RESTRAINT (fine text -> silent): ${silentOnNo}/${noTot}  (${noTot ? (100 * silentOnNo / noTot).toFixed(0) : '-'}%)`);
   console.log(`QUALITY (independent judge):     ${qN ? (qSum / qN).toFixed(2) : 'n/a'} / 2  (n=${qN})`);
   if (wantGround) console.log(`GROUNDED (used the context):     ${gN ? `${gY}/${gN}  (${(100 * gY / gN).toFixed(0)}%)` : 'n/a'}`);
+  if (wantGround) {
+    const lN = rows.filter((r) => r.c.ground && r.asked).length;
+    const lY = rows.filter((r) => r.c.ground && r.asked && r.lexical).length;
+    console.log(`MENTIONS CONTEXT (deterministic):  ${lN ? `${lY}/${lN}  (${(100 * lY / lN).toFixed(0)}%)` : 'n/a'}`);
+  }
   console.log(`JUDGE agrees w/ my labels:       ${agree}/${rows.length}  (${(100 * agree / rows.length).toFixed(0)}%)`);
 }
 

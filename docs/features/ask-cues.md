@@ -48,9 +48,21 @@ way it:
 - **stays quiet** when the sentence is already consistent with the session.
 
 Measured effect (independent Claude judge, `tests/benchmarks/ask-cues/`):
-question quality **1.0/2 → 2.0/2** with context, and every grounded question
-used it. Because the session feeds both features, the producer runs when
-**either** `ask-cues-mode` **or** `session-contradiction-mode` is on.
+context lifts question quality, and it reliably suppresses questions the
+session already answers — restraint is 4/4 in every run of the current suite.
+
+**Grounding itself is the weak part, and the honest number is not the one this
+doc used to quote.** It claimed "every grounded question used it", from a
+measurement that no longer reproduces. Re-measured August 2026 over three runs
+on eight cases: the judge scores roughly **1 in 3**, and a deterministic check
+(does the output mention anything only the context could have supplied?) scores
+about **1 in 5**. Questions come back sensible but generic — "What specific
+performance improvement are you aiming for?" rather than something about *your*
+runtime. Improving that is open work; the bench now has the resolution to tell
+whether an attempt helped.
+
+Because the session feeds both features, the producer runs when **either**
+`ask-cues-mode` **or** `session-contradiction-mode` is on.
 
 ## What it looks like
 
