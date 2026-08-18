@@ -12,6 +12,7 @@ import * as geminiImpl from '../fluid-blank/gemini';
 import * as cerebrasImpl from '../fluid-blank/cerebras';
 import * as claudeImpl from '../fluid-blank/claude';
 import * as openaiImpl from '../fluid-blank/openai';
+import * as deepseekImpl from '../fluid-blank/deepseek';
 
 function pickImpl() {
   switch (process.env.OPENCUES_BENCH_PROVIDER) {
@@ -19,6 +20,7 @@ function pickImpl() {
     case 'cerebras-gpt-oss':  return cerebrasImpl;
     case 'claude-haiku':      return claudeImpl;
     case 'openai-nano':       return openaiImpl;
+    case 'deepseek-flash':    return deepseekImpl;
     default:                  return groqImpl;
   }
 }

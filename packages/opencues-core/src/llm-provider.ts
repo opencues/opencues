@@ -24,9 +24,9 @@ import { resolveReasoningEffort } from './model-thinking';
 import { hasUsageSinks, reportUsage } from './usage-meter';
 import { HARNESS, isHarnessBridgeReady } from './providers/harness-bridge';
 
-export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'openai-subscription' | 'anthropic' | 'cerebras' | 'claude-code-cli' | 'opencode-zen' | 'ollama' | 'harness';
+export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'openai-subscription' | 'anthropic' | 'cerebras' | 'deepseek' | 'claude-code-cli' | 'opencode-zen' | 'ollama' | 'harness';
 
-export const PROVIDER_IDS: readonly ProviderId[] = ['groq', 'openrouter', 'gemini', 'openai', 'openai-subscription', 'anthropic', 'cerebras', 'claude-code-cli', 'opencode-zen', 'ollama', 'harness'];
+export const PROVIDER_IDS: readonly ProviderId[] = ['groq', 'openrouter', 'gemini', 'openai', 'openai-subscription', 'anthropic', 'cerebras', 'deepseek', 'claude-code-cli', 'opencode-zen', 'ollama', 'harness'];
 
 /**
  * Legacy provider-id aliases. User configs created before the rename
@@ -1146,6 +1146,109 @@ const CEREBRAS: ProviderAdapter = {
 };
 
 /**
+ * DeepSeek — OpenAI-compatible chat-completions at api.deepseek.com.
+ * Catalogue (probed live 2026-08-07, `/models` returns exactly two):
+ * `deepseek-v4-flash` (default) and `deepseek-v4-pro`. Flash is the
+ * 0731 build — 284B MoE, 13B active per token, 1M context.
+ *
+ * **Reasoning is ON at the API default and we turn it OFF**, via the
+ * standard `reasoning_effort: 'none'` path — NOT a provider-specific
+ * body field. DeepSeek accepts both `reasoning_effort` and a `thinking`
+ * block; `'none'` zeroes reasoning tokens on its own (verified live
+ * 2026-08-07), so the shared `buildOpenAIBody` covers it and this
+ * adapter needs no bespoke body splice. `deepseek-v4-flash` doesn't
+ * match `isReasoningModelName`, hence `includeReasoningEffort: true`
+ * below to open the forward gate. The trace, when enabled, lands in
+ * `message.reasoning_content` (a SIBLING of `content`), so
+ * `parseOpenAIResponse` reads a clean answer either way — this is a
+ * latency choice, not a parsing one.
+ *
+ * The bench evidence is SURFACE-DEPENDENT, not a blanket win:
+ *   fluid-blank (137, fused)  off 98.5% @1364ms | on 97.1% @2839ms
+ *   transform-blank (487)     off 85.8% @ 957ms | on 88.5% @5155ms
+ * Off is unambiguously right on short lookups (better AND faster). On
+ * transform-blank reasoning buys +2.7pp at 5.4x the latency — a trade
+ * we decline by default, because latency is already this provider's
+ * weak axis. The `{ max: 'none', off: 'none' }` row in model-thinking.ts
+ * encodes that, matching the zai-glm-4.7 / gemma-4-31b precedent; a
+ * future tuner wanting the long-rewrite accuracy back should raise
+ * `max` there rather than special-casing this adapter.
+ *
+ * Prefix caching: DeepSeek caches in 1024-token blocks and reports the
+ * split as `prompt_cache_{hit,miss}_tokens`. Measured on the production
+ * fluid-blank FUSED prompt: 1024 of 1123 prompt tokens hit (91%) from
+ * the second call onward; a 24k-token stable system prompt hit 99.6%.
+ * The stable-system / varying-user split that OpenCues already keeps
+ * for cerebras (docs/architecture/cerebras.md) applies here unchanged.
+ *
+ * Cost at those ratios: ~$0.021 per 1K correct fluid-blank answers
+ * (cache-hit input $0.0028/M, cache-miss $0.14/M, output $0.28/M).
+ *
+ * NOT in PROVIDER_AUTO_ORDER and NOT in the feature-registry provider
+ * menus — this entry exists so the benches can drive the production
+ * source. Making it user-reachable is a separate, deliberate change;
+ * see the `trainsOnInput` note below for the open question gating it.
+ */
+const DEEPSEEK: ProviderAdapter = {
+  id: 'deepseek',
+  displayName: 'DeepSeek',
+  // `seed` accepted (HTTP 200) on a live probe, though determinism is
+  // unverified. `prediction` + `reasoningFormatHidden` left off — both
+  // are unprobed here and default-off is the safe state (see the
+  // ProviderCapabilities doc comment).
+  capabilities: { seed: true },
+  defaultEndpoint: 'https://api.deepseek.com/chat/completions',
+  defaultModel: 'deepseek-v4-flash',
+  knownModels: [
+    'deepseek-v4-flash',
+    'deepseek-v4-pro',
+  ],
+  envKeyName: 'DEEPSEEK_API_KEY',
+  keyProbe: {
+    url: 'https://api.deepseek.com/models',
+    headers: (k) => ({ Authorization: `Bearer ${k}` }),
+    listField: 'data',
+  },
+  // 'none' disables reasoning. Must be a defined value: resolveReasoningEffort
+  // short-circuits to `undefined` whenever providerDefault is undefined, which
+  // would ignore the MODEL_THINKING row and leave the API default (reasoning ON).
+  defaultReasoningEffort: 'none',
+  // `trainsOnInput` is DELIBERATELY UNSET — the answer is not known.
+  //
+  // DeepSeek's published privacy policy was not machine-fetchable (403)
+  // at the time of writing, and secondary sources contradict each other
+  // on whether paid API traffic is excluded from training. What is not
+  // disputed: data is processed and stored in the PRC. Rather than
+  // encode a guess as a boolean in either direction, the field is left
+  // undefined and the uncertainty recorded here.
+  //
+  // ⚠ CONSEQUENCE OF UNSET: the prose-source guard reads `trainsOnInput`
+  // as falsy, so it will NOT block the prose-bearing buckets (word-cues,
+  // sentence-cues, auditors, agent-rewrite). That is harmless only for
+  // as long as this provider stays out of PROVIDER_AUTO_ORDER and the
+  // feature-registry menus — i.e. unreachable by a real user. BEFORE
+  // making it reachable, resolve this against a citable statement in
+  // DeepSeek's own terms and set the flag explicitly, with the citation.
+  buildRequest(req, ctx) {
+    return {
+      url: ctx.endpoint ?? this.defaultEndpoint,
+      body: buildOpenAIBody(req, {
+        // deepseek-* doesn't match `isReasoningModelName`, so the forward
+        // gate needs opening explicitly — otherwise reasoning_effort is
+        // dropped and the model reasons at its API default.
+        includeReasoningEffort: true,
+        defaultReasoningEffort: this.defaultReasoningEffort,
+        provider: this.id,
+        capabilities: this.capabilities,
+        maxThinking: ctx.maxThinking,
+      }),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
+    };
+  },
+  parseResponse: parseOpenAIResponse,
+};
+
+/**
  * claude-cli — subscription-backed Anthropic transport via the user's
  * locally-installed `claude` CLI. Bypasses HTTP entirely; routes through
  * a persistent `claude -p` subprocess (one per model+system-prompt pair)
@@ -1578,6 +1681,7 @@ const PROVIDERS: Readonly<Record<ProviderId, ProviderAdapter>> = {
   'openai-subscription': OPENAI_SUBSCRIPTION,
   anthropic: ANTHROPIC,
   cerebras: CEREBRAS,
+  deepseek: DEEPSEEK,
   'claude-code-cli': CLAUDE_CLI,
   'opencode-zen': OPENCODE_ZEN,
   ollama: OLLAMA,
@@ -2298,6 +2402,10 @@ const FALLBACK_PAIRS: Readonly<Record<ProviderId, ProviderId | undefined>> = {
   'openai-subscription': undefined,
   anthropic: undefined,
   gemini: undefined,
+  // deepseek: no peer. Its body carries a DeepSeek-only `thinking` block
+  // that groq/cerebras would reject, so the "share one body across both"
+  // precondition this map depends on doesn't hold.
+  deepseek: undefined,
   // claude-code-cli is a different transport entirely — no HTTP peer to
   // fall back to. If the subscription daemon dies, the user picks a
   // different provider in OPENCUES.md.

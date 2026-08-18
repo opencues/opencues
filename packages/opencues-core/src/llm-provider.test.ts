@@ -426,6 +426,65 @@ describe('cerebras provider — OpenAI-shape, low-latency wafer-scale host', () 
   });
 });
 
+describe('deepseek provider — OpenAI-shape, reasoning disabled by default', () => {
+  it('buildRequest: deepseek URL + bearer auth + OpenAI body', () => {
+    const built = buildProviderRequest(
+      'deepseek',
+      { model: 'deepseek-v4-flash', messages: [{ role: 'user', content: 'hi' }] },
+      { apiKey: 'sk-test' },
+    );
+    assert.strictEqual(built.url, 'https://api.deepseek.com/chat/completions');
+    assert.strictEqual(built.headers.Authorization, 'Bearer sk-test');
+    const body = JSON.parse(built.body);
+    assert.strictEqual(body.model, 'deepseek-v4-flash');
+    assert.ok(Array.isArray(body.messages));
+  });
+
+  // The forward gate is the fragile part: `deepseek-*` does NOT match
+  // `isReasoningModelName`, so without the adapter's explicit
+  // `includeReasoningEffort` the field is silently dropped and the model
+  // reasons at its API default — costing ~2x latency with no signal.
+  it('buildRequest: emits reasoning_effort:none despite the model name not matching the reasoning regex', () => {
+    const built = buildProviderRequest(
+      'deepseek',
+      { model: 'deepseek-v4-flash', messages: [{ role: 'user', content: 'x' }] },
+      { apiKey: 'k' },
+    );
+    assert.strictEqual(JSON.parse(built.body).reasoning_effort, 'none');
+  });
+
+  it('buildRequest: max-thinking on/off both resolve to none (pinned per model-thinking.ts)', () => {
+    for (const maxThinking of [true, false]) {
+      const built = buildProviderRequest(
+        'deepseek',
+        { model: 'deepseek-v4-flash', messages: [{ role: 'user', content: 'x' }] },
+        { apiKey: 'k', maxThinking },
+      );
+      assert.strictEqual(JSON.parse(built.body).reasoning_effort, 'none');
+    }
+  });
+
+  // An explicit per-call value must still clamp DOWN to the ceiling —
+  // otherwise a source pinning 'low' would silently re-enable reasoning.
+  it('buildRequest: explicit reasoningEffort clamps down to the none ceiling', () => {
+    const built = buildProviderRequest(
+      'deepseek',
+      { model: 'deepseek-v4-flash', messages: [{ role: 'user', content: 'x' }], reasoningEffort: 'high' },
+      { apiKey: 'k' },
+    );
+    assert.strictEqual(JSON.parse(built.body).reasoning_effort, 'none');
+  });
+
+  // reasoning_content is a SIBLING of content on this API; the parser must
+  // read content and never concatenate the trace into the answer.
+  it('parseResponse: reads content, ignores sibling reasoning_content', () => {
+    const raw = JSON.stringify({
+      choices: [{ message: { content: 'Oslo', reasoning_content: 'The capital of Norway is Oslo.' } }],
+    });
+    assert.strictEqual(parseProviderResponse('deepseek', raw), 'Oslo');
+  });
+});
+
 describe('anthropic provider — Messages API (different shape from OpenAI)', () => {
   it('buildRequest: /v1/messages URL, x-api-key header, anthropic-version, browser-access header', () => {
     const built = buildProviderRequest(

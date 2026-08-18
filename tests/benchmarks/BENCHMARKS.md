@@ -114,12 +114,61 @@ openai  chat-latest      100.0% / 1529 / $12.80   98.5% / 2249 / $17.26   99.3% 
 
 ★ = best cost-per-correct in the bench.
 
+### DeepSeek V4 Flash — seven-surface sweep (2026-08-07)
+
+Added after the tables above, so it isn't in them. Every row was run in
+**one session against a same-session `cerebras gpt-oss-120b` baseline**
+— the only honest way to compare, since the tables above were recorded
+at different times and on a 231-case transform-blank suite (the bench
+now runs 487).
+
+| Surface | Bucket | deepseek-v4-flash | cerebras gpt-oss-120b | Latency (DS / Cb) |
+|---|---|---|---|---|
+| fluid-blank (137) | blanks | 98.5% | **99.3%** | 1364ms / 479ms |
+| transform-blank (487) | blanks | **85.8%** | 84.8% | 957ms / 613ms |
+| fluid-blank-ambient (176) | blanks | 99.4% | 99.4% | ~960ms / ~370ms |
+| sentence-cues (34) | cues | **100%** | 97.1% | 1122ms / 277ms |
+| next-prompt-cues (15) | cues | 100% | 100% | — |
+| agent-rewrite (18) | auditors | 83.3% | 83.3% | 848ms / 243ms |
+| fluid-config (91) | settings | P96.9 / R81.8 · undo 26/26 | **P100** / R84.8 · undo 23/26 | — |
+
+**Read:** accuracy is a wash (2 wins, 2 ties, 2 losses, 1 split);
+latency is not — DeepSeek is 1.6×–4× slower on every surface, a ratio
+consistent enough to look structural rather than noisy. Not viable for
+word-cues (~500ms budget).
+
+Cost, measured from live `usage` blocks rather than estimated from
+prompt length: **≈$0.021 per 1K correct fluid-blank answers**, ~8×
+cheaper than the best row in the table above, on a measured 91%
+prefix-cache hit rate (1024 of 1123 prompt tokens).
+
+Two category-level inversions worth knowing before picking it per
+surface:
+
+- **transform-blank**: DeepSeek is far stronger on `long-text` (88.3%
+  vs 71.7%), `multi-paragraph` (75% vs 50%) and `linked-concepts` (50%
+  vs 35%); weaker on `creative-rewrite` (65% vs 80%) and `adversarial`
+  (80% vs 95%). Good at mechanical, structure-preserving rewrites;
+  worse at open-ended generation.
+- **fluid-config**: perfect on `undo` but produces a settings
+  false-positive cerebras doesn't. For a classifier that mutates user
+  settings, false-positive is the expensive direction.
+
+Reasoning is pinned off (`MODEL_THINKING['deepseek:deepseek-v4-flash']`).
+Thinking-on was measured at 97.1% @2839ms on fluid-blank and 88.5%
+@5155ms on transform-blank — i.e. worse on short lookups, +2.7pp on
+long rewrites for 5.4× the latency.
+
+Re-run: `DEEPSEEK_API_KEY=… GROQ_API_KEY=… npx tsx
+tests/benchmarks/transform-blank/prod.ts --provider deepseek --parallel 8`,
+and `OPENCUES_BENCH_PROVIDER=deepseek-flash` for the router-driven suites.
+
 **Free pool — OpenCode Zen (`blank-llm-provider: free`) — 30-case fluid-blank fused, anonymous, 1500ms throttle:**
 
 | Model | Accuracy | Per-case ms | Cost | Notes |
 |---|---|---|---|---|
 | `nemotron-3-super-free`      | **86.7%** (26/30) | 14002 | **$0** | NVIDIA terms; "trial use only — not for production / sensitive data". Slow but accurate. |
-| `deepseek-v4-flash-free`     | 46.7% (14/30)     | 4990  | $0     | Fast but mediocre; ToS says inputs may be used to train the model. |
+| `deepseek-v4-flash-free`     | 46.7% (14/30)     | 4990  | $0     | Fast but mediocre; ToS says inputs may be used to train the model. **Not representative of DeepSeek's own API** — the same model name via `deepseek` direct scored 98.5% (see the provider matrix above). The Zen free tier evidently serves something degraded; don't read this row as evidence about the `deepseek` provider. |
 | `big-pickle`                 | 40.0% (12/30)     | 5064  | $0     | A stealth deepseek-v4-flash variant; same speed, worse accuracy. Same data-use clause as deepseek. |
 | ~~`qwen3.6-plus-free`~~      | —                 | —     | —      | Promotion ended May 2026; now requires paid OpenCode Go subscription. |
 | ~~`minimax-m2.5-free`~~      | —                 | —     | —      | Promotion ended May 2026; now requires paid OpenCode Go subscription. |

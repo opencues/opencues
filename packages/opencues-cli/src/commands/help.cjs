@@ -271,6 +271,7 @@ const PROVIDER_DISPLAY = {
   'claude-code-cli': 'Claude Code (CLI, subscription)',
   'openai-subscription': 'OpenAI (ChatGPT subscription)',
   'opencode-zen': 'OpenCode Zen',
+  deepseek: 'DeepSeek',
   ollama: 'Ollama (local)',
   harness: "Host harness (uses the app's own model)",
 };
@@ -287,6 +288,7 @@ const PROVIDER_DEFAULT_MODEL = {
   'claude-code-cli': 'haiku',
   'openai-subscription': 'gpt-5.4-mini',
   'opencode-zen': 'big-pickle',
+  deepseek:   'deepseek-v4-flash',
   ollama:     'gemma4:e2b',
   // The host owns model selection for the harness bridge, so there is no
   // default to advertise here.

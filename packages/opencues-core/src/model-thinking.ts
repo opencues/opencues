@@ -138,6 +138,21 @@ const MODEL_THINKING: Readonly<Record<string, ModelThinking>> = {
   'openrouter:openai/gpt-oss-120b':      { max: 'low', off: 'low' },
   'openrouter:openai/gpt-oss-120b:free': { max: 'low', off: 'low' },
 
+  // DeepSeek V4 — reasoning is ON at the API default; `'none'` cleanly
+  // disables it (0 reasoning tokens, verified live 2026-08-07). Pinned
+  // none/none like zai-glm-4.7 and gemma-4-31b, but for a different
+  // reason: reasoning here WORKS, it just costs more latency than it's
+  // worth on the interactive surfaces. Bench, 2026-08-07:
+  //   fluid-blank (137)     off 98.5% @1364ms | on 97.1% @2839ms
+  //   transform-blank (487) off 85.8% @ 957ms | on 88.5% @5155ms
+  // Short lookups are better AND faster without it; long rewrites gain
+  // +2.7pp for 5.4x the latency, which we decline since latency is
+  // already DeepSeek's weak axis (2.8-4x slower than cerebras on every
+  // surface measured). Raising `max` to 'low' turns reasoning back on
+  // for `max-thinking: on` — do that only with a bench to back it.
+  'deepseek:deepseek-v4-flash': { max: 'none', off: 'none' },
+  'deepseek:deepseek-v4-pro':   { max: 'none', off: 'none' },
+
   // OpenCode Zen free pool — same gpt-oss-120b family as groq, so
   // assume the same `'none'` hard-reject. No live probe (free pool
   // requires a separate key + has stricter rate limits); `off: 'low'`

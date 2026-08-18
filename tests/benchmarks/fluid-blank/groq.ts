@@ -8,6 +8,7 @@
  *   claude-haiku        → ./claude        (Claude Haiku 4.5)
  *   openai-nano         → ./openai        (gpt-5.4-nano)
  *   opencode-zen        → ./opencode-zen  (free pool — model via OPENCUES_OPENCODE_ZEN_MODEL)
+ *   deepseek-flash      → ./deepseek      (deepseek-v4-flash)
  *   (unset / anything)  → ./groq-impl     (Groq + gpt-oss-120b, default)
  */
 
@@ -17,6 +18,7 @@ import * as cerebrasImpl from './cerebras';
 import * as claudeImpl from './claude';
 import * as openaiImpl from './openai';
 import * as opencodeZenImpl from './opencode-zen';
+import * as deepseekImpl from './deepseek';
 
 function pickImpl() {
   switch (process.env.OPENCUES_BENCH_PROVIDER) {
@@ -25,6 +27,7 @@ function pickImpl() {
     case 'claude-haiku':      return claudeImpl;
     case 'openai-nano':       return openaiImpl;
     case 'opencode-zen':      return opencodeZenImpl;
+    case 'deepseek-flash':    return deepseekImpl;
     default:                  return groqImpl;
   }
 }
