@@ -191,6 +191,35 @@ one), so it's fenced:
   not personal data); revisit before broadening the extraction to personal or
   credential-bearing content.
 
+## Company / project rules — `RULES.md`
+
+The matcher takes any watchlist, and benching it on org-policy statements
+across five industries (`tests/benchmarks/session-contradiction/company-rules-bench.mjs`
+— engineering, comms, support, healthcare, finance) scored **19/19 recall,
+19/19 right-rule-cited, 0 false alarms** on topic-adjacent compliant traps, on
+both gpt-oss and gemma, with the production prompt unchanged. So rules are a
+LOADER, not an engine: static watchlist entries that come from a file instead
+of a transcript, skipping Stage A entirely.
+
+- **File**: `RULES.md` in the standard `.cues` search paths; project beats
+  user; every `- ` bullet is one rule, everything else is ignored prose
+  (`parseRulesMd` in core).
+- **Merge**: at the ingest (`buildSessionCommitmentsIngest`), rules first with
+  stable `r<N>` ids (stable order keeps the rendered catalog prefix-cacheable),
+  then session commitments, DROPPING any that near-duplicate a rule
+  (`commitmentDedupeKey`) — the producer can re-distil a rule the user restated,
+  and a near-duplicate pair is the measured matcher-silencing failure. Total
+  capped at `MAX_COMMITMENTS`, rules first; a rules file that fills the cap
+  logs a warning instead of silently starving session decisions.
+- **This is advisory, not enforcement**: a passive ⚠ cue, dismissible like any
+  other. For hard gates use CI. It polices the PROSE/decision layer.
+- **Hosts**: native bands (via the ingest). dsh's node half serves the scoped
+  snapshot only and does not read `RULES.md` yet; chrome has no filesystem.
+- **Threat note**: a project-level `RULES.md` means a cloned repo can put
+  entries in the matcher's system prompt. Same class as the watchlist itself
+  (security-audit #31): no side-effect channel exists, so worst-case injection
+  is manipulated cue TEXT the user reads.
+
 ## Where to touch
 
 - `session-commitments.ts` — types, per-host transcript parsers, extraction

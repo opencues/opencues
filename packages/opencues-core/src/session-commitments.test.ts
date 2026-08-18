@@ -195,6 +195,8 @@ import {
   mergeSessionCommitments,
   normalizeCommitmentStatement,
   commitmentDedupeKey,
+  parseRulesMd,
+  mergeRulesIntoCommitments,
   parseSupersededResult,
 } from './session-commitments';
 
@@ -309,6 +311,53 @@ describe('mergeSessionCommitments — near-duplicate suppression', () => {
       ['Store is Postgres'],
     );
     expect(m.map((x) => x.statement)).toEqual(['Switch the store to SQLite']);
+  });
+});
+
+describe('parseRulesMd', () => {
+  it('takes bullets, ignores headings / prose / frontmatter / comments', () => {
+    const md = `---\nowner: platform-team\n---\n# Engineering policy\n\nThese are binding.\n\n- No new third-party dependencies without approval.\n* Secrets never go in code or logs.\nSome prose that is not a rule.\n- Customer data stays in eu-west-1.\n`;
+    expect(parseRulesMd(md)).toEqual([
+      'No new third-party dependencies without approval.',
+      'Secrets never go in code or logs.',
+      'Customer data stays in eu-west-1.',
+    ]);
+  });
+
+  it('drops over-long bullets (a pasted paragraph is not a rule) and caps the list', () => {
+    const long = `- ${'x'.repeat(MAX_STATEMENT_LEN + 1)}`;
+    const many = Array.from({ length: MAX_COMMITMENTS + 5 }, (_, i) => `- rule ${i}`).join('\n');
+    expect(parseRulesMd(long)).toEqual([]);
+    expect(parseRulesMd(many)).toHaveLength(MAX_COMMITMENTS);
+  });
+
+  it('is empty on empty / rule-less input', () => {
+    expect(parseRulesMd('')).toEqual([]);
+    expect(parseRulesMd('# just a heading\nand prose')).toEqual([]);
+  });
+});
+
+describe('mergeRulesIntoCommitments', () => {
+  const c = (id: string, statement: string) => ({ id, category: 'decision', statement });
+
+  it('rules come first with stable r<N> ids; session commitments follow', () => {
+    const m = mergeRulesIntoCommitments(['No new deps.', 'Secrets stay out of code.'], [c('c1', 'Runtime is Bun, not Node.')]);
+    expect(m.map((x) => x.id)).toEqual(['r1', 'r2', 'c1']);
+    expect(m[0].category).toBe('rule');
+  });
+
+  it('drops a session commitment that near-duplicates a rule — the measured matcher-silencing pair', () => {
+    // The producer can re-distil a rule the user restated in-session; keeping
+    // both is the near-duplicate failure mode commitmentDedupeKey exists for.
+    const m = mergeRulesIntoCommitments(['No new npm dependencies.'], [c('c1', 'The no new npm dependencies.'), c('c2', 'Tests live under tests/.')]);
+    expect(m.map((x) => x.statement)).toEqual(['No new npm dependencies.', 'Tests live under tests/.']);
+  });
+
+  it('dedupes across rules too, and caps the total at MAX_COMMITMENTS rules-first', () => {
+    const rules = Array.from({ length: MAX_COMMITMENTS }, (_, i) => `rule ${i}`);
+    const m = mergeRulesIntoCommitments([...rules, 'rule 0'], [c('c1', 'a session decision')]);
+    expect(m).toHaveLength(MAX_COMMITMENTS);
+    expect(m.every((x) => x.id.startsWith('r'))).toBe(true);   // no room left for the session
   });
 });
 

@@ -89,6 +89,83 @@ export function sessionCommitmentsKey(cwd: string | undefined): string {
 }
 
 export const MAX_COMMITMENTS = 24;
+
+// ── Company / project rules (static watchlist entries) ─────────────────────
+//
+// The matcher takes ANY watchlist, and benching it against org-policy
+// statements across five industries (engineering, comms, support, healthcare,
+// finance — tests/benchmarks/session-contradiction/company-rules-bench.mjs)
+// scored 19/19 recall, 19/19 right-rule-cited, 0 false alarms on
+// topic-adjacent compliant traps, on both gpt-oss and gemma, with the
+// production prompt UNCHANGED. So rules are not a new engine: they are
+// watchlist entries that come from a file instead of a transcript.
+//
+// `RULES.md` lives in the standard `.cues` search paths (project beats user).
+// Format: one rule per `- ` bullet; headings, prose, comments and frontmatter
+// are ignored, so the file can be a readable policy document whose bullets are
+// the enforced part. Kept deliberately curated — the matcher's precision
+// degrades as the prompt bloats, and a measured near-duplicate pair SILENCED
+// it (see commitmentDedupeKey), which is why merging dedupes and caps.
+
+/** The rules file name, resolved against each `.cues` search root. */
+export const RULES_FILE = 'RULES.md';
+
+/** Parse RULES.md: every `- ` / `* ` bullet is one rule statement. Everything
+ *  else — headings, prose, frontmatter — is ignored. Over-long lines are
+ *  dropped (a paragraph pasted as a bullet is not a rule). */
+export function parseRulesMd(text: string): string[] {
+  if (!text) return [];
+  const out: string[] = [];
+  const lines = text.split('\n');
+  let inFrontmatter = false;
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (i === 0 && trimmed === '---') { inFrontmatter = true; continue; }
+    if (inFrontmatter) { if (trimmed === '---') inFrontmatter = false; continue; }
+    const m = /^[-*]\s+(.+)$/.exec(trimmed);
+    if (!m) continue;
+    const statement = m[1].trim().replace(/\s+/g, ' ');
+    if (!statement || statement.length > MAX_STATEMENT_LEN) continue;
+    out.push(statement);
+    if (out.length >= MAX_COMMITMENTS) break;
+  }
+  return out;
+}
+
+/**
+ * Merge static rules with the session-produced commitments into one live
+ * watchlist. Rules come FIRST with stable `r<N>` ids — stable order keeps the
+ * rendered catalog byte-identical across ticks, which is what lets cerebras
+ * prefix-cache it. Session commitments keep their producer ids but are DROPPED
+ * when they near-duplicate a rule (commitmentDedupeKey): the producer can
+ * re-distil "no new npm dependencies" out of a session where the user restated
+ * a rule, and a near-duplicate pair is the measured failure mode that turns
+ * the matcher OFF. Total is capped at MAX_COMMITMENTS, rules first — an org
+ * that ships 24 rules has left no room for session decisions, which the
+ * caller should warn about rather than silently accept.
+ */
+export function mergeRulesIntoCommitments(
+  rules: readonly string[],
+  commitments: readonly SessionCommitment[],
+): SessionCommitment[] {
+  const out: SessionCommitment[] = [];
+  const seen = new Set<string>();
+  for (const statement of rules) {
+    const key = commitmentDedupeKey(statement);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ id: `r${out.length + 1}`, category: 'rule', statement });
+    if (out.length >= MAX_COMMITMENTS) return out;
+  }
+  for (const c of commitments) {
+    const key = commitmentDedupeKey(c.statement);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+    if (out.length >= MAX_COMMITMENTS) break;
+  }
+  return out;
+}
 /** Max characters of a single commitment statement — a terse decision, not a
  *  paragraph. Longer is dropped (a runaway extraction, not a commitment). */
 export const MAX_STATEMENT_LEN = 200;

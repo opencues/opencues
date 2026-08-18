@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — company and project rules on the session-contradiction watchlist (`@opencues/core` 0.50.1 → 0.51.0, `@opencues/runtime` 0.33.1 → 0.34.0, `@opencues/chrome` 0.2.172 → 0.2.173, `@opencues/dsh` 0.2.6 → 0.2.7)
+
+A `RULES.md` in your project's `.cues/` (or user-level) now feeds the session-contradiction matcher: every `- ` bullet is a rule, the rest of the file is ignorable prose, and typing "let's just npm install lodash for this" draws the ⚠ cue naming the rule it violates, with a reconciled rewrite on Ctrl+Alt+↑.
+
+**Benchmarked before it was built.** The matcher takes any watchlist, so the idea was tested with zero code changes: org-policy watchlists across five kinds of company — engineering, comms/PR, support, healthcare, finance — scored **19/19 recall, 19/19 right-rule-cited, and 0 false alarms** on topic-adjacent compliant traps ("I asked platform for approval and they signed off" is never flagged against the approval rule), on both gpt-oss and gemma, three runs, deterministic scoring against labeled rule ids. The production prompt needed no change — a rules-aware reframe was measured and bought nothing (18/19).
+
+The build is therefore a loader, not an engine: rules merge ahead of session commitments with stable `r<N>` ids, session entries that near-duplicate a rule are dropped (`commitmentDedupeKey` — a near-duplicate pair is the measured failure that silences the matcher), the total caps at 24 with a warning when rules fill it, and edits to the file go live within seconds on the ingest's existing poll. When the session snapshot vanishes, the rules stay.
+
+Stated plainly: this **flags, it does not enforce** — a passive, dismissible nudge at typing time, not a gate; CI remains the gate. It polices the prose/decision layer, which is increasingly where the action is when people drive agents by prose. Native hosts only for now (dsh's node half and chrome don't read the file yet). Threat model: a cloned repo's project-level `RULES.md` can inject watchlist entries; same bounded class as the watchlist itself — no side-effect channel, cue-text-only blast radius (security-audit #31 updated).
+
+One bug caught by its own test: the "rules truncated" warning first fired on cross-file *dedupe* — a rule repeated in project and user files — which is the dedupe doing its job, not truncation. It now warns only on the actionable case: a rules file that fills the whole watchlist, leaving no room for session decisions.
+
 ### Added — ask-cues reads the document around your sentence (`@opencues/core` 0.49.0 → 0.50.0, `@opencues/chrome` 0.2.170 → 0.2.171, `@opencues/dsh` 0.2.4 → 0.2.5)
 
 The model was being sent **one sentence**. The rest of your draft sat in `context.text` and was never passed. So it could not know that your next line already names the library, or already gives the number the claim needs — and a question whose answer is three words further down the page is worse than no question at all, because it proves the thing did not read on.
