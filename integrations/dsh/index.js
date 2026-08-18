@@ -402,28 +402,50 @@ export function apply(ctx, config = {}) {
     kind: 'exact',
     path: '/opencues/session-commitments',
     async handler(req, res) {
-      // Read the per-cwd watchlist the producer wrote. Absent file → empty
-      // snapshot, which the resolver treats as "nothing to contradict".
+      // Serve the merged watchlist: static RULES.md entries first, then the
+      // per-cwd session commitments the producer wrote. Absent everything →
+      // empty snapshot, which the resolver treats as "nothing to contradict".
       try {
         let core = null;
-        try { core = nodeRequire('@opencues/core'); } catch { /* key falls back below */ }
+        try { core = nodeRequire('@opencues/core'); } catch { /* both halves degrade below */ }
+
+        // Session half — per-cwd file only. The flat `session-commitments.json`
+        // fallback is deliberately NOT read: it belongs to whichever host
+        // wrote it last, and serving another project's decisions here would
+        // flag the user against things they never said.
+        let snapshot = { commitments: [] };
         const key = core && typeof core.sessionCommitmentsKey === 'function' && lastSessionCwd
           ? core.sessionCommitmentsKey(lastSessionCwd)
           : null;
-        const roots = searchPaths.filter(Boolean);
-        for (const root of roots) {
-          // Only the per-cwd file. The flat `session-commitments.json` fallback
-          // is deliberately NOT read: it belongs to whichever host wrote it
-          // last, and serving another project's decisions here would flag the
-          // user against things they never said.
-          if (!key) break;
-          const f = join(root, 'session-commitments', `${key}.json`);
-          try {
-            const raw = await readFile(f, 'utf8');
-            return json(res, 200, JSON.parse(raw));
-          } catch { /* try the next root */ }
+        if (key) {
+          for (const root of searchPaths.filter(Boolean)) {
+            const f = join(root, 'session-commitments', `${key}.json`);
+            try { snapshot = JSON.parse(await readFile(f, 'utf8')); break; } catch { /* try the next root */ }
+          }
         }
-        return json(res, 200, { commitments: [] });
+
+        // Rules half — the same scopes the native ingest reads, using the
+        // SAME core parser + merge so this route cannot drift from what the
+        // native hosts serve. Project scope is the SESSION's workspace
+        // (`lastSessionCwd`), never the dsh server's own cwd — the same trap
+        // this file already fixed once for the session half. The server-cwd
+        // entry in `searchPaths` is skipped for rules on purpose: rules scope
+        // to the work, not to wherever the server happened to be launched.
+        if (core && typeof core.parseRulesMd === 'function' && typeof core.mergeRulesIntoCommitments === 'function') {
+          const ruleFiles = [];
+          if (lastSessionCwd) ruleFiles.push(join(lastSessionCwd, '.cues', 'RULES.md'));
+          const userRoot = process.env.OPENCUES_HOME || join(homedir(), '.cues');
+          ruleFiles.push(join(userRoot, 'RULES.md'));
+          const rules = [];
+          for (const f of ruleFiles) {
+            try { rules.push(...core.parseRulesMd(await readFile(f, 'utf8'))); } catch { /* absent → no rules from this scope */ }
+          }
+          if (rules.length) {
+            snapshot = { ...snapshot, commitments: core.mergeRulesIntoCommitments(rules, snapshot.commitments ?? []) };
+          }
+        }
+
+        return json(res, 200, snapshot);
       } catch (err) {
         return json(res, 200, { commitments: [], error: String(err?.message ?? err).slice(0, 200) });
       }

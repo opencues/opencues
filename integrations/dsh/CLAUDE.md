@@ -510,7 +510,15 @@ Four things cost time here, all of them generalising past dsh:
    workspace it belongs to. `locateNewestDshSession` returns `{path, cwd}`
    for this reason — the header's cwd is the only correct key, and using the
    server's directory serves an empty list while the right file sits on disk.
-4. **The freshness window is real.** The node half only kicks for a session
+4. **RULES.md rides the same route** (dsh 0.2.13): the node half merges
+   project rules (from the SESSION's workspace — `lastSessionCwd`, the same
+   never-the-server-cwd rule as the watchlist key) and user rules
+   (`OPENCUES_HOME`/`~/.cues`) into `/opencues/session-commitments`, via the
+   same core parser + merge the native ingest uses. Verified live: a project
+   rule violation typed in the composer paints `⚠` citing the rule, project
+   beats user, cross-file dedupe holds. Rules serve even before the first
+   kick sets the cwd (user scope needs no session).
+5. **The freshness window is real.** The node half only kicks for a session
    younger than ~10 minutes, so on a newly opened page the route answers
    `[]` for a kick or two and then fills. A test that types before that is
    testing a matcher with nothing to match against.
