@@ -7,258 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.7.5] - 2026-08-18
+### Fixed — the loading animator no longer strands its glyph in the buffer (`@opencues/runtime` 0.34.0 → 0.34.1, `@opencues/chrome` 0.2.174 → 0.2.175, `@opencues/dsh` 0.2.8 → 0.2.9)
 
-### Added — nine default rules ship on the watchlist (`@opencues/core` 0.51.0 → 0.52.0, `@opencues/chrome` 0.2.173 → 0.2.174, `@opencues/dsh` 0.2.7 → 0.2.8)
+Type into a `_` slot while its blank is still in flight and the spinner character was left behind for good: `weather ▘!!`. The animator gives up whenever the slot's word stops being one of its frames — the documented behaviour, since the substitution path is expected to take the word — but it gave up *without putting `_` back*, so the blank it was animating could never resolve either. There was no `_` left to splice into. Two ways to reach it, both fixed:
 
-`opencues seed-configs` now seeds a `~/.cues/RULES.md` with nine always-on rules — the hard-and-fast floor: secrets never in code/config/logs, no real credentials pasted into chats or AI prompts, no committed `.env`, no destructive commands against production, no hand-edited production data, backup before anything irreversible, no skipping failing tests to green CI, no un-anonymized production data in dev, and no blanket unattended-destructive permissions for agents.
+**The user types beside the glyph.** The animator owns exactly one character, the frame it last wrote, so a slot now records it (`lastWritten`) and peels that single occurrence back out on give-up: `▘!!` → `_!!`, keeping the user's edit and the blank. Matching is on the exact character last written, never the frame set, because `bounce` and `flipper` frames are ordinary ASCII (`-`, `|`, `/`) and matching the set would rewrite a `-` the user typed themselves. Applies on the tick path and on `stop()`, which had the same hole.
 
-**Every one was benched to a perfect score before earning its slot**: as a single combined watchlist (the way they ship, which is where cluster confusion would live — three secrets-shaped rules, three destructive-prod-shaped ones), the matcher scored **28/28 recall citing the exact right rule and 0 false alarms** on compliant traps ("rotated the leaked token and scrubbed it from the logs" is never flagged), on both gpt-oss and gemma, repeated. The bench (`company-rules-bench.mjs`, `shipped-defaults` domain) is the admission gate: a candidate rule that hasn't been through it doesn't go in the file.
+**An edit before the slot shifts every word index.** The animator then watches the wrong word entirely while its glyph sits elsewhere, so neither the tracked word nor the give-up check ever sees it. A last-resort rescue scans the buffer, on two conditions that together make it unambiguous: the glyph is non-ASCII (the braille and custom marks, so `bounce`/`flipper` are excluded by construction) and it occurs exactly once. Anything less certain is left alone — a stray glyph is a blemish, rewriting a character the user typed is data loss.
 
-They flag, they never block, and they're yours: each cue dismisses with `_` like any other, the file is plain markdown you edit freely, and an edited file is never touched by re-seeding — the template says to empty the bullets rather than delete the file, since a deleted file reseeds on the next install. Existing installs receive the file on their next `opencues seed-configs` / `opencues install`; nine defaults leave fifteen watchlist slots for your own rules and session decisions.
+Found on DeepSeek Harness, whose asynchronous composer writes widen the window, but the give-up path is host-agnostic and every host could hit it. Eight new `blank-loading.test.ts` cases cover both recoveries plus the three refusals (substitution took the word, ASCII frame, glyph appears twice); 91 pass in that file.
 
-**`opencues rules` manages the set without opening an editor** (`opencues` 0.7.4 → 0.7.5): `list` shows the merged view in the runtime's own order — project file first, duplicates the dedupe will ignore marked as such — plus `add` (with the same newline/length refusals the dsh settings route uses: one bullet is one rule, not a smuggling channel), `remove <n|substring>` (surgical: one bullet line goes, prose survives; ambiguous substrings list the candidates instead of guessing), `path`, and `--json`. Parsing and editing are the same core functions the runtime ingest loads, so the command cannot drift from what the watchlist actually reads.
+### Fixed — the loading animator no longer strands its glyph in the buffer (`@opencues/runtime` 0.30.3 → 0.30.4)
 
-And a confession that became a test: the first manual verification of the seeding **wrote into the real `~/.cues`**, because `seed-configs` targets `os.homedir()` and only `OPENCUES.md` honours `$OPENCUES_HOME`. The committed tests are hermetic the way that mistake teaches — HOME and USERPROFILE both overridden — and pin the full contract: nine bullets on first seed, an edited file never touched, removal preserving prose, duplicate refusal, and the registry entry itself (removing `RULES.md` from `CORE_TEMPLATES` would silently unship the defaults, so a test fails if it goes).
+Type into a `_` slot while its blank is still in flight and the spinner character was left behind for good: `weather ▘!!`. The animator gives up whenever the slot's word stops being one of its frames — the documented behaviour, since the substitution path is expected to take the word — but it gave up *without putting `_` back*, so the blank it was animating could never resolve either. There was no `_` left to splice into. Two ways to reach it, both fixed:
 
-### Added — company and project rules on the session-contradiction watchlist (`@opencues/core` 0.50.1 → 0.51.0, `@opencues/runtime` 0.33.1 → 0.34.0, `@opencues/chrome` 0.2.172 → 0.2.173, `@opencues/dsh` 0.2.6 → 0.2.7)
+**The user types beside the glyph.** The animator owns exactly one character, the frame it last wrote, so a slot now records it (`lastWritten`) and peels that single occurrence back out on give-up: `▘!!` → `_!!`, keeping the user's edit and the blank. Matching is on the exact character last written, never the frame set, because `bounce` and `flipper` frames are ordinary ASCII (`-`, `|`, `/`) and matching the set would rewrite a `-` the user typed themselves. Applies on the tick path and on `stop()`, which had the same hole.
 
-A `RULES.md` in your project's `.cues/` (or user-level) now feeds the session-contradiction matcher: every `- ` bullet is a rule, the rest of the file is ignorable prose, and typing "let's just npm install lodash for this" draws the ⚠ cue naming the rule it violates, with a reconciled rewrite on Ctrl+Alt+↑.
+**An edit before the slot shifts every word index.** The animator then watches the wrong word entirely while its glyph sits elsewhere, so neither the tracked word nor the give-up check ever sees it. A last-resort rescue scans the buffer, on two conditions that together make it unambiguous: the glyph is non-ASCII (the braille and custom marks, so `bounce`/`flipper` are excluded by construction) and it occurs exactly once. Anything less certain is left alone — a stray glyph is a blemish, rewriting a character the user typed is data loss.
 
-**Benchmarked before it was built.** The matcher takes any watchlist, so the idea was tested with zero code changes: org-policy watchlists across five kinds of company — engineering, comms/PR, support, healthcare, finance — scored **19/19 recall, 19/19 right-rule-cited, and 0 false alarms** on topic-adjacent compliant traps ("I asked platform for approval and they signed off" is never flagged against the approval rule), on both gpt-oss and gemma, three runs, deterministic scoring against labeled rule ids. The production prompt needed no change — a rules-aware reframe was measured and bought nothing (18/19).
+Found on DeepSeek Harness, whose asynchronous composer writes widen the window, but the give-up path is host-agnostic and every host could hit it. Eight new `blank-loading.test.ts` cases cover both recoveries plus the three refusals (substitution took the word, ASCII frame, glyph appears twice); 91 pass in that file.
 
-The build is therefore a loader, not an engine: rules merge ahead of session commitments with stable `r<N>` ids, session entries that near-duplicate a rule are dropped (`commitmentDedupeKey` — a near-duplicate pair is the measured failure that silences the matcher), the total caps at 24 with a warning when rules fill it, and edits to the file go live within seconds on the ingest's existing poll. When the session snapshot vanishes, the rules stay.
-
-Stated plainly: this **flags, it does not enforce** — a passive, dismissible nudge at typing time, not a gate; CI remains the gate. It polices the prose/decision layer, which is increasingly where the action is when people drive agents by prose. Native hosts only for now (dsh's node half and chrome don't read the file yet). Threat model: a cloned repo's project-level `RULES.md` can inject watchlist entries; same bounded class as the watchlist itself — no side-effect channel, cue-text-only blast radius (security-audit #31 updated).
-
-One bug caught by its own test: the "rules truncated" warning first fired on cross-file *dedupe* — a rule repeated in project and user files — which is the dedupe doing its job, not truncation. It now warns only on the actionable case: a rules file that fills the whole watchlist, leaving no room for session decisions.
-
-### Added — ask-cues reads the document around your sentence (`@opencues/core` 0.49.0 → 0.50.0, `@opencues/chrome` 0.2.170 → 0.2.171, `@opencues/dsh` 0.2.4 → 0.2.5)
-
-The model was being sent **one sentence**. The rest of your draft sat in `context.text` and was never passed. So it could not know that your next line already names the library, or already gives the number the claim needs — and a question whose answer is three words further down the page is worse than no question at all, because it proves the thing did not read on.
-
-It now receives a bounded window of the surrounding text with your sentence marked, and is told to **answer its own question from the document before asking it**.
-
-Measured on a new phase 3 — eight cases where the same kind of sentence sits in a document that either resolves it or does not, including the *same* sentence in both roles so a blanket policy cannot score well:
-
-| Arm | Silent when the document answers it | Useful, of what it showed |
-|---|---|---|
-| no document (what shipped before) | **0/4**, twice | **0/8**, twice |
-| document sent | 2/4 | 1/6 |
-| document + answer-it-first rule | **3/4** | 1/5 |
-
-The first row is the result: without the surrounding text it asked on every case, and **not one of those questions was useful** — every one had already been answered on the page. Coverage of genuinely-open forks stayed 4/4 throughout, so this is restraint, not silence.
-
-Also new: **USEFUL** is now the bench's headline metric — of the questions actually shown, how many the judge scores 2. `FIRING` was the de-facto target before, and demanding a question for every flagged sentence is precisely how you get forced ones. A feature that asks four times and is useful four times beats one that asks twenty times and is useful four times; the second trains you to ignore it.
-
-Next lead, logged in `tests/benchmarks/ask-cues/EXPERIMENTS.md`: the worked examples all phrase their question "How will you mitigate / verify …", and the model has copied the *phrasing* rather than the principle — "We should make the app more user-friendly" now draws "How will you make the app more user-friendly", which is the old echo wearing the new costume. Diversifying the examples' surface forms is the next thing to try.
-
-### Changed — ask-cues asks better questions (`@opencues/core` 0.48.2 → 0.49.0, `@opencues/chrome` 0.2.169 → 0.2.170, `@opencues/dsh` 0.2.3 → 0.2.4)
-
-The questions were often the sentence handed back as a question. *"Just hardcode the API key for now."* drew *"Do you want to hardcode the API key for now?"* — you just said you did. Six of twelve phase-1 cases failed that way, and an interruption with no payload is worse than silence.
-
-The prompt now names that failure and shows four BAD/GOOD pairs, plus one rule: the value is in the OPTIONS, each a materially different course of action, never yes/no. And when the user message carries session or page context, at least one option must be built from it. Both hardcode-the-key and skip-the-tests move from the judge's 0 to its 2 — *"What covers the risk if we skip them?"* with options, rather than asking permission for what was already decided.
-
-Measured, cerebras/gpt-oss-120b, nine runs against three baseline runs: **phase-2 quality 0.83 → 1.13 with no overlap** (every baseline run ≤ 0.88, every new run ≥ 1.00), and context mentions **3/8 → 4/8 in every single run**. Firing (12/12, 8/8) and restraint (8/8, 4/4) are unchanged — it did not buy quality with silence.
-
-**Phase-1 quality is NOT claimed.** It looked like a clear win at 0.83 across six runs, then measured 0.69 across the next three on identical bytes. That metric averages 12 judge calls and still swings ±0.15, so anything under that is nothing, and the ranking of variants by it was worth less than it appeared.
-
-Seven variants are logged in `tests/benchmarks/ask-cues/EXPERIMENTS.md`, including the strongest single result — a "name the fork" rule reaching phase-2 quality **1.47** while costing phase-1 quality, which two follow-ups failed to explain. That is left as a documented lead rather than shipped half-understood.
-
-**Model choice is not the lever**, which was the first hypothesis and is worth recording as closed: `gpt-oss-120b` mentions context 6/16, `gemma-4-31b` 4/16, both firing 8/8, while `claude-haiku` fires on 1–2 of 8 — abstaining rather than asking generically. No available model turns a generic question into a specific one here.
-
-### Changed — ask-cues grounding context moved to the user message, and the bench that should have caught it (`@opencues/core` 0.48.1 → 0.48.2, `@opencues/chrome` 0.2.168 → 0.2.169, `@opencues/dsh` 0.2.2 → 0.2.3)
-
-The session/page grounding block rode in the **system** message, for prefix-caching reasons. `docs/architecture/cerebras.md` already says not to do that, names the failure mode ("the model treats system-side ambient as global background and stops tightly binding it to the input"), and records the 175/176 → 166/176 fluid-blank regression that taught it. The block even carries chrome's ambient metadata — the exact case that rule was written about. It now travels with the SELECTION in the user message; the system prompt, an order of magnitude larger, still prefix-caches.
-
-**It is a large improvement, and the first version of this entry said the opposite.** Measured against the real code path: context mentions go from **0/21 to 6/16**, and firing from 7/8 to 8/8 in every run. The earlier claim ("directionally better, not provable") came from an A/B whose two arms were the same configuration — see the next entry. The numbers it quoted (7/22 vs 8/23) describe nothing that was ever run.
-
-**The bench was measuring a copy of the source, not the source.** `evalCase` rebuilt the LLM call by hand — `chat(GEN, SYSTEM + contextBlock, "SELECTION: …")` — which nailed the context into the system message permanently, whatever the source did. So after the placement moved, the bench went on measuring the old arrangement, and an A/B of the two placements ran the *same* configuration twice and reported the two arms as indistinguishable. It now drives the real `ToolPromptCueSource`. The tell was there twice — two "different" arms returning identical numbers — and was read as noise both times; what finally caught it was `git stash` reporting "No stash entries found" because the change under test was already committed.
-
-Two more things the bench did badly, both of which cost real runs today. A transient provider error killed the entire run on the first case and printed an EMPTY report — Anthropic returning "Overloaded" destroyed five runs, each of which looked like a result rather than an outage; failures are now caught per case. And a degraded run now says `⚠ N/M case(s) FAILED to generate`, so partial data can never be mistaken for a clean sweep.
-
-**The sample size was the other defect.** Phase 2 had three grounding-eligible cases and a subjective judge boolean, which on *identical code* produced 0/3, 1/3, 0/3 in one sitting and 1/2, 1/3, 1/3 in another — range enough to manufacture a win or hide a regression, and it did exactly that to one attempt at tuning this prompt (the tweak "improved" grounding, then scored worse than the code it replaced; it was reverted after it turned out to cost phase-1 firing 35/36 → 31/36 while moving grounding not at all). Phase 2 now runs eight grounding cases plus four silent ones, and reports a second **deterministic** signal beside the judge's: does the output mention anything only the context could have supplied, excluding words already in the user's own sentence? Cruder, but it has no variance, so it is the one to watch.
-
-**Grounding is now ~1 in 3, up from zero — and that is where the model question lands.** Measured on the fixed bench: `gpt-oss-120b` mentions the context 6/16, `gemma-4-31b` 4/16, both firing 8/8. Reaching for a stronger model does not help and makes things worse in a different way — `claude-haiku` fires on only **1–2 of 8** cases, abstaining almost entirely rather than asking generically. So the remaining gap is the task and the prompt, not the model: no available model turns a generic question into a specific one here.
-
-`docs/features/ask-cues.md` claimed "every grounded question used it", which did not reproduce and has been corrected.
-
-### Fixed — the session-cue prompts told three of four hosts they were Claude Code (`@opencues/core` 0.48.0 → 0.48.1, `@opencues/chrome` 0.2.167 → 0.2.168, `@opencues/dsh` 0.2.1 → 0.2.2)
-
-`Claude Code` was hardcoded into four prompt strings, and session cues now run on four hosts. An OpenCode, Gemini CLI or dsh transcript was introduced to the model as a Claude Code transcript — false on the wire, and a plausible source of bias when extracting decisions from a session that isn't one. The wording is now host-neutral (`an AI coding assistant session transcript`, `this coding session`); the file's own doc comments, which described the feature as Claude-Code-only throughout, were generalised with it.
-
-Benched before and after in the same session, because these prompts are bench-gated:
-
-| Bench | Before | After |
-|---|---|---|
-| session-contradiction (gemma) | recall 8/9 · restraint 9/9 · precision 8/8 | **identical** |
-| extraction, 6 sessions × 3 models | gold 24/24 each · e2e 92% / 96% / 92% | **identical**, marginally fewer input tokens |
-| ask-cues phase 2, 3 runs each | firing 3/3, 2/3, 3/3 · grounded 1/3, 0/2, 0/3 | firing 2/3, 3/3, 3/3 · grounded 0/2, 0/3, 0/3 — same distribution |
-
-The ask-cues run surfaced something unrelated and worth chasing separately: **grounding is 0–1 of 3 on both wordings**, against the 3/3 recorded when the feature shipped. Nothing here caused it — the baseline scores the same — but it matters more now that `ask-cues-mode` defaults on, so it wants its own look rather than a footnote.
-
-### Changed — session-contradiction is ON by default; ask-cues was flipped on with it and then reverted on evidence (`@opencues/core` 0.47.0 → 0.48.0 → 0.50.1, `@opencues/runtime` 0.32.0 → 0.33.1, `opencues` 0.7.3 → 0.7.4)
-
-Both shipped off, which meant almost nobody had them. Both were flipped on; **only session-contradiction kept its default.** What changed the second one back was not caution but measurement: the ask-cues exploration sweep (`tests/benchmarks/ask-cues/EXPERIMENTS.md`) put its ceiling on realistic drafts at roughly **one genuinely useful question per three shown**, across every inference-time architecture tried — whole-document calls, candidate ranking, detect-then-generate, discrimination gates, consensus, higher reasoning effort. The structural reason is recorded there too: every cue in this codebase that earns a default verifies LLM output against checkable data, and ask-cues has none — its output is judgement about prose. A cue that is junk two times in three trains users to ignore the whole rail, so it is opt-in again (`ask-cues-mode: on`), with the shipped `OPENCUES.md` stating the number rather than hiding it.
-
-Session-contradiction is the opposite case and keeps the default it was given:
-
-**`session-contradiction-mode` deserves a straight answer about what it now does unasked**, because it is the one cue class that reads more than your buffer. A background producer distils your session transcript into a short watchlist of decisions, and that distillation is an LLM call to your cues-bucket provider. What bounds it:
-
-- **Only user and assistant PROSE is ever read.** Tool inputs, tool outputs, file contents and thinking blocks are dropped in the per-host parser *before* any bytes reach the LLM — so pasted secrets and file payloads, which is where credentials actually live, never enter the pipeline.
-- **What leaves is the watchlist, not the transcript** — a handful of one-line decisions ("Runtime is Bun, not Node."), from a prompt that refuses to emit secrets or code, scoped per project directory.
-- **It is completely inert on hosts with no session transcript** (chrome, shell), so there it costs nothing at all.
-- **`session-contradiction-mode: off` stops the producer entirely**, and the shipped `OPENCUES.md` now says so with the cost stated plainly rather than left to be discovered.
-
-One scalar, three readers — and that is what nearly shipped this half-working. The typed `OpenCuesState` default, the resolver's settings-map read, and the producer's own self-gate each decide this independently; flipping only the first left the runtime forwarding a watchlist to a source it had never built, with nothing anywhere reporting a problem. All three now agree, the producer's gate is pinned by a test that asserts an ABSENT scalar opens it, and an unreadable settings file still counts as `off` — a user whose `off` we cannot read is a user whose `off` we assume.
-
-Worth being blunt in the audit rather than only the changelog: this **retires the opt-in consent gate** that `security-audit.md` row #31 partly leaned on. The parse boundary was always the load-bearing control — opting in never bought a user extra protection — but it now has to hold on its own, so that row has been rewritten to say so instead of citing a gate that no longer exists.
-
-### Fixed — the cycling menu could advertise a different default than the runtime used (`@opencues/runtime` 0.32.0 → 0.33.0)
-
-The registry announces each feature's default twice: once in the value description a user reads in the menu, once as the value `ConfigLoader` falls back to with nothing on disk. Nothing checked they agreed, so flipping one and not the other would have shipped a menu describing the opposite of what the runtime did — silently, for everyone. A new alignment test pins them together, matching on the `(default)` marker rather than list position, because `identity-context-mode` and `blank-context-mode` deliberately list `off` first while defaulting to `safe`. Verified by deliberately breaking one default and confirming the gate names both sides.
-
-### Added — session-contradiction and ask-cues on the DeepSeek Harness (`@opencues/core` 0.46.0 → 0.47.0, `@opencues/runtime` 0.31.2 → 0.32.0, `opencues` 0.7.2 → 0.7.3, `@opencues/dsh` 0.1.2 → 0.2.0)
-
-"You decided X earlier in this session, and what you are about to send says not-X." Until now that needed a session transcript, so it ran on Claude Code, OpenCode and Gemini CLI and was inert everywhere else. **dsh is the first browser host where it works**, because the integration has two halves and only one of them is a browser: the node half reads `$DSH_HOME/sessions/**` and serves the distilled watchlist over a route the client polls. Chrome could never do this — a web page is not a session — and the split is what makes it possible here.
-
-**Reading a dsh session took three findings, none of them guessable from the file name.** A `session.jsonl.zstd` is a run of **concatenated zstd frames**, one per appended record, not a single stream: `zstdDecompressSync` and `createZstdDecompress()` both stop after the first frame and hand back just the `type:"session"` header, which decodes cleanly, parses as one record, and is indistinguishable from an empty conversation. Frames are located by magic number and decoded individually (Node ≥ 22.15 ships zstd, so no dependency). dsh also writes **harness material as `user/message` records**, separated from real input only by `data.source.kind` — a one-turn session held the sentence typed (`user`), a runtime-context snapshot (`plugin`) and the entire installed skill catalogue (`skill-catalog`); ungated, a sandbox policy becomes a candidate decision to be contradicted later and the catalogue alone dominates the 256KB tail. And every dsh session file is *named* `session.jsonl.zstd` with the id in the parent directory, so a filename-derived `sessionId` made every session look like the same one and merged an unrelated conversation's decisions into the current watchlist.
-
-The watchlist is keyed on the **session's own recorded cwd**, not `process.cwd()`. A dsh server runs from wherever it was launched while each session records the workspace it belongs to, so the server's directory is the wrong key and the route served an empty list while the correct file sat on disk.
-
-### Fixed — the dsh plugin is ESM, so every optional `require` reported "not installed" on a machine where everything was installed (`@opencues/dsh` 0.1.2 → 0.2.0)
-
-`integrations/dsh/index.js` is `"type": "module"`. A bare `require(…)` there is not a missing module, it is a **ReferenceError** — and one caught by the very `try/catch` written to handle a missing dependency. The commitments producer never ran, the route answered `{"commitments":[]}` forever, and nothing logged, on a machine where the runtime, the CLI and the watchlist were all present and correct.
-
-Everything optional now resolves through one `createRequire(import.meta.url)`, and a boot-time `console.warn` names the reason when the feature really is inert. It is called `nodeRequire` rather than `req` for a second reason found on the way: every route handler in that file takes the HTTP request as `req`, so the short name is shadowed inside exactly the handlers that need it, and the resulting "req is not a function" lands in the same catch — a second way to look uninstalled while installed.
-
-### Fixed — a machine without the `dsh` CLI reported a permanently stale dsh bundle (`@opencues/dsh` 0.1.2 → 0.2.0)
-
-The drift marker was written after the handoff to `dsh plugin add`, so when `dsh` was not on PATH the installer exited before writing it — and `opencues doctor` then reported a stale bundle for one that was current, with no way to clear it by re-running the installer. The marker records which `@opencues/{core,runtime}` the built artifact carries, which is true as soon as the bundle exists, so it is now written there. Registration failing is still an error and still exits non-zero; it just no longer makes the drift report lie.
-
-### Fixed — a rephrased decision silently switched the contradiction matcher off (`@opencues/core` 0.46.0 → 0.47.0)
-
-Distillation is an LLM call, so the same decision comes back worded differently on different ticks — "Runtime is Bun, not Node." on one and "The runtime is Bun, not Node." on the next — and the exact-match merge key kept both.
-
-That is not merely untidy. Measured against the live matcher (cerebras / gemma-4-31b, temp 0, three runs each): **one commitment flags a contradicting draft 3/3, two distinct commitments flag it 3/3, and the near-duplicate pair flags it 0/3.** A watchlist that says the same thing twice and nothing else reads to the model as something other than a decision list, and the feature goes quiet — no error, on the machine where it worked an hour earlier.
-
-Merge now dedupes on `commitmentDedupeKey`, which strips a leading article. Deliberately **not** folded into `normalizeCommitmentStatement`: that function is also the persisted cue-dismissal key, so widening it would silently invalidate dismissals users already recorded. Kept to articles on purpose — every additional equivalence is a chance to collapse two decisions that genuinely differ, and a lost decision is the worse failure.
-
-### Fixed — a busy machine could fail the shipped-script smoke tests (`@opencues/runtime` 0.31.1 → 0.31.2)
-
-`blank-scripts.test.ts` spawns the **real** shipped `brightness-blank.sh` and `volume-blank.sh` and asserts each returns a bare integer. On WSL those reach a platform backend — brightness goes out to Windows through PowerShell/WMI — which is ~2s idle and considerably worse with the rest of the suite running in parallel, so vitest's 5s default timed out intermittently and presented as a product flake.
-
-That latency is not ours to bound, and the assertion is about the script's **output shape**, not its speed. Both now carry an explicit 30s timeout, so a busy machine no longer decides the verdict.
-
-### Fixed — the hermeticity gate cried wolf on a running host's own writes
-
-`check-test-hermeticity.sh` asks "did a test write to the user's real config?" but was answering a broader question: "did anything under `~/.cues` change?". A live Claude Code or OpenCode session in another terminal answers yes on its own — its commitments poller rewrites `.session-commitments.kick` every few seconds, and a blank that fires updates `.user-blank-state/`. Neither is a test escaping its sandbox, and the gate reported `HERMETICITY VIOLATION` either way, which trains people to skim past the one piece of output that must never be ignored.
-
-Ephemeral runtime state a running host owns is now excluded from the snapshot: the `.session-commitments*` files, `session-commitments/` (and its stash dirs), `.opencues-log`, `.user-blank-state/` and `.user-blank-storage/`. The config surface the gate exists to protect stays watched in full — `OPENCUES.md`, `CUES.md`, `IDENTITY.md`, `.env`, `cues/`, `blanks/`, `auditors/`, `words/`, `katas/`, `scripts/` — so PR #41's class (a test wiping the user's real vendored tmux dir) is still caught. Verified both directions against the real tree: 114 noise lines dropped, 67 config lines still watched, and a hand-checked case list confirming `OPENCUES.md`, `.env` and `cues/**` survive the filter.
-
-### Fixed — two `seed-configs` runs at once could crash the install (`opencues` 0.7.1 → 0.7.2)
-
-The Windows helper-`.exe` compile staged its files at a **fixed** path in the Windows home dir — `<base>.cs` and `<base>.exe` — so two `seed-configs` runs at the same time raced over the same two paths and each one's `finally` deleted the other's file. The observed shape is a TOCTOU: `existsSync(stagedExe)` returns true, the sibling run unlinks it, and the copy then throws `ENOENT`.
-
-And it threw *out*. The block had a `finally` but **no `catch`**, so any failure there — a vanished staging file, a full disk, an unreadable Windows home — propagated and took the whole `seed-configs` run down with it. That turns an optional, Windows-only optimisation into a hard failure of `opencues install`, on a machine where the blanks would have degraded gracefully without the `.exe` anyway.
-
-Staging paths are now unique per invocation, and the compile failure is caught and logged as a warning. Surfaced as a flaky test — `pnpm -r test` runs its files in parallel, which is exactly the concurrent-`seed-configs` condition — and verified by running the affected suites six-up and four-up concurrently, clean each time.
-
-### Fixed — stacked PRs ran no CI at all, and an empty check list looks like a passing one
-
-`pull_request: branches: [master]` matches the PR's **base**, so a stacked PR — one based on another feature branch, which is how a dependent change gets reviewed — matched nothing and produced **zero checks**. GitHub renders that as an empty check list, which is visually indistinguishable from a green one, so #395 reached `mergeable / clean` with no CI behind it and was very nearly merged that way. Retargeting its base to `master` did not help either: that is a `pull_request: edited` event, and `edited` is not in the default type set (`opened` / `synchronize` / `reopened`), so nothing re-triggered. It took closing and reopening the PR to get a run.
-
-The `branches:` filter is gone from `pull_request` — every PR now runs regardless of base. A run on a stacked PR costs one run; not running costs a merge with no evidence. `workflow_dispatch:` is added alongside it, because when #395 had no checks there was also no event that would produce any.
-
-### Fixed — the WSL predicate existed seven times, and two tests could only pass on non-WSL machines (`opencues` 0.7.0 → 0.7.1)
-
-`sync.test.cjs` and `which.test.cjs` simulated "not under WSL" by deleting `WSL_DISTRO_NAME` and `WSL_INTEROP`. Reasonable, and not sufficient: detection also reads `/proc`, which keeps reporting the truth on a real WSL box. So both tests **failed for every WSL developer and passed on CI's Linux runners** — `pre-pr.sh` was red on every change regardless of the change, which is how a gate stops being read.
-
-The cause underneath was duplication. There were **seven** near-copies of the predicate — `sync.cjs`, `which.cjs`, `install.cjs`, `openrouter-oauth.cjs`, chrome's `bin/install.cjs`, and four inline anonymous functions inside `doctor.cjs` — and they had already drifted: most read `/proc/sys/kernel/osrelease`, doctor's read `/proc/version`, and `openrouter-oauth.cjs` checked only the env vars, so it answered **false on a WSL machine** whose shell had not exported them (`wsl.exe -- node …` spawns exactly that shell). That one was a real behavioural bug, not just untidiness.
-
-Detection now lives once in `packages/opencues-cli/src/lib/is-wsl.cjs`, checks both `/proc` files, and carries a test seam (`setWslForTests` / `resetWslForTests`) modelled on the one `@opencues/core` already uses for its CLI-binary probe. Every one of the seven call sites was converted in the same pass. `which.test.cjs` also gains the **positive control** the original pair lacked — asserting the WSL row *appears* under WSL, since "absent" is only meaningful next to "present", and the old assertion would have passed just as happily if the row had been deleted outright.
-
-## [0.7.0] - 2026-08-17
-
-### Fixed — a marketplace install of the dsh plugin shipped no browser half (`@opencues/dsh` 0.1.1 → 0.1.2)
-
-**The dsh plugin marketplaces do not install from npm.** They clone the repository and run `npm install --omit=dev --ignore-scripts` — with scripts disabled *by default*, for safety — then copy the result into the profile. Read out of `DSH-Plugins-Marketplace`'s `lib/index.js` rather than inferred from its prose; its own fallback message states the expectation outright: *"using the build artifacts committed in the repo"*.
-
-`client.js` was gitignored and produced by `prepublishOnly`, so on that path it simply did not exist. The node half loads, the config route answers, and **nothing ever paints or fills** — a broken install with no error anywhere to explain it. That ecosystem has already been bitten by this bug class by another plugin (their issue #54, where a package's content lived only in the published tarball), which is why their npm-tarball fallback exists at all.
-
-So `client.js` and `default-opencues.md` are now **committed**, which is the opposite of what this repo does everywhere else — `integrations/chrome/dist/` is not committed, and that stays true. It is not a change of principle: chrome is not distributed by clone-scraping marketplaces, and dsh is.
-
-Two things pay for committing derived output. **`minify: true`** cuts the bundle 1.71MB → 1.01MB, halving the per-change cost in git history and shrinking what every dsh page load pulls. And **`scripts/check-dsh-bundle-fresh.sh`** guards the real hazard: a committed artifact one version behind its source is exactly the silent-staleness failure this codebase has been bitten by repeatedly. esbuild is byte-reproducible for identical inputs (two consecutive builds hash identically), so the gate rebuilds and diffs — exact rather than heuristic — and builds core + runtime first, because the bundle inlines their dist and a stale dist would otherwise let a genuinely stale bundle pass. Wired into `pre-pr.sh` and CI.
-
-Verified by reproducing the marketplace path exactly — `git clone`, copy the plugin directory into a profile, **no npm tarball anywhere and no build step** — on a machine with no `.cues` config and every OpenCues provider key stripped: 29 shipped defaults load, 7 sources build, and `the capital of iceland is _` fills to `Reykjavik`.
-
-One detail worth keeping: their CLI-hint detection reads the **repo root** `package.json`, whose name is `opencues`, not `@opencues/dsh`. The npm install path is found via the command in the root README instead — another reason not to depend on the npm path being the one taken.
-
-### Fixed — two OpenCues hosts in one page fought over the buffer (`@opencues/core` 0.45.0 → 0.46.0, `@opencues/chrome` 0.2.165 → 0.2.166, `@opencues/dsh` 0.1.0 → 0.1.1)
-
-A user with **both** the chrome extension and the dsh plugin installed had two OpenCues runtimes driving the same composer, and they could not see each other: a content script runs in an **isolated world** with its own `window`, so the page-level singleton each host uses to survive its own remounts is invisible across the boundary. What they share is the document — same textarea, same key events, same `CSS.highlights`.
-
-The result was not cosmetic. Verified with both loaded: the extension, keyless on a fresh profile, won the race and wrote
-
-```
-the capital of iceland is [OpenCues: no API key — open the extension popup]
-```
-
-over the plugin's `Reykjavik` — an error about a credential that host does not even need, since it routes through the app's own model.
-
-`@opencues/core/page-ownership` is the contract. An embedded host (a dsh plugin; any future web-IDE integration) calls `claimPage(hostName)`, which sets `data-opencues-host` on `<html>`; a host attaching from outside calls `pageClaimedByOther(hostName)` and stands down. **A DOM attribute rather than a global, because a global cannot cross worlds** — that is the whole reason this is not a `window` handshake. Precedence is deliberately one-directional: the embedded host wins, because it knows its editor's real shape, is version-matched to it, and usually has an LLM route already, whereas a generic extension guessing at someone else's composer is the weaker claim.
-
-**Read live at every action point, never cached at boot.** The extension injects at `document_end` while an embedded plugin boots later (framework mount + async config fetch), so the claim usually appears *after* the extension has initialised — a startup-only check would miss the common case. The extension consults it in `notifyOpenCuesTextChange` and in its key listener, plus a cheap boot-time check for the already-claimed case, and logs its deferral exactly once rather than per keystroke.
-
-Verified both directions: with both installed the plugin's fill lands intact and the extension is silent, and **all 22 chrome E2E tests still pass** — including the trust-gate, sensitive-field and site-filter security controls — so the extension is unaffected on pages that carry no claim.
-
-Also fixed a stale expectation in `inline-note.e2e.test.ts`, which asserted the overlay text contained the **cue name**. `inlineNoteText` has no notion of one (no `def.name`, no `sourceName`), so it was never satisfiable by any runtime this repo has shipped; because that suite is run-on-demand rather than a CI gate, it sat failing and made every future real regression in the file look like the same known failure. It now asserts what the paint actually guarantees: the connector, the cycle countdown, that the note previews a destination rather than echoing the input, and that the cue genuinely resolved.
-
-### Added — DeepSeek Harness integration (`@opencues/dsh` 0.1.0, `@opencues/core` 0.44.0 → 0.45.0, `@opencues/runtime` 0.31.0 → 0.31.1, `opencues` 0.6.2 → 0.7.0)
-
-OpenCues runs in [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)'s composer, and it is **the first integration that is a first-class plugin of its host** rather than a patch, a fork, or a bundle we mirror into place:
-
-```
-dsh plugin --profile web add @opencues/dsh
-```
-
-That is the whole install. No version pin, no binary surgery, no separate host process, no `opencues install` step — dsh has a real plugin system and this uses it. Their composer turns out to already be an overlay editor (a transparent `<textarea>` over a backdrop of real DOM text nodes), so `adapters/chrome/v1` drives it unchanged, and the CSS Custom Highlight API paints per-word ranges with no DOM mutation of ours.
-
-**`@opencues/dsh` is published**, and structurally must be: an unpublished package means no install path. It carries **no `dependencies`** — `build.mjs` inlines `@opencues/{core,runtime}` into the browser bundle at publish time, which is exactly what lets those two stay private. Publishing prebuilt is also the security choice. The alternative (`github:` install) requires the user to add the package to pnpm's `allowBuilds`, which is *permission to execute the package's code on their machine at install time, outside any sandbox*. We ship artifacts rather than ask for that.
-
-**No API key is needed**, because the default routes every call through the model dsh already has configured, via core's `harness` provider. No credential ever reaches the page either — which matters more here than on most hosts, since dsh is a plugin host and a key handed to the page is a key handed to every plugin installed. `~1.0s` on the host model against `~0.3s` on a dedicated provider; the settings tab states the trade-off and lets the user pick rather than deciding for them. That tab also carries every OpenCues feature scalar, generated from the registry and written to the real `~/.cues/OPENCUES.md` — a browser host has no terminal to fall back to, so "edit the file" is not an answer.
-
-**`transport: 'cli'` does not mean "a binary exists"** — a latent conflation the `harness` provider exposed, which had already reached user-visible output. Three sites assumed a CLI-transport provider has an executable of the same name on PATH, via an `?? providerId` fallback that reads as accommodating and behaves as a landmine: `opencues doctor` probed for a `harness` binary, found none, and told the user to **install** it. `subscriptionCliBinary(id)` now answers binary-or-`null`, `defaultCliAvailable` returns false for a host-bound provider instead of shelling out for its own name, and a test fails any CLI-transport provider that is neither mapped to a binary nor explicitly declared host-bound.
-
-**`dsh` is a host, and browser-ness is now a property rather than a name.** Several behaviours were written as `hostName === 'chrome'` while chrome was the only browser host — the ctrl-alt keymap (because ctrl-shift+arrow is the *browser's* own extend-selection-by-word) and `dim-mix` (because the dim colour mixes toward a *page* background). Both are consequences of being in a browser, so `BROWSER_HOSTS` + `isBrowserHost()` now carry them and a second browser host inherits them by construction; spelled as a name comparison, dsh would have silently got a keymap the page steals from it, with navigation appearing to do nothing and no error to explain why. `statusbar-position` stays chrome-only on purpose — that one is about a surface chrome draws, not about being in a browser. A test asserts every host is exactly one of native/browser, so a future host added to neither list fails rather than quietly inheriting terminal semantics. No `SPEC_VERSION` bump: `spec/core.md` declares `HOSTS` non-normative and explicitly permits runtime-defined host names, which `windows` already relies on.
-
-CLI: `opencues install dsh` / `uninstall dsh` / `run dsh` (plus `deepseek` aliases) and a `dsh` row in `doctor`'s bundled-runtime section. The installer is deliberately a **thin wrapper that hands off to `dsh plugin add`** rather than writing into `$DSH_HOME/profiles/` itself — that directory is dsh's to manage, and reaching into it would be the kind of second install path that later disagrees with the first. `opencues run dsh` earns its keep on one step: `ensureFreshBundle` rebuilds a stale bundle before launching, and a stale bundle here is completely silent because it is served per page load.
-
-Verified against the real published shape — `npm pack`, then `dsh plugin add ./opencues-dsh-0.1.0.tgz` into an empty `$HOME` with **every OpenCues provider key stripped from the environment**: installs in 1.5s with no build prompt, loads 29 baked defaults, builds 7 sources, and fills `the capital of iceland is _` → `Reykjavik` on DeepSeek's model. Known gaps: inline notes float as an overlay rather than splicing into the line, and Firefox is untested (feature-detects `CSS.highlights` and degrades).
-
-### Added — a host can supply the transport its network blanks fetch through (`@opencues/runtime` 0.30.4 → 0.31.0)
-
-`BuiltinBlankContext.fetchFn` reaches the six network-backed built-ins — hackernews, stocks, weather, location, dictionary, crypto. Each of them already accepted a `fetchFn`; until now the registry gave a host no way to hand one over, so they captured the global and that was that.
-
-Browser hosts need it for two independent reasons, and both are load-bearing. A page-context fetch to `finnhub.io` or `api.open-meteo.com` is CORS-blocked, so the call has to hop through a host-side route regardless. And a host that means to keep credentials out of the page hands the blank a **placeholder** key and substitutes the real one inside this transport, somewhere the page cannot read it — which is why the ability to swap the transport, rather than a way to pass a key in, is the right shape. Omitting it changes nothing: every blank stays constructible and captures the global as before. Two registry-drift tests pin both halves, the reaches-every-blank one asserting on the supplied transport being *used* rather than merely accepted.
-
-### Fixed — `process.env.HOME` took down every script-backed blank on a browser host (`@opencues/runtime` 0.30.3 → 0.30.4)
-
-Five sites in `blank-fill.ts` and `cycling.ts` read `process.env.HOME ?? '~'` to expand a `blankScript`'s leading `~`. A browser has no `process`, so that is not a missing value, it is a `ReferenceError` — and every one of those sites sits inside a handler, so it did not fail one blank, it took the enclosing text-change or script-set handler down with it. The symptom is nothing: `nvidia _`, `weather in london _` and `hackernews _` sat inert while `dictionary _` (which reaches no script path) worked, which reads like six broken blanks rather than one broken line.
-
-The reason it survived this long is more interesting than the bug. Chrome `define`s `process.env.HOME` in its own esbuild config, so chrome was fine — and `lint-runtime-browser-safe.sh` **exempted the name on that basis**, alongside `DEBUG_OPENCUES`. That exemption quietly made "replicate chrome's define list" a requirement of every future browser host, enforced by nothing and written down nowhere. DeepSeek Harness did not, and could not have known to. The guard now lives in the runtime as `lib/home-dir.ts:homeDir()`, the exemption is gone from the lint, and the lint was verified to catch the old shape by reintroducing it.
-
-### Added — `harness` provider: run OpenCues on the host's own model, with no OpenCues key (`@opencues/core` 0.43.0 → 0.44.0)
-
-A host that already has a configured LLM can now serve OpenCues' calls itself. `registerHarnessDispatch(fn)` binds a dispatch function; the new `harness` provider routes through it. Three consequences: a user needs **no OpenCues API key at all**, credentials stay in the host process and never reach a browser, and the host's own retry policy, provider UI and token metering apply to cue traffic.
-
-It reuses the existing `transport: 'cli'` seam that `claude-code-cli` uses — a provider that owns its dispatch and returns assistant text directly, so `buildRequest`/`parseResponse` are never called and no wire format is assumed. That is why this is additive rather than a new transport concept.
-
-Deliberately **not** in `useStrictJson`'s allowlist: a host bridge cannot promise constrained decoding, so every source takes its existing prompt-based JSON path, already exercised by the providers that lack strict mode. `FALLBACK_PAIRS` maps it to `undefined` — if the host's dispatch fails, that is the host's model being unavailable, and silently rerouting to one of ours would need a key the user deliberately has not supplied. `trainsOnInput` stays false: the prose-source guard exists to stop OpenCues shipping a user's writing to a provider picked for its price, and that reasoning does not transfer to the model the user already configured for their own conversation. Which model is serving is a thing to surface in the host's settings UI, not to refuse over.
-
-Adding it exposed a latent conflation worth naming, since it burned a user-visible line before anyone noticed (`opencues` 0.6.1 → 0.6.2). `transport: 'cli'` says only "this provider owns its dispatch"; three places additionally assumed "…and a binary of that name is on PATH", via an `?? providerId` fallback that reads as accommodating and behaves as a landmine. `harness` is bound in-process by the running host, so PATH has nothing to say about it — yet `opencues doctor` probed for a `harness` executable, found none, and advised the user to **install** it, and the zero-key notice would have offered them a "harness subscription". Core now answers the question directly (`subscriptionCliBinary(id)` → binary or `null`), `defaultCliAvailable` returns false for a host-bound provider rather than shelling out for its own name, doctor reports "bound by the host at runtime — nothing to install", and the notice drops the subscription wording. A test asserts the third state cannot appear silently: a CLI-transport provider that is neither mapped to a binary nor explicitly declared host-bound fails, so forgetting the map entry can no longer read as "nothing to install".
-
-Motivating host is DeepSeek Harness, whose `ctx.llm.stream()` is a free-standing one-shot completion. Measured there: `deepseek-v4-flash` answers a 3.6k-token-prefix cue in ~980ms with 99.6% prefix-cache reuse, against ~270ms for cerebras and ~220ms for groq — comfortable for `_` blanks, slower than ideal for passive cues, which is why the choice stays the user's. **Reasoning effort matters more than the model**: DeepSeek's default effort streams chain-of-thought as text, so a bridge must pin it off or the user's buffer fills with "We need to answer…". Eleven tests cover registration, stale-disposer safety, dispatch pass-through, loud failure when unbound, and the provider's registry wiring.
 
 ## [0.6.1] - 2026-08-16
 
