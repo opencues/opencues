@@ -189,11 +189,8 @@ opencues/
 │   ├── CUES.md                    # Cue master: project metadata frontmatter + ## Tips / ## Ignore / ## Prompt sections (LLM cue sources)
 │   ├── RULES.md                   # 9 default always-on rules for the session-contradiction watchlist (benched 28/28 before shipping; `- ` bullets are rules, prose ignored)
 │   ├── OPENCUES.md                # Runtime settings (voice-mode, transform-blank-mode, llm-provider, agent-debounce-ms, ...)
-│   ├── cues/                      # Folder-based cue configs (LLM word-cues + static tip groups) — 10 shipped folders
+│   ├── cues/                      # Folder-based cue configs (LLM word-cues + static tip groups) — 8 shipped folders
 │   │   ├── example/CUE.md         # Reference/template cue
-│   │   ├── legal/CUE.md           # Legal terminology word-cues (LLM)
-│   │   ├── medical/CUE.md         # Clinical terminology word-cues
-│   │   ├── financial/CUE.md       # Financial terminology word-cues
 │   │   ├── more-formal/CUE.md     # scope: sentence — the shipped sentence-cue
 │   │   ├── spelling/CUE.md        # Lowest priority (10) — catch-all spell-check
 │   │   └── tips-{claude-code,gemini-cli,opencode,shell}/CUE.md  # Per-host static tip groups
@@ -502,6 +499,38 @@ each module in isolation but missed the journey. The scenarios file
 
 See `docs/architecture/spans-and-cycling.md` § "Bugs we've fixed" for
 the table of regressions and which scenario test now pins each one.
+
+---
+
+## Test fixtures must not look like product output
+
+A fixture that reads like a real suggestion gets mined as documentation. Not
+might: **did**. `dim-render.test.ts` pinned the inline note with `attorney` →
+`lawyer`, `counsel`, which looks exactly like a shipped word-cue. Those words
+were lifted out of the test file and published on a feature page as an example
+of what OpenCues offers, for a `legal` cue that had been deleted from
+`defaults/cues/` long before. The page was wrong, it shipped, and nothing in the
+test suite could have caught it, because the test was passing.
+
+**Rule: if a fixture would look right on a marketing page, it is the wrong
+fixture.** Use something unmistakably synthetic — `zephyr`, `ALT-ONE`,
+`ALT-FIX`. What these tests pin is a SHAPE (the count, the separator, the emoji,
+which branch fired, where a span lands), and a shape needs no believable word.
+
+This is not a style preference. Docs are written by reading the code, and a test
+is the most attractive place to find "what the output looks like" because it
+states the expected value literally. A plausible fixture is a trap laid for
+whoever writes the docs next, including a future you.
+
+Where this bites hardest: `dim-render.test.ts`, `cycling.scenarios.test.ts`, and
+anything asserting on note text, alternatives, or blank values.
+
+⚠ **The shipped cue set is `defaults/cues/`, and only that.** It is currently
+`calendar`, `example`, `more-formal`, `spelling`, and the per-host `tips-*`
+packs. A locally seeded `~/.cues/` can be years stale and still contain cues
+that were retired — mine still had `legal`, `medical` and `financial`. Never
+take an example from `~/.cues/`, from a test, or from this file's own tree
+diagram without checking `defaults/cues/` first.
 
 ---
 
