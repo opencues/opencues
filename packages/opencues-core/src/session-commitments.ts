@@ -89,6 +89,130 @@ export function sessionCommitmentsKey(cwd: string | undefined): string {
 }
 
 export const MAX_COMMITMENTS = 24;
+
+// ── Company / project rules (static watchlist entries) ─────────────────────
+//
+// The matcher takes ANY watchlist, and benching it against org-policy
+// statements across five industries (engineering, comms, support, healthcare,
+// finance — tests/benchmarks/session-contradiction/company-rules-bench.mjs)
+// scored 19/19 recall, 19/19 right-rule-cited, 0 false alarms on
+// topic-adjacent compliant traps, on both gpt-oss and gemma, with the
+// production prompt UNCHANGED. So rules are not a new engine: they are
+// watchlist entries that come from a file instead of a transcript.
+//
+// `RULES.md` lives in the standard `.cues` search paths (project beats user).
+// Format: one rule per `- ` bullet; headings, prose, comments and frontmatter
+// are ignored, so the file can be a readable policy document whose bullets are
+// the enforced part. Kept deliberately curated — the matcher's precision
+// degrades as the prompt bloats, and a measured near-duplicate pair SILENCED
+// it (see commitmentDedupeKey), which is why merging dedupes and caps.
+
+/** The rules file name, resolved against each `.cues` search root. */
+export const RULES_FILE = 'RULES.md';
+
+/** Parse RULES.md: every `- ` / `* ` bullet is one rule statement. Everything
+ *  else — headings, prose, frontmatter — is ignored. Over-long lines are
+ *  dropped (a paragraph pasted as a bullet is not a rule). */
+export function parseRulesMd(text: string): string[] {
+  if (!text) return [];
+  const out: string[] = [];
+  const lines = text.split('\n');
+  let inFrontmatter = false;
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (i === 0 && trimmed === '---') { inFrontmatter = true; continue; }
+    if (inFrontmatter) { if (trimmed === '---') inFrontmatter = false; continue; }
+    const m = /^[-*]\s+(.+)$/.exec(trimmed);
+    if (!m) continue;
+    const statement = m[1].trim().replace(/\s+/g, ' ');
+    if (!statement || statement.length > MAX_STATEMENT_LEN) continue;
+    out.push(statement);
+    if (out.length >= MAX_COMMITMENTS) break;
+  }
+  return out;
+}
+
+/**
+ * Merge static rules with the session-produced commitments into one live
+ * watchlist. Rules come FIRST with stable `r<N>` ids — stable order keeps the
+ * rendered catalog byte-identical across ticks, which is what lets cerebras
+ * prefix-cache it. Session commitments keep their producer ids but are DROPPED
+ * when they near-duplicate a rule (commitmentDedupeKey): the producer can
+ * re-distil "no new npm dependencies" out of a session where the user restated
+ * a rule, and a near-duplicate pair is the measured failure mode that turns
+ * the matcher OFF. Total is capped at MAX_COMMITMENTS, rules first — an org
+ * that ships 24 rules has left no room for session decisions, which the
+ * caller should warn about rather than silently accept.
+ */
+/**
+ * Remove the FIRST bullet whose parsed statement matches exactly — and only
+ * that line. Everything else in the file (headings, prose, the user's other
+ * rules) is untouched, which is the whole point of editing surgically instead
+ * of regenerating: RULES.md is a document someone may have written around the
+ * bullets. Returns null when no bullet matches, so the caller can say "not
+ * found" instead of silently rewriting a file it didn't change.
+ */
+export function removeRuleFromMd(text: string, statement: string): string | null {
+  const target = statement.trim().replace(/\s+/g, ' ');
+  const lines = text.split('\n');
+  let inFrontmatter = false;
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (i === 0 && trimmed === '---') { inFrontmatter = true; continue; }
+    if (inFrontmatter) { if (trimmed === '---') inFrontmatter = false; continue; }
+    const m = /^[-*]\s+(.+)$/.exec(trimmed);
+    if (!m) continue;
+    if (m[1].trim().replace(/\s+/g, ' ') === target) {
+      lines.splice(i, 1);
+      return lines.join('\n');
+    }
+  }
+  return null;
+}
+
+/**
+ * Append one rule bullet. Throws on input that would corrupt the file or the
+ * watchlist: an empty statement, one over MAX_STATEMENT_LEN (parseRulesMd
+ * would silently drop it — better to refuse loudly at write time), or one
+ * containing a newline — a statement with a \n in it is a SECOND rule
+ * smuggled past whoever reviewed the first, the same injection shape the dsh
+ * settings route refuses. A null/empty file gets a minimal header so the
+ * created file explains itself.
+ */
+export function addRuleToMd(text: string | null, statement: string): string {
+  const clean = statement.trim().replace(/[ \t]+/g, ' ');
+  if (!clean) throw new Error('empty rule statement');
+  if (/[\r\n]/.test(statement)) throw new Error('a rule statement cannot contain a newline (one bullet = one rule)');
+  if (clean.length > MAX_STATEMENT_LEN) throw new Error(`rule statement too long (${clean.length} > ${MAX_STATEMENT_LEN} chars) — a paragraph is not a rule`);
+  const bullet = `- ${clean}`;
+  if (!text || !text.trim()) {
+    return `# Rules\n\nEvery \`- \` bullet below is one rule on the session-contradiction watchlist.\nProse and headings are ignored. See docs/features/session-contradiction.md.\n\n${bullet}\n`;
+  }
+  return `${text.replace(/\n*$/, '\n')}${bullet}\n`;
+}
+
+export function mergeRulesIntoCommitments(
+  rules: readonly string[],
+  commitments: readonly SessionCommitment[],
+): SessionCommitment[] {
+  const out: SessionCommitment[] = [];
+  const seen = new Set<string>();
+  for (const statement of rules) {
+    const key = commitmentDedupeKey(statement);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ id: `r${out.length + 1}`, category: 'rule', statement });
+    if (out.length >= MAX_COMMITMENTS) return out;
+  }
+  for (const c of commitments) {
+    const key = commitmentDedupeKey(c.statement);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+    if (out.length >= MAX_COMMITMENTS) break;
+  }
+  return out;
+}
 /** Max characters of a single commitment statement — a terse decision, not a
  *  paragraph. Longer is dropped (a runaway extraction, not a commitment). */
 export const MAX_STATEMENT_LEN = 200;

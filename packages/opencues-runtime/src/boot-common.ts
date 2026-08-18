@@ -1008,40 +1008,97 @@ export function buildSessionCommitmentsIngest(
 
   let lastMtimeMs = -1;
   let lastPath = '';
+  let lastRulesSig = '';
   const holder: SessionCommitmentsHolder = { commitments: [], summary: undefined, ingestedAt: undefined, sessionId: undefined, stop() { /* set below */ } };
+
+  // Company / project RULES.md — static watchlist entries, merged ahead of the
+  // session-produced commitments (project file beats user file). Benched
+  // before being built: the unchanged matcher scored 19/19 recall / 0 false
+  // alarms on org-policy watchlists across five industries
+  // (tests/benchmarks/session-contradiction/company-rules-bench.mjs), so this
+  // is a loader, not a new engine. Core owns the parser + merge (and the
+  // near-duplicate dedupe that protects the matcher); lazily required so this
+  // fn stays node-guarded and a missing core degrades to rule-less operation
+  // with a warning rather than a crash.
+  const rulesFiles = (): string[] => {
+    const out: string[] = [];
+    if (opts.cwd) out.push(pathMod.join(opts.cwd, '.cues', 'RULES.md'));
+    out.push(pathMod.join(cuesDirOf(), 'RULES.md'));
+    return out;
+  };
+  type Entry = { id: string; category: string; statement: string };
+  let coreMod: { parseRulesMd(t: string): string[]; mergeRulesIntoCommitments(r: readonly string[], c: readonly Entry[]): Entry[] } | null | undefined;
+  const requireCore = () => {
+    if (coreMod !== undefined) return coreMod;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      coreMod = require('@opencues/core');
+    } catch { coreMod = null; log('warn', 'session-contradiction: @opencues/core not resolvable — RULES.md ignored'); }
+    return coreMod;
+  };
+  const rulesSig = (): string => rulesFiles().map((f) => {
+    try { const st = fsMod.statSync(f, { throwIfNoEntry: false }); return `${f}:${st ? st.mtimeMs : 0}`; } catch { return `${f}:0`; }
+  }).join('|');
+  const readRules = (): string[] => {
+    const c = requireCore();
+    if (!c) return [];
+    const out: string[] = [];
+    for (const f of rulesFiles()) {
+      try {
+        if (!fsMod.existsSync(f)) continue;
+        out.push(...c.parseRulesMd(fsMod.readFileSync(f, 'utf8')));
+      } catch (err) { log('warn', `session-contradiction: RULES.md unreadable at ${f} (${(err as Error)?.message ?? err})`); }
+    }
+    return out;
+  };
 
   const load = (): void => {
     const file = snapshotPath();
+    const sig = rulesSig();
     try {
       const st = fsMod.statSync(file, { throwIfNoEntry: false });
-      if (!st) {
-        if (holder.commitments.length > 0 || holder.summary) {
-          holder.commitments.length = 0;
-          holder.summary = undefined;
-          holder.ingestedAt = undefined;
-          holder.sessionId = undefined;
-          log('info', 'session-contradiction: snapshot removed — watchlist now empty');
-        }
-        lastMtimeMs = -1; lastPath = file;
-        return;
-      }
-      if (file === lastPath && st.mtimeMs === lastMtimeMs) return;   // unchanged
-      const parsed = JSON.parse(fsMod.readFileSync(file, 'utf8')) as { commitments?: unknown; summary?: string; ingestedAt?: string; sessionId?: string } | null;
-      const raw = parsed && Array.isArray(parsed.commitments) ? parsed.commitments : [];
-      holder.commitments.length = 0;
-      for (const c of raw) {
-        if (c && typeof c === 'object') {
-          const r = c as { id?: unknown; category?: unknown; statement?: unknown };
-          if (typeof r.id === 'string' && typeof r.statement === 'string') {
-            holder.commitments.push({ id: r.id, category: typeof r.category === 'string' ? r.category : 'decision', statement: r.statement });
+      if (file === lastPath && (st?.mtimeMs ?? -1) === lastMtimeMs && sig === lastRulesSig) return;   // nothing changed
+
+      // Session half (may be absent — rules alone still make a watchlist).
+      const session: Entry[] = [];
+      let summary: string | undefined; let ingestedAt: string | undefined; let sessionId: string | undefined;
+      if (st) {
+        const parsed = JSON.parse(fsMod.readFileSync(file, 'utf8')) as { commitments?: unknown; summary?: string; ingestedAt?: string; sessionId?: string } | null;
+        const raw = parsed && Array.isArray(parsed.commitments) ? parsed.commitments : [];
+        for (const c of raw) {
+          if (c && typeof c === 'object') {
+            const r = c as { id?: unknown; category?: unknown; statement?: unknown };
+            if (typeof r.id === 'string' && typeof r.statement === 'string') {
+              session.push({ id: r.id, category: typeof r.category === 'string' ? r.category : 'decision', statement: r.statement });
+            }
           }
         }
+        summary = typeof parsed?.summary === 'string' ? parsed.summary : undefined;
+        ingestedAt = parsed?.ingestedAt;
+        sessionId = parsed?.sessionId;
       }
-      holder.summary = typeof parsed?.summary === 'string' ? parsed.summary : undefined;
-      holder.ingestedAt = parsed?.ingestedAt;
-      holder.sessionId = parsed?.sessionId;
-      lastMtimeMs = st.mtimeMs; lastPath = file;
-      log('info', `session-contradiction: ${holder.commitments.length} commitment(s) loaded from ${file}`);
+
+      const rules = readRules();
+      const core = requireCore();
+      const merged = rules.length && core ? core.mergeRulesIntoCommitments(rules, session) : session;
+      const hadAny = holder.commitments.length > 0 || holder.summary;
+      holder.commitments.length = 0;
+      holder.commitments.push(...merged);
+      holder.summary = summary;
+      holder.ingestedAt = ingestedAt;
+      holder.sessionId = sessionId;
+      lastMtimeMs = st?.mtimeMs ?? -1; lastPath = file; lastRulesSig = sig;
+      if (merged.length === 0 && hadAny) log('info', 'session-contradiction: snapshot removed — watchlist now empty');
+      else if (merged.length > 0) {
+        const ruleCount = merged.filter((c) => c.id.startsWith('r')).length;
+        log('info', `session-contradiction: ${ruleCount} rule(s) + ${merged.length - ruleCount} commitment(s) on the watchlist`);
+        // Warn on the actionable case only: rules alone consumed the whole
+        // cap, leaving no room for session decisions. Comparing raw count to
+        // kept count is WRONG here — the delta is usually the dedupe doing
+        // its job (a rule repeated across project and user files), and the
+        // first version of this line cried truncation on exactly that.
+        if (ruleCount >= 24) log('warn', 'session-contradiction: RULES.md fills the whole 24-entry watchlist — no room left for session decisions; curate the list');
+      }
     } catch (err) {
       // Malformed snapshot must never take the host down; keep last-good.
       log('warn', `session-contradiction: load failed (${(err as Error)?.message ?? err})`);

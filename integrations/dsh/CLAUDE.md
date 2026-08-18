@@ -332,7 +332,7 @@ beyond `node:fs`.
 env keys picked up automatically, and can choose either LLM mode.
 
 **A user who has never heard of OpenCues** gets the shipped defaults,
-inlined at build time (29 files: `CUES.md`, `OPENCUES.md`, and every
+inlined at build time (30 files as of core 0.52.0 — `CUES.md`, `OPENCUES.md`, `RULES.md`, and every
 `cues/*/CUE.md` and `blanks/*/BLANK.md`) and dropped into the same virtual
 FS a real tree would populate. A real `.cues` directory always wins.
 
@@ -462,7 +462,7 @@ dictionary, hackernews) and the settings tab writing a scalar into the real
 regression suite covered 18 contract assertions.
 
 Separately verified on a **genuinely fresh machine state** (see § Force that
-state): 29 shipped defaults load with nothing on disk, 7 sources build,
+state): the shipped defaults (29 at the time; 30 with RULES.md) load with nothing on disk, 7 sources build,
 `the capital of iceland is _` → `Reykjavik` and `i has three cats fix typos _`
 → `i have three cats` on the host's model with **no OpenCues key in the
 environment at all**, a settings write creates `~/.cues/` from the shipped
