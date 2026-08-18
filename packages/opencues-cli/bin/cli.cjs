@@ -46,6 +46,7 @@ const COMMANDS = {
   'set-key':      () => require('../src/commands/set-key.cjs'),
   identity:       () => require('../src/commands/identity.cjs'),
   dismissals:     () => require('../src/commands/dismissals.cjs'),
+  rules:          () => require('../src/commands/rules.cjs'),
   context:        () => require('../src/commands/context.cjs'),
   calendar:       () => require('../src/commands/calendar.cjs'),
   'extract-commitments': () => require('../src/commands/extract-commitments.cjs'),

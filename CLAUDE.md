@@ -187,6 +187,7 @@ opencues/
 │   │                              # on opencues run `seed-configs` once just like any user.
 │   │                              # See docs/features/shipped-defaults.md.
 │   ├── CUES.md                    # Cue master: project metadata frontmatter + ## Tips / ## Ignore / ## Prompt sections (LLM cue sources)
+│   ├── RULES.md                   # 9 default always-on rules for the session-contradiction watchlist (benched 28/28 before shipping; `- ` bullets are rules, prose ignored)
 │   ├── OPENCUES.md                # Runtime settings (voice-mode, transform-blank-mode, llm-provider, agent-debounce-ms, ...)
 │   ├── cues/                      # Folder-based cue configs (LLM word-cues + static tip groups) — 10 shipped folders
 │   │   ├── example/CUE.md         # Reference/template cue

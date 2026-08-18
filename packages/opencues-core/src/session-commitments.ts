@@ -144,6 +144,53 @@ export function parseRulesMd(text: string): string[] {
  * that ships 24 rules has left no room for session decisions, which the
  * caller should warn about rather than silently accept.
  */
+/**
+ * Remove the FIRST bullet whose parsed statement matches exactly — and only
+ * that line. Everything else in the file (headings, prose, the user's other
+ * rules) is untouched, which is the whole point of editing surgically instead
+ * of regenerating: RULES.md is a document someone may have written around the
+ * bullets. Returns null when no bullet matches, so the caller can say "not
+ * found" instead of silently rewriting a file it didn't change.
+ */
+export function removeRuleFromMd(text: string, statement: string): string | null {
+  const target = statement.trim().replace(/\s+/g, ' ');
+  const lines = text.split('\n');
+  let inFrontmatter = false;
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (i === 0 && trimmed === '---') { inFrontmatter = true; continue; }
+    if (inFrontmatter) { if (trimmed === '---') inFrontmatter = false; continue; }
+    const m = /^[-*]\s+(.+)$/.exec(trimmed);
+    if (!m) continue;
+    if (m[1].trim().replace(/\s+/g, ' ') === target) {
+      lines.splice(i, 1);
+      return lines.join('\n');
+    }
+  }
+  return null;
+}
+
+/**
+ * Append one rule bullet. Throws on input that would corrupt the file or the
+ * watchlist: an empty statement, one over MAX_STATEMENT_LEN (parseRulesMd
+ * would silently drop it — better to refuse loudly at write time), or one
+ * containing a newline — a statement with a \n in it is a SECOND rule
+ * smuggled past whoever reviewed the first, the same injection shape the dsh
+ * settings route refuses. A null/empty file gets a minimal header so the
+ * created file explains itself.
+ */
+export function addRuleToMd(text: string | null, statement: string): string {
+  const clean = statement.trim().replace(/[ \t]+/g, ' ');
+  if (!clean) throw new Error('empty rule statement');
+  if (/[\r\n]/.test(statement)) throw new Error('a rule statement cannot contain a newline (one bullet = one rule)');
+  if (clean.length > MAX_STATEMENT_LEN) throw new Error(`rule statement too long (${clean.length} > ${MAX_STATEMENT_LEN} chars) — a paragraph is not a rule`);
+  const bullet = `- ${clean}`;
+  if (!text || !text.trim()) {
+    return `# Rules\n\nEvery \`- \` bullet below is one rule on the session-contradiction watchlist.\nProse and headings are ignored. See docs/features/session-contradiction.md.\n\n${bullet}\n`;
+  }
+  return `${text.replace(/\n*$/, '\n')}${bullet}\n`;
+}
+
 export function mergeRulesIntoCommitments(
   rules: readonly string[],
   commitments: readonly SessionCommitment[],

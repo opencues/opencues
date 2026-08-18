@@ -35,6 +35,22 @@ five kinds of company (engineering, comms/PR, support, healthcare, finance):
 19/19 violations caught citing the right rule, zero false alarms on drafts
 that mention a rule's topic while complying with it.
 
+Nine defaults ship in your user-level file the first time `opencues
+seed-configs` runs (each benched to a perfect score before earning its slot),
+and **`opencues rules`** manages the whole set without opening an editor:
+
+```
+opencues rules                 # the merged list — project first, duplicates marked
+opencues rules remove 3        # delete one (by index or unique substring)
+opencues rules add "No deploys during the freeze."
+opencues rules add "…" --project
+```
+
+Removal edits surgically — one bullet line goes, your prose stays — and an
+edited file is never touched by re-seeding, so deleting a default is permanent
+in practice (the opt-out for ALL of them is emptying the bullets, not deleting
+the file, which would reseed on the next install).
+
 Two honest boundaries: this **flags, it does not block** — it is a nudge at
 typing time, not a gate (use CI for gates), and rules are dismissible like any
 cue. And **keep the list curated** — the watchlist caps at 24 entries and

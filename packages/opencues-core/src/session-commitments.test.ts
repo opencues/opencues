@@ -10,6 +10,7 @@ import {
   MAX_COMMITMENTS,
   MAX_STATEMENT_LEN,
 } from './session-commitments';
+import { seedableOptionalFiles } from './feature-registry';
 
 describe('buildSessionCommitmentsSnapshot', () => {
   it('assigns stable c<N> ids, overriding producer ids', () => {
@@ -197,6 +198,8 @@ import {
   commitmentDedupeKey,
   parseRulesMd,
   mergeRulesIntoCommitments,
+  removeRuleFromMd,
+  addRuleToMd,
   parseSupersededResult,
 } from './session-commitments';
 
@@ -358,6 +361,52 @@ describe('mergeRulesIntoCommitments', () => {
     const m = mergeRulesIntoCommitments([...rules, 'rule 0'], [c('c1', 'a session decision')]);
     expect(m).toHaveLength(MAX_COMMITMENTS);
     expect(m.every((x) => x.id.startsWith('r'))).toBe(true);   // no room left for the session
+  });
+});
+
+describe('removeRuleFromMd / addRuleToMd', () => {
+  const MD = `# Team rules\n\nProse that must survive.\n\n- Rule one stays.\n- Rule two goes.\n`;
+
+  it('removes exactly one bullet line and nothing else', () => {
+    const next = removeRuleFromMd(MD, 'Rule two goes.');
+    expect(next).toContain('Prose that must survive.');
+    expect(next).toContain('- Rule one stays.');
+    expect(next).not.toContain('Rule two goes.');
+  });
+
+  it('returns null when no bullet matches — the caller must not rewrite the file', () => {
+    expect(removeRuleFromMd(MD, 'Not present.')).toBeNull();
+  });
+
+  it('never touches a frontmatter line that happens to look like a bullet', () => {
+    const fm = `---\n- not a rule, a yaml list item\n---\n- Real rule.\n`;
+    expect(removeRuleFromMd(fm, 'not a rule, a yaml list item')).toBeNull();
+    expect(removeRuleFromMd(fm, 'Real rule.')).not.toContain('Real rule.');
+  });
+
+  it('appends a bullet, creating a self-explaining file when there is none', () => {
+    expect(addRuleToMd(MD, 'Rule three arrives.')).toMatch(/- Rule three arrives\.\n$/);
+    const fresh = addRuleToMd(null, 'First rule.');
+    expect(fresh).toMatch(/^# Rules/);
+    expect(fresh).toContain('- First rule.');
+  });
+
+  it('refuses a newline (one bullet = one rule), empties, and paragraph-length input', () => {
+    expect(() => addRuleToMd(MD, 'a\n- smuggled second rule')).toThrow(/newline/);
+    expect(() => addRuleToMd(MD, '   ')).toThrow(/empty/);
+    expect(() => addRuleToMd(MD, 'x'.repeat(MAX_STATEMENT_LEN + 1))).toThrow(/too long/);
+  });
+
+  it('round-trips with parseRulesMd — what add writes, parse loads', () => {
+    const next = addRuleToMd(MD, 'Round trip.');
+    expect(parseRulesMd(next!)).toEqual(['Rule one stays.', 'Rule two goes.', 'Round trip.']);
+  });
+});
+
+describe('shipped defaults wiring', () => {
+  it('RULES.md stays in seedableOptionalFiles — removing it silently unships the defaults', () => {
+    const files = seedableOptionalFiles().map((f) => f.basename);
+    expect(files).toContain('RULES.md');
   });
 });
 

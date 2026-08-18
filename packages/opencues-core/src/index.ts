@@ -387,6 +387,8 @@ export {
   commitmentDedupeKey,
   parseRulesMd,
   mergeRulesIntoCommitments,
+  removeRuleFromMd,
+  addRuleToMd,
   RULES_FILE,
   parseSupersededResult,
   SESSION_COMMITMENTS_EXTRACT_SYSTEM,

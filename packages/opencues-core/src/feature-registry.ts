@@ -230,6 +230,13 @@ export const CORE_SETTINGS_FILE = 'OPENCUES.md';
  */
 export const CORE_TEMPLATES: Readonly<Record<string, string>> = {
   'AUDITORS.md': 'defaults/AUDITORS.md',
+  // The nine default always-on rules for the session-contradiction watchlist.
+  // Every bullet was benched to 28/28 exact-rule recall with 0 false alarms
+  // BEFORE shipping (company-rules-bench.mjs, shipped-defaults domain) — a
+  // candidate rule that has not been through that bench does not go in this
+  // file. SKIP-if-exists means an edited file is never touched; the template
+  // itself tells users to empty the bullets rather than delete the file.
+  'RULES.md': 'defaults/RULES.md',
   // OPENCUES.md is handled by seed-configs's own healing logic, not
   // this template map (it has its own 0-byte self-heal pass).
 };

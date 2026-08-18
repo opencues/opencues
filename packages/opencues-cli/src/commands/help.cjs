@@ -358,6 +358,7 @@ module.exports = function help(argv, ctx) {
       ['show <name>',        'Print full config for one cue / blank by name'],
       ['context [list]',     'Show identity / blank / ambient context (what the LLM would see)'],
       ['dismissals',         'See and undo the cues you have silenced'],
+      ['rules',              'See, add, and remove watchlist rules (RULES.md)'],
       ['calendar add <url>', 'Add/list/remove calendar-context calendar feeds (.ics / webcal: Luma, Google, …)'],
       ['cleanup [--kill]',   'Find or kill orphan host processes from prior `opencues run`'],
       ['edit <file>',        'Open ~/.cues/<file>.md in $EDITOR'],

@@ -157,6 +157,25 @@ test('invalid: unrecognised flags are ignored rather than rejected (forwards-com
   assert.strictEqual(fs.existsSync(path.join(tmpHome, '.cues', 'OPENCUES.md')), true, 'unknown flags must not block the normal seed run');
 });
 
+test('RULES.md: seeded on first run with the nine benched defaults; an edited file is never touched', () => {
+  // The manual verification of this feature wrote into the developer's REAL
+  // ~/.cues, because targetDir comes from os.homedir() and only OPENCUES.md
+  // honours $OPENCUES_HOME. This test is the hermetic version of that check —
+  // HOME/USERPROFILE overridden per the suite's beforeEach — pinning both
+  // halves of the contract: the copy happens, and SKIP-if-exists protects an
+  // edit (the documented opt-out is emptying the bullets, not deleting the
+  // file, because a deleted file reseeds on the next install).
+  silence(() => seedConfigs(['--silent'], { REPO_ROOT }));
+  const file = path.join(tmpHome, '.cues', 'RULES.md');
+  assert.ok(fs.existsSync(file), 'RULES.md was not seeded');
+  const bullets = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.startsWith('- '));
+  assert.strictEqual(bullets.length, 9, `expected the 9 default rules, got ${bullets.length}`);
+
+  fs.writeFileSync(file, '# mine\n- my only rule\n');
+  silence(() => seedConfigs(['--silent'], { REPO_ROOT }));
+  assert.strictEqual(fs.readFileSync(file, 'utf8'), '# mine\n- my only rule\n', 'an edited RULES.md was overwritten by re-seeding');
+});
+
 test('self-heal migrates calendar-context legacy files + OPENCUES.md scalars (July 2026 rename)', () => {
   // Legacy names defined once (with markers) and referenced via variables so
   // the usage lines below don't trip lint-legacy-names.

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — nine default rules ship on the watchlist (`@opencues/core` 0.51.0 → 0.52.0, `@opencues/chrome` 0.2.173 → 0.2.174, `@opencues/dsh` 0.2.7 → 0.2.8)
+
+`opencues seed-configs` now seeds a `~/.cues/RULES.md` with nine always-on rules — the hard-and-fast floor: secrets never in code/config/logs, no real credentials pasted into chats or AI prompts, no committed `.env`, no destructive commands against production, no hand-edited production data, backup before anything irreversible, no skipping failing tests to green CI, no un-anonymized production data in dev, and no blanket unattended-destructive permissions for agents.
+
+**Every one was benched to a perfect score before earning its slot**: as a single combined watchlist (the way they ship, which is where cluster confusion would live — three secrets-shaped rules, three destructive-prod-shaped ones), the matcher scored **28/28 recall citing the exact right rule and 0 false alarms** on compliant traps ("rotated the leaked token and scrubbed it from the logs" is never flagged), on both gpt-oss and gemma, repeated. The bench (`company-rules-bench.mjs`, `shipped-defaults` domain) is the admission gate: a candidate rule that hasn't been through it doesn't go in the file.
+
+They flag, they never block, and they're yours: each cue dismisses with `_` like any other, the file is plain markdown you edit freely, and an edited file is never touched by re-seeding — the template says to empty the bullets rather than delete the file, since a deleted file reseeds on the next install. Existing installs receive the file on their next `opencues seed-configs` / `opencues install`; nine defaults leave fifteen watchlist slots for your own rules and session decisions.
+
+**`opencues rules` manages the set without opening an editor** (`opencues` 0.7.4 → 0.8.0): `list` shows the merged view in the runtime's own order — project file first, duplicates the dedupe will ignore marked as such — plus `add` (with the same newline/length refusals the dsh settings route uses: one bullet is one rule, not a smuggling channel), `remove <n|substring>` (surgical: one bullet line goes, prose survives; ambiguous substrings list the candidates instead of guessing), `path`, and `--json`. Parsing and editing are the same core functions the runtime ingest loads, so the command cannot drift from what the watchlist actually reads.
+
+And a confession that became a test: the first manual verification of the seeding **wrote into the real `~/.cues`**, because `seed-configs` targets `os.homedir()` and only `OPENCUES.md` honours `$OPENCUES_HOME`. The committed tests are hermetic the way that mistake teaches — HOME and USERPROFILE both overridden — and pin the full contract: nine bullets on first seed, an edited file never touched, removal preserving prose, duplicate refusal, and the registry entry itself (removing `RULES.md` from `CORE_TEMPLATES` would silently unship the defaults, so a test fails if it goes).
+
 ### Added — company and project rules on the session-contradiction watchlist (`@opencues/core` 0.50.1 → 0.51.0, `@opencues/runtime` 0.33.1 → 0.34.0, `@opencues/chrome` 0.2.172 → 0.2.173, `@opencues/dsh` 0.2.6 → 0.2.7)
 
 A `RULES.md` in your project's `.cues/` (or user-level) now feeds the session-contradiction matcher: every `- ` bullet is a rule, the rest of the file is ignorable prose, and typing "let's just npm install lodash for this" draws the ⚠ cue naming the rule it violates, with a reconciled rewrite on Ctrl+Alt+↑.
