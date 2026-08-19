@@ -11,7 +11,13 @@
       }
 
       .cls-3 {
-        fill: #fff;
+        fill: #24292f;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .cls-3 {
+          fill: #fff;
+        }
       }
     </style>
   </defs>
