@@ -679,6 +679,53 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     expect(out?.inlineNote?.spanStart).toBe(0);
   });
 
+  it('caps a snippet that the word split cannot shorten (spaceless scripts)', () => {
+    // Japanese, Chinese and Thai write no spaces between words, so `split(/\s+/)`
+    // returns the whole answer as ONE "word" and the two-word guard never fires.
+    // The note then quoted an entire paragraph: a transform chain ending in
+    // `translate to japanese _` put eight lines of Japanese into a note sitting
+    // under the answer it was annotating.
+    const jp =
+      'モダンなホームページ、アバウトセクション、サービスページ、および機能的なお問い合わせフォームを含む、'
+      + '包括的でレスポンシブなウェブサイトを構築してください。';
+    const buf = 'the result on screen';
+    const { dynDefs, dimRender } = setup(buf);
+    dynDefs.set(0, {
+      originalWord: 'x',
+      alternatives: [buf, jp],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: buf.length,
+      blankName: 'transform-blank',
+    });
+    const out = dimRender.compute({ text: buf, cursor: 2, externalHighlights: [] });
+    const snippet = out!.inlineNote!.text.split(' | ')[1];
+    // 24 code points and the ellipsis - short enough to sit on one line
+    expect([...snippet].length).toBe(25);
+    expect(snippet.endsWith('…')).toBe(true);
+    expect(jp.startsWith(snippet.slice(0, -1))).toBe(true);
+  });
+
+  it('does not cut a surrogate pair in half when it caps', () => {
+    // `.length` counts UTF-16 units, so slicing by it can split an emoji.
+    // The cap counts CODE POINTS.
+    const emoji = '🚀'.repeat(40);
+    const buf = 'the result on screen';
+    const { dynDefs, dimRender } = setup(buf);
+    dynDefs.set(0, {
+      originalWord: 'x',
+      alternatives: [buf, emoji],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: buf.length,
+      blankName: 'transform-blank',
+    });
+    const out = dimRender.compute({ text: buf, cursor: 2, externalHighlights: [] });
+    const snippet = out!.inlineNote!.text.split(' | ')[1];
+    expect(snippet).toBe('🚀'.repeat(24) + '…');
+    expect(snippet).not.toContain('\uFFFD');
+  });
+
   it('ROTATES an ask-cues note through its option LABELS as it cycles (one paradigm)', () => {
     // ask-cues is a menu of rewrites but renders like every other cycleable
     // note: it ROTATES to show where the next `_` lands. Its alternatives are
