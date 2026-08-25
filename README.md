@@ -6,13 +6,13 @@
      URLs to that new commit. -->
 
 <div align="right">
-  <a href="#"><img width="180" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/opencues/opencues@62dc0d205460b8610dd4825be196e01ef281dc7a/assets/OpenCues_logo.svg"></a>
+  <a href="#"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.jsdelivr.net/gh/opencues/opencues@c385eaa8796f719656d7096dad53124a7048deb5/assets/OpenCues_logo-dark.svg"><img width="180" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/opencues/opencues@c385eaa8796f719656d7096dad53124a7048deb5/assets/OpenCues_logo-light.svg"></picture></a>
 </div>
 
 <br><br>
 
 <div align="center">
-  <a href="#"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/opencues/opencues@62dc0d205460b8610dd4825be196e01ef281dc7a/assets/Hero.svg"></a>
+  <a href="#"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.jsdelivr.net/gh/opencues/opencues@c385eaa8796f719656d7096dad53124a7048deb5/assets/Hero-dark.svg"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/opencues/opencues@c385eaa8796f719656d7096dad53124a7048deb5/assets/Hero-light.svg"></picture></a>
 </div>
 
 <br><br>
@@ -97,7 +97,7 @@ fork to pin and no OpenCues CLI step — see
 
 #
 
-<p align="left"><a href="#integrations"><img width="91" alt="Supports:" src="assets/supports.svg"></a><a href="integrations/opencode/README.md"><img width="129" alt="OpenCode" src="https://cdn.jsdelivr.net/gh/opencues/opencues@62dc0d205460b8610dd4825be196e01ef281dc7a/assets/Supports-09.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/spacer.svg"><a href="integrations/claude-code/README.md"><img width="144" alt="Claude Code" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/Supports-10.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/spacer.svg"><a href="integrations/gemini-cli/README.md"><img width="126" alt="Gemini CLI" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/Supports-11.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/spacer.svg"><a href="integrations/chrome/README.md"><img width="130" alt="Chrome" src="assets/chrome.svg"></a><a href="integrations/shell/README.md"><img width="82" alt="Shell" src="assets/shell.svg"></a></p>
+<p align="left"><a href="#integrations"><img width="91" alt="Supports:" src="assets/supports.svg"></a><a href="integrations/opencode/README.md"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.jsdelivr.net/gh/opencues/opencues@c385eaa8796f719656d7096dad53124a7048deb5/assets/Supports-09-dark.svg"><img width="129" alt="OpenCode" src="https://cdn.jsdelivr.net/gh/opencues/opencues@c385eaa8796f719656d7096dad53124a7048deb5/assets/Supports-09-light.svg"></picture></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/spacer.svg"><a href="integrations/claude-code/README.md"><img width="144" alt="Claude Code" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/Supports-10.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/spacer.svg"><a href="integrations/gemini-cli/README.md"><img width="126" alt="Gemini CLI" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/Supports-11.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/spacer.svg"><a href="integrations/chrome/README.md"><img width="130" alt="Chrome" src="assets/chrome.svg"></a><a href="integrations/shell/README.md"><img width="82" alt="Shell" src="assets/shell.svg"></a></p>
 
 <br><br><br><br>
 
@@ -128,7 +128,7 @@ hosts have made, across features, so the total isn't a guess.
 # Configuration & LLM providers
 
 <div align="center">
-  <a href="#"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/opencues/opencues@62dc0d205460b8610dd4825be196e01ef281dc7a/assets/Hero-2.svg"></a>
+  <a href="#"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.jsdelivr.net/gh/opencues/opencues@c385eaa8796f719656d7096dad53124a7048deb5/assets/Hero-2-dark.svg"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/opencues/opencues@c385eaa8796f719656d7096dad53124a7048deb5/assets/Hero-2-light.svg"></picture></a>
 </div>
 
 <br>
@@ -169,7 +169,7 @@ Full threat model: [`docs/architecture/security-audit.md`](docs/architecture/sec
 # Contributing
 
 <div align="center">
-  <a href="#"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/opencues/opencues@62dc0d205460b8610dd4825be196e01ef281dc7a/assets/Hero-3.svg"></a>
+  <a href="#"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.jsdelivr.net/gh/opencues/opencues@c385eaa8796f719656d7096dad53124a7048deb5/assets/Hero-3-dark.svg"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/opencues/opencues@c385eaa8796f719656d7096dad53124a7048deb5/assets/Hero-3-light.svg"></picture></a>
 </div>
 
 <br>
