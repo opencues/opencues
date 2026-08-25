@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — a note no longer quotes a whole paragraph when the script has no spaces (`@opencues/runtime` 0.34.3 → 0.34.4, `@opencues/chrome` 0.2.178 → 0.2.179, `@opencues/dsh` 0.2.13 → 0.2.14)
+
+A note that lists what `_` walks back to shortens each stop to its first two words, so a whole-sentence rewrite identifies itself without being printed twice. The shortening splits on whitespace — and Japanese, Chinese and Thai do not write spaces between words, so the entire answer came back as one "word", the two-word guard never fired, and the note quoted the paragraph.
+
+**Where you saw it.** Anywhere a note lists the stops: a chain of blanks ending in `translate to japanese _` put eight lines of Japanese into a note sitting under a five-line answer, longer than the thing it was annotating.
+
+The length is capped as well as the word count, by code point rather than by string length — the latter counts UTF-16 units and would cut an emoji or a surrogate pair in half. English is unaffected: two words rarely reach the cap, so every existing note reads exactly as before.
+
 ## [0.7.7] - 2026-08-19
 
 ### Added — dsh serves company rules too (`@opencues/dsh` 0.2.12 → 0.2.13)
