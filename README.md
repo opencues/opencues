@@ -1,25 +1,35 @@
-<!-- Brand assets: placeholder art served via jsDelivr from THIS repo's
-     assets/ at a pinned commit (jsDelivr tested faster/more reliable than
-     repo-relative paths on GitHub — keep the CDN, don't switch to relative).
-     The ART is still placeholder: when final artwork lands, replace the SVG
-     file CONTENTS (same filenames), commit, and bump the @<sha> in these
-     URLs to that new commit. -->
+<!-- Brand assets: placeholder art in THIS repo's assets/, referenced by
+     repo-relative path so the rendered README always shows what is on the
+     default branch.
+
+     Previously these were jsDelivr URLs pinned to a commit SHA. That made
+     the page a snapshot of a commit rather than of the branch: editing an
+     SVG changed nothing until someone also rewrote the @<sha>, and twice
+     nobody did (#412, then #415 — whose hero recolour merged and then sat
+     unrendered behind a stale pin).
+
+     Relative paths remove that failure mode: replace the SVG file CONTENTS
+     (same filenames), commit, done. There is no second step to forget.
+
+     If a mark ever needs to be pinned deliberately — quoting old artwork,
+     or a link that must survive a rename — pin that ONE url and say why
+     here. Do not reintroduce a blanket pin. -->
 
 <div align="right">
-  <a href="#"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.jsdelivr.net/gh/opencues/opencues@c385eaa8796f719656d7096dad53124a7048deb5/assets/OpenCues_logo-dark.svg"><img width="180" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/opencues/opencues@c385eaa8796f719656d7096dad53124a7048deb5/assets/OpenCues_logo-light.svg"></picture></a>
+  <a href="#"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/OpenCues_logo-dark.svg"><img width="180" alt="OpenCues" src="assets/OpenCues_logo-light.svg"></picture></a>
 </div>
 
 <br><br>
 
 <div align="center">
-  <a href="#"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.jsdelivr.net/gh/opencues/opencues@c385eaa8796f719656d7096dad53124a7048deb5/assets/Hero-dark.svg"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/opencues/opencues@c385eaa8796f719656d7096dad53124a7048deb5/assets/Hero-light.svg"></picture></a>
+  <a href="#"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/Hero-dark.svg"><img width="600" alt="OpenCues" src="assets/Hero-light.svg"></picture></a>
 </div>
 
 <br><br>
 
 #
 
-<p align="left"><a href="#"><img width="120" alt="Associations:" src="assets/associations.svg"></a><a href="https://www.reddit.com/user/inventor_black/" target="_blank" rel="noopener noreferrer"><img width="257" alt="Mod of r/ClaudeAI" src="https://cdn.jsdelivr.net/gh/opencues/opencues@9f12c0442100e0485adcad811a25d20198e29956/assets/mod.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/opencues/opencues@9f12c0442100e0485adcad811a25d20198e29956/assets/spacer.svg"><a href="https://luma.com/OpenSourceIRL" target="_blank" rel="noopener noreferrer"><img width="161" alt="OpenSourceIRL" src="https://cdn.jsdelivr.net/gh/opencues/opencues@9f12c0442100e0485adcad811a25d20198e29956/assets/open-source-irl.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/opencues/opencues@9f12c0442100e0485adcad811a25d20198e29956/assets/spacer.svg"><a href="https://wilfred.md" target="_blank" rel="noopener noreferrer"><img width="211" alt="Anthropic Ambassador" src="https://cdn.jsdelivr.net/gh/opencues/opencues@9f12c0442100e0485adcad811a25d20198e29956/assets/anthropic-ambassador.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/opencues/opencues@9f12c0442100e0485adcad811a25d20198e29956/assets/spacer.svg"><a href="https://wilfred.md" target="_blank" rel="noopener noreferrer"><img width="207" alt="Cerebras Ambassador" src="https://cdn.jsdelivr.net/gh/opencues/opencues@9f12c0442100e0485adcad811a25d20198e29956/assets/cerebras-ambassador.svg"></a></p>
+<p align="left"><a href="#"><img width="120" alt="Associations:" src="assets/associations.svg"></a><a href="https://www.reddit.com/user/inventor_black/" target="_blank" rel="noopener noreferrer"><img width="257" alt="Mod of r/ClaudeAI" src="assets/mod.svg"></a><img width="24" alt="" src="assets/spacer.svg"><a href="https://luma.com/OpenSourceIRL" target="_blank" rel="noopener noreferrer"><img width="161" alt="OpenSourceIRL" src="assets/open-source-irl.svg"></a><img width="24" alt="" src="assets/spacer.svg"><a href="https://wilfred.md" target="_blank" rel="noopener noreferrer"><img width="211" alt="Anthropic Ambassador" src="assets/anthropic-ambassador.svg"></a><img width="24" alt="" src="assets/spacer.svg"><a href="https://wilfred.md" target="_blank" rel="noopener noreferrer"><img width="207" alt="Cerebras Ambassador" src="assets/cerebras-ambassador.svg"></a></p>
 
 <br><br><br>
 
@@ -34,7 +44,7 @@ The model comes to your cursor, both ways. **Cues** react to what you've already
      GitHub-hosted asset (renders inline): ![demo](https://github.com/opencues/opencues/assets/.../demo.mp4)
      YouTube (GitHub won't inline-embed it — link a thumbnail instead):
      [![Demo](assets/hero-thumb.png)](https://youtu.be/VIDEO_ID) -->
-<a href="#"><img width="100%" alt="Video placeholder — hero demo" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/Video_placeholder_1200x300.svg"></a>
+<a href="#"><img width="100%" alt="Video placeholder — hero demo" src="assets/Video_placeholder_1200x300.svg"></a>
 
 OpenCues is platform, model, and provider agnostic, engineered from the ground up to enable native inline AI.
 
@@ -52,7 +62,7 @@ Rows with `_` are **blanks**: you ask, the model fills in. Rows without are **cu
 
 #
 
-<p align="left"><a href="LICENSE"><img width="216" alt="Apache-2.0 License" src="assets/license.svg"></a><a href="spec/README.md"><img width="157" alt="Open Standard" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/Ownership-05.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/spacer.svg"><a href="spec/blank-spec.md"><img width="121" alt="Blanks.md" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/Ownership-06.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/spacer.svg"><a href="spec/cue-spec.md"><img width="112" alt="Cues.md" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/Ownership-07.svg"></a></p>
+<p align="left"><a href="LICENSE"><img width="216" alt="Apache-2.0 License" src="assets/license.svg"></a><a href="spec/README.md"><img width="157" alt="Open Standard" src="assets/Ownership-05.svg"></a><img width="24" alt="" src="assets/spacer.svg"><a href="spec/blank-spec.md"><img width="121" alt="Blanks.md" src="assets/Ownership-06.svg"></a><img width="24" alt="" src="assets/spacer.svg"><a href="spec/cue-spec.md"><img width="112" alt="Cues.md" src="assets/Ownership-07.svg"></a></p>
 
 <br><br><br><br>
 
@@ -69,11 +79,11 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
 
 <!-- VIDEO: quickstart walkthrough (~30-45s), replace this comment with the
      real embed once available. -->
-<a href="#"><img width="100%" alt="Video placeholder — quickstart walkthrough" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/Video_placeholder_1200x300.svg"></a>
+<a href="#"><img width="100%" alt="Video placeholder — quickstart walkthrough" src="assets/Video_placeholder_1200x300.svg"></a>
 
 #
 
-<p align="left"><a href="docs/guides/cli-reference.md#the-5-youll-actually-use"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.jsdelivr.net/gh/opencues/opencues@e440d5098423d496ea4ff4007db04a048b3898bb/assets/opencues-cli-dark.svg"><img width="178" alt="OpenCues CLI" src="https://cdn.jsdelivr.net/gh/opencues/opencues@e440d5098423d496ea4ff4007db04a048b3898bb/assets/opencues-cli-light.svg"></picture></a><a href="docs/features/README.md"><img width="109" alt="Features" src="assets/features.svg"></a></p>
+<p align="left"><a href="docs/guides/cli-reference.md#the-5-youll-actually-use"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/opencues-cli-dark.svg"><img width="178" alt="OpenCues CLI" src="assets/opencues-cli-light.svg"></picture></a><a href="docs/features/README.md"><img width="109" alt="Features" src="assets/features.svg"></a></p>
 
 <br><br><br><br>
 
@@ -97,7 +107,7 @@ fork to pin and no OpenCues CLI step — see
 
 #
 
-<p align="left"><a href="#integrations"><img width="91" alt="Supports:" src="assets/supports.svg"></a><a href="integrations/opencode/README.md"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.jsdelivr.net/gh/opencues/opencues@c385eaa8796f719656d7096dad53124a7048deb5/assets/Supports-09-dark.svg"><img width="129" alt="OpenCode" src="https://cdn.jsdelivr.net/gh/opencues/opencues@c385eaa8796f719656d7096dad53124a7048deb5/assets/Supports-09-light.svg"></picture></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/spacer.svg"><a href="integrations/claude-code/README.md"><img width="144" alt="Claude Code" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/Supports-10.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/spacer.svg"><a href="integrations/gemini-cli/README.md"><img width="126" alt="Gemini CLI" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/Supports-11.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/spacer.svg"><a href="integrations/chrome/README.md"><img width="130" alt="Chrome" src="assets/chrome.svg"></a><a href="integrations/shell/README.md"><img width="82" alt="Shell" src="assets/shell.svg"></a></p>
+<p align="left"><a href="#integrations"><img width="91" alt="Supports:" src="assets/supports.svg"></a><a href="integrations/opencode/README.md"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/Supports-09-dark.svg"><img width="129" alt="OpenCode" src="assets/Supports-09-light.svg"></picture></a><img width="24" alt="" src="assets/spacer.svg"><a href="integrations/claude-code/README.md"><img width="144" alt="Claude Code" src="assets/Supports-10.svg"></a><img width="24" alt="" src="assets/spacer.svg"><a href="integrations/gemini-cli/README.md"><img width="126" alt="Gemini CLI" src="assets/Supports-11.svg"></a><img width="24" alt="" src="assets/spacer.svg"><a href="integrations/chrome/README.md"><img width="130" alt="Chrome" src="assets/chrome.svg"></a><a href="integrations/shell/README.md"><img width="82" alt="Shell" src="assets/shell.svg"></a></p>
 
 <br><br><br><br>
 
@@ -121,14 +131,14 @@ hosts have made, across features, so the total isn't a guess.
 
 <!-- VIDEO: feature tour (~30s of cues + blanks in action), replace this
      comment with the real embed once available. -->
-<a href="#"><img width="100%" alt="Video placeholder — feature tour" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/Video_placeholder_1200x300.svg"></a>
+<a href="#"><img width="100%" alt="Video placeholder — feature tour" src="assets/Video_placeholder_1200x300.svg"></a>
 
 <br><br><br><br>
 
 # Configuration & LLM providers
 
 <div align="center">
-  <a href="#"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.jsdelivr.net/gh/opencues/opencues@c385eaa8796f719656d7096dad53124a7048deb5/assets/Hero-2-dark.svg"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/opencues/opencues@c385eaa8796f719656d7096dad53124a7048deb5/assets/Hero-2-light.svg"></picture></a>
+  <a href="#"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/Hero-2-dark.svg"><img width="600" alt="OpenCues" src="assets/Hero-2-light.svg"></picture></a>
 </div>
 
 <br>
@@ -139,7 +149,7 @@ Full reference: [`docs/configuration.md`](docs/configuration.md) · [`docs/guide
 
 #
 
-<img width="92" alt="Providers:" src="assets/providers.svg"><a href="https://cloud.cerebras.ai" target="_blank" rel="noopener noreferrer"><img width="200" alt="Cerebras Systems" src="assets/cerebras-systems.svg"></a><a href="https://groq.com" target="_blank" rel="noopener noreferrer"><img width="107" alt="Groq" src="assets/groq.svg"></a><a href="https://ai.google.dev" target="_blank" rel="noopener noreferrer"><img width="122" alt="Gemini" src="assets/gemini.svg"></a><a href="https://www.anthropic.com" target="_blank" rel="noopener noreferrer"><img width="141" alt="Anthropic" src="assets/anthropic.svg"></a><a href="https://openai.com" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.jsdelivr.net/gh/opencues/opencues@e440d5098423d496ea4ff4007db04a048b3898bb/assets/openai-dark.svg"><img width="102" alt="OpenAI" src="https://cdn.jsdelivr.net/gh/opencues/opencues@e440d5098423d496ea4ff4007db04a048b3898bb/assets/openai-light.svg"></picture></a>
+<img width="92" alt="Providers:" src="assets/providers.svg"><a href="https://cloud.cerebras.ai" target="_blank" rel="noopener noreferrer"><img width="200" alt="Cerebras Systems" src="assets/cerebras-systems.svg"></a><a href="https://groq.com" target="_blank" rel="noopener noreferrer"><img width="107" alt="Groq" src="assets/groq.svg"></a><a href="https://ai.google.dev" target="_blank" rel="noopener noreferrer"><img width="122" alt="Gemini" src="assets/gemini.svg"></a><a href="https://www.anthropic.com" target="_blank" rel="noopener noreferrer"><img width="141" alt="Anthropic" src="assets/anthropic.svg"></a><a href="https://openai.com" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/openai-dark.svg"><img width="102" alt="OpenAI" src="assets/openai-light.svg"></picture></a>
 
 <br><br><br><br>
 
@@ -169,7 +179,7 @@ Full threat model: [`docs/architecture/security-audit.md`](docs/architecture/sec
 # Contributing
 
 <div align="center">
-  <a href="#"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.jsdelivr.net/gh/opencues/opencues@c385eaa8796f719656d7096dad53124a7048deb5/assets/Hero-3-dark.svg"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/opencues/opencues@c385eaa8796f719656d7096dad53124a7048deb5/assets/Hero-3-light.svg"></picture></a>
+  <a href="#"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/Hero-3-dark.svg"><img width="600" alt="OpenCues" src="assets/Hero-3-light.svg"></picture></a>
 </div>
 
 <br>
@@ -185,7 +195,7 @@ Join the community — questions, feedback, and the people building alongside yo
 
 #
 
-<p align="left"><img width="85" alt="Community:" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/Community-12.svg"><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/spacer.svg"><a href="https://github.com/opencues/opencues/graphs/contributors"><img width="161" alt="Contributors" src="assets/contributors.svg"></a><a href="https://x.com/openCues_" target="_blank" rel="noopener noreferrer"><img width="142" alt="X / Twitter" src="assets/x-twitter.svg"></a><a href="https://www.reddit.com/r/OpenCues/" target="_blank" rel="noopener noreferrer"><img width="118" alt="Reddit" src="assets/reddit.svg"></a><a href="https://www.instagram.com/opencues/" target="_blank" rel="noopener noreferrer"><img width="117" alt="Instagram" src="assets/instagram.svg"></a></p>
+<p align="left"><img width="85" alt="Community:" src="assets/Community-12.svg"><img width="24" alt="" src="assets/spacer.svg"><a href="https://github.com/opencues/opencues/graphs/contributors"><img width="161" alt="Contributors" src="assets/contributors.svg"></a><a href="https://x.com/openCues_" target="_blank" rel="noopener noreferrer"><img width="142" alt="X / Twitter" src="assets/x-twitter.svg"></a><a href="https://www.reddit.com/r/OpenCues/" target="_blank" rel="noopener noreferrer"><img width="118" alt="Reddit" src="assets/reddit.svg"></a><a href="https://www.instagram.com/opencues/" target="_blank" rel="noopener noreferrer"><img width="117" alt="Instagram" src="assets/instagram.svg"></a></p>
 
 <!-- TODO[community]: add Discord + GitHub Discussions once live (tracked in .internal/pre-launch-readme.md) -->
 
