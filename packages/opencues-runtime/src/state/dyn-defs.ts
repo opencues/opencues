@@ -129,12 +129,28 @@ function previewTwoWords(def: WordDef): string {
   );
 }
 
+/** The widest a snippet may be. Two English words rarely reach it; it exists
+ *  for the scripts that give the word split nothing to work with. */
+const SNIPPET_MAX = 24;
+
 /** First ≤2 words of a string, ellipsised — a compact snippet that identifies a
- *  long alternative (a whole-sentence transform/fluid result) without spilling. */
+ *  long alternative (a whole-sentence transform/fluid result) without spilling.
+ *
+ *  THE WORD SPLIT IS NOT ENOUGH ON ITS OWN. It splits on whitespace, and
+ *  Japanese, Chinese and Thai do not write spaces between words — so the whole
+ *  answer came back as ONE "word", the `words.length > 2` guard never fired,
+ *  and the note quoted the entire paragraph. Visible wherever a note lists what
+ *  `_` walks back to: a transform chain ending in `translate to japanese _` put
+ *  eight lines of Japanese into a note sitting under a five-line answer.
+ *
+ *  So the length is capped too, by CODE POINT rather than by `.length`, which
+ *  counts UTF-16 units and would cut an emoji or a surrogate pair in half. */
 function snippetWords(alt: string): string {
   const words = alt.split(/\s+/).filter(Boolean);
   const head = words.slice(0, 2).join(' ');
-  return words.length > 2 ? `${head}…` : head;
+  const out = words.length > 2 ? `${head}…` : head;
+  const cp = [...out];
+  return cp.length > SNIPPET_MAX ? `${cp.slice(0, SNIPPET_MAX).join('')}…` : out;
 }
 
 /**
