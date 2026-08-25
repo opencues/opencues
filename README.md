@@ -34,7 +34,7 @@ The model comes to your cursor, both ways. **Cues** react to what you've already
      GitHub-hosted asset (renders inline): ![demo](https://github.com/opencues/opencues/assets/.../demo.mp4)
      YouTube (GitHub won't inline-embed it — link a thumbnail instead):
      [![Demo](assets/hero-thumb.png)](https://youtu.be/VIDEO_ID) -->
-<a href="#"><img width="100%" alt="Video placeholder — hero demo" src="https://cdn.jsdelivr.net/gh/opencues/opencues@43ac7ab68de968a183aa0340593aac926f26587a/assets/Video_placeholder_1200x300.svg"></a>
+<img width="100%" alt="OpenCues: one underscore writes the brief, three more grow it, and the last one translates the lot" src="assets/readme-hero.webp">
 
 OpenCues is platform, model, and provider agnostic, engineered from the ground up to enable native inline AI.
 
