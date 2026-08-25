@@ -6,6 +6,7 @@
         fill: #5b5b5b;
       }
 
+
       .cls-2 {
         fill: #be6eec;
       }
@@ -13,7 +14,6 @@
       .cls-3 {
         fill: #000;
       }
-
     </style>
   </defs>
   <g>
