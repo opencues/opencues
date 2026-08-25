@@ -10,9 +10,8 @@
         fill: #000;
       }
 
-
       .cls-3 {
-        fill: #353535;
+        fill: #5b5b5b;
       }
     </style>
   </defs>
