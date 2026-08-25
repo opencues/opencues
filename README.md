@@ -73,7 +73,7 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
 
 #
 
-<p align="left"><a href="docs/guides/cli-reference.md#the-5-youll-actually-use"><img width="178" alt="OpenCues CLI" src="assets/opencues-cli.svg"></a><a href="docs/features/README.md"><img width="109" alt="Features" src="assets/features.svg"></a></p>
+<p align="left"><a href="docs/guides/cli-reference.md#the-5-youll-actually-use"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.jsdelivr.net/gh/opencues/opencues@e440d5098423d496ea4ff4007db04a048b3898bb/assets/opencues-cli-dark.svg"><img width="178" alt="OpenCues CLI" src="https://cdn.jsdelivr.net/gh/opencues/opencues@e440d5098423d496ea4ff4007db04a048b3898bb/assets/opencues-cli-light.svg"></picture></a><a href="docs/features/README.md"><img width="109" alt="Features" src="assets/features.svg"></a></p>
 
 <br><br><br><br>
 
@@ -139,7 +139,7 @@ Full reference: [`docs/configuration.md`](docs/configuration.md) · [`docs/guide
 
 #
 
-<img width="92" alt="Providers:" src="assets/providers.svg"><a href="https://cloud.cerebras.ai" target="_blank" rel="noopener noreferrer"><img width="200" alt="Cerebras Systems" src="assets/cerebras-systems.svg"></a><a href="https://groq.com" target="_blank" rel="noopener noreferrer"><img width="107" alt="Groq" src="assets/groq.svg"></a><a href="https://ai.google.dev" target="_blank" rel="noopener noreferrer"><img width="122" alt="Gemini" src="assets/gemini.svg"></a><a href="https://www.anthropic.com" target="_blank" rel="noopener noreferrer"><img width="141" alt="Anthropic" src="assets/anthropic.svg"></a><a href="https://openai.com" target="_blank" rel="noopener noreferrer"><img width="102" alt="OpenAI" src="assets/openai.svg"></a>
+<img width="92" alt="Providers:" src="assets/providers.svg"><a href="https://cloud.cerebras.ai" target="_blank" rel="noopener noreferrer"><img width="200" alt="Cerebras Systems" src="assets/cerebras-systems.svg"></a><a href="https://groq.com" target="_blank" rel="noopener noreferrer"><img width="107" alt="Groq" src="assets/groq.svg"></a><a href="https://ai.google.dev" target="_blank" rel="noopener noreferrer"><img width="122" alt="Gemini" src="assets/gemini.svg"></a><a href="https://www.anthropic.com" target="_blank" rel="noopener noreferrer"><img width="141" alt="Anthropic" src="assets/anthropic.svg"></a><a href="https://openai.com" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.jsdelivr.net/gh/opencues/opencues@e440d5098423d496ea4ff4007db04a048b3898bb/assets/openai-dark.svg"><img width="102" alt="OpenAI" src="https://cdn.jsdelivr.net/gh/opencues/opencues@e440d5098423d496ea4ff4007db04a048b3898bb/assets/openai-light.svg"></picture></a>
 
 <br><br><br><br>
 
