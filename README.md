@@ -40,11 +40,12 @@
 
 The model comes to your cursor, both ways. **Cues** react to what you've already written and surface a fix or a sharper line inline, unprompted. **Blanks** act on demand: end a line with `_` and the model fills in the rest. No chat window, no copy-paste, no context switch.
 
-<!-- VIDEO: hero demo (~30-60s), replace this comment with the real embed.
-     GitHub-hosted asset (renders inline): ![demo](https://github.com/opencues/opencues/assets/.../demo.mp4)
-     YouTube (GitHub won't inline-embed it — link a thumbnail instead):
-     [![Demo](assets/hero-thumb.png)](https://youtu.be/VIDEO_ID) -->
-<a href="#"><img width="100%" alt="Video placeholder — hero demo" src="assets/Video_placeholder_1200x300.svg"></a>
+<!-- Slot 1, the hero. One span asked four times, `_` walking the whole
+     history back, then a fresh line the runtime WIPES rather than fills.
+     Cut from the block system in opencues-web (films/medium-film.html,
+     film27) - not a framed composition, just the terminal on transparency,
+     so it sits on whichever ground GitHub renders the README in. -->
+<img width="100%" alt="A brief written, grown twice, translated, then walked back - and an ffmpeg command on a fresh line" src="assets/readme-1-hero.webp">
 
 OpenCues is platform, model, and provider agnostic, engineered from the ground up to enable native inline AI.
 
@@ -56,7 +57,7 @@ OpenCues is platform, model, and provider agnostic, engineered from the ground u
 | 4 + 4 = _ | 4 + 4 = 8 |
 | hello world translate to japanese _ | こんにちは世界 |
 | draft an email to my landlord asking for a rent reduction _ | (the email, written) |
-| ffmpeg command to convert a video to web-ready mp4 _ | ffmpeg -i input.mov -c:v libx264 -preset slow -crf 23 -c:a aac -b:a 128k -movflags +faststart output.mp4 |
+| ffmpeg command to convert a video to web-ready mp4 _ | ffmpeg -i input.mov -vcodec libx264 -crf 23 -pix_fmt yuv420p -acodec aac output.mp4 |
 
 Rows with `_` are **blanks**: you ask, the model fills in. Rows without are **cues**: the model speaks up on what you wrote, no prompt.
 
@@ -77,9 +78,9 @@ claude-cues                          # launch — native `claude` is untouched
 
 Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/install.md). `opencues doctor` diagnoses anything that looks wrong.
 
-<!-- VIDEO: quickstart walkthrough (~30-45s), replace this comment with the
-     real embed once available. -->
-<a href="#"><img width="100%" alt="Video placeholder — quickstart walkthrough" src="assets/Video_placeholder_1200x300.svg"></a>
+<!-- Slot 2, the cues half. Nothing is pressed to make these appear.
+     film29. -->
+<img width="100%" alt="A Claude Code tip cue, then Slack catching a date that does not exist" src="assets/readme-2-cues.webp">
 
 #
 
@@ -129,9 +130,9 @@ Full feature catalogue (44 concepts): [`docs/features/README.md`](docs/features/
 Running a lot of these at once? `opencues usage` prices every LLM call your
 hosts have made, across features, so the total isn't a guess.
 
-<!-- VIDEO: feature tour (~30s of cues + blanks in action), replace this
-     comment with the real embed once available. -->
-<a href="#"><img width="100%" alt="Video placeholder — feature tour" src="assets/Video_placeholder_1200x300.svg"></a>
+<!-- Slot 3. The blanks that call nothing at all, ending on one that
+     writes back to the machine. film30. -->
+<img width="100%" alt="A price, a forecast, and a system volume you can turn - none of them asking a model" src="assets/readme-3-local.webp">
 
 <br><br><br><br>
 
