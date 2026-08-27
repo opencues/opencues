@@ -538,7 +538,8 @@ async function runDiagnostic(): Promise<void> {
     } else {
       log('⚠ chrome-host: NOT connected (the extension retries every 30s)');
       log('  → host keys / bundle below persist from a previous session — they do not prove the host is running');
-      log('  → check the service-worker console at chrome://extensions; reinstall via `opencues install chrome-host` if it never connects');
+      log('  → if the host was (re)installed while Chrome was running, fully restart the browser (chrome://restart) — Chrome caches the native-host registry at startup and an extension reload is not enough');
+      log('  → still down? check the service-worker console at chrome://extensions; reinstall via `opencues install chrome-host` if it never connects');
     }
   } catch {
     log('⚠ chrome-host: status query failed (service worker unreachable)');
