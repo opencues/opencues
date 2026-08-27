@@ -93,6 +93,23 @@ describe('verifyReplaceDetect — acceptance gate', () => {
     );
   });
 
+  it('rejects a whole-body target (>60% of the non-command text)', () => {
+    // "make it all caps"-style asks: the target IS essentially the whole
+    // body — splicing would under-apply the edit; fused owns these.
+    // Caught live by agentic scenario 129 block 2.
+    const text = 'zephyr quill make it loud _';
+    assert.strictEqual(
+      verifyReplaceDetect(text, { cls: 'replace', command: 'make it loud _', target: 'zephyr quill', value: 'ZEPHYR QUILL' }),
+      null,
+    );
+  });
+
+  it('accepts a small target within a larger body (ratio guard not tripped)', () => {
+    const text = 'the quick brown fox jumped over zephyr today, zap it _';
+    const v = verifyReplaceDetect(text, { cls: 'replace', command: 'zap it _', target: 'zephyr', value: 'ALT-ONE' });
+    assert.deepStrictEqual(v, { target: 'zephyr', instruction: 'zap it', value: 'ALT-ONE' });
+  });
+
   it('rejects a no-op (VALUE equals TARGET)', () => {
     assert.strictEqual(verifyReplaceDetect(TEXT, { ...DET, value: 'zephyr' }), null);
   });

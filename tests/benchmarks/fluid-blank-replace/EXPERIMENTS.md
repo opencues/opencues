@@ -133,6 +133,32 @@ the exact same-session-baseline trap `tests/benchmarks/CLAUDE.md`
 warns about). Re-run with `--parallel 1`/`--parallel 2` and
 `OC_BENCH_RETRIES=8` when cerebras is being hammered.
 
+## Round 3 — 2026-08-27: live-host finding — whole-body transforms masquerading as REPLACE
+
+Running the feature end-to-end on a live opencode host (agentic
+scenario 129) surfaced a failure mode this bench structurally cannot
+see: `hello world please make it all caps _` was detected as REPLACE
+(target "hello world" → "HELLO WORLD"), verified, and spliced — leaving
+"please" untransformed. A whole-body transform whose body is contiguous
+can masquerade as a single-substring replacement, and the splice
+UNDER-APPLIES the edit that fused would have applied fully.
+
+Fix on both layers:
+- **Prompt rule 8b** + a NONE example: deictic "it"/"this" covering
+  essentially all the preceding text is a whole-text rewrite → NONE.
+- **Verifier ratio guard**: reject when the target covers >60% of the
+  non-command text (whitespace-stripped) — deterministic
+  belt-and-braces, since fused handles those correctly anyway.
+
+Post-fix: scenario 129 block 1 still takes the verified splice (host
+log: `replace-detect: verified — splicing "Sarha" → "Sarah"`), block 2
+falls through to fused (no detect line); the gemma bench re-run holds
+100% class / 100% verified / 0 FPs (281ms p50).
+
+Moral: the bench's fill-vs-replace boundary was well covered; the
+**transform-vs-replace** boundary only showed up under the real
+pipeline. Both boundaries now have guard + coverage.
+
 ## Reproduce
 
 ```bash

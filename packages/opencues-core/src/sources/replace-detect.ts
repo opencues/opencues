@@ -58,6 +58,7 @@ RULES:
 6. The input mentioning a name, number, or value in OTHER chatter does not make it a TARGET. Only text the imperative actually points at qualifies.
 7. Deictic imperatives ("fix that", "convert it", "make that celsius") point at the nearest preceding candidate value.
 8. An edit that cannot be expressed as replacing ONE contiguous substring (rewrite the whole thing, fix ALL the typos, translate this) is NONE — another pipeline owns it.
+8b. REPLACE is for a SMALL piece WITHIN a larger text. When the imperative's "it"/"this" means essentially ALL the text before it ("hello there world make it all caps _", "my draft note make this formal _"), that is a whole-text rewrite → NONE, even though the text is contiguous. Deictic REPLACE is only for a specific short value ("the id is xk42-b uppercase it _" points at xk42-b, not at the sentence).
 9. VALUE is just the value — no explanation, no sentence.
 10. If genuinely unsure between FILL and REPLACE, prefer FILL (the safe default: nothing already written gets touched).
 
@@ -106,6 +107,12 @@ TARGET: NONE
 VALUE:
 
 INPUT: rewrite this whole paragraph to sound formal _
+CLASS: NONE
+COMMAND: NONE
+TARGET: NONE
+VALUE:
+
+INPUT: hello there world make it all caps _
 CLASS: NONE
 COMMAND: NONE
 TARGET: NONE
@@ -221,6 +228,19 @@ export function verifyReplaceDetect(
   }
   if (value === target) {
     log('replace-detect: VALUE equals TARGET (no-op) — falling back to fused');
+    return null;
+  }
+  // Whole-body guard (belt-and-braces under prompt rule 8b). When the
+  // target is most of the non-command text, the ask is really a
+  // whole-text transform that happens to be contiguous ("hello world
+  // please make it all caps _" → target "hello world") — splicing it
+  // under-applies the edit (the leftover words stay untransformed).
+  // Fused handles those correctly; reject. Caught live by agentic
+  // scenario 129's block 2, invisible to the fill-vs-replace bench.
+  const nonCommandLen = (text.slice(0, commandIdx) + text.slice(commandEnd)).replace(/\s/g, '').length;
+  const targetLen = target.replace(/\s/g, '').length;
+  if (nonCommandLen > 0 && targetLen / nonCommandLen > 0.6) {
+    log(`replace-detect: TARGET covers ${Math.round((100 * targetLen) / nonCommandLen)}% of the non-command text — whole-body transform, falling back to fused`);
     return null;
   }
   const instruction = command.replace(/\s*_\s*$/, '').trim();
