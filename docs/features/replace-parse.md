@@ -1,6 +1,6 @@
 # Replace parse
 
-**Scalar:** `replace-parse-mode: off | on` (OPENCUES.md, default `off`)
+**Scalar:** `replace-parse-mode: on | off` (OPENCUES.md, default `on`)
 
 Some imperative `_` asks name one exact piece of the buffer and one edit
 to it:

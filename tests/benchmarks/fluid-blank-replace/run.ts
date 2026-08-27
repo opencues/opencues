@@ -56,7 +56,14 @@ async function runCase(c: ReplaceDetectCase): Promise<CaseResult> {
     const r = await chat(sysUser(REPLACE_DETECT_SYSTEM_PROMPT, `INPUT: ${c.input}`), { maxTokens: REPLACE_DETECT_MAX_TOKENS });
     if (!r.text.trim()) throw new Error('empty response (rate-limit backoff?)');
     const det = parseReplaceDetect(r.text);
-    const clsOk = det.cls === c.expected.cls;
+    // Boundary cases (category boundary/*): the ask must reach the fused
+    // path — NONE, FILL, and a REPLACE the gate rejects are all correct;
+    // only a VERIFIED REPLACE is the failure (it would under-apply the
+    // edit). Non-boundary cases grade class exact-match as before.
+    const isBoundary = c.category.startsWith('boundary/');
+    const clsOk = isBoundary
+      ? !(det.cls === 'replace' && verifyReplaceDetect(c.input, det) !== null)
+      : det.cls === c.expected.cls;
     const verified = det.cls === 'replace' ? verifyReplaceDetect(c.input, det) : null;
 
     let verifiedOk: boolean | null = null;
@@ -125,6 +132,8 @@ async function main() {
 
   const total = results.length;
   const clsCorrect = results.filter(r => r.clsOk).length;
+  const boundary = results.filter(r => r.c.category.startsWith('boundary/'));
+  const boundaryFPs = boundary.filter(r => !r.clsOk || r.error);
   const repl = results.filter(r => r.c.expected.cls === 'replace');
   const replVerified = repl.filter(r => r.verifiedOk === true);
   const replTargetOk = repl.filter(r => r.targetOk === true);
@@ -143,6 +152,7 @@ async function main() {
   console.log(`  replace recall (class)            ${repl.filter(r => r.clsOk).length}/${repl.length}  ${pct(repl.filter(r => r.clsOk).length, repl.length)}`);
   console.log(`  replace VERIFIED (runtime gate)   ${replVerified.length}/${repl.length}  ${pct(replVerified.length, repl.length)}`);
   console.log(`  fill→replace class FPs            ${fillFalseReplace.length}/${fills.length}  ${pct(fillFalseReplace.length, fills.length)}  (the safety metric)`);
+  console.log(`  boundary verified-splice FPs      ${boundaryFPs.length}/${boundary.length}  ${pct(boundaryFPs.length, boundary.length)}  (transform-vs-replace boundary — the under-application metric)`);
   console.log(`  target correct (incl alt)         ${replTargetOk.length}/${repl.length}  ${pct(replTargetOk.length, repl.length)}`);
   console.log(`  value correct (informational)     ${replValueOk.length}/${replValueGraded.length}  ${pct(replValueOk.length, replValueGraded.length)}`);
   console.log(`  p50 latency                       ${p50}ms`);

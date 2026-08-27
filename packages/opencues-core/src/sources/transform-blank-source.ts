@@ -403,7 +403,7 @@ export interface TransformBlankSourceConfig {
    *  dispatch ctx so model-thinking.ts resolves the reasoning ceiling vs
    *  reduced level for the fused call. */
   maxThinking?: boolean;
-  /** OPENCUES.md `replace-parse-mode` toggle (default off). When on, a
+  /** OPENCUES.md `replace-parse-mode` toggle (settings default on; constructor default off — the resolver always passes it explicitly). When on, a
    *  small replace-detector call is dispatched in PARALLEL with FUSED;
    *  a verified single-substring replacement rides the resolver's
    *  deterministic bounded-splice path instead of the whole-buffer

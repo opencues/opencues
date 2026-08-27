@@ -304,6 +304,63 @@ export const CASES: ReplaceDetectCase[] = [
     expected: { cls: 'fill' },
   },
 
+  // ── fused-boundary: imperative asks that MUST NOT verify as a splice —
+  //     the right outcome is the fused whole-buffer path. Grading treats
+  //     REPLACE-that-verifies as the failure; NONE, FILL, or a
+  //     verification rejection all count as correct (they all reach
+  //     fused/lookup). This is the boundary the whole-body bug lived on
+  //     (agentic scenario 129 block 2). ─────────────────────────────────
+  {
+    id: 'b-tone-1', category: 'boundary/tone',
+    input: 'thanks for the update, see you tomorrow. make this formal _',
+    expected: { cls: 'none' },
+  },
+  {
+    id: 'b-tone-2', category: 'boundary/tone',
+    input: 'the product broke twice this week. rewrite it politely _',
+    expected: { cls: 'none' },
+  },
+  {
+    id: 'b-alltypos-1', category: 'boundary/all-typos',
+    input: 'teh meetign is tomorow at ten. fix all the typos _',
+    expected: { cls: 'none' },
+  },
+  {
+    id: 'b-alltypos-2', category: 'boundary/all-typos',
+    input: 'i beleive the packge arives thursday, fix the spelling _',
+    expected: { cls: 'none' },
+  },
+  {
+    id: 'b-translate-1', category: 'boundary/translate',
+    input: 'the office is closed on friday. translate to french _',
+    expected: { cls: 'none' },
+  },
+  {
+    id: 'b-caps-short-1', category: 'boundary/whole-body-format',
+    input: 'hello world please make it all caps _',
+    expected: { cls: 'none' },
+  },
+  {
+    id: 'b-caps-short-2', category: 'boundary/whole-body-format',
+    input: 'ship it friday make this uppercase _',
+    expected: { cls: 'none' },
+  },
+  {
+    id: 'b-shorten-1', category: 'boundary/shorten',
+    input: 'we are writing to inform you that the delivery has unfortunately been delayed. shorten this _',
+    expected: { cls: 'none' },
+  },
+  {
+    id: 'b-tense-1', category: 'boundary/tense',
+    input: 'she walks to the office and buys a coffee. make it past tense _',
+    expected: { cls: 'none' },
+  },
+  {
+    id: 'b-generative-1', category: 'boundary/generative',
+    input: 'write a short poem about rain _',
+    expected: { cls: 'none' },
+  },
+
   // ── none / placeholders ───────────────────────────────────────────────
   {
     id: 'n-1', category: 'none',

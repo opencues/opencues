@@ -92,7 +92,7 @@ target-substring validity, and target correctness at 277ms p50.**
 
 ## Round 2 — 2026-08-27: shipping prompt (COMMAND line) + runtime gate
 
-The feature shipped as `replace-parse-mode` (off by default), living in
+The feature shipped as `replace-parse-mode` (initially off by default; flipped to ON in round 4 below), living in
 **TransformBlankSource** — not FluidBlank: transform (priority 93)
 claims imperative asks before fluid (92) ever sees them, so the
 detector runs in parallel with the FUSED call and a verified detection
@@ -158,6 +158,32 @@ falls through to fused (no detect line); the gemma bench re-run holds
 Moral: the bench's fill-vs-replace boundary was well covered; the
 **transform-vs-replace** boundary only showed up under the real
 pipeline. Both boundaries now have guard + coverage.
+
+## Round 4 — 2026-08-27: earning ON by default (the boundary category)
+
+To flip the default, the thin spot in the suite — the
+**transform-vs-replace boundary**, where round 3's bug lived — got its
+own 10-case category (`boundary/*`): tone rewrites, fix-ALL-typos,
+translation, whole-body formats, shorten, tense, generative. Grading is
+outcome-based: NONE, FILL, and a gate-rejected REPLACE all count
+correct (they all reach the fused path); only a **verified splice**
+fails (it would under-apply the edit). New headline metric:
+`boundary verified-splice FPs`.
+
+First run: 9/10 — the miss was surgical: `i beleive the packge arives
+thursday, fix the spelling _` has THREE typos and the detector spliced
+one. Fix: prompt rule 8c ("count the errors — more than one wrong word
+→ NONE") + a multi-typo NONE example. The over-trigger direction is
+safe by construction: a single-typo case wrongly classified NONE just
+falls back to fused, which is the pre-feature behaviour.
+
+Post-fix (gemma-4-31b, 66 cases): **0/10 boundary FPs, 0/22 fill FPs,
+28/28 replace verified** (three throttle-blanked cases re-confirmed by
+direct probe on both gemma and gpt-oss). On that evidence the default
+flipped to **on**: every remaining failure mode degrades to the fused
+path byte-identically, and the live `aapl` case showed the splice
+correcting a fused mistake. Cost of on: one extra prefix-cached
+~1k-token call per `_` that reaches TransformBlank.
 
 ## Reproduce
 

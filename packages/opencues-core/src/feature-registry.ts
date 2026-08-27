@@ -420,8 +420,8 @@ export const FEATURES: readonly FeatureSpec[] = [
     description: 'Parallel replace-detector on imperative `_` asks — verified single-substring edits splice deterministically instead of whole-buffer merging',
     menuTip: 'Detect "fix that _"-style single-substring edits with a parallel LLM call; a verified target/value pair splices deterministically (never touches text you didn\'t point at). One extra small LLM call per imperative `_`.',
     values: [
-      { id: 'off', description: 'Disabled (default) — imperative `_` asks always take the fused whole-buffer merge' },
-      { id: 'on',  description: 'Enabled — a parallel detector call runs beside FUSED; verified replacements take the bounded-splice path, everything else falls back to fused' },
+      { id: 'on',  description: 'Enabled (default) — a parallel detector call runs beside FUSED; verified replacements take the bounded-splice path, everything else falls back to fused' },
+      { id: 'off', description: 'Disabled — imperative `_` asks always take the fused whole-buffer merge (skips the extra detector call)' },
     ],
   },
   {

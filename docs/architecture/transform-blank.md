@@ -361,7 +361,7 @@ no longer calls it.)
 
 ## Replace-parse — the optional parallel splice fast-path
 
-`replace-parse-mode: on` (OPENCUES.md, **off by default**; Aug 2026,
+`replace-parse-mode: on` (OPENCUES.md, **on by default** — earned via the boundary-bench round, see below; Aug 2026,
 PR #420) adds a second, small LLM call dispatched **in parallel** with
 FUSED on the same dehydrated `inputForLLM` — zero added wall-clock. The
 detector (`replace-detect.ts`) classifies the ask FILL / REPLACE / NONE

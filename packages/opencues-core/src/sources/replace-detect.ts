@@ -59,6 +59,7 @@ RULES:
 7. Deictic imperatives ("fix that", "convert it", "make that celsius") point at the nearest preceding candidate value.
 8. An edit that cannot be expressed as replacing ONE contiguous substring (rewrite the whole thing, fix ALL the typos, translate this) is NONE — another pipeline owns it.
 8b. REPLACE is for a SMALL piece WITHIN a larger text. When the imperative's "it"/"this" means essentially ALL the text before it ("hello there world make it all caps _", "my draft note make this formal _"), that is a whole-text rewrite → NONE, even though the text is contiguous. Deictic REPLACE is only for a specific short value ("the id is xk42-b uppercase it _" points at xk42-b, not at the sentence).
+8c. COUNT THE ERRORS before answering a correction ask ("fix the spelling", "fix that", "correct this"). If MORE THAN ONE word in the text is misspelled or wrong, the fix applies to all of them → NONE (a single-substring replacement would fix one and strand the rest). REPLACE only when exactly ONE piece needs the edit.
 9. VALUE is just the value — no explanation, no sentence.
 10. If genuinely unsure between FILL and REPLACE, prefer FILL (the safe default: nothing already written gets touched).
 
@@ -113,6 +114,12 @@ TARGET: NONE
 VALUE:
 
 INPUT: hello there world make it all caps _
+CLASS: NONE
+COMMAND: NONE
+TARGET: NONE
+VALUE:
+
+INPUT: the meteing starts at ten thrity today, fix the spelling _
 CLASS: NONE
 COMMAND: NONE
 TARGET: NONE

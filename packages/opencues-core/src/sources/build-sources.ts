@@ -371,7 +371,7 @@ export interface BuildSourcesOptions {
    */
   maxThinking?: boolean;
   /**
-   * OPENCUES.md `replace-parse-mode: off | on` (default off). When on,
+   * OPENCUES.md `replace-parse-mode: on | off` (default on). When on,
    * TransformBlankSource dispatches a small replace-detector call in
    * parallel with FUSED; a verified single-substring replacement rides
    * the resolver's deterministic bounded-splice path instead of the
