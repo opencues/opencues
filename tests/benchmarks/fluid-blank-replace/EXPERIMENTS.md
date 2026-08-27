@@ -90,6 +90,49 @@ target-substring validity, and target correctness at 277ms p50.**
    (apply target→value, compare buffers) to stop punishing defensible
    boundary-width choices.
 
+## Round 2 — 2026-08-27: shipping prompt (COMMAND line) + runtime gate
+
+The feature shipped as `replace-parse-mode` (off by default), living in
+**TransformBlankSource** — not FluidBlank: transform (priority 93)
+claims imperative asks before fluid (92) ever sees them, so the
+detector runs in parallel with the FUSED call and a verified detection
+rides the resolver's existing bounded-splice branch
+(`metadata.transformTarget`). The prompt moved to
+`@opencues/core/src/sources/replace-detect.ts` and grew a `COMMAND:`
+line (the imperative phrase + `_`, verified verbatim, consumed by the
+splice); this bench now drives the shipping prompt/parser/verifier
+directly — no bench-local copy.
+
+Grading changed with it: `verifyReplaceDetect` IS the runtime
+acceptance gate, so the bench's VERIFIED metric measures exactly what
+production would splice.
+
+| model | class acc | replace VERIFIED | fill→replace FP | target correct | p50 |
+|---|---|---|---|---|---|
+| cerebras gemma-4-31b | 56/56 (100%) | **28/28 (100%)** | **0/22** | 28/28 | 206ms |
+| cerebras gpt-oss-120b | 54/56 (96.4%) | 26/28 (92.9%) | **0/22** | 25/28 | 356ms |
+
+gpt-oss misses are all degrade-safe: `fix the code _` → NONE and
+`convert to km _` → FILL both fall back to fused; `deadline friday,
+move it…` verifies with the wider target `deadline friday` → "Monday"
+(drops the word "deadline" — visible, Down-arrow-revertable, and the
+kind of boundary-width judgement fused makes too).
+
+The first gemma run rejected both swap-phrasing cases ("swap **kids**
+for the formal word _") — the target legitimately appears INSIDE the
+command, and the v1 whole-text uniqueness rule read that as ambiguity.
+The gate now counts occurrences **outside** the command span (exactly
+one required) and additionally rejects when a command-side copy
+precedes the real target (the resolver splices the first occurrence).
+Both cases verify after the fix; the mistaken-operand rejection
+("fix the code _" → target "code") is preserved.
+
+Operational note: cerebras rate-limiting produced one all-∅ phantom run
+mid-session (empty responses after the adapter's 6 backoff retries —
+the exact same-session-baseline trap `tests/benchmarks/CLAUDE.md`
+warns about). Re-run with `--parallel 1`/`--parallel 2` and
+`OC_BENCH_RETRIES=8` when cerebras is being hammered.
+
 ## Reproduce
 
 ```bash

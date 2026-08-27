@@ -57,6 +57,7 @@ import {
 } from '../typed-sentinel';
 import { blankClaimsUnderscore } from '../blank-shapes';
 import { getDehydrator } from '../dehydrate';
+import { REPLACE_DETECT_SYSTEM_PROMPT, REPLACE_DETECT_MAX_TOKENS, parseReplaceDetect, verifyReplaceDetect, type ReplaceDetection } from './replace-detect';
 
 // ============================================================================
 // Prompts — ported verbatim from tests/benchmarks/transform-blank/
@@ -402,6 +403,14 @@ export interface TransformBlankSourceConfig {
    *  dispatch ctx so model-thinking.ts resolves the reasoning ceiling vs
    *  reduced level for the fused call. */
   maxThinking?: boolean;
+  /** OPENCUES.md `replace-parse-mode` toggle (default off). When on, a
+   *  small replace-detector call is dispatched in PARALLEL with FUSED;
+   *  a verified single-substring replacement rides the resolver's
+   *  deterministic bounded-splice path instead of the whole-buffer
+   *  merge. Detection failure of any kind falls back to fused — the
+   *  detector can only upgrade a dispatch, never degrade one. See
+   *  replace-detect.ts. */
+  replaceParse?: boolean;
   /** Source priority. Default 93 — sits ABOVE FluidBlankSource (92) so
    * imperative-shaped inputs route here, BELOW BlankSource (95) so
    * keyword-bound blanks always win. */
@@ -497,6 +506,7 @@ export class TransformBlankSource implements CueSource {
   private maxTokensOverride: number | undefined;
   private temperatureOverride: number | undefined;
   private maxThinking: boolean;
+  private replaceParse: boolean;
   private blanks: Record<string, BlankConfig>;
   private log: (msg: string) => void;
   private emit: (event: TransformBlankEvent) => void;
@@ -511,6 +521,7 @@ export class TransformBlankSource implements CueSource {
     this.maxTokensOverride = config.maxTokens;
     this.temperatureOverride = config.temperature;
     this.maxThinking = config.maxThinking ?? true;
+    this.replaceParse = config.replaceParse ?? false;
     this.priority = config.priority ?? 93;
     this.blanks = config.blanks ?? {};
     this.log = config.log ?? (() => { /* default: silent */ });
@@ -950,6 +961,21 @@ export class TransformBlankSource implements CueSource {
     // (b) the model's echo is in token space anyway, so speculation
     // acceptance is higher against the dehydrated bytes.
     const fusedPrediction = extractText.length >= PREDICTION_MIN_CHARS ? outboundText : undefined;
+    // REPLACE-PARSE (replace-parse-mode: on) — kick the replace detector
+    // in PARALLEL with the fused call, on the SAME outbound (dehydrated)
+    // input so the PII boundary is identical. Awaited only at the
+    // TRANSFORM divert point below; total wall-clock stays max(fused,
+    // detect) ≈ fused, since the detector emits four short lines.
+    // Errors resolve to null — the fused path is never affected
+    // (no-logical-landmines: the detector can only upgrade a dispatch).
+    const replaceDetectPromise: Promise<ReplaceDetection | null> | null = this.replaceParse
+      ? this.callLLM(REPLACE_DETECT_SYSTEM_PROMPT, `INPUT: ${inputForLLM}`, REPLACE_DETECT_MAX_TOKENS, undefined, context.signal)
+          .then(raw => parseReplaceDetect(raw))
+          .catch((e: unknown) => {
+            this.log(`TransformBlank replace-detect: dispatch failed (${e instanceof Error ? e.message : String(e)}) — fused path unaffected`);
+            return null;
+          })
+      : null;
     const fusedRaw = await this.callLLM(fusedSystem, `INPUT: ${inputForLLM}`, fusedTokens, undefined, context.signal, fusedPrediction);
     const fParsedRaw = parseFused(fusedRaw);
     // Strip any [CURSOR] the model leaked into FULL_REWRITE — input-only
@@ -1023,6 +1049,49 @@ export class TransformBlankSource implements CueSource {
     if (!f.rewrite) {
       this.log('TransformBlank FUSED: empty rewrite — ceding');
       return null;
+    }
+
+    // REPLACE-PARSE divert — only reached when fused produced a real
+    // TRANSFORM rewrite (TASK/NONE branches above behave exactly as
+    // before). If the parallel detector verified a single-substring
+    // replacement, prefer the deterministic bounded splice: emit
+    // `transformTarget` + `transformInstruction` so the resolver takes
+    // its splice branch (kept from the 3-pass era for exactly this —
+    // see blank-sources.md decision table row 2). The geometry is
+    // runtime-owned: target verified as a UNIQUE exact substring,
+    // command verified verbatim, both against the live value-space
+    // buffer — an unverifiable detection falls through to the fused
+    // whole-buffer merge below.
+    if (replaceDetectPromise) {
+      const det = await replaceDetectPromise;
+      if (det) {
+        const verified = verifyReplaceDetect(context.text, det, {
+          catalog: idCtx?.catalog,
+          log: (m) => this.log(`TransformBlank ${m}`),
+        });
+        if (verified) {
+          this.log(`TransformBlank replace-detect: verified — splicing "${preview(verified.target)}" → "${preview(verified.value)}" (instruction="${verified.instruction}")`);
+          const result: CueResult = {
+            wordIndex: blankIdx,
+            word: '_',
+            alternatives: [context.text, verified.value],
+            source: this.id,
+            priority: this.priority,
+            spanStart: 0,
+            spanEnd: context.text.length,
+            metadata: {
+              transformTarget: verified.target,
+              transformInstruction: verified.instruction,
+              verifyVerdict: 'SKIPPED',
+              pipelineMode: 'replace-splice',
+              pipelineLatencyMs: Date.now() - startTime,
+              variantCacheHit: false,
+              variantPoolSize: 0,
+            },
+          };
+          return { results: [result], timing: Date.now() - startTime, model: this.model };
+        }
+      }
     }
 
     // Whole-buffer contract (May 2026 — FULL_REWRITE replaces

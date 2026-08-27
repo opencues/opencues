@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — `replace-parse-mode`: single-substring edits splice deterministically instead of whole-buffer merging (`@opencues/core` 0.54.0 → 0.55.0, `@opencues/runtime` 0.34.4 → 0.34.5, `@opencues/dsh` 0.2.14 → 0.2.15)
+
+New optional scalar (off by default). When on, an imperative `_` ask ("her name is Sarha fix the spelling _") dispatches a small replace-detector LLM call **in parallel** with TransformBlank's fused call — zero added wall-clock, one extra small call per imperative `_`. When the detector identifies a single-substring replacement AND every claim survives the runtime's deterministic gate (command and target verified as verbatim buffer substrings, target unique outside the command, first-occurrence-safe), the result takes the resolver's bounded-splice path — text you didn't point at is structurally untouchable, and the diff is the two words that changed rather than a whole-buffer merge. Anything else — wrong shape, unverifiable claim, detector error — falls back to the fused merge exactly as before: the detector can only upgrade a dispatch, never degrade one.
+
+Detection benched at `tests/benchmarks/fluid-blank-replace/` (56 cases): gemma-4-31b 100% class / 100% verified / zero fill→replace false positives at ~206ms p50; the bench drives the shipping prompt, parser, and verifier from `@opencues/core` directly.
+
 ### Fixed — a note no longer quotes a whole paragraph when the script has no spaces (`@opencues/runtime` 0.34.3 → 0.34.4, `@opencues/chrome` 0.2.178 → 0.2.179, `@opencues/dsh` 0.2.13 → 0.2.14)
 
 A note that lists what `_` walks back to shortens each stop to its first two words, so a whole-sentence rewrite identifies itself without being printed twice. The shortening splits on whitespace — and Japanese, Chinese and Thai do not write spaces between words, so the entire answer came back as one "word", the two-word guard never fired, and the note quoted the paragraph.

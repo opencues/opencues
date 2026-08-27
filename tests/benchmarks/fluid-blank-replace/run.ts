@@ -1,17 +1,26 @@
 /**
  * fluid-blank-replace benchmark — REPLACE-detection accuracy.
  *
- * Measures whether a model can detect when a `_` ask is replacement-shaped
- * (the answer should replace an exact existing substring of the buffer)
- * versus a plain fill versus a placeholder. Latency is recorded but is
- * NOT the question here — accuracy first.
+ * Drives the SHIPPING detector prompt + parser + verifier from
+ * @opencues/core (replace-detect.ts) — no bench-local prompt copy, so
+ * editing the prompt and re-running this bench is the whole loop.
+ *
+ * Measures whether the model detects when a `_` ask is replacement-
+ * shaped (the answer should replace an exact existing substring of the
+ * buffer) versus a plain fill versus a placeholder — AND whether the
+ * detection survives the runtime's deterministic acceptance gate
+ * (verifyReplaceDetect: verbatim substrings, target uniqueness,
+ * command/target non-overlap). Latency is recorded but is not the
+ * question here — accuracy first.
  *
  * Grading is fully deterministic (no LLM judge):
- *   CLASS  — exact match against the labeled class.
- *   TARGET — (replace cases) must be an exact contiguous substring of the
- *            input AND equal the expected target (or an alternate).
- *   VALUE  — informational only; case-insensitive membership in the
- *            expected values list when one is declared.
+ *   CLASS    — exact match against the labeled class.
+ *   VERIFIED — (replace cases) verifyReplaceDetect accepts the output;
+ *              this is the REAL gate: only a verified detection ever
+ *              splices in production.
+ *   TARGET   — (replace cases) verified target equals the expected
+ *              target (or an alternate).
+ *   VALUE    — informational only.
  *
  * Usage:
  *   npx tsx tests/benchmarks/fluid-blank-replace/run.ts
@@ -20,57 +29,57 @@
  */
 
 import { CASES, ReplaceDetectCase } from './cases';
-import { DETECT_SYSTEM_PROMPT } from './prompt';
+import {
+  REPLACE_DETECT_SYSTEM_PROMPT,
+  REPLACE_DETECT_MAX_TOKENS,
+  parseReplaceDetect,
+  verifyReplaceDetect,
+  type VerifiedReplace,
+} from '../../../packages/opencues-core/src/sources/replace-detect';
 import { chat, sysUser, MODEL } from '../fluid-blank/groq';
 
 interface CaseResult {
   c: ReplaceDetectCase;
   cls: string;
-  target: string;
-  value: string;
+  verified: VerifiedReplace | null;
   latencyMs: number;
   clsOk: boolean;
-  targetOk: boolean | null;   // null = n/a (non-replace case)
-  targetSubstring: boolean | null;
+  verifiedOk: boolean | null;  // null = n/a (non-replace case)
+  targetOk: boolean | null;
   valueOk: boolean | null;
   raw: string;
   error?: string;
 }
 
-function parseOutput(text: string): { cls: string; target: string; value: string } {
-  const grab = (label: string) => {
-    const m = text.match(new RegExp(`^${label}:\\s*(.*)$`, 'mi'));
-    return m ? m[1].trim() : '';
-  };
-  return { cls: grab('CLASS').toLowerCase(), target: grab('TARGET'), value: grab('VALUE') };
-}
-
 async function runCase(c: ReplaceDetectCase): Promise<CaseResult> {
   try {
-    const r = await chat(sysUser(DETECT_SYSTEM_PROMPT, `INPUT: ${c.input}`), { maxTokens: 900 });
-    const { cls, target, value } = parseOutput(r.text);
-    const clsOk = cls === c.expected.cls;
+    const r = await chat(sysUser(REPLACE_DETECT_SYSTEM_PROMPT, `INPUT: ${c.input}`), { maxTokens: REPLACE_DETECT_MAX_TOKENS });
+    if (!r.text.trim()) throw new Error('empty response (rate-limit backoff?)');
+    const det = parseReplaceDetect(r.text);
+    const clsOk = det.cls === c.expected.cls;
+    const verified = det.cls === 'replace' ? verifyReplaceDetect(c.input, det) : null;
 
+    let verifiedOk: boolean | null = null;
     let targetOk: boolean | null = null;
-    let targetSubstring: boolean | null = null;
-    if (c.expected.cls === 'replace') {
-      targetSubstring = target !== '' && target.toUpperCase() !== 'NONE' && c.input.includes(target);
-      const accepted = [c.expected.target!, ...(c.expected.targetAlternates ?? [])];
-      targetOk = targetSubstring && accepted.includes(target);
-    }
-
     let valueOk: boolean | null = null;
-    if (c.expected.cls === 'replace' && c.expected.values?.length) {
-      const norm = (s: string) => s.trim().toLowerCase();
-      valueOk = c.expected.values.some(v => norm(v) === norm(value));
+    if (c.expected.cls === 'replace') {
+      verifiedOk = verified !== null;
+      const accepted = [c.expected.target!, ...(c.expected.targetAlternates ?? [])];
+      targetOk = verified !== null && accepted.includes(verified.target);
+      if (c.expected.values?.length) {
+        const norm = (s: string) => s.trim().toLowerCase();
+        valueOk = verified !== null && c.expected.values.some(v => norm(v) === norm(verified.value));
+      }
     }
 
-    return { c, cls, target, value, latencyMs: r.latencyMs, clsOk, targetOk, targetSubstring, valueOk, raw: r.text };
+    return { c, cls: det.cls, verified, latencyMs: r.latencyMs, clsOk, verifiedOk, targetOk, valueOk, raw: r.text };
   } catch (e: any) {
     return {
-      c, cls: '', target: '', value: '', latencyMs: 0,
-      clsOk: false, targetOk: c.expected.cls === 'replace' ? false : null,
-      targetSubstring: null, valueOk: null, raw: '', error: String(e?.message ?? e),
+      c, cls: '', verified: null, latencyMs: 0,
+      clsOk: false,
+      verifiedOk: c.expected.cls === 'replace' ? false : null,
+      targetOk: c.expected.cls === 'replace' ? false : null,
+      valueOk: null, raw: '', error: String(e?.message ?? e),
     };
   }
 }
@@ -94,11 +103,10 @@ async function main() {
   const parallelArg = process.argv.indexOf('--parallel');
   const parallel = parallelArg >= 0 ? Number(process.argv[parallelArg + 1]) : 4;
 
-  console.log(`fluid-blank-replace detection bench — model: ${MODEL}, cases: ${CASES.length}, parallel: ${parallel}\n`);
+  console.log(`fluid-blank-replace detection bench (shipping prompt) — model: ${MODEL}, cases: ${CASES.length}, parallel: ${parallel}\n`);
 
   const results = await mapWithConcurrency(CASES, parallel, runCase);
 
-  // Per-class confusion counts
   const classes = ['fill', 'replace', 'none'] as const;
   const confusion = new Map<string, Map<string, number>>();
   for (const exp of classes) confusion.set(exp, new Map());
@@ -118,34 +126,40 @@ async function main() {
   const total = results.length;
   const clsCorrect = results.filter(r => r.clsOk).length;
   const repl = results.filter(r => r.c.expected.cls === 'replace');
-  const replDetected = repl.filter(r => r.clsOk);
-  const replTargetSub = repl.filter(r => r.targetSubstring === true);
+  const replVerified = repl.filter(r => r.verifiedOk === true);
   const replTargetOk = repl.filter(r => r.targetOk === true);
   const replValueGraded = repl.filter(r => r.valueOk !== null);
   const replValueOk = repl.filter(r => r.valueOk === true);
   const fills = results.filter(r => r.c.expected.cls === 'fill');
+  // The safety metric. (In production a class FP would additionally
+  // have to survive verifyReplaceDetect before touching the buffer, so
+  // this counts the WORST case.)
   const fillFalseReplace = fills.filter(r => r.cls === 'replace');
   const latencies = results.filter(r => !r.error).map(r => r.latencyMs).sort((a, b) => a - b);
   const p50 = latencies[Math.floor(latencies.length / 2)] ?? 0;
 
   console.log('\nHEADLINE:');
-  console.log(`  class accuracy (all)            ${clsCorrect}/${total}  ${pct(clsCorrect, total)}`);
-  console.log(`  replace recall                  ${replDetected.length}/${repl.length}  ${pct(replDetected.length, repl.length)}`);
-  console.log(`  fill→replace false positives    ${fillFalseReplace.length}/${fills.length}  ${pct(fillFalseReplace.length, fills.length)}  (the safety metric)`);
-  console.log(`  target is exact substring       ${replTargetSub.length}/${repl.length}  ${pct(replTargetSub.length, repl.length)}`);
-  console.log(`  target correct (incl alt)       ${replTargetOk.length}/${repl.length}  ${pct(replTargetOk.length, repl.length)}`);
-  console.log(`  value correct (informational)   ${replValueOk.length}/${replValueGraded.length}  ${pct(replValueOk.length, replValueGraded.length)}`);
-  console.log(`  p50 latency                     ${p50}ms`);
+  console.log(`  class accuracy (all)              ${clsCorrect}/${total}  ${pct(clsCorrect, total)}`);
+  console.log(`  replace recall (class)            ${repl.filter(r => r.clsOk).length}/${repl.length}  ${pct(repl.filter(r => r.clsOk).length, repl.length)}`);
+  console.log(`  replace VERIFIED (runtime gate)   ${replVerified.length}/${repl.length}  ${pct(replVerified.length, repl.length)}`);
+  console.log(`  fill→replace class FPs            ${fillFalseReplace.length}/${fills.length}  ${pct(fillFalseReplace.length, fills.length)}  (the safety metric)`);
+  console.log(`  target correct (incl alt)         ${replTargetOk.length}/${repl.length}  ${pct(replTargetOk.length, repl.length)}`);
+  console.log(`  value correct (informational)     ${replValueOk.length}/${replValueGraded.length}  ${pct(replValueOk.length, replValueGraded.length)}`);
+  console.log(`  p50 latency                       ${p50}ms`);
 
   const failures = results.filter(r =>
-    r.error || !r.clsOk || (r.c.expected.cls === 'replace' && r.targetOk === false));
+    r.error || !r.clsOk || (r.c.expected.cls === 'replace' && (r.verifiedOk === false || r.targetOk === false)));
   if (failures.length) {
     console.log(`\nFAILURES (${failures.length}):`);
     for (const r of failures) {
       console.log(`  [${r.c.id}] ${r.c.input}`);
       if (r.error) { console.log(`      ERROR: ${r.error}`); continue; }
       console.log(`      expected ${r.c.expected.cls}${r.c.expected.target ? ` target="${r.c.expected.target}"` : ''}`);
-      console.log(`      got      ${r.cls || '∅'}${r.target && r.target.toUpperCase() !== 'NONE' ? ` target="${r.target}"` : ''}${r.value ? ` value="${r.value}"` : ''}`);
+      const got = r.verified
+        ? `replace VERIFIED target="${r.verified.target}" value="${r.verified.value}" instruction="${r.verified.instruction}"`
+        : `${r.cls || '∅'}${r.cls === 'replace' ? ' (verification REJECTED)' : ''}`;
+      console.log(`      got      ${got}`);
+      if (!r.clsOk || (r.cls === 'replace' && !r.verified)) console.log(`      raw      ${r.raw.slice(0, 300).replace(/\n/g, ' | ')}`);
     }
   }
 }

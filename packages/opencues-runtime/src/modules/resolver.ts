@@ -901,6 +901,11 @@ export class Resolver {
       // per-model reasoning ceiling (on) vs reduced level (off). Only
       // `off` changes anything â `on` reproduces the prior behaviour.
       maxThinking: (settings.get('max-thinking') ?? 'on') !== 'off',
+      // `replace-parse-mode` (default off). When on, TransformBlank
+      // dispatches a parallel replace-detector; verified single-
+      // substring replacements take the deterministic bounded-splice
+      // path instead of the whole-buffer merge.
+      replaceParse: (settings.get('replace-parse-mode') ?? 'off') === 'on',
       // applyOpencuesScalar â ConfigIntentSource's side-effect callback.
       //
       // Does TWO things, matching the pair that satellite cycling

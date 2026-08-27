@@ -41,6 +41,9 @@ const SETTINGS_MAP_ONLY: ReadonlySet<string> = new Set([
   'maxThinking',        // consumed in resolver.ts (buildSources maxThinking)
                         // + boot-common buildAgentLLMResolver; a plain
                         // on/off toggle, no narrow-typed consumer needs it.
+  'replaceParseMode',   // consumed in resolver.ts (buildSources replaceParse);
+                        // plain on/off toggle threaded to TransformBlankSource,
+                        // no narrow-typed consumer needs it.
   // The three `*-llm-model` scalars are read straight off `settings.get(...)`
   // by resolver.ts:532-535. They're dynamic-valued (their valid range
   // depends on the sibling `*-llm-provider`) so a typed enum would be

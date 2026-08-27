@@ -370,6 +370,14 @@ export interface BuildSourcesOptions {
    * pins reasoning to `low` regardless.
    */
   maxThinking?: boolean;
+  /**
+   * OPENCUES.md `replace-parse-mode: off | on` (default off). When on,
+   * TransformBlankSource dispatches a small replace-detector call in
+   * parallel with FUSED; a verified single-substring replacement rides
+   * the resolver's deterministic bounded-splice path instead of the
+   * whole-buffer merge. See replace-detect.ts.
+   */
+  replaceParse?: boolean;
 }
 
 /**
@@ -878,6 +886,7 @@ export function buildSourcesFromConfig(
         maxTokens: options.transformBlank?.maxTokens,
         temperature: options.transformBlank?.temperature,
         maxThinking: options.maxThinking,
+        replaceParse: options.replaceParse,
         blanks: options.blanks ?? {},
         log: options.log,
         onEvent: options.onTransformBlankEvent,
