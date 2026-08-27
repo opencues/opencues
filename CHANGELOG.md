@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — a replace no longer eats the space beside it (`@opencues/runtime` 0.34.5 → 0.34.6, `@opencues/chrome` 0.2.182 → 0.2.183, `@opencues/dsh` 0.2.15 → 0.2.16)
+
+`replace-parse-mode` splices your value in where the old text was and consumes the imperative that asked for it. When something sat BETWEEN the two, the space that separated them went with the imperative:
+
+```
+her name is Sarha in the invite fix the spelling _
+  →  her name is Sarahin the invite
+```
+
+And when the imperative came first, the words that followed it were moved behind the value rather than in front of it:
+
+```
+uppercase it _ the ticker is aapl
+  →  AAPLthe ticker is
+```
+
+**Where you saw it.** Any correction made mid-sentence, which is most of them. It was invisible until now because the branch's only previous caller rewrote the whole body, so the target and the imperative were always touching and the gap between them was always just the one space.
+
+The gap's two edges are no longer the same thing. The edge that touched the imperative goes with it; the edge that touched your text is a word boundary in text that survives, and stays. A gap of newlines is structure and is preserved as it always was.
+
+
 ### Added — `replace-parse-mode`: single-substring edits splice deterministically instead of whole-buffer merging (`@opencues/core` 0.54.0 → 0.55.0, `@opencues/runtime` 0.34.4 → 0.34.5, `@opencues/dsh` 0.2.14 → 0.2.15, `@opencues/chrome` 0.2.179 → 0.2.182)
 
 New scalar, **on by default** (`replace-parse-mode: off` disables and saves the extra call). An imperative `_` ask ("her name is Sarha fix the spelling _") dispatches a small replace-detector LLM call **in parallel** with TransformBlank's fused call — zero added wall-clock, one extra small prefix-cached call per imperative `_`. When the detector identifies a single-substring replacement AND every claim survives the runtime's deterministic gate (command and target verified as verbatim buffer substrings, target unique outside the command, first-occurrence-safe), the result takes the resolver's bounded-splice path — text you didn't point at is structurally untouchable, and the diff is the two words that changed rather than a whole-buffer merge. Anything else — wrong shape, unverifiable claim, detector error — falls back to the fused merge exactly as before: the detector can only upgrade a dispatch, never degrade one.

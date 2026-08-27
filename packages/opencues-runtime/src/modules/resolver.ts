@@ -2368,15 +2368,39 @@ export class Resolver {
               spliceStart = Math.min(targetIdx, trigger.start);
               spliceEnd = Math.max(targetEnd, trigger.end);
               // Separator = anything between target and trigger that
-              // wasn't part of either. Preserve newlines; drop spaces
-              // (a space between target and trigger is just a word
-              // boundary, not user-intended structure).
+              // wasn't part of either. The TRIGGER is being consumed, so the
+              // whitespace that only ever separated the trigger from its
+              // neighbour goes with it; the whitespace on the TARGET's side
+              // is a word boundary in text that SURVIVES and must not be
+              // eaten. Newlines are structure and are preserved either way.
+              //
+              // Both edges used to be stripped, and the separator was always
+              // appended AFTER the rewrite. That is only correct when the gap
+              // is pure whitespace, which is the one shape the old 3-pass
+              // EXTRACT produced (its target was the whole non-trigger body,
+              // so target and trigger were always adjacent). replace-parse
+              // targets a SMALL substring, so a gap with words in it is now
+              // the common case, and both assumptions broke in it:
+              //   "her name is Sarha in the invite fix the spelling _"
+              //     → "her name is Sarahin the invite"   (boundary eaten)
+              //   "uppercase it _ the ticker is aapl"
+              //     → "AAPLthe ticker is"                (and re-ordered)
               const gapStart = Math.min(targetEnd, trigger.end);
               const gapEnd = Math.max(targetIdx, trigger.start);
-              const separator = gapStart < gapEnd
-                ? originalText.slice(gapStart, gapEnd).replace(/[ \t]+$/, '').replace(/^[ \t]+/, '')
-                : '';
-              rewriteWithSeparator = rewrittenText + separator;
+              const gap = gapStart < gapEnd ? originalText.slice(gapStart, gapEnd) : '';
+              const targetFirst = targetIdx < trigger.start;
+              // "Adjacent" means SPACES AND TABS ONLY. `.trim()` here would
+              // also match a gap of newlines, and a newline is the structure
+              // the four tests above exist to protect — it dropped every
+              // paragraph break in the buffer.
+              const separator = /^[ \t]*$/.test(gap)
+                ? ''                                        // adjacent: the gap WAS the boundary
+                : targetFirst
+                  ? gap.replace(/[ \t]+$/, '')              // its tail touched the trigger
+                  : gap.replace(/^[ \t]+/, '');             // its head touched the trigger
+              rewriteWithSeparator = targetFirst
+                ? rewrittenText + separator
+                : separator + rewrittenText;
             } else {
               // Trigger not located via instruction phrase. Conservative
               // fallback: splice from target onward, preserving leading
