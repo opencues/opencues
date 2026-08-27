@@ -901,6 +901,14 @@ export class Resolver {
       // per-model reasoning ceiling (on) vs reduced level (off). Only
       // `off` changes anything â `on` reproduces the prior behaviour.
       maxThinking: (settings.get('max-thinking') ?? 'on') !== 'off',
+      // `replace-parse-mode` (default on — earned via the boundary
+      // bench round: 0 fill FPs + 0 transform-boundary under-
+      // application FPs on gemma; every failure mode degrades to the
+      // fused path byte-identically). When on, TransformBlank
+      // dispatches a parallel replace-detector; verified single-
+      // substring replacements take the deterministic bounded-splice
+      // path instead of the whole-buffer merge.
+      replaceParse: (settings.get('replace-parse-mode') ?? 'on') === 'on',
       // applyOpencuesScalar â ConfigIntentSource's side-effect callback.
       //
       // Does TWO things, matching the pair that satellite cycling
@@ -2423,7 +2431,11 @@ export class Resolver {
         // target as input â it can't produce content outside that span.
         // (TransformBlank's fused path does NOT set transformTarget â it
         // emits the whole buffer â so it always takes the merge path
-        // below; this branch remains for any future bounded-span source.)
+        // below. The live consumer of this branch is replace-parse
+        // (`replace-parse-mode`): TransformBlank's parallel detector
+        // emits transformTarget/transformInstruction after
+        // verifyReplaceDetect proved both are verbatim buffer
+        // substrings — see replace-detect.ts.)
         //
         // Fused / whole-buffer (transformTarget empty/undefined): the
         // LLM emitted the WHOLE final buffer in FULL_REWRITE. We diff
