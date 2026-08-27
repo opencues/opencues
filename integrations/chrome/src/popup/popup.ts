@@ -216,13 +216,23 @@ async function init(): Promise<void> {
   void getHostStatus().then((reply: unknown) => {
     const connected = !!(reply && (reply as { connected?: boolean }).connected);
     if (!connected) {
-      deferLabel.style.display = 'none';
-      // Host is gone — force the toggle OFF so the user isn't trapped
-      // with provider/model fields greyed and no host backing them.
       if (deferEl.checked) {
-        deferEl.checked = false;
-        applyDeferUI();
-        void saveConfig({ deferToChromeHost: false });
+        // Defer is ON but the port is down at this instant. That is
+        // routinely transient — the SW retries connectNative every 30s
+        // and MV3 workers wake cold — so force-writing defer OFF here
+        // (the pre-0.2.183 behaviour) turned a blip into a persistently
+        // disabled integration: the SW then ignored every future host
+        // push and the next Save wiped the host bags. Keep the toggle
+        // visible and checked; the user unticks it themselves if the
+        // host is genuinely gone.
+        deferLabel.style.display = '';
+        deferEl.disabled = false;
+        deferLabel.title = 'chrome-host is not connected right now (the extension retries every 30s). Config from its last push stays active. Untick only if you no longer run chrome-host.';
+      } else {
+        // Hostless user with defer OFF — keep the toggle hidden.
+        // Deferring to a nonexistent source = empty config, so showing
+        // it would be footgun affordance.
+        deferLabel.style.display = 'none';
       }
       return;
     }
@@ -517,7 +527,24 @@ async function runDiagnostic(): Promise<void> {
     }
   }
 
-  // 3. Storage check — provider keys.
+  // 3. Live chrome-host port status. The storage reads below persist
+  // from PAST connections — without this line a dead host still looks
+  // healthy in the self-check (keys present, bundle present) and the
+  // hidden defer toggle / failing spawns have no visible cause.
+  try {
+    const hostStatus = await getHostStatus();
+    if (hostStatus?.connected) {
+      log('● chrome-host: connected (live native-messaging port)');
+    } else {
+      log('⚠ chrome-host: NOT connected (the extension retries every 30s)');
+      log('  → host keys / bundle below persist from a previous session — they do not prove the host is running');
+      log('  → check the service-worker console at chrome://extensions; reinstall via `opencues install chrome-host` if it never connects');
+    }
+  } catch {
+    log('⚠ chrome-host: status query failed (service worker unreachable)');
+  }
+
+  // 4. Storage check — provider keys.
   try {
     const storage = await chrome.storage.local.get(['opencues_user_keys', 'opencues_host_keys', 'opencues_bundle']);
     const userKeys = (storage.opencues_user_keys ?? {}) as Record<string, string>;
@@ -575,14 +602,17 @@ const PROBE_ENDPOINTS: Record<string, { url: string; headers: (k: string) => Rec
   GEMINI_API_KEY:     { url: 'https://generativelanguage.googleapis.com/v1beta/models',                                                                headers: k => ({ 'x-goog-api-key': k }) }, // INFOSEC F8: header not URL
 };
 
-async function probeOneKey(envName: string, key: string, out: (line: string) => void): Promise<void> {
+async function probeOneKey(envName: string, key: string, out: (line: string) => void, origin: 'typed' | 'host' = 'typed'): Promise<void> {
+  const label = origin === 'host' ? `${envName} (host)` : envName;
   const trimmed = key.trim();
   if (trimmed !== key) {
-    out(`  ⚠ ${envName} has leading/trailing whitespace (saved as-typed — whitespace breaks auth headers). Re-paste without spaces and Save.`);
+    out(origin === 'host'
+      ? `  ⚠ ${label} has leading/trailing whitespace — fix it in the shell env chrome-host reads and let it re-push.`
+      : `  ⚠ ${label} has leading/trailing whitespace (saved as-typed — whitespace breaks auth headers). Re-paste without spaces and Save.`);
   }
-  if (!trimmed) { out(`  · ${envName} not set`); return; }
+  if (!trimmed) { out(`  · ${label} not set`); return; }
   const def = PROBE_ENDPOINTS[envName];
-  if (!def) { out(`  ? ${envName} — no probe wired`); return; }
+  if (!def) { out(`  ? ${label} — no probe wired`); return; }
 
   let url = def.url;
   if (url.includes('__KEY__')) url = url.replace('__KEY__', encodeURIComponent(trimmed));
@@ -593,17 +623,17 @@ async function probeOneKey(envName: string, key: string, out: (line: string) => 
     const body = await r.text().catch(() => '');
     const snippet = body.slice(0, 200).replace(/\s+/g, ' ').trim();
     if (r.ok) {
-      out(`  ● ${envName} — ${r.status} OK (provider accepted the key)`);
+      out(`  ● ${label} — ${r.status} OK (provider accepted the key)`);
     } else if (r.status === 401 || r.status === 403) {
-      out(`  ✗ ${envName} — ${r.status} ${r.statusText}: provider REJECTED the key`);
+      out(`  ✗ ${label} — ${r.status} ${r.statusText}: provider REJECTED the key`);
       if (snippet) out(`    └─ body: ${snippet}`);
       out(`    Possible causes: key was revoked, wrong account, key typed wrong, or this provider requires billing setup.`);
     } else {
-      out(`  ✗ ${envName} — ${r.status} ${r.statusText}`);
+      out(`  ✗ ${label} — ${r.status} ${r.statusText}`);
       if (snippet) out(`    └─ body: ${snippet}`);
     }
   } catch (err) {
-    out(`  ✗ ${envName} — network error: ${(err as Error).message}`);
+    out(`  ✗ ${label} — network error: ${(err as Error).message}`);
     out(`    Possible causes: extension's host-permission missing for this provider, CORS, or no internet.`);
   }
 }
@@ -623,15 +653,39 @@ async function runKeyProbe(): Promise<void> {
     fields.push({ envName: el.dataset.providerKey!, el });
   }
 
-  let anyEntered = false;
+  let anyProbed = false;
   for (const { envName, el } of fields) {
     if (el.value && el.value.length > 0) {
-      anyEntered = true;
+      anyProbed = true;
       await probeOneKey(envName, el.value, log);
     }
   }
-  if (!anyEntered) {
-    log('✗ no API keys entered');
+
+  // Host-pushed keys (chrome-host forwarding the user's shell env) are
+  // deliberately never prefilled into the inputs above — but for most
+  // chrome-host users they're the ONLY keys, which used to make this
+  // button report "no API keys entered" against a fully working runtime.
+  // Probe them too; values never render (probeOneKey prints only the
+  // env name + HTTP status).
+  if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+    try {
+      const stored = await chrome.storage.local.get(['opencues_host_keys']);
+      const hostKeys = (stored.opencues_host_keys ?? {}) as Record<string, string>;
+      const typedNames = new Set(fields.filter(f => f.el.value).map(f => f.envName));
+      const hostOnly = Object.entries(hostKeys)
+        .filter(([name, v]) => v && !typedNames.has(name) && PROBE_ENDPOINTS[name]);
+      if (hostOnly.length > 0) {
+        log('Probing chrome-host-pushed keys (values are never shown)…');
+        for (const [envName, key] of hostOnly) {
+          anyProbed = true;
+          await probeOneKey(envName, key, log, 'host');
+        }
+      }
+    } catch { /* storage unreadable — typed-input probing above already ran */ }
+  }
+
+  if (!anyProbed) {
+    log('✗ no API keys entered (and none pushed by chrome-host)');
     log('  paste a key into one of the fields above, then click save (or test api key again).');
   }
   log('— done —');
