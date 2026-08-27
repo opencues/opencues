@@ -24,6 +24,7 @@ import type { AgentTaskState } from '../state/agent-task';
 import type { SelectorSatelliteState as SelectorSatelliteStateRef } from '../state/selector-satellite';
 import { splitWords } from './navigation';
 import type { BlankLoadingAnimator } from './blank-loading';
+import type { GlimmerRender } from './glimmer-render';
 import { findUnderscoreAtChar } from './blank-fill';
 import { applyMarkdownAwareSplice, applyMarkdownAwareSubstitution } from './markdown-substitute';
 import { threeWayMerge } from './word-diff';
@@ -47,6 +48,12 @@ export interface MarkdownStylesProvider {
 }
 
 export interface ResolverOptions {
+  /** Shared glimmer transition (`glimmer-transition-ms`) — animates a
+   *  LANDED fluid-blank / transform-blank substitution scrambling into
+   *  place. Display-only (textOverride + forceRender frames); when
+   *  omitted or the scalar is `off`, substitutions swap instantly
+   *  (pre-feature behaviour). Band boots pass `shared.glimmer`. */
+  readonly glimmer?: GlimmerRender;
   /** Legacy single-key endpoint. Prefer `apiKeys` for multi-provider. */
   readonly endpoint: string;
   /** Legacy single-key. Plumbed in as GROQ_API_KEY when `apiKeys` is unset. */
@@ -1978,6 +1985,11 @@ export class Resolver {
         this.dynDefs.set(newWordIndex, fluidDef);
         wrote++;
 
+        // Glimmer the landed answer in (display-only — buffer above is
+        // already final). Error substitutes stay instant: an error
+        // message shouldn't get an arrival animation.
+        if (!isErrorSubstitute) this.options.glimmer?.start(start, answer);
+
         // Error substitutes wipe-on-edit. Register a spanFillState
         // entry with clearOnEdit:true at the substituted range; the
         // existing BlankFill.onTextChange â applyClearOnEdit
@@ -2500,6 +2512,28 @@ export class Resolver {
         // diffSplice trims to the changed region, so even this whole-
         // buffer path records a relocatable hunk, not the full text.
         this.recordUndo('rewrite', liveText.replace(/[ââ]/g, ''), bufferText);
+
+        // Glimmer the CHANGED region in (display-only — the commit above
+        // is final). A whole-buffer merge would glimmer everything, so
+        // trim to the changed slice via a prefix/suffix diff of what the
+        // user saw vs what landed — untouched surrounding prose stays
+        // rock-steady while the rewrite scrambles into place.
+        if (this.options.glimmer) {
+          const liveClean = liveText.replace(/[​‌]/g, '');
+          let changedStart = 0;
+          while (
+            changedStart < liveClean.length && changedStart < bufferText.length
+            && liveClean[changedStart] === bufferText[changedStart]
+          ) changedStart++;
+          let liveEnd = liveClean.length;
+          let newEnd = bufferText.length;
+          while (liveEnd > changedStart && newEnd > changedStart && liveClean[liveEnd - 1] === bufferText[newEnd - 1]) {
+            liveEnd--; newEnd--;
+          }
+          if (newEnd > changedStart) {
+            this.options.glimmer.start(changedStart, bufferText.slice(changedStart, newEnd));
+          }
+        }
 
         // Find which word the rewrite's first word lands at in the new
         // text (for keying the def). Defaults to wherever the splice

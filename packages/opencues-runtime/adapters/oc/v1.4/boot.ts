@@ -234,6 +234,7 @@ export function boot(host: HostInfo): BootResult {
   // Resolver constructed even with no keys so MissingKeyFallbackSource
   // surfaces a visible in-buffer hint on `_` instead of silent no-op.
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
+    glimmer: shared.glimmer,
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
     defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',

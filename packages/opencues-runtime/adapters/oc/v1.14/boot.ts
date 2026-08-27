@@ -291,6 +291,7 @@ export function boot(host: HostInfo): BootResult {
   startSessionCommitmentsKick(log, { locate: () => locateOpenCodeDb(), format: 'opencode', extraArgs: ['--cwd', host.cwd] });
   startUsageMeter(log, { host: 'opencode' });
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
+    glimmer: shared.glimmer,
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
     defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',

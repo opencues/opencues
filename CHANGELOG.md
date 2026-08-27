@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — the answer glimmers in: a scramble-settle transition when a substitution lands (`@opencues/core` 0.54.0 → 0.55.0, `@opencues/runtime` 0.34.4 → 0.35.0, `@opencues/chrome` 0.2.179 → 0.2.180, `@opencues/dsh` 0.2.14 → 0.2.15)
+
+Until now a landed substitution just swapped: `capital of france _` became `Paris` between two frames. New `glimmer-transition-ms` scalar (Appearance; `off | 300 | 600 | 900`, default 300): when a fluid-blank answer, a transform-blank rewrite, or a keyword blank fill lands, the landed span first blinks, then churns through confusable glyphs — a letter only ever swaps within its own confusable group, so the text reads as *decoding* rather than noise — easing to the clean final text over the configured window. The animation is ported from the Glimmer extension prototype's scramble engine (`experiments/roi-debug/lib/scramble.js`).
+
+**Display-only by construction.** The buffer commits instantly, exactly as before — the animation lives entirely in the render pipeline (`RenderDirectives.textOverride`, the first module to use that channel) with frames driven by bare `forceRender()` kicks. No `setText` per frame means no resolver re-dispatch, no AgentRewrite debounce starvation, no ConfigLoader reload churn, and a user edit mid-animation simply wins: the transition self-cancels the moment the landed text is no longer in the buffer. For transform-blank's whole-buffer merge, only the *changed* region glimmers (prefix/suffix diff of what you saw vs what landed) — untouched prose stays rock-steady.
+
+Paints on Claude Code and Gemini CLI today; OpenCode, shell, and chrome don't consume `textOverride` in their paint paths yet and keep the instant swap (the wiring is in place, so a renderer pickup needs no boot change). `off` reproduces pre-feature behaviour byte-for-byte. Runtime-only knob — no spec change.
+
 ### Fixed — a note no longer quotes a whole paragraph when the script has no spaces (`@opencues/runtime` 0.34.3 → 0.34.4, `@opencues/chrome` 0.2.178 → 0.2.179, `@opencues/dsh` 0.2.13 → 0.2.14)
 
 A note that lists what `_` walks back to shortens each stop to its first two words, so a whole-sentence rewrite identifies itself without being printed twice. The shortening splits on whitespace — and Japanese, Chinese and Thai do not write spaces between words, so the entire answer came back as one "word", the two-word guard never fired, and the note quoted the paragraph.

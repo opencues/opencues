@@ -525,6 +525,7 @@ import { DimRender } from './modules/dim-render';
 import { Cycling } from './modules/cycling';
 import { BlankFill } from './modules/blank-fill';
 import { BlankLoadingAnimator, parseCustomFrames, parseRgbColors, parseAnsiColors, parseFrameIntervalMs, DEFAULT_RGB_PALETTE, DEFAULT_ANSI_PALETTE } from './modules/blank-loading';
+import { GlimmerRender, parseGlimmerTransitionMs } from './modules/glimmer-render';
 import { MarkdownRender } from './modules/markdown-render';
 import { HighlightState } from './state/highlight-state';
 import { DynDefs } from './state/dyn-defs';
@@ -554,6 +555,11 @@ export interface SharedRuntime {
    *  BlankFill (keyword-bound slots) and to Resolver (Fluid/Transform
    *  slots) so both code paths share state and don't race. */
   readonly blankLoading: BlankLoadingAnimator;
+  /** Shared scramble-settle transition for LANDED substitutions
+   *  (`glimmer-transition-ms`). Wired into BlankFill here; band boots
+   *  pass it to their Resolver via `ResolverOptions.glimmer`. Display-
+   *  only — paints via textOverride + forceRender, never setText. */
+  readonly glimmer: GlimmerRender;
   /** Markdown overlay renderer — parses **bold** / *italic* / `code`
    *  etc. on LLM-substitution events and emits per-range directives
    *  the host's render pipeline picks up. */
@@ -1765,9 +1771,27 @@ export function buildSharedRuntime(
   const blankWeaver: BlankWeaver | null = getApiKeys
     ? buildBlankWeaver(configLoader, getApiKeys, opts.httpAdapter, (lvl, msg) => log(lvl, msg))
     : null;
+  // Glimmer transition — display-only scramble-settle when a substitution
+  // LANDS (the loading animator above covers the in-flight phase; this
+  // covers the arrival). Registered LAST among render handlers so its
+  // whole-string textOverride is the frame's final word while it runs.
+  // Hosts that don't paint textOverride (opencode/shell extmarks, chrome
+  // CSS highlights) degrade to the instant swap — buffer is already final.
+  const glimmer = new GlimmerRender({
+    adapter,
+    durationMs: () => parseGlimmerTransitionMs(
+      configLoader.opencuesState.settings.get('glimmer-transition-ms'),
+    ),
+    log: msg => log('debug', msg),
+  });
+  adapter.onRender((ctx) => {
+    const override = glimmer.getTextOverride(ctx.text);
+    return override !== null ? { textOverride: override } : null;
+  });
+
   const blankFill = new BlankFill(
     adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading,
-    blankWeaver, undoJournal,
+    blankWeaver, undoJournal, glimmer,
   );
   configLoader.load()
     .then(() => blankFill.subscribe())
@@ -1790,6 +1814,7 @@ export function buildSharedRuntime(
     agentTaskState,
     undoJournal,
     blankLoading,
+    glimmer,
     markdownRender,
     blankFill,
   };

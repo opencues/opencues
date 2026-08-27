@@ -487,6 +487,10 @@ export function boot(host: HostInfo): BootResult {
     // Final two fields are inline because they're host-specific and
     // never change after boot.
     const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, Object.assign(resolverOpts, {
+      // Glimmer transition — chrome's CSS-highlight renderer doesn't paint
+      // textOverride yet, so this is currently a structural no-op there;
+      // wired anyway so a future renderer pickup needs no boot change.
+      glimmer: shared.glimmer,
       // SW-routed GET for contradiction world-data (bank holidays, weather) —
       // page CSP blocks a content-script one. Absent → provider uses global fetch.
       worldDataFetch: host.worldDataFetch,
