@@ -2428,7 +2428,11 @@ export class Resolver {
         // target as input â it can't produce content outside that span.
         // (TransformBlank's fused path does NOT set transformTarget â it
         // emits the whole buffer â so it always takes the merge path
-        // below; this branch remains for any future bounded-span source.)
+        // below. The live consumer of this branch is replace-parse
+        // (`replace-parse-mode`): TransformBlank's parallel detector
+        // emits transformTarget/transformInstruction after
+        // verifyReplaceDetect proved both are verbatim buffer
+        // substrings — see replace-detect.ts.)
         //
         // Fused / whole-buffer (transformTarget empty/undefined): the
         // LLM emitted the WHOLE final buffer in FULL_REWRITE. We diff

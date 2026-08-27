@@ -359,6 +359,53 @@ no longer calls it.)
 
 ---
 
+## Replace-parse — the optional parallel splice fast-path
+
+`replace-parse-mode: on` (OPENCUES.md, **off by default**; Aug 2026,
+PR #420) adds a second, small LLM call dispatched **in parallel** with
+FUSED on the same dehydrated `inputForLLM` — zero added wall-clock. The
+detector (`replace-detect.ts`) classifies the ask FILL / REPLACE / NONE
+and, for REPLACE, proposes three strings: COMMAND (imperative + `_`),
+TARGET (the piece being edited), VALUE (its replacement).
+
+The runtime's acceptance gate (`verifyReplaceDetect`) then verifies
+every claim deterministically: command and target must be verbatim
+buffer substrings; the target must occur exactly once OUTSIDE the
+command span (a copy inside the command — "swap kids for the formal
+word _" — is the user naming the target, not ambiguity); a
+command-side copy must not precede the real target (the resolver
+splices first-occurrence); and the target must not cover >60% of the
+non-command text (a contiguous whole-body transform masquerading as
+REPLACE — caught live by agentic scenario 129, where "make it all
+caps" spliced only part of the body). Echoed `[TOKEN]`s hydrate to
+values before verification (coverage-table channel 10 in
+`hydration-dehydration.md`).
+
+Only a fully-verified detection diverts: the result emits
+`metadata.transformTarget` + `transformInstruction` with
+`alternatives[1] = VALUE` and rides the resolver's **bounded-splice**
+branch (the machinery kept from the 3-pass era —
+`blank-sources.md` decision table row 2). Everything else — TASK/NONE
+verdicts, unverifiable claims, detector errors — leaves the fused
+whole-buffer merge byte-identical. **The detector can only upgrade a
+dispatch, never degrade or block one** (pinned by
+`transform-blank-replace-parse.test.ts`, including the
+throwing-detector case).
+
+Why bother, when fused handles these asks? Three reasons: the spliced
+diff is exactly the words that changed (no merge surface); text outside
+the verified range is structurally untouchable rather than
+LLM-faithfully preserved; and empirically the small detector sometimes
+beats fused on the ask itself — the first live test
+(`the ticker aapl in uppercase _`) had fused rewrite the whole buffer
+to "THE TICKER AAPL IN" while the splice produced the correct
+"the ticker AAPL". Detection accuracy:
+`tests/benchmarks/fluid-blank-replace/` (drives the shipping
+prompt/parser/gate) — 100% class / 100% verified / 0 fill→replace
+false positives on gemma-4-31b.
+
+---
+
 ## Runtime integration
 
 ### File layout
