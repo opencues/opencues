@@ -1,0 +1,101 @@
+/* buffered hysteresis zone — the fainter region either side of the band
+   where an already-live glimmer stays interactable */
+.roi-dbg-buffer {
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  background: rgba(46, 204, 113, 0.03) !important;
+  border-top: 1px dotted rgba(46, 204, 113, 0.4) !important;
+  border-bottom: 1px dotted rgba(46, 204, 113, 0.4) !important;
+  pointer-events: none !important;
+  z-index: 2147483644 !important;
+}
+
+/* ROI band overlay */
+.roi-dbg-band {
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  background: rgba(46, 204, 113, 0.05) !important;
+  border-top: 1px dashed rgba(46, 204, 113, 0.85) !important;
+  border-bottom: 1px dashed rgba(46, 204, 113, 0.85) !important;
+  pointer-events: none !important;
+  z-index: 2147483645 !important;
+}
+
+/* every registry-matched candidate gets this; carries the transition.
+   duration is panel-tunable via the --roi-dbg-fade variable */
+.roi-dbg-candidate {
+  transition: background-color var(--roi-dbg-fade, 250ms) ease,
+    box-shadow var(--roi-dbg-fade, 250ms) ease !important;
+}
+
+/* faint orange dashed outline on candidates, gated by a body class.
+   Scoped to on-screen elements (JS-toggled) — painting hundreds of
+   transitioned shadows across a whole infinite feed lagged scrolling. */
+body.roi-dbg-show-candidates .roi-dbg-candidate.roi-dbg-onscreen {
+  box-shadow: 0 0 0 1px rgba(255, 165, 0, 0.45) !important;
+}
+
+/* the green "in band" state */
+.roi-dbg-candidate.roi-dbg-hit {
+  background-color: rgba(46, 204, 113, 0.18) !important;
+  box-shadow: 0 0 0 2px rgba(46, 204, 113, 0.7) !important;
+  border-radius: 3px !important;
+}
+
+/* minimap */
+.roi-dbg-minimap {
+  position: fixed !important;
+  left: 12px !important;
+  bottom: 12px !important;
+  z-index: 2147483646 !important;
+  width: 30px !important;
+  height: 44vh !important;
+  background: rgba(20, 24, 28, 0.88) !important;
+  border: 1px solid rgba(46, 204, 113, 0.5) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+  cursor: pointer !important;
+  touch-action: none !important;
+  user-select: none !important;
+  overflow: clip !important;   /* blurred ticks must not bleed past the strip */
+}
+.roi-dbg-minimap svg {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 5px !important;
+  overflow: hidden !important;
+}
+
+/* scrollbar mode: native scrollbar hidden, minimap docks full-height right */
+/* hide the native bar; the layout compensation is done in JS the way modal
+   libraries do it — measured body padding-right applied inline on toggle */
+html.roi-dbg-scrollbar-mode {
+  scrollbar-width: none !important;
+}
+/* native look: Chrome's Windows scrollbar is a 17px track (#F1F1F1) with a
+   #C1C1C1 thumb; Fluent (Win11) is 15px with a rounded pill thumb. We match
+   the Fluent footprint and just add our marks to it. */
+html.roi-dbg-scrollbar-mode .roi-dbg-minimap {
+  left: auto !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  height: auto !important;
+  width: 15px !important;
+  border: none !important;
+  border-left: 1px solid rgba(0, 0, 0, 0.06) !important;
+  border-radius: 0 !important;
+  background: #f1f1f1 !important;
+  box-shadow: none !important;
+}
+html.roi-dbg-scrollbar-mode .roi-dbg-minimap svg {
+  border-radius: 0 !important;
+}
+/* dark page → Chrome's dark scrollbar track */
+html.roi-dbg-scrollbar-mode .roi-dbg-minimap.roi-dbg-sb-dark {
+  background: #282828 !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.08) !important;
+}

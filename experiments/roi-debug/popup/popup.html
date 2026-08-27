@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup">
+    <div class="banner">
+      <div class="banner-line">
+        <span class="brand-badge">C_</span>
+        <span class="wordmark">Glimmer_</span>
+        <span class="version" id="version"></span>
+      </div>
+      <div class="tagline">Reading-side cues. Prose passing through the attention band is analysed for one insight; the last word shimmers; hover reveals it in place.</div>
+    </div>
+
+    <div class="banner-gap"></div>
+
+    <label class="section-label">insight</label>
+    <div class="section-wrap">
+      <label class="check-row"><input type="checkbox" data-s="insightMode"> insight glimmer (cerebras)</label>
+      <label>glimmer burst <span class="val" data-v="glimmerMs"></span>ms</label>
+      <input type="range" min="100" max="2000" step="100" data-s="glimmerMs">
+      <label class="check-row"><input type="checkbox" data-s="settleOnly"> glimmer only after scroll settles</label>
+      <label for="cerebrasKey">cerebras api key</label>
+      <input type="password" id="cerebrasKey" placeholder="csk-... (blank = baked dev key)">
+    </div>
+
+    <label class="section-label">attention band</label>
+    <div class="section-wrap">
+      <label>band height <span class="val" data-v="bandPct"></span>% of viewport</label>
+      <input type="range" min="10" max="60" step="2" data-s="bandPct">
+      <label>buffer zone <span class="val" data-v="bufferPct"></span>% of band</label>
+      <input type="range" min="0" max="100" step="5" data-s="bufferPct">
+      <label for="mode">selection mode</label>
+      <select id="mode" data-s="mode">
+        <option value="all">all in band</option>
+        <option value="closest">closest to center only</option>
+      </select>
+    </div>
+
+    <label class="section-label">debug</label>
+    <div class="section-wrap">
+      <label class="check-row"><input type="checkbox" data-s="debugUi"> debug ui (off = final product)</label>
+      <label class="check-row"><input type="checkbox" data-s="showCandidates"> outline all candidates</label>
+      <label class="check-row"><input type="checkbox" data-s="textMarks"> text debug marks (green boxes)</label>
+      <label class="check-row"><input type="checkbox" data-s="scrollbarMode"> scrollbar mode (dock right)</label>
+      <label class="check-row"><input type="checkbox" data-s="mapMarks"> minimap debug marks</label>
+      <label class="check-row"><input type="checkbox" data-s="fullTicks"> full-width ticks</label>
+      <label>min chars (generic tier) <span class="val" data-v="minChars"></span></label>
+      <input type="range" min="0" max="400" step="20" data-s="minChars">
+      <label>minimap range <span class="val" data-v="lookahead"></span></label>
+      <input type="range" min="0" max="5" step="1" data-s="lookahead">
+      <label>candidate opacity <span class="val" data-v="candAlphaPct"></span>%</label>
+      <input type="range" min="0" max="50" step="2" data-s="candAlphaPct">
+      <label>tick blur <span class="val" data-v="blurPx"></span>px</label>
+      <input type="range" min="0" max="8" step="1" data-s="blurPx">
+      <label for="fadeMs">transition</label>
+      <select id="fadeMs" data-s="fadeMs">
+        <option value="300">300 ms</option>
+        <option value="600">600 ms</option>
+        <option value="1000">1000 ms</option>
+      </select>
+    </div>
+
+    <details>
+      <summary>reading concerns</summary>
+      <div class="section-wrap">
+        <p class="hint">CUE.md-shaped: frontmatter (name, scope: reading, priority, on-site, not-on-site, model) + the prompt as the body. Separate concerns with a line of ===. A user concern reusing a built-in's name overrides it; the highest-priority concern matching the site runs.</p>
+        <textarea id="concerns" rows="10" spellcheck="false" placeholder="---&#10;name: jargon&#10;scope: reading&#10;priority: 60&#10;on-site: [arxiv.org, *.wikipedia.org]&#10;---&#10;Explain the most jargon-heavy phrase in the passage in plain words. Under 18 words. Plain text only."></textarea>
+        <div class="row">
+          <button id="concerns-save" class="mini">save</button>
+          <span id="concerns-status" class="hint-inline"></span>
+        </div>
+      </div>
+    </details>
+
+    <details>
+      <summary>cost</summary>
+      <div class="section-wrap">
+        <div id="cost-summary" class="ledger-summary">— no usage recorded yet —</div>
+        <label>by day</label>
+        <pre id="cost-days" class="ledger"></pre>
+        <label>by site</label>
+        <pre id="cost-sites" class="ledger"></pre>
+        <div class="row"><button id="cost-reset" class="mini">reset ledger</button></div>
+      </div>
+    </details>
+
+    <details>
+      <summary>performance</summary>
+      <div class="section-wrap">
+        <label class="check-row"><input type="checkbox" data-s="perfMode"> perf instrumentation</label>
+        <div class="row">
+          <button id="perf-dump" class="mini">dump perf</button>
+          <button id="perf-reset" class="mini">reset</button>
+        </div>
+        <pre id="perf-out" style="display:none"></pre>
+      </div>
+    </details>
+
+    <div id="stats">— connecting to page —</div>
+  </div>
+
+  <script src="../lib/concerns.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

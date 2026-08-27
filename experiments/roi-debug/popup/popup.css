@@ -1,0 +1,305 @@
+/* Glimmer popup — same design language as the OpenCues chrome extension
+ * popup (integrations/chrome/src/popup/popup.css), which itself mirrors the
+ * OpenCues CLI:
+ *   bg          #1a1a1a
+ *   body text   #888 (gray)
+ *   emphasis    #ffffff (white)
+ *   accent      reverse-video white-on-bg for the brand badge
+ * Monospace throughout; scrollbars hidden.
+ */
+
+* {
+  box-sizing: border-box;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+*::-webkit-scrollbar {
+  display: none;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #1a1a1a;
+  color: #888;
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Consolas, monospace;
+  font-size: 12px;
+}
+
+.popup {
+  width: 340px;
+  padding: 12px;
+  background: #1a1a1a;
+  color: #888;
+}
+
+/* Banner block — mirrors CLI `banner({ version, tagline })` */
+.banner {
+  margin: 0 0 4px;
+  line-height: 1.4;
+}
+.banner-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.brand-badge {
+  background: #ffffff;
+  color: #1a1a1a;
+  padding: 0 4px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.wordmark {
+  color: #ffffff;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+.version {
+  color: #555;
+  font-size: 11px;
+  margin-left: auto;
+}
+.tagline {
+  color: #888;
+  font-size: 11px;
+  margin-top: 8px;
+}
+.banner-gap {
+  height: 12px;
+}
+
+/* Section label — identical typography to field labels */
+.section-label {
+  display: block;
+  margin: 10px 0 3px;
+  font-size: 11px;
+  color: #888;
+  text-transform: lowercase;
+  letter-spacing: 0.3px;
+}
+
+/* Sunken section container (same treatment as the keys fieldset) */
+.section-wrap {
+  background: #0d0d0d;
+  padding: 8px 10px;
+  border-radius: 2px;
+}
+
+label {
+  display: block;
+  margin: 10px 0 3px;
+  font-weight: normal;
+  font-size: 11px;
+  color: #888;
+  text-transform: lowercase;
+  letter-spacing: 0.3px;
+}
+label:first-child {
+  margin-top: 0;
+}
+label .val {
+  color: #ffffff;
+}
+
+/* Inline checkbox rows (same shape as the defer-toggle) */
+label.check-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 4px;
+  font-size: 11px;
+  color: #888;
+  cursor: pointer;
+  user-select: none;
+  text-transform: lowercase;
+}
+label.check-row:hover {
+  color: #ffffff;
+}
+label.check-row input[type="checkbox"] {
+  margin: 0;
+}
+
+input[type="text"],
+input[type="password"] {
+  width: 100%;
+  padding: 6px 8px;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 2px;
+  color: #ffffff;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+}
+input[type="text"]:focus,
+input[type="password"]:focus {
+  border-color: #555;
+  background: #111;
+}
+
+select {
+  width: 100%;
+  padding: 6px 8px;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 2px;
+  color: #ffffff;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, #888 50%),
+                    linear-gradient(135deg, #888 50%, transparent 50%);
+  background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 24px;
+}
+select:focus {
+  background-color: #111;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: #ffffff;
+}
+input[type="checkbox"] {
+  accent-color: #ffffff;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0 0;
+}
+
+button.mini {
+  width: auto;
+  display: inline-block;
+  margin: 0;
+  padding: 5px 10px;
+  background: #1a1a1a;
+  color: #ffffff;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+}
+button.mini:hover {
+  background: #0a0a0a;
+}
+
+details {
+  margin-top: 10px;
+  font-size: 11px;
+}
+details summary {
+  color: #888;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 0;
+  text-transform: lowercase;
+  letter-spacing: 0.3px;
+  font-size: 11px;
+}
+details summary:hover {
+  color: #ffffff;
+}
+details[open] summary {
+  color: #ffffff;
+  margin-bottom: 6px;
+}
+
+/* Perf output — same treatment as the OpenCues diagnostics pane */
+#perf-out {
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+  background: #0a0a0a;
+  color: #888;
+  border: none;
+  border-left: 2px solid #2a2a2a;
+  padding: 8px 10px;
+  border-radius: 2px;
+  margin: 8px 0 0;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre;
+}
+
+/* Live stats footer */
+#stats {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #2a2a2a;
+  font-size: 11px;
+  color: #888;
+  line-height: 1.6;
+  word-break: break-word;
+}
+#stats .em {
+  color: #ffffff;
+}
+#stats .warn {
+  color: #f5c95b;
+}
+
+/* cost ledger — same treatment as the perf pane */
+.ledger-summary {
+  font-size: 11px;
+  color: #888;
+  line-height: 1.6;
+}
+.ledger-summary .em {
+  color: #ffffff;
+}
+pre.ledger {
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+  background: #0a0a0a;
+  color: #888;
+  border: none;
+  border-left: 2px solid #2a2a2a;
+  padding: 6px 10px;
+  border-radius: 2px;
+  margin: 4px 0 0;
+  max-height: 140px;
+  overflow: auto;
+  white-space: pre;
+}
+
+/* reading concerns editor */
+p.hint {
+  font-size: 11px;
+  color: #555;
+  margin: 0 0 6px;
+  line-height: 1.5;
+}
+.hint-inline {
+  font-size: 11px;
+  color: #888;
+}
+textarea {
+  width: 100%;
+  padding: 6px 8px;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 2px;
+  color: #ffffff;
+  font-size: 11px;
+  line-height: 1.5;
+  font-family: inherit;
+  outline: none;
+  resize: vertical;
+}
+textarea:focus {
+  border-color: #555;
+  background: #111;
+}
