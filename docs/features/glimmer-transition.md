@@ -64,5 +64,13 @@ kicks; never `setText`). Consequences you can rely on:
 Error substitutes (`[err] …` fills, missing-key fallbacks) never
 animate — feedback shouldn't get an arrival flourish.
 
+⚠️ **Extending this to OpenCode/shell/chrome** would mean switching from
+render-only `textOverride` to real per-frame `setText` writes (the model
+`blank-loading` already proves works) — a materially different design with
+real per-host side effects and open risks (AgentRewrite debounce
+interaction, editor-reconciler fighting on Chrome). See
+[`docs/architecture/glimmer-realwrite-extension-plan.md`](../architecture/glimmer-realwrite-extension-plan.md)
+before starting that work.
+
 Implementation: `packages/opencues-runtime/src/modules/glimmer-render.ts`.
 Runtime-only knob — not part of the open standard.
