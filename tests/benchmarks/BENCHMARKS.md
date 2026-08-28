@@ -205,6 +205,32 @@ inference speed — Groq's own listing puts this model at ~450 tok/s.
 that instead of guessing a blind exponential backoff, which is what made
 the fluid-blank run tractable serially.
 
+**Clean transform-blank latency** (`speed-probe-qwen38.ts` — same production
+`TransformBlankSource`, 4 representative cases, 65s gap before every call so
+the quota is always fresh and zero backoff contaminates the timing):
+
+```
+Case          maxThinking=on   maxThinking=off   delta
+literal-1     1085ms           1159ms            +74ms
+long-A1       1523ms            910ms            -613ms
+tone-1        1155ms            525ms            -630ms
+format-1       890ms            728ms             -162ms
+Avg:            1163ms            831ms
+```
+
+So the real speed is **fast** — sub-1.5s, competitive with the matrix's
+faster rows (cerebras 331–727ms, groq gpt-oss-120b 727ms, claude-haiku
+1125ms) — not the ~9s the two zero-wait samples in the contaminated
+`--parallel 1` run suggested (that was too small an n to trust, and it
+wasn't). `maxThinking: off` (`reasoning_effort: 'none'` for this
+Groq-unlisted model, vs production's default `'low'`) is **~29% faster on
+average** (831ms vs 1163ms) with no observed output difference on 3/4
+cases and the same imperfect answer on the 4th (`tone-1` under- or
+over-shoots the confident rewrite either way) — worth trying
+`max-thinking: off` in `OPENCUES.md` if this model ships to production.
+Re-run `bash tests/benchmarks/transform-blank/run-speed-probe.sh`
+(`--gap-ms N` to adjust spacing) to extend this to more cases.
+
 **Not yet done:** the full 487-case transform-blank suite (would take
 hours at this quota), a 5-provider-style multi-mode matrix, and measured
 (non-estimated) cost. Re-run `bash
