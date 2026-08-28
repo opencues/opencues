@@ -177,6 +177,16 @@ and `OPENCUES_BENCH_PROVIDER=deepseek-flash` for the router-driven suites.
 
 ### Qwen 3.8 27B on Groq — spot-check (2026-08-28)
 
+> ⚠️ **NOT MERGE-READY AS A COMPARISON.** transform-blank ran a 38-case
+> subset, not the full 487 every other row in the matrix above ran. **Run
+> the full suite (`bash tests/benchmarks/transform-blank/run-qwen38.sh`
+> against the full `CASES`, not `--only-file`) before treating this
+> model's accuracy as comparable to the other rows, before citing it
+> externally, or before using it to justify any production routing
+> change.** The 89.5% here is directionally useful, not a verified
+> number — see "Not yet done" below for the full list of what's
+> outstanding.
+
 `qwen/qwen3.8-27b` is a new Groq **preview**-tier model (not yet in
 `llm-provider.ts`'s `PROVIDERS`/auto-route — bench-only today via
 `tests/benchmarks/{fluid-blank,transform-blank}/groq-qwen38.ts` +
