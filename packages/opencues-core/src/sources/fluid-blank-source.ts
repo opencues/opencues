@@ -183,8 +183,20 @@ export function renderAmbientBlock(ambient: AmbientContext | undefined): string 
  *
  * ANY future source that wants to replace beyond the slot MUST route its
  * WIPE decision through this predicate (or the host's explicit `disposable`
- * declaration). Do not re-introduce a heuristic that guesses from sentence
+ * declaration). Do not re-introduce a HEURISTIC that guesses from sentence
  * shape — that is exactly what was retired.
+ *
+ * Amendment (buffer-is-query + model-vote WIPE): this predicate alone is
+ * NOT sufficient to fire WIPE, because it is true for both a terse lookup
+ * ("capital of france _") and a compact factual sentence with a mid-span
+ * gap ("Water boils at _ degrees Celsius" — SPAN is the whole buffer for
+ * that shape too). It must be paired with the model's own MODE
+ * classification as the disambiguator — see the WIPE gate in `getCues`.
+ * That is NOT the retired heuristic: the retired one let the model's guess
+ * alone authorize destroying content it might have misjudged; this predicate
+ * has already proven there is nothing else in the buffer to destroy before
+ * the model's vote is even consulted, so the vote only picks which of two
+ * already-safe splices applies.
  */
 export function bufferIsExactlyTheLookup(buffer: string, span: string | undefined | null): boolean {
   if (!span) return false;
@@ -542,6 +554,43 @@ function findSpanCharRange(span: string, text: string): [number, number] | null 
   const idx = text.indexOf(trimmed);
   if (idx === -1) return null;
   return [idx, idx + trimmed.length];
+}
+
+/**
+ * Detects ANSWER RULE 5's "restated full clause" shape — deterministically,
+ * no model-vote trust needed. Some mid-span answers are a bare delta value
+ * meant to replace ONLY the `_` character ("the cube root of 27 is _" →
+ * "3" — `_` sits at the span's edge, no suffix to restate). Others are a
+ * full clause with the gap filled in place ("Water boils at _ degrees
+ * Celsius" → "Water boils at 100 degrees Celsius" — the model is told to do
+ * this by RULE 5 precisely because the surrounding words are part of the
+ * answer's own sentence). Splicing the second shape at just the `_`
+ * character duplicates the surrounding words instead of replacing them —
+ * confirmed for real: "There are _ continents" → "There are 7 continents"
+ * produced "There are There are 7 continents continents" when spliced at
+ * `_` alone (both cerebras and groq return this exact shape for compact
+ * factual sentences; this is not a hypothetical).
+ *
+ * The check: split SPAN on its `_` into a prefix and suffix (both must be
+ * non-empty — an edge `_` has nothing to restate, so it's the bare-delta
+ * shape by construction). If ANSWER's trimmed text starts with the prefix
+ * and ends with the suffix (case-insensitive — models vary capitalization,
+ * e.g. mid-sentence lowercasing), the model restated the clause; splice the
+ * whole verified SPAN range instead of just `_`. `findSpanCharRange`
+ * requires SPAN to be a verbatim buffer substring, so a hallucinated or
+ * mangled SPAN falls through to the existing bare-delta splice — the
+ * pre-fix behavior — rather than risk a wrong range.
+ */
+export function findRestatedClauseSpan(text: string, span: string, answer: string): [number, number] | null {
+  const underscoreIdx = span.indexOf('_');
+  if (underscoreIdx === -1) return null;
+  const prefix = span.slice(0, underscoreIdx).trim();
+  const suffix = span.slice(underscoreIdx + 1).trim();
+  if (!prefix || !suffix) return null;
+  const a = answer.trim().toLowerCase();
+  if (!a.startsWith(prefix.toLowerCase())) return null;
+  if (!a.endsWith(suffix.toLowerCase())) return null;
+  return findSpanCharRange(span, text);
 }
 
 /**
@@ -1201,32 +1250,59 @@ export class FluidBlankSource implements CueSource {
       const ctx = '';
 
       // WIPE gate. Fluid is FILL by default — non-destructive, replaces only
-      // the `_`. It replaces the WHOLE field (WIPE) in exactly two cases, BOTH
-      // driven by the host's declaration of the field's shape (never a guess
-      // about sentence structure — that guess is what collapsed foreign-
-      // language sentences and got the old WIPE machinery retired in the
-      // July-2026 slim-down, f62dcd28):
+      // the `_`. It replaces the WHOLE field (WIPE) in exactly two cases:
       //   1. `ambient.disposable` — the host declares the field's content is a
       //      transient query/command (omnibox, launcher); replace it wholesale.
-      //   2. `ambient.singleLine` AND the buffer is EXACTLY the lookup
-      //      (`bufferIsExactlyTheLookup`) — a single-line search box holding
-      //      nothing but the query; there is provably nothing else to remove.
+      //      No model vote needed — the host's own declaration IS the proof.
+      //   2. The buffer is EXACTLY the lookup (`bufferIsExactlyTheLookup` — no
+      //      host declaration required) AND the model's own MODE line says
+      //      WIPE. Buffer-is-exactly-the-lookup alone is NOT enough to fire:
+      //      it is true for BOTH a terse lookup ("capital of france _") and a
+      //      compact factual sentence with a mid-span gap ("Water boils at _
+      //      degrees Celsius" — FluidBlank's own COMPACT FACTUAL rule makes
+      //      SPAN the whole buffer there too). Only the model's shape
+      //      classification tells those two apart; the deterministic floor
+      //      is what makes trusting that vote safe here, unlike the old
+      //      model-decides-alone WIPE that got retired in the July-2026
+      //      slim-down (f62dcd28) for flattening real multi-paragraph
+      //      documents. That bug was the model's classification directly
+      //      authorizing data loss on content it might have misjudged; here
+      //      the floor has ALREADY proven there is nothing else in the
+      //      buffer to lose before the model's vote is even consulted — the
+      //      vote only picks which of two non-destructive splices applies to
+      //      a buffer already known to hold nothing but the query. See
+      //      docs/architecture/blank-sources.md § WIPE gate.
       // The `\n\n` paragraph floor is absolute — it holds even for `disposable`
-      // (a multi-paragraph "disposable" field is a host bug; never flatten it).
-      // The model's MODE line is still ignored; the runtime owns this.
+      // (a multi-paragraph "disposable" field is a host bug; never flatten it),
+      // and it holds inside `bufferIsExactlyTheLookup` itself for case 2.
       const amb = context.ambient;
       let mode: 'FILL' | 'WIPE' = 'FILL';
       let wipeStart: number | undefined;
       let wipeEnd: number | undefined;
       if (amb?.disposable === true && !context.text.includes('\n\n')) {
         mode = 'WIPE';
-      } else if (amb?.singleLine === true && bufferIsExactlyTheLookup(context.text, span)) {
+      } else if (bufferIsExactlyTheLookup(context.text, span) && modelMode === 'WIPE') {
         mode = 'WIPE';
       }
       if (mode === 'WIPE') {
         wipeStart = 0;
         wipeEnd = context.text.length;
-        this.logInfo(`FluidBlank: WIPE (${amb?.disposable ? 'disposable field' : 'single-line + buffer-is-query'}) — replacing the whole field with the value`);
+        this.logInfo(`FluidBlank: WIPE (${amb?.disposable ? 'disposable field' : 'buffer-is-query + model classified WIPE'}) — replacing the whole field with the value`);
+      }
+
+      // FILL's "restated clause" fix (see findRestatedClauseSpan doc comment):
+      // still tagged FILL (the ask outside the SPAN survives untouched, unlike
+      // WIPE's whole-buffer replace), but the splice range widens from the
+      // bare `_` character to the verified SPAN when the answer restates it,
+      // so the surrounding words aren't duplicated.
+      let fillSpanStart: number | undefined;
+      let fillSpanEnd: number | undefined;
+      if (mode === 'FILL') {
+        const restated = findRestatedClauseSpan(context.text, span, finalAnswer);
+        if (restated) {
+          [fillSpanStart, fillSpanEnd] = restated;
+          this.logInfo('FluidBlank: FILL (restated clause) — widening the splice to the whole span so the surrounding words aren\'t duplicated');
+        }
       }
 
       // Record the fresh answer into the variant pool — subsequent
@@ -1241,9 +1317,15 @@ export class FluidBlankSource implements CueSource {
         source: this.id,
         priority: this.priority,
         // WIPE mode: char offsets telling the resolver to replace the whole
-        // field span (0..len), not just the `_`. Absent in FILL mode, so the
-        // resolver falls back to the single-`_` splice. See resolver.ts:1546.
-        ...(mode === 'WIPE' ? { spanStart: wipeStart, spanEnd: wipeEnd } : {}),
+        // field span (0..len), not just the `_`. FILL mode: absent by
+        // default, so the resolver falls back to the single-`_` splice —
+        // EXCEPT when findRestatedClauseSpan detected the answer restates
+        // the whole SPAN, in which case the splice widens to that verified
+        // range (still tagged FILL; the ask outside the SPAN is untouched).
+        // See resolver.ts:1546 (isMultiWordSpan keys off spanStart being a
+        // number, not off fluidBlankMode, so both cases route the same way).
+        ...(mode === 'WIPE' ? { spanStart: wipeStart, spanEnd: wipeEnd }
+          : fillSpanStart !== undefined ? { spanStart: fillSpanStart, spanEnd: fillSpanEnd } : {}),
         metadata: {
           fluidBlankMode: mode,
           span,

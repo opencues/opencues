@@ -266,6 +266,107 @@ describe('fluid-blank chain — sequential WIPE substitutions', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// The terminal/no-ambient WIPE journey. Before core 0.55.0, FluidBlank's
+// WIPE gate required a host to declare `singleLine`/`disposable`; no native
+// host adapter (Claude Code, OpenCode, gemini-cli, shell) does that, so a
+// bare terminal lookup like the README's ffmpeg example always FILLed —
+// the ask stayed on screen and only `_` was replaced. Core 0.55.0 added a
+// second path: `bufferIsExactlyTheLookup` + the model's own MODE vote, no
+// host declaration required (see fluid-blank-source.ts's WIPE gate +
+// docs/architecture/blank-sources.md § WIPE gate). This scenario doesn't
+// re-test THAT decision — it's unit-pinned in @opencues/core's
+// fluid-blank-source.test.ts — it pins what happens AFTER the decision:
+// does the resolver splice, register, and let the user cycle back exactly
+// like any other WIPE, on a buffer that carries no ambient context at all
+// (setupChainScenario passes none — the terminal shape).
+// ---------------------------------------------------------------------------
+describe('fluid-blank WIPE with no host ambient declaration (the terminal/CLI path)', () => {
+  it('WIPEs a bare terminal lookup end-to-end, and cycling back restores the original ask', async () => {
+    const ask = 'ffmpeg command to convert a video to web-ready mp4 _';
+    const answer = 'ffmpeg -i input.mov -vcodec libx264 -crf 23 -pix_fmt yuv420p -acodec aac output.mp4';
+    const { adapter, dynDefs, resolver, scriptNext } = setupChainScenario(ask);
+    scriptNext([fluidWipe(ask, answer)]);
+    await resolver.resolveAndApply(adapter.getText());
+
+    // The whole line was replaced — the ask is gone, not left sitting
+    // above the answer the way a FILL would leave it.
+    expect(adapter.getText()).toBe(answer);
+
+    const def = findFluidBlankDef(dynDefs);
+    expect(def).toBeDefined();
+    expect(def!.spanStart).toBe(0);
+    expect(def!.spanEnd).toBe(answer.length);
+    // alts[0] = the answer now on screen; alts[1] = the original ask,
+    // reachable by cycling — same reverse-chronological convention every
+    // other fluid-blank WIPE uses, regardless of which gate path fired.
+    expect(def!.alternatives).toEqual([answer, ask]);
+    expect(def!.currentIndex).toBe(0);
+
+    // Cycle back (Up, in the runtime's convention) — the user should land
+    // on their original terminal command, byte-for-byte, not a mangled or
+    // partially-restored line.
+    rewriteDef(dynDefs, def!, { currentIndex: 1 });
+    const cycled = findFluidBlankDef(dynDefs);
+    expect(cycled!.alternatives[cycled!.currentIndex]).toBe(ask);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FILL splice widening — the "restated clause" fix (core 0.55.0's
+// findRestatedClauseSpan). Confirmed as a LIVE bug against real providers
+// while validating the WIPE-gate work above, not a hypothetical: a compact
+// factual sentence like "there are _ oceans on earth" gets answered with
+// the FULL restated clause ("there are 5 oceans on earth") per FluidBlank's
+// own ANSWER RULE 5. FILL's old behaviour spliced that answer at just the
+// `_` character — this scenario pins what that actually produced before the
+// fix (duplicated words) and what it produces after (spanStart/spanEnd
+// widen to the verified span, same splice path WIPE already uses, still
+// tagged FILL). See fluid-blank-source.ts's findRestatedClauseSpan doc
+// comment and fluid-blank-source.test.ts's "FILL splice widening" suite for
+// the source-level pin; this is the resolver-level confirmation.
+// ---------------------------------------------------------------------------
+describe('fluid-blank FILL splice widening (restated-clause fix)', () => {
+  it('a restated-clause FILL answer replaces the whole span, not just `_` — no duplicated words', async () => {
+    const ask = 'there are _ oceans on earth';
+    const answer = 'there are 5 oceans on earth';
+    const { adapter, dynDefs, resolver, scriptNext } = setupChainScenario(ask);
+    // Same fixture shape as fluidWipe (spanStart/spanEnd set) — the
+    // resolver's isMultiWordSpan branch keys off spanStart being a number,
+    // not off any WIPE-specific flag, so a widened FILL routes identically.
+    // Unlike fluidWipe, `source` stays 'fluid-blank' with no WIPE-only
+    // metadata — this fixture only exists to prove the splice range, not
+    // to re-test the WIPE gate itself.
+    scriptNext([{
+      wordIndex: blankWordIndex(ask),
+      word: '_',
+      alternatives: ['_', answer],
+      spanStart: 0,
+      spanEnd: ask.length,
+      source: 'fluid-blank',
+      priority: 92,
+    }]);
+    await resolver.resolveAndApply(adapter.getText());
+
+    // The pre-fix bug: splicing at just `_` (target.start/target.end,
+    // ignoring the wider span) produced "there are there are 5 oceans on
+    // earth oceans on earth". This must not happen.
+    expect(adapter.getText()).toBe(answer);
+    expect(adapter.getText()).not.toMatch(/there are.*there are/i);
+
+    const def = findFluidBlankDef(dynDefs);
+    expect(def).toBeDefined();
+    expect(def!.spanStart).toBe(0);
+    expect(def!.spanEnd).toBe(answer.length);
+    // Cycling back still restores the original ask byte-for-byte — the
+    // widened splice doesn't change the cycling contract.
+    expect(def!.alternatives).toEqual([answer, ask]);
+    rewriteDef(dynDefs, def!, { currentIndex: 1 });
+    const cycled = findFluidBlankDef(dynDefs);
+    expect(cycled!.alternatives[cycled!.currentIndex]).toBe(ask);
+  });
+});
+
 describe('transform-blank chain — sequential whole-buffer rewrites', () => {
   it('extends the chain when a second transform-blank fires on the prior result', async () => {
     const { adapter, dynDefs, resolver, scriptNext } = setupChainScenario(
