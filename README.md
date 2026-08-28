@@ -40,15 +40,24 @@
 
 The model comes to your cursor, both ways. **Cues** react to what you've already written and surface a fix or a sharper line inline, unprompted. **Blanks** act on demand: end a line with `_` and the model fills in the rest. No chat window, no copy-paste, no context switch.
 
-<!-- Slot 1, the hero. One span asked four times, growing; then a fresh
-     line the runtime WIPES rather than fills, because the buffer holds
-     nothing but the question. Cut from opencues-web's data-live engine
-     (artifact-kit/films/readme-hero-live.py) - a bare terminal block, no
-     catalog wrapper, not a framed composition, so it sits on whichever
-     ground GitHub renders the README in. film27 in medium-film.html tells
-     the same story with theme-cycling across every host, for the site's
-     own films catalog; this is the title-free cut of it for here. -->
-<img width="100%" alt="A brief written, grown three times, translated - and an ffmpeg command on a fresh line" src="assets/readme-1-hero.webp">
+<!-- Slot 1, the hero. ONE span asked four times - a brief written, rewritten
+     in place, grown, then translated - and every answer walkable back through
+     `_`. Then a fresh line the runtime WIPES rather than fills, because the
+     buffer holds nothing but the question.
+
+     Every answer is the product's own, captured through the runtime's own
+     fused transform-blank prompt at the product's settings (cerebras
+     gemma-4-31b, temperature 0, seed 42) and pinned by a capture file, so
+     the film fails its gate if the values ever stop being what the product
+     says: opencues-web `artifact-kit/layouts/solo/captures/`.
+
+     Cut from two `layouts/solo` configs joined at the step level
+     (`solo/join-readme-hero.py`), not hand-authored: a bare terminal block
+     on transparency, no catalog wrapper and no frame, so it sits on
+     whichever ground GitHub renders the README in. The earlier
+     `films/readme-hero-live.py` cut of this is deprecated - it hand-wrote
+     its states, which is the one thing that system exists to prevent. -->
+<img width="100%" alt="One prompt improved, rewritten as a senior engineer would, grown with a security paragraph, translated to Japanese - then an ffmpeg command answered on a fresh line" src="assets/readme-1-hero.webp">
 
 OpenCues is platform, model, and provider agnostic, engineered from the ground up to enable native inline AI.
 
