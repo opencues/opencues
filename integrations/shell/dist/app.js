@@ -467,6 +467,7 @@ function startOpenCues(opts) {
       const i = injMarkIndex(opts.textarea.plainText);
       opts.textarea.cursorOffset = i !== -1 && offset > i - 1 ? offset + 2 : offset;
     },
+    markRuntimeWrite: (text) => sourceReclassifier.markRuntimeWrite(text),
     pushText: (text, cursor) => {
       sourceReclassifier.markRuntimeWrite(text);
       opts.textarea.setText(text);

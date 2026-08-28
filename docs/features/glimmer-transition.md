@@ -77,7 +77,7 @@ Both modes give the same guarantees:
 | Claude Code | animates (render-only) |
 | Gemini CLI | animates (render-only) |
 | OpenCode | animates (real-write) — live-verified via the agentic test harness |
-| shell | wired identically to OpenCode (same OpenTUI write path); not yet live-launched in this environment due to an unrelated pre-existing build issue |
+| shell | animates (real-write) — live-verified via the agentic test harness (`glimmer: start` firing correctly, including picking up a hot-reloaded duration change mid-session) |
 | chrome | wired, but **unverified** — chrome's write path is empirically fragile per its own integration docs (`integrations/chrome/CLAUDE.md` § "The biggest issue: writing into managed contenteditables"); needs the real-browser e2e suite + manual multi-site check before this row can say "animates" |
 
 Error substitutes (`[err] …` fills, missing-key fallbacks) never

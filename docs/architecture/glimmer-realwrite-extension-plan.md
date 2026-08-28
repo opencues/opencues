@@ -1,17 +1,20 @@
 # Glimmer real-write extension — plan + per-host side effects
 
-✅ **IMPLEMENTED for OpenCode and shell; wired but UNVERIFIED for chrome.**
-`GlimmerRender` now supports both modes (`GlimmerRenderOptions.realWrite`) —
-render-only (Claude Code, Gemini CLI, unchanged) and real-write, which
-does exactly what this doc originally proposed: real per-tick `setText`
-calls marked through the host's source-reclassifier. OpenCode is
-**live-verified** end-to-end via the agentic test harness (real scramble
-frames observed in a running session's setText trace, settling to the
-correct final text). Shell is wired identically (same OpenTUI write
-path, same unit test coverage) but wasn't live-launched in this pass —
-a pre-existing, unrelated Babel build issue blocked `bun run bundle`
-for `integrations/shell`. Chrome is wired (the plumbing below is
-correct) but **genuinely unverified**: its write path is documented as
+✅ **IMPLEMENTED and LIVE-VERIFIED for OpenCode and shell; wired but
+UNVERIFIED for chrome.** `GlimmerRender` now supports both modes
+(`GlimmerRenderOptions.realWrite`) — render-only (Claude Code, Gemini
+CLI, unchanged) and real-write, which does exactly what this doc
+originally proposed: real per-tick `setText` calls marked through the
+host's source-reclassifier. Both OpenCode and shell are confirmed via
+the agentic test harness: real scramble frames observed in OpenCode's
+setText trace, and `glimmer: start` firing (with correctly
+hot-reloaded parameters) in a live shell session. Shell's own build was
+blocked at first by an unrelated, pre-existing monorepo-wide Babel
+version conflict (root `package.json`'s `pnpm.overrides` for
+`@babel/core` had an unbounded upper range that picked up the new
+Babel 8 major release) — fixed alongside this work since it blocked
+verification entirely. Chrome is wired (the plumbing below is correct)
+but **genuinely unverified**: its write path is documented as
 empirically fragile in `integrations/chrome/CLAUDE.md` § "The biggest
 issue: writing into managed contenteditables", and this pass had no
 live Chrome browser to test against. Don't treat chrome as done until
@@ -301,11 +304,23 @@ never set it.
    produce any observable flicker in this pass.
 2. ✅ **shell** — wired identically to OpenCode (`adapters/shell/v1/boot.ts`
    + `integrations/shell/src/bootstrap.ts`'s `markRuntimeWrite`), same
-   unit test coverage. NOT live-launched — `bun run bundle` failed on a
-   pre-existing, unrelated Babel version conflict
-   (`integrations/shell/src/app.tsx` — Babel 8.0.1 loaded where the
-   toolchain expects ^7.0.0-0) that predates this work. Live-verify once
-   that's resolved.
+   unit test coverage. **Live-verified.** The blocking Babel conflict
+   (root cause: `pnpm.overrides` in the root `package.json` pinned
+   `"@babel/core": ">=7.29.6"` — an unbounded range that silently picked
+   up the new Babel 8.0.1 major release and broke `babel-preset-solid`,
+   which only supports Babel 7; fixed to `">=7.29.6 <8.0.0"`) was fixed
+   and `bun run bundle` now succeeds. `glimmer: start (len=…, ms=…)`
+   confirmed firing in a live headless session, including picking up a
+   hot-reloaded `glimmer-transition-ms` change mid-session (300 → 900,
+   reflected in the very next `glimmer: start` log line). Could not
+   capture an intermediate scrambled frame the way OpenCode's session
+   did — `CursorStateExport`'s 100ms debounce is slower than glimmer's
+   70ms frame cadence, so that diagnostic file structurally only ever
+   shows the pre- and post-animation state, never a mid-flight frame,
+   regardless of whether the mechanism is working. Not a gap in glimmer;
+   a gap in that one diagnostic tool. Confidence in shell is otherwise
+   as high as OpenCode's: same class, same config, same confirmed
+   `.start()` firing, same 28/28 unit tests.
 3. ⚠️ **Chrome** — wired (`adapters/chrome/v1/boot.ts` +
    `integrations/chrome/src/opencues-bootstrap.ts`'s `markRuntimeWrite`,
    reusing the same `diffWriteText` single-segment splice path every
