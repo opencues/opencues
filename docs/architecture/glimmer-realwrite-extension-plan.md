@@ -1,16 +1,28 @@
 # Glimmer real-write extension — plan + per-host side effects
 
-⚠️ **PLAN DOCUMENT, NOT YET IMPLEMENTED.** Glimmer today (see
-[`docs/features/glimmer-transition.md`](../features/glimmer-transition.md))
-is render-only: it paints a scramble effect via `RenderDirectives.textOverride`
-and never touches the real buffer. That works on Claude Code and Gemini CLI
-(the only two renderers that currently consume `textOverride`) and is a
-structural no-op on Chrome / OpenCode / shell, whose renderers don't read
-that field. This doc traces the *other* mechanism already proven in this
-codebase — real per-tick `setText` writes, protected by the source
-reclassifier — and lays out what porting glimmer to it would take on every
-host. Read this before touching `glimmer-render.ts` or any host's
-animation-tick write path.
+✅ **IMPLEMENTED for OpenCode and shell; wired but UNVERIFIED for chrome.**
+`GlimmerRender` now supports both modes (`GlimmerRenderOptions.realWrite`) —
+render-only (Claude Code, Gemini CLI, unchanged) and real-write, which
+does exactly what this doc originally proposed: real per-tick `setText`
+calls marked through the host's source-reclassifier. OpenCode is
+**live-verified** end-to-end via the agentic test harness (real scramble
+frames observed in a running session's setText trace, settling to the
+correct final text). Shell is wired identically (same OpenTUI write
+path, same unit test coverage) but wasn't live-launched in this pass —
+a pre-existing, unrelated Babel build issue blocked `bun run bundle`
+for `integrations/shell`. Chrome is wired (the plumbing below is
+correct) but **genuinely unverified**: its write path is documented as
+empirically fragile in `integrations/chrome/CLAUDE.md` § "The biggest
+issue: writing into managed contenteditables", and this pass had no
+live Chrome browser to test against. Don't treat chrome as done until
+the e2e suite (`npm run build && npm run test:e2e:chrome`) and a manual
+multi-site check (the Verified-Working-Sites matrix in that doc) both
+pass with glimmer active.
+This doc's original framing (below, unedited) traces the mechanism —
+real per-tick `setText` writes, protected by the source reclassifier —
+and the per-host side effects each one inherits. Still worth reading
+before touching `glimmer-render.ts` or any host's animation-tick write
+path; it's no longer a *plan*, it's *how it works*.
 
 ---
 
@@ -265,28 +277,59 @@ reclassifier bug was first observed:
    exactly what the issue #348 postmortem also assumed before it happened.
    Worth a mutation-style test per host, not just a confidence argument.
 
-## Suggested rollout order
+## Rollout status
 
-Cheapest-to-riskiest, based on the side effects traced above:
+Correction to the original plan below: Claude Code and Gemini CLI were
+never real-write targets — they already animate correctly via
+render-only mode, and converting them would be a pointless regression
+(render-only has zero buffer-touch risk; there's no reason to trade
+that away). The real-write mode is opt-in per host via
+`BuildSharedRuntimeOptions.glimmerRealWrite` specifically so CC/Gemini
+never set it.
 
-1. **OpenCode / shell** — near-identical, already-proven `markRuntimeWrite`
-   + extmark-rebuild shape from blank-loading; the main open question is
-   whether the extmark wipe-and-rebuild is imperceptible at glimmer's 70ms
-   cadence (needs a scenario test, not a guess).
-2. **Claude Code** — simplest write path of the five (no pull-model
-   inversion, no extmark side effect, no rich-text-editor fighting); mainly
-   needs the AgentRewrite-debounce decision from "Open risks" #1 resolved
-   first, since CC is also AgentRewrite's primary host.
-3. **Gemini CLI** — mechanically fine but requires threading every
-   animation tick through the pull-model's `consumePendingOpenCues` path
-   rather than a direct write, which is more invasive to wire correctly.
-4. **Chrome** — last, and by far the largest lift: needs per-editor-type
-   write strategies proven safe at 70ms cadence against Lexical/Quill/
-   ProseMirror's own `MutationObserver` reconcilers, plus an extension of
-   `reclassifier-poison.e2e.test.ts` before shipping.
+1. ✅ **OpenCode** — done, live-verified. `GlimmerRenderOptions.realWrite`
+   implemented in `glimmer-render.ts` (28 unit tests, including the
+   settle-restore, fast-re-summon, and self-cancel-on-edit cases the
+   render-only path never had to handle). Wired via
+   `adapters/oc/v1.14/boot.ts` → `BuildSharedRuntimeOptions.glimmerRealWrite`
+   → `integrations/opencode/patches/opencuesBootstrap.ts`'s
+   `markRuntimeWrite` field. Confirmed live via the agentic harness: real
+   `setText` trace showing blink → scramble → settle, e.g. `"capital of
+   france _"` → `"                     "` → `"^/cnc3 c?pit6l: ParIs"` →
+   `"France capital: Paris"`. The extmark wipe-and-rebuild at 70ms
+   cadence (the one open question from the original plan) did not
+   produce any observable flicker in this pass.
+2. ✅ **shell** — wired identically to OpenCode (`adapters/shell/v1/boot.ts`
+   + `integrations/shell/src/bootstrap.ts`'s `markRuntimeWrite`), same
+   unit test coverage. NOT live-launched — `bun run bundle` failed on a
+   pre-existing, unrelated Babel version conflict
+   (`integrations/shell/src/app.tsx` — Babel 8.0.1 loaded where the
+   toolchain expects ^7.0.0-0) that predates this work. Live-verify once
+   that's resolved.
+3. ⚠️ **Chrome** — wired (`adapters/chrome/v1/boot.ts` +
+   `integrations/chrome/src/opencues-bootstrap.ts`'s `markRuntimeWrite`,
+   reusing the same `diffWriteText` single-segment splice path every
+   other chrome write already goes through), but **UNVERIFIED**. This is
+   the one that actually needs the full treatment the original plan
+   called out: chrome's write path is documented as empirically fragile
+   (`integrations/chrome/CLAUDE.md` § "The biggest issue"), and glimmer's
+   70ms cadence hammers it far more than any existing caller (cycling is
+   per-keystroke, transform-blank is once-per-substitution). Before this
+   can be called done:
+   - Run `npm run build && npm run test:e2e:chrome`.
+   - Manually re-verify the Verified-Working-Sites matrix (Gmail, Reddit/
+     Lexical, Twitter/Draft.js, LinkedIn/Quill, ChatGPT+claude.ai+Luma/
+     ProseMirror) with glimmer active — specifically watching for
+     MutationObserver reverts on Quill/Lexical/PM, since those engines
+     fight external DOM mutations and glimmer writes far more frequently
+     than the existing single-shot substitution paths that were tuned
+     against.
+   - Extend `reclassifier-poison.e2e.test.ts` with a glimmer-specific
+     case per this doc's "Open risks" #4.
 
-Each stage should ship with a `cycling.scenarios.test.ts`-style multi-step
-journey test (per the project's testing convention — the SCENARIO that
-would catch a regression, not just a unit-level call into `write()`), and
-Chrome specifically needs the mutation-verified e2e treatment given its
-existing reclassifier-poison history.
+Each stage should also get a `cycling.scenarios.test.ts`-style
+multi-step journey test (the project's testing convention — the
+SCENARIO that would catch a regression, not just a unit-level call into
+`_writeFrame()`) before being considered fully done — the unit tests in
+`glimmer-render.test.ts` cover the module in isolation, not a live
+multi-module journey.

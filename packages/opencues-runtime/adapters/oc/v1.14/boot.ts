@@ -201,6 +201,10 @@ export function boot(host: HostInfo): BootResult {
   const shared = buildSharedRuntime(adapter, {
     log, configSearchPaths, settingsFile,
     getApiKeys: () => apiKeys,
+    // OpenTUI's extmark renderer doesn't consume RenderDirectives.textOverride
+    // — switch glimmer to real-write mode so it actually paints here. See
+    // docs/architecture/glimmer-realwrite-extension-plan.md.
+    glimmerRealWrite: host.markRuntimeWrite ? { markRuntimeWrite: host.markRuntimeWrite } : undefined,
   });
   configLoaderRef = shared.configLoader; // wires isDebugEnabled to OPENCUES.md
 

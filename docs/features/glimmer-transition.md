@@ -39,38 +39,49 @@ For transform-blank's whole-buffer rewrites, only the **changed
 region** glimmers — a prefix/suffix diff of what you saw against what
 landed keeps every untouched word rock-steady.
 
-## Display-only, by construction
+## Two delivery modes
 
-The buffer commits **instantly**, exactly as before this feature —
-the animation lives entirely in the render pipeline
-(`RenderDirectives.textOverride` frames driven by `forceRender()`
-kicks; never `setText`). Consequences you can rely on:
+**Render-only** (Claude Code, Gemini CLI): the buffer commits
+**instantly**, exactly as before this feature — the animation lives
+entirely in the render pipeline (`RenderDirectives.textOverride`
+frames driven by `forceRender()` kicks; never `setText`).
 
-- Submitting mid-animation submits the **final** text — the buffer
-  never contains a scrambled frame.
+**Real-write** (OpenCode, shell, chrome — hosts whose renderer never
+consumed `textOverride`): every frame is committed via a real
+`adapter.setText` call, marked through the host's own
+source-reclassifier so it's classified `'runtime'` — the same
+mechanism `blank-loading.ts`'s per-tick spinner writes already use.
+Same scramble/blink/splice logic underneath; the buffer genuinely
+holds the scrambled text for the ~440ms (default) transition window
+before settling on the clean final text. See
+[`docs/architecture/glimmer-realwrite-extension-plan.md`](../architecture/glimmer-realwrite-extension-plan.md)
+for the full design + per-host side effects.
+
+Both modes give the same guarantees:
+
+- Submitting mid-animation submits the **final** text — real-write
+  mode explicitly restores the clean final text on cancel (a fast
+  re-summon, dispose, or the transition settling), so there's no
+  window where a scrambled frame could be submitted.
 - Editing mid-animation wins instantly: the moment the landed text is
   no longer verbatim in the buffer, the transition self-cancels.
-- No background machinery notices the frames: no resolver re-dispatch,
-  no AgentRewrite debounce reset, no config hot-reload churn.
+- No background machinery mistakes the frames for user input: no
+  resolver re-dispatch, no AgentRewrite debounce reset, no config
+  hot-reload churn — real-write mode's reclassifier marking is what
+  extends this guarantee to hosts that actually touch the buffer.
 
 ## Host support
 
 | Host | Behaviour |
 |---|---|
-| Claude Code | animates |
-| Gemini CLI | animates |
-| OpenCode / shell / chrome | instant swap (their renderers don't paint `textOverride` yet; wiring is in place, so a renderer pickup needs no boot change) |
+| Claude Code | animates (render-only) |
+| Gemini CLI | animates (render-only) |
+| OpenCode | animates (real-write) — live-verified via the agentic test harness |
+| shell | wired identically to OpenCode (same OpenTUI write path); not yet live-launched in this environment due to an unrelated pre-existing build issue |
+| chrome | wired, but **unverified** — chrome's write path is empirically fragile per its own integration docs (`integrations/chrome/CLAUDE.md` § "The biggest issue: writing into managed contenteditables"); needs the real-browser e2e suite + manual multi-site check before this row can say "animates" |
 
 Error substitutes (`[err] …` fills, missing-key fallbacks) never
 animate — feedback shouldn't get an arrival flourish.
-
-⚠️ **Extending this to OpenCode/shell/chrome** would mean switching from
-render-only `textOverride` to real per-frame `setText` writes (the model
-`blank-loading` already proves works) — a materially different design with
-real per-host side effects and open risks (AgentRewrite debounce
-interaction, editor-reconciler fighting on Chrome). See
-[`docs/architecture/glimmer-realwrite-extension-plan.md`](../architecture/glimmer-realwrite-extension-plan.md)
-before starting that work.
 
 Implementation: `packages/opencues-runtime/src/modules/glimmer-render.ts`.
 Runtime-only knob — not part of the open standard.

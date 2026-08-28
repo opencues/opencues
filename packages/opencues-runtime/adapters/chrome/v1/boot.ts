@@ -372,6 +372,11 @@ export function boot(host: HostInfo): BootResult {
     // NodeHttpAdapter (node:https) is stubbed in the browser bundle, so the
     // weaver needs the host's adapter explicitly (mirrors the Resolver below).
     httpAdapter: host.httpAdapter as import('@opencues/core').HttpAdapterShape | undefined,
+    // The CSS Custom Highlight API can't change WHICH glyphs are shown,
+    // only their style — switch glimmer to real-write mode so it
+    // actually paints here. See
+    // docs/architecture/glimmer-realwrite-extension-plan.md.
+    glimmerRealWrite: host.markRuntimeWrite ? { markRuntimeWrite: host.markRuntimeWrite } : undefined,
   });
   configLoaderRef = shared.configLoader;
 
@@ -487,9 +492,10 @@ export function boot(host: HostInfo): BootResult {
     // Final two fields are inline because they're host-specific and
     // never change after boot.
     const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, Object.assign(resolverOpts, {
-      // Glimmer transition — chrome's CSS-highlight renderer doesn't paint
-      // textOverride yet, so this is currently a structural no-op there;
-      // wired anyway so a future renderer pickup needs no boot change.
+      // Glimmer transition — real-write mode (see the buildSharedRuntime
+      // call above): the CSS Custom Highlight API can only restyle
+      // existing glyphs, not substitute them, so this animates via real
+      // adapter.setText calls here rather than a painted textOverride.
       glimmer: shared.glimmer,
       // SW-routed GET for contradiction world-data (bank holidays, weather) —
       // page CSP blocks a content-script one. Absent → provider uses global fetch.

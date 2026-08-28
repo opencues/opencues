@@ -334,6 +334,11 @@ export function startOpenCues(opts: {
       const after = opts.promptAccess.cursor()
       trace("setCursorOffset:out", { cursorAfter: after, accepted: after === offset })
     },
+    // Threaded into BuildSharedRuntimeOptions.glimmerRealWrite (see
+    // boot.ts) so glimmer's real-write mode marks its own frames through
+    // the SAME reclassifier setText/pushText already use above — one
+    // instance, no drift between glimmer's marking and everything else's.
+    markRuntimeWrite: (text) => sourceReclassifier.markRuntimeWrite(text),
     // BlankFill needs pushText to deposit async script results back into
     // the prompt. Same plumbing as setText + cursor reposition.
     pushText: (text: string, cursor?: number) => {

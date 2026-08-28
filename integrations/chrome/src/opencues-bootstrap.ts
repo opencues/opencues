@@ -2822,6 +2822,15 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
       // getCursorOffset), so it's always meaningful.
       if (cursor !== undefined && !_diffPreservedCursor) reapplyCursor(cursor);
     },
+    // Threaded into BuildSharedRuntimeOptions.glimmerRealWrite (see
+    // boot.ts) so glimmer's real-write mode marks its own frames through
+    // the SAME reclassifier diffWriteText already uses (see the comment
+    // on pushText above — "diffWriteText already calls
+    // sourceReclassifier.markRuntimeWrite"). Glimmer doesn't call
+    // diffWriteText directly, so it needs its own explicit mark; the
+    // reclassifier tolerates the harmless double-mark on paths that DO
+    // route through diffWriteText.
+    markRuntimeWrite: (text) => sourceReclassifier.markRuntimeWrite(text),
     forceRender: () => {
       runtimeRender();
     },

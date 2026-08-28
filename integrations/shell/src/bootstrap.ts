@@ -402,6 +402,10 @@ export function startOpenCues(opts: TerminalBootOpts): BootResult {
       const i = injMarkIndex(opts.textarea.plainText);
       opts.textarea.cursorOffset = (i !== -1 && offset > i - 1) ? offset + 2 : offset;
     },
+    // Threaded into BuildSharedRuntimeOptions.glimmerRealWrite (see
+    // boot.ts) so glimmer's real-write mode marks its own frames through
+    // the SAME reclassifier setText/pushText already use above.
+    markRuntimeWrite: (text) => sourceReclassifier.markRuntimeWrite(text),
     pushText: (text, cursor) => {
       sourceReclassifier.markRuntimeWrite(text);
       opts.textarea.setText(text);

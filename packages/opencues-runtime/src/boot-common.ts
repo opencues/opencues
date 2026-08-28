@@ -601,6 +601,19 @@ export interface BuildSharedRuntimeOptions {
    *  weaver lazily falls back to NodeHttpAdapter. When the feature is off
    *  (default) this is never consulted. */
   readonly httpAdapter?: HttpAdapterShape;
+  /**
+   * Switches glimmer to real-write mode for hosts whose renderer doesn't
+   * consume `RenderDirectives.textOverride` (OpenCode, shell, chrome
+   * today — Gemini CLI DOES consume it and must NOT set this, or its
+   * already-working render-only animation would start writing the
+   * buffer instead). Every frame is committed via `adapter.setText`,
+   * marked through the SAME source-reclassifier instance the host's own
+   * `setText`/`pushText` wrapper uses — pass its `markRuntimeWrite`
+   * method directly. See `GlimmerRenderOptions.realWrite` and
+   * docs/architecture/glimmer-realwrite-extension-plan.md for the full
+   * design + per-host side effects. Omit to keep render-only (default —
+   * matches every band's behavior before this option existed). */
+  readonly glimmerRealWrite?: { markRuntimeWrite: (text: string) => void };
 }
 
 /**
@@ -1771,23 +1784,27 @@ export function buildSharedRuntime(
   const blankWeaver: BlankWeaver | null = getApiKeys
     ? buildBlankWeaver(configLoader, getApiKeys, opts.httpAdapter, (lvl, msg) => log(lvl, msg))
     : null;
-  // Glimmer transition — display-only scramble-settle when a substitution
-  // LANDS (the loading animator above covers the in-flight phase; this
-  // covers the arrival). Registered LAST among render handlers so its
-  // whole-string textOverride is the frame's final word while it runs.
-  // Hosts that don't paint textOverride (opencode/shell extmarks, chrome
-  // CSS highlights) degrade to the instant swap — buffer is already final.
+  // Glimmer transition — scramble-settle when a substitution LANDS (the
+  // loading animator above covers the in-flight phase; this covers the
+  // arrival). Two modes: render-only (Gemini CLI — registered LAST among
+  // render handlers so its whole-string textOverride is the frame's
+  // final word while it runs) or real-write (opencode/shell/chrome —
+  // `opts.glimmerRealWrite` set), for hosts whose renderer doesn't
+  // consume textOverride. See GlimmerRenderOptions.realWrite.
   const glimmer = new GlimmerRender({
     adapter,
     durationMs: () => parseGlimmerTransitionMs(
       configLoader.opencuesState.settings.get('glimmer-transition-ms'),
     ),
     log: msg => log('debug', msg),
+    realWrite: opts.glimmerRealWrite,
   });
-  adapter.onRender((ctx) => {
-    const override = glimmer.getTextOverride(ctx.text);
-    return override !== null ? { textOverride: override } : null;
-  });
+  if (!opts.glimmerRealWrite) {
+    adapter.onRender((ctx) => {
+      const override = glimmer.getTextOverride(ctx.text);
+      return override !== null ? { textOverride: override } : null;
+    });
+  }
 
   const blankFill = new BlankFill(
     adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading,

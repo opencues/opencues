@@ -377,6 +377,16 @@ export interface CommonHostInfo {
   setText(text: string): void;
   setCursorOffset(offset: number): void;
   forceRender(): void;
+  /**
+   * Stashes `text` in the host's own source-reclassifier so a subsequent
+   * matching onTextChange event is classified 'runtime' — the SAME
+   * reclassifier instance `setText`/`pushText` above already use
+   * internally on most hosts (passing it here is then a harmless
+   * redundant mark, not a bug). `boot()` threads this into
+   * `BuildSharedRuntimeOptions.glimmerRealWrite` to switch glimmer to
+   * real-write mode; hosts that omit it keep glimmer render-only. See
+   * docs/architecture/glimmer-realwrite-extension-plan.md. */
+  markRuntimeWrite?(text: string): void;
   readFile?(path: string): Promise<string | null>;
   readDir?(path: string): Promise<readonly DirEntry[] | null>;
   writeFile?(path: string, content: string): Promise<void>;
