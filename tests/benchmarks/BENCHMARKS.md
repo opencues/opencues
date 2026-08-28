@@ -175,6 +175,79 @@ and `OPENCUES_BENCH_PROVIDER=deepseek-flash` for the router-driven suites.
 
 **Source:** [`tests/results/opencode-zen-free/`](../results/opencode-zen-free/). 30-case slice of the canonical 137-case fluid-blank suite (`--limit 30`), `--parallel 1`, `OPENCUES_OPENCODE_ZEN_DELAY_MS=1500`. Free models are **blank-only**: the runtime refuses `llm-provider: free` at startup because cues + auditors run on prose automatically and the free-tier ToS allows training on inputs. Pool ordering in `OPENCODE_ZEN_FREE_POOL` (`packages/opencues-core/src/llm-provider.ts`) is accuracy-desc; the runtime walks it on transient failure and 30s-cools-down failing models. Re-bench when the live `/v1/models` set changes.
 
+### Qwen 3.8 27B on Groq — spot-check (2026-08-28)
+
+> ⚠️ **NOT MERGE-READY AS A COMPARISON.** transform-blank ran a 38-case
+> subset, not the full 487 every other row in the matrix above ran. **Run
+> the full suite (`bash tests/benchmarks/transform-blank/run-qwen38.sh`
+> against the full `CASES`, not `--only-file`) before treating this
+> model's accuracy as comparable to the other rows, before citing it
+> externally, or before using it to justify any production routing
+> change.** The 89.5% here is directionally useful, not a verified
+> number — see "Not yet done" below for the full list of what's
+> outstanding.
+
+`qwen/qwen3.8-27b` is a new Groq **preview**-tier model (not yet in
+`llm-provider.ts`'s `PROVIDERS`/auto-route — bench-only today via
+`tests/benchmarks/{fluid-blank,transform-blank}/groq-qwen38.ts` +
+`OPENCUES_GROQ_MODEL` / `OPENCUES_BENCH_PROVIDER=groq-qwen38`). Not yet
+compared apples-to-apples against the matrix above: transform-blank ran a
+**38-case representative subset** (2 cases × 19 categories), not the full
+487, and both runs went serially (`--parallel 1`).
+
+| Pipeline | Cases | Accuracy | Notes |
+|---|---|---|---|
+| fluid-blank (answer, 2-pass) | 137/137 | **91.2%** (125/137) | Fails were mostly the judge marking "no answer" on ambiguous cases (Richter-scale max, largest desert), not garbled output. |
+| transform-blank (fused) | 38-case subset | **89.5%** (34/38) | Fails were judgment calls, not garbage: wrong verb on a linked-concept swap ("raised his staff" vs "drew his wand"), an under-applied tone shift, and different-but-plausible emoji picks. |
+
+**Why parallel=1 and a subset, not the standard `--parallel 8` / full 487:**
+this preview tier enforces an org-wide **8000 TPM** cap (confirmed live —
+`Rate limit reached... Limit 8000`), a tiny fraction of the other providers'
+quotas in this doc. transform-blank's `FUSED_SYSTEM` alone is ~3.6k tokens,
+so a single call there can consume nearly half the per-minute budget; at the
+standard concurrency the first burst exhausts the quota and every
+subsequent call reads as "no answer" — which is exactly what a first
+`--parallel 4` attempt showed (nearly 0% pass) before this was diagnosed as
+quota exhaustion, not a model-quality problem. Per-case latency in this
+sweep (16–65s, occasionally) is almost entirely quota backoff, **not** real
+inference speed — Groq's own listing puts this model at ~450 tok/s.
+`groq-qwen38.ts` parses Groq's `"try again in Xs"` hint and sleeps exactly
+that instead of guessing a blind exponential backoff, which is what made
+the fluid-blank run tractable serially.
+
+**Clean transform-blank latency** (`speed-probe-qwen38.ts` — same production
+`TransformBlankSource`, 4 representative cases, 65s gap before every call so
+the quota is always fresh and zero backoff contaminates the timing):
+
+```
+Case          maxThinking=on   maxThinking=off   delta
+literal-1     1085ms           1159ms            +74ms
+long-A1       1523ms            910ms            -613ms
+tone-1        1155ms            525ms            -630ms
+format-1       890ms            728ms             -162ms
+Avg:            1163ms            831ms
+```
+
+So the real speed is **fast** — sub-1.5s, competitive with the matrix's
+faster rows (cerebras 331–727ms, groq gpt-oss-120b 727ms, claude-haiku
+1125ms) — not the ~9s the two zero-wait samples in the contaminated
+`--parallel 1` run suggested (that was too small an n to trust, and it
+wasn't). `maxThinking: off` (`reasoning_effort: 'none'` for this
+Groq-unlisted model, vs production's default `'low'`) is **~29% faster on
+average** (831ms vs 1163ms) with no observed output difference on 3/4
+cases and the same imperfect answer on the 4th (`tone-1` under- or
+over-shoots the confident rewrite either way) — worth trying
+`max-thinking: off` in `OPENCUES.md` if this model ships to production.
+Re-run `bash tests/benchmarks/transform-blank/run-speed-probe.sh`
+(`--gap-ms N` to adjust spacing) to extend this to more cases.
+
+**Not yet done:** the full 487-case transform-blank suite (would take
+hours at this quota), a 5-provider-style multi-mode matrix, and measured
+(non-estimated) cost. Re-run `bash
+tests/benchmarks/transform-blank/run-qwen38.sh` /
+`tests/benchmarks/fluid-blank/run-qwen38.sh` once Groq raises this model
+out of preview tier (or grants a higher-TPM key) to get the full picture.
+
 ---
 
 ## Thinking-budget grid — which reasoning level fits which pipeline
