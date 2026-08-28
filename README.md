@@ -40,12 +40,15 @@
 
 The model comes to your cursor, both ways. **Cues** react to what you've already written and surface a fix or a sharper line inline, unprompted. **Blanks** act on demand: end a line with `_` and the model fills in the rest. No chat window, no copy-paste, no context switch.
 
-<!-- Slot 1, the hero. One span asked four times, `_` walking the whole
-     history back, then a fresh line the runtime WIPES rather than fills.
-     Cut from the block system in opencues-web (films/medium-film.html,
-     film27) - not a framed composition, just the terminal on transparency,
-     so it sits on whichever ground GitHub renders the README in. -->
-<img width="100%" alt="A brief written, grown twice, translated, then walked back - and an ffmpeg command on a fresh line" src="assets/readme-1-hero.webp">
+<!-- Slot 1, the hero. One span asked four times, growing; then a fresh
+     line the runtime WIPES rather than fills, because the buffer holds
+     nothing but the question. Cut from opencues-web's data-live engine
+     (artifact-kit/films/readme-hero-live.py) - a bare terminal block, no
+     catalog wrapper, not a framed composition, so it sits on whichever
+     ground GitHub renders the README in. film27 in medium-film.html tells
+     the same story with theme-cycling across every host, for the site's
+     own films catalog; this is the title-free cut of it for here. -->
+<img width="100%" alt="A brief written, grown three times, translated - and an ffmpeg command on a fresh line" src="assets/readme-1-hero.webp">
 
 OpenCues is platform, model, and provider agnostic, engineered from the ground up to enable native inline AI.
 
