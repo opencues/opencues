@@ -916,8 +916,15 @@ export class ConfigLoader {
    * stat every 5s — negligible.
    */
   subscribe(): void {
-    this._unsubText = this.adapter.onTextChange(() => {
-      void this.maybeReload();
+    // User-source only — mirrors BlankFill's `e.source !== 'user'` gate.
+    // This trigger is a proxy: "the user is typing in the host, so it's a
+    // cheap moment to also check whether OPENCUES.md changed on disk." A
+    // runtime write (a substitution landing, a loading-animation frame)
+    // has nothing to do with that question and shouldn't also spend a
+    // reload check — the background poll below is the real safety net
+    // for edits made with no user keystrokes at all, unaffected by this.
+    this._unsubText = this.adapter.onTextChange((e) => {
+      if (e.source === 'user') void this.maybeReload();
     });
     // Background poll. Skipped when (a) setInterval isn't available
     // (some test environments) OR (b) the option is explicitly

@@ -15,6 +15,10 @@ Until now a landed substitution just swapped: `capital of france _` became `Pari
 
 Paints on Claude Code and Gemini CLI today; OpenCode, shell, and chrome don't consume `textOverride` in their paint paths yet and keep the instant swap (the wiring is in place, so a renderer pickup needs no boot change). `off` reproduces pre-feature behaviour byte-for-byte. Runtime-only knob — no spec change.
 
+### Fixed — AgentRewrite's debounce and ConfigLoader's hot-reload check now ignore the runtime's own writes (`@opencues/runtime` 0.34.4 → 0.35.0)
+
+Found while scoping the glimmer entry above: only `BlankFill` actually gated its `onTextChange` handler on `e.source === 'user'`. `AgentRewrite.scheduleTick()` and `ConfigLoader.maybeReload()` fired on every text change regardless of source — so any runtime write (a landed substitution, a loading-animation frame) reset AgentRewrite's debounce timer and spent a config-reload check, neither of which the write had anything to do with. `docs/architecture/agent-task.md` § Cadence already documented the debounce as "user-source `onTextChange`" — the code just didn't gate on it. Both now mirror BlankFill's existing gate; the background reload poll (unaffected) remains the safety net for OPENCUES.md edits made with no keystrokes at all.
+
 ### Fixed — a note no longer quotes a whole paragraph when the script has no spaces (`@opencues/runtime` 0.34.3 → 0.34.4, `@opencues/chrome` 0.2.178 → 0.2.179, `@opencues/dsh` 0.2.13 → 0.2.14)
 
 A note that lists what `_` walks back to shortens each stop to its first two words, so a whole-sentence rewrite identifies itself without being printed twice. The shortening splits on whitespace — and Japanese, Chinese and Thai do not write spaces between words, so the entire answer came back as one "word", the two-word guard never fired, and the note quoted the paragraph.

@@ -278,7 +278,17 @@ export class AgentRewrite {
     if (this._started) return;
     this._started = true;
     const cadence = this.getCadenceMs();
-    this._unsubText = this.adapter.onTextChange(() => this.scheduleTick());
+    // User-source only — mirrors BlankFill's `e.source !== 'user'` gate.
+    // A runtime write (a landed substitution, a loading-animation frame,
+    // an in-progress glimmer-style animation tick) should never reset this
+    // debounce: it isn't the user pausing, and letting it reset the timer
+    // repeatedly pushes back a pending rewrite for as long as the runtime
+    // keeps writing. docs/architecture/agent-task.md § Cadence already
+    // documented this as "user-source `onTextChange`" — the code didn't
+    // actually gate on it until now.
+    this._unsubText = this.adapter.onTextChange((e) => {
+      if (e.source === 'user') this.scheduleTick();
+    });
     // Kick a first tick: the user may have armed without typing.
     this.scheduleTick();
     this._logFn(`AgentRewrite: started (event-driven, debounce=${cadence} ms)`);

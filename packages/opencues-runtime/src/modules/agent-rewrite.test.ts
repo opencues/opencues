@@ -12,7 +12,7 @@
  *
  * Each test drives `tick()` directly; we don't depend on the timer.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AgentRewrite, parseRewriteOutput } from './agent-rewrite';
 import { AgentTaskState } from '../state/agent-task';
 import { DynDefs } from '../state/dyn-defs';
@@ -1279,6 +1279,72 @@ describe('AgentRewrite — concurrency safety', () => {
     rewrite.start();         // idempotent
     rewrite.stop();
     rewrite.stop();          // idempotent
+  });
+});
+
+// Regression pin: agent-task.md § Cadence already documented
+// "user-source `onTextChange`" as the debounce trigger, but the code
+// didn't actually gate on `e.source` — every text change, including
+// the runtime's own writes (a landed substitution, a loading-animation
+// frame), reset the timer. Fixed alongside ConfigLoader's equivalent
+// gap; see docs/architecture/glimmer-realwrite-extension-plan.md for
+// the full trace of which modules do/don't respect the reclassifier.
+describe('AgentRewrite — debounce reset is user-source only', () => {
+  it('a runtime-sourced write does not reset the debounce timer', async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new MockAdapter({});
+      adapter.pushText('start here', 10);
+      const state = new AgentTaskState();
+      state.arm('fix typos');
+      const dynDefs = new DynDefs();
+      let calls = 0;
+      const rewrite = new AgentRewrite(adapter, dynDefs, state, {
+        endpoint: 'http://test', apiKey: 'x', defaultModel: 'm',
+        cadenceMs: 1000,
+        httpAdapter: { post: async () => { calls++; return llmResponse('REWRITTEN:\nstart here\nEND'); } },
+      });
+      rewrite.start(); // "kick" schedules a tick at T+1000ms
+      await vi.advanceTimersByTimeAsync(400);
+      expect(calls).toBe(0);
+      // A runtime write — e.g. a landed substitution, or (the motivating
+      // case) a glimmer-style animation tick — must NOT push the
+      // debounce back.
+      adapter.setText('start here [runtime frame]'); // source: 'runtime'
+      await vi.advanceTimersByTimeAsync(600); // total 1000ms since start()
+      expect(calls).toBe(1); // fired on the ORIGINAL schedule
+      rewrite.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a user-sourced write still resets the debounce timer (existing behaviour, unchanged)', async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new MockAdapter({});
+      adapter.pushText('start here', 10);
+      const state = new AgentTaskState();
+      state.arm('fix typos');
+      const dynDefs = new DynDefs();
+      let calls = 0;
+      const rewrite = new AgentRewrite(adapter, dynDefs, state, {
+        endpoint: 'http://test', apiKey: 'x', defaultModel: 'm',
+        cadenceMs: 1000,
+        httpAdapter: { post: async () => { calls++; return llmResponse('REWRITTEN:\nstart here\nEND'); } },
+      });
+      rewrite.start();
+      await vi.advanceTimersByTimeAsync(400);
+      expect(calls).toBe(0);
+      adapter.pushText('start here typed', 17); // source: 'user'
+      await vi.advanceTimersByTimeAsync(600); // 1000ms since start(), 600ms since the reset
+      expect(calls).toBe(0); // debounce was pushed back — not due yet
+      await vi.advanceTimersByTimeAsync(400); // 1000ms since the reset
+      expect(calls).toBe(1);
+      rewrite.stop();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

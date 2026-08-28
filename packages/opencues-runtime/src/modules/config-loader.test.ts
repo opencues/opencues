@@ -373,6 +373,32 @@ describe('ConfigLoader hot-reload', () => {
     expect(adapter.logs.length).toBeGreaterThan(initial);
   });
 
+  // Regression pin: this trigger is a proxy ("the user is typing, so it's
+  // a cheap moment to also check whether OPENCUES.md changed on disk") —
+  // a runtime write (a landed substitution, a loading-animation frame) has
+  // nothing to do with that question. Before this fix, `subscribe()` had
+  // no source gate at all, so every text change — including the runtime's
+  // own writes — spent a reload check. See
+  // docs/architecture/glimmer-realwrite-extension-plan.md.
+  it('subscribe: a runtime-sourced write does NOT trigger maybeReload', async () => {
+    const adapter = new MockAdapter({ files: { '/tips.json': '{"concepts":[]}' } });
+    const loader = new ConfigLoader(adapter, { reloadDebounceMs: 0 });
+    await loader.load();
+    loader.subscribe();
+    const initial = adapter.logs.length;
+    adapter.setText('runtime frame'); // source: 'runtime'
+    await new Promise(r => setImmediate(r));
+    await new Promise(r => setImmediate(r));
+    expect(adapter.logs.length).toBe(initial);
+    // The background poll is the safety net for edits made with no user
+    // keystrokes at all — unaffected by this gate. Confirm a subsequent
+    // real user keystroke still works (the gate isn't overbroad).
+    adapter.pushText('typed');
+    await new Promise(r => setImmediate(r));
+    await new Promise(r => setImmediate(r));
+    expect(adapter.logs.length).toBeGreaterThan(initial);
+  });
+
   it('applyOpenCuesScalar suppresses the next maybeReload (write-race guard)', async () => {
     // Regression guard: cycling a satellite calls applyOpenCuesScalar
     // (in-memory update) followed by an ASYNC blankInvoke set that
