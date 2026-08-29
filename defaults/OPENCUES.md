@@ -32,6 +32,17 @@ nav-keymap: auto
 # regardless. Non-reasoning providers (anthropic, gemini) ignore it.
 max-thinking: on
 
+# replace-parse — single-substring edits ("her name is Sarha fix the
+# spelling _") splice deterministically instead of whole-buffer merging.
+# A small detector call runs IN PARALLEL with transform-blank's fused
+# call (zero added latency, one extra small LLM call per imperative _);
+# only a detection whose command/target verify as verbatim buffer
+# substrings ever splices — text you didn't point at is structurally
+# untouchable. Anything else falls back to the fused rewrite unchanged.
+#   on  (default): parallel detector armed.
+#   off          : always the fused whole-buffer path (saves the call).
+replace-parse-mode: on
+
 # Forwards a low-fan-out, sanitized snapshot of the focused field
 # (label, placeholder, aria-*, input type, page title, page url
 # origin+path, meta description) to the fluid-blank LLM call ONLY,

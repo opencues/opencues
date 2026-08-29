@@ -164,7 +164,7 @@ Properties:
 | Source emits | Pick |
 |---|---|
 | A short fill the parser knows where to splice (BlankSource shape) | **Deterministic slot splice.** Wire through `blank-fill.ts`. |
-| An LLM-claimed span + a span-scoped rewrite | **Deterministic slot splice.** But ensure the span CANNOT exceed what the LLM saw as input — pass the LLM only the bounded target as input so the splice range is structurally safe. (TransformBlank's retired 3-pass APPLY worked this way; the splice path remains available for a future bounded-span source, but TransformBlank no longer uses it — it emits the whole buffer and merges.) |
+| An LLM-claimed span + a span-scoped rewrite | **Deterministic slot splice.** But ensure the span CANNOT exceed what the LLM saw as input — pass the LLM only the bounded target as input so the splice range is structurally safe. (TransformBlank's retired 3-pass APPLY worked this way. The live consumer of this path today is **replace-parse** (`replace-parse-mode`, Aug 2026): a parallel detector proposes target/command/value strings and `verifyReplaceDetect` verifies every one as a verbatim buffer substring BEFORE any geometry is derived — even stronger than the bounded-input rule, since the runtime, not the LLM, owns the splice range. TransformBlank's fused path still emits the whole buffer and merges.) |
 | The whole final buffer | **Three-way merge.** Set `metadata.pipelineMode = 'fused'` (or similar) so the resolver routes correctly. Do NOT emit `metadata.transformTarget` — its presence is the signal to take the splice path. |
 | A passive cue (no buffer change until the user cycles) | **No substitute.** Register a DynDef; cycling handles it. See [`spans-and-cycling.md`](spans-and-cycling.md). |
 

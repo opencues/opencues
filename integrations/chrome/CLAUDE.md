@@ -306,6 +306,48 @@ Don't reintroduce the version-poll. If a bug looks like "config edit
 not reaching tab", check the service worker logs for `native host
 port opened` + `bundle stored` — the bridge is up if both appear.
 
+### Port down but every install artefact checks out → chrome://restart (Aug 2026)
+
+**Chrome on Windows reads the `HKCU\...\NativeMessagingHosts` registry
+key at browser startup and caches that view for the life of the browser
+process.** If the host registration is (re)written while Chrome is
+running — a fresh `opencues install chrome-host`, a new extension ID,
+a fixed manifest — every subsequent `connectNative` attempt resolves
+against the stale cached snapshot and fails, no matter how correct the
+on-disk state is. The SW's 30s reconnect loop retries forever and never
+succeeds. **Reloading the extension does NOT help** (it restarts the
+service worker, not the browser process holding the cache). The fix is
+a full restart: `chrome://restart` in the address bar (keeps tabs).
+
+The debugging signature, from the Aug 2026 incident where this cost a
+full session (extension "not resolving", blanks stuck on the loading
+animation, toggle hidden in the popup):
+
+- `ps` shows **no host process**, and the popup self-check's
+  `chrome-host:` line (0.2.183+) says NOT connected — yet
+- the registry entry exists and points at the right manifest,
+- the manifest's `.bat` → `wsl.exe -d <distro> --shell-type login →
+  node host.cjs` chain **works perfectly when driven by hand**
+  (`cmd.exe /c C:\...\opencues\sync-host.bat` emits the framed config
+  + bundle JSON immediately), and
+- `/tmp/opencues.log` has **zero `[chrome]` lines** — the extension's
+  log relay routes through this very port and **silently drops when
+  it's down**, so the failure also blinds the log channel you'd use
+  to debug it. Don't read an empty chrome log as "nothing happening";
+  read it as "port down" and check the SW console instead.
+
+When every bullet matches: `chrome://restart`, then verify `native
+host port opened` + `bundle stored` in the SW console. If it STILL
+won't connect, compare the extension ID on the chrome://extensions
+card against the `allowed_origins` pin in the manifest — an unpacked
+extension's ID changes with its load path, and a mismatch produces the
+same signature (SW console says "Access to the specified native
+messaging host is forbidden").
+
+The install-host success print names the restart requirement
+(`bin/install.cjs:installHostWsl`); keep that print in sync with this
+section.
+
 Full spec: `docs/features/chrome-sync.md`. Per-platform manifest paths
 (macOS / Linux / Windows registry / WSL→Win) live in
 `integrations/chrome/bin/install.cjs`.

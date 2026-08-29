@@ -908,6 +908,14 @@ export class Resolver {
       // per-model reasoning ceiling (on) vs reduced level (off). Only
       // `off` changes anything â `on` reproduces the prior behaviour.
       maxThinking: (settings.get('max-thinking') ?? 'on') !== 'off',
+      // `replace-parse-mode` (default on — earned via the boundary
+      // bench round: 0 fill FPs + 0 transform-boundary under-
+      // application FPs on gemma; every failure mode degrades to the
+      // fused path byte-identically). When on, TransformBlank
+      // dispatches a parallel replace-detector; verified single-
+      // substring replacements take the deterministic bounded-splice
+      // path instead of the whole-buffer merge.
+      replaceParse: (settings.get('replace-parse-mode') ?? 'on') === 'on',
       // applyOpencuesScalar â ConfigIntentSource's side-effect callback.
       //
       // Does TWO things, matching the pair that satellite cycling
@@ -2372,15 +2380,39 @@ export class Resolver {
               spliceStart = Math.min(targetIdx, trigger.start);
               spliceEnd = Math.max(targetEnd, trigger.end);
               // Separator = anything between target and trigger that
-              // wasn't part of either. Preserve newlines; drop spaces
-              // (a space between target and trigger is just a word
-              // boundary, not user-intended structure).
+              // wasn't part of either. The TRIGGER is being consumed, so the
+              // whitespace that only ever separated the trigger from its
+              // neighbour goes with it; the whitespace on the TARGET's side
+              // is a word boundary in text that SURVIVES and must not be
+              // eaten. Newlines are structure and are preserved either way.
+              //
+              // Both edges used to be stripped, and the separator was always
+              // appended AFTER the rewrite. That is only correct when the gap
+              // is pure whitespace, which is the one shape the old 3-pass
+              // EXTRACT produced (its target was the whole non-trigger body,
+              // so target and trigger were always adjacent). replace-parse
+              // targets a SMALL substring, so a gap with words in it is now
+              // the common case, and both assumptions broke in it:
+              //   "her name is Sarha in the invite fix the spelling _"
+              //     → "her name is Sarahin the invite"   (boundary eaten)
+              //   "uppercase it _ the ticker is aapl"
+              //     → "AAPLthe ticker is"                (and re-ordered)
               const gapStart = Math.min(targetEnd, trigger.end);
               const gapEnd = Math.max(targetIdx, trigger.start);
-              const separator = gapStart < gapEnd
-                ? originalText.slice(gapStart, gapEnd).replace(/[ \t]+$/, '').replace(/^[ \t]+/, '')
-                : '';
-              rewriteWithSeparator = rewrittenText + separator;
+              const gap = gapStart < gapEnd ? originalText.slice(gapStart, gapEnd) : '';
+              const targetFirst = targetIdx < trigger.start;
+              // "Adjacent" means SPACES AND TABS ONLY. `.trim()` here would
+              // also match a gap of newlines, and a newline is the structure
+              // the four tests above exist to protect — it dropped every
+              // paragraph break in the buffer.
+              const separator = /^[ \t]*$/.test(gap)
+                ? ''                                        // adjacent: the gap WAS the boundary
+                : targetFirst
+                  ? gap.replace(/[ \t]+$/, '')              // its tail touched the trigger
+                  : gap.replace(/^[ \t]+/, '');             // its head touched the trigger
+              rewriteWithSeparator = targetFirst
+                ? rewrittenText + separator
+                : separator + rewrittenText;
             } else {
               // Trigger not located via instruction phrase. Conservative
               // fallback: splice from target onward, preserving leading
@@ -2435,7 +2467,11 @@ export class Resolver {
         // target as input â it can't produce content outside that span.
         // (TransformBlank's fused path does NOT set transformTarget â it
         // emits the whole buffer â so it always takes the merge path
-        // below; this branch remains for any future bounded-span source.)
+        // below. The live consumer of this branch is replace-parse
+        // (`replace-parse-mode`): TransformBlank's parallel detector
+        // emits transformTarget/transformInstruction after
+        // verifyReplaceDetect proved both are verbatim buffer
+        // substrings — see replace-detect.ts.)
         //
         // Fused / whole-buffer (transformTarget empty/undefined): the
         // LLM emitted the WHOLE final buffer in FULL_REWRITE. We diff

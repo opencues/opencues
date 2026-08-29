@@ -7,25 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Removed — glimmer's real-write machinery deleted (`@opencues/runtime` 0.37.0 → 0.38.0, `@opencues/chrome` 0.2.197 → 0.2.198)
+### Removed — glimmer's real-write machinery deleted (`@opencues/runtime` 0.37.0 → 0.38.0, `@opencues/chrome` 0.2.199 → 0.2.200, `@opencues/dsh` 0.2.16 → 0.2.17 — inline bundle regenerated)
 
 With the OpenTUI overlay mode live-verified on both hosts (entry below), the write-mode code is gone rather than dormant: `GlimmerRenderOptions.realWrite`, `_writeFrame`, the restore-on-cancel branch, `ActiveGlimmer.bufferedText`, `BuildSharedRuntimeOptions.glimmerRealWrite`, and the 9 write-mode tests. `locate()` simplifies to anchoring on `finalText` (the buffer is never written, so the landed text is always the anchor). `HostAdapter.markRuntimeWrite` stays — it's the general host contract for out-of-band buffer writers (blank-loading still uses the host-side reclassifier path), only its glimmer consumer died. `glimmer-realwrite-extension-plan.md` carries a superseded banner as the design record. Chrome band's dead `glimmerRealWrite: undefined` line removed (bundle bytes change → lockstep bump).
 
-### Changed — glimmer goes display-only on OpenCode + shell: textOverride frames painted as an overlay, the buffer never holds a scrambled frame (`@opencues/runtime` 0.36.2 → 0.37.0, `@opencues/shell` 0.2.21 → 0.2.22, `@opencues/opencode` 0.2.15 → 0.2.16)
+### Changed — glimmer goes display-only on OpenCode + shell: textOverride frames painted as an overlay, the buffer never holds a scrambled frame (`@opencues/runtime` 0.36.2 → 0.37.0, `@opencues/shell` 0.2.22 → 0.2.23, `@opencues/opencode` 0.2.16 → 0.2.17)
 
 Real-write mode is retired on both OpenTUI bands. The bands now boot glimmer render-only (the CC/Gemini branch — no new runtime concepts), the 1:1-length `textOverride` frames flow out through `collectRenderDirectives`, and each host bootstrap diffs the frame against the true text and floats the scrambled slice as an absolute overlay box over the textarea — the inline-note overlay pattern generalized (shell: `app.tsx` signal + box; OC: `opencuesGlimmerOverlay` signal + a `setup.sh`-injected box in the patched prompt). Overlay geometry is cursor-anchored (OpenTUI exposes no offset→visual API): single-logical-line, caret-on-line, unwrapped-line guards, else the overlay simply doesn't paint and the real final text shows — the same graceful give-up chrome's engine uses.
 
 What this deletes rather than manages: per-frame `setText` writes (~13/sec) with reclassifier marking, the per-frame extmark wipe/rebuild those writes forced, and the settle-restore races (submit/crash mid-frame). Pinned on both bands by a new render-only contract test (`boot.test.ts`: frames arrive as textOverride, `setText` is NEVER called, cancel stops the override); `BootResult.glimmer` exposed on both bands for tests/hosts. NOT yet live-verified on either host — the write-mode machinery in `glimmer-render.ts` stays until it is (see `docs/architecture/glimmer-opentui-overlay-plan.md` § sequencing).
 
-### Changed — `glimmer-transition-ms` default 300 → 900 (`@opencues/core` 0.55.1 → 0.55.2, `@opencues/runtime` 0.36.1 → 0.36.2, `@opencues/chrome` 0.2.192 → 0.2.193)
+### Changed — `glimmer-transition-ms` default 300 → 900 (`@opencues/core` 0.55.1 → 0.55.2, `@opencues/runtime` 0.36.1 → 0.36.2, `@opencues/chrome` 0.2.194 → 0.2.195)
 
 The full slow decode becomes the default everywhere the scalar is absent or unrecognised: `parseGlimmerTransitionMs` fallback, the registry menu order, the shipped `defaults/OPENCUES.md` template, and the feature doc. Existing user files with an explicit value are untouched. (Chrome-specific note: a stale bake-time config snapshot in `dist/configs/` can shadow a newer `~/.cues/OPENCUES.md` when the chrome-host isn't connected — re-running `opencues install chrome` or `opencues sync chrome` refreshes the bake; the live chrome-host push makes edits land without either.)
 
-### Added — `glimmer-transition-ms: 1500` (`@opencues/core` 0.55.0 → 0.55.1, `@opencues/runtime` 0.36.0 → 0.36.1, `@opencues/chrome` 0.2.184 → 0.2.185)
+### Added — `glimmer-transition-ms: 1500` (`@opencues/core` 0.55.0 → 0.55.1, `@opencues/runtime` 0.36.0 → 0.36.1, `@opencues/chrome` 0.2.188 → 0.2.189)
 
 A fourth duration for the scramble-settle transition: `1500` ("Extended — a long, deliberate decode", ~21 frames at the 70ms tick), alongside the existing `300`/`600`/`900`/`off`. One registry value + the `parseGlimmerTransitionMs` allow-list + the feature doc; every host picks it up through the shared scalar, no per-host wiring.
 
-### Added — glimmer returns to chrome as a host-owned CSS Highlight API animation (`@opencues/runtime` 0.35.3 → 0.36.0, `@opencues/chrome` 0.2.183 → 0.2.184)
+### Added — glimmer returns to chrome as a host-owned CSS Highlight API animation (`@opencues/runtime` 0.35.3 → 0.36.0, `@opencues/chrome` 0.2.187 → 0.2.188)
 
 The replacement for the real-write mode disabled in the entry below — a different mechanism, not a tuned retry. The scramble-settle transition on chrome is now played entirely by the host via the CSS Custom Highlight API (`integrations/chrome/src/highlight-glimmer.ts`): per-character `Range`s move between registered `Highlight` buckets whose rules displace glyphs (`text-shadow`), hide them (`color: transparent`), or decorate them. **The text DOM is never written** — managed editors (Lexical/ProseMirror/Quill/Draft.js) cannot see, revert, or record any of it; the undo stack is untouched; per-frame cost is O(animated span), never O(field). That is the structural property real-write lacked (its Gmail freeze was a cost-model problem, not a tuning problem).
 
@@ -33,7 +33,7 @@ Mechanism (developed + measured in `integrations/chrome/experiments/glimmer-high
 
 Runtime seam: `GlimmerRenderOptions.playHostAnimation` — a band that provides it delegates the whole animation and the runtime generates no frames (no timer, no writes, no `textOverride`); takes priority over both existing modes; every other band is unchanged byte-for-byte. Threaded as `BuildSharedRuntimeOptions.glimmerHostAnimation` → chrome band `HostInfo.playGlimmer` → the bootstrap's engine binding. Chrome-side safety contract: the animation is destroyed on any real text change (baseline compare, so a managed editor's late write-echo of the same text does NOT cancel it), on focus change, and on runtime cancel; normal `<input>`/`<textarea>` and browsers without the Highlight API get no animation (never a real-write fallback); targets inside shadow roots get the stylesheet adopted into their root. Pinned by 6 new unit tests on the delegation contract (`glimmer-render.test.ts`).
 
-### Fixed — glimmer's real-write mode froze Gmail tabs; disabled for chrome (`@opencues/runtime` 0.35.2 → 0.35.3, `@opencues/chrome` 0.2.182 → 0.2.183)
+### Fixed — glimmer's real-write mode froze Gmail tabs; disabled for chrome (`@opencues/runtime` 0.35.2 → 0.35.3, `@opencues/chrome` 0.2.186 → 0.2.187)
 
 Shipped earlier this cycle (see "the answer glimmers in" below) with chrome explicitly flagged as "wired but not yet verified against its documented empirically-fragile write path." That risk materialized: reported live minutes after the reclassifier-TTL fix below shipped, as the whole Gmail tab freezing. User's own diagnosis nailed it — "the blinker is fine, it's the glimmer" — separating it cleanly from `BlankLoadingAnimator` (the loading spinner, unaffected) and pointing at the glimmer scramble-settle animation specifically.
 
@@ -43,7 +43,7 @@ Fix: `glimmerRealWrite` is now hard-disabled for chrome (`adapters/chrome/v1/boo
 
 **The reclassifier TTL shortened by the entry below was reverted alongside it, out of caution** — not because it was independently confirmed guilty, but because shipping a second unverified guess while recovering from an incident is how incidents compound. With glimmer's write volume removed, 400ms may well have been fine on its own; that needs to be re-derived with real load-testing, not reasoned about under time pressure a second time. `tests/e2e/reclassifier-poison-ce.e2e.test.ts` is `test.skip`'d rather than deleted — it still accurately describes a real, live, currently-unfixed bug on chrome/Gmail (a bare `_` retry within 1.5s can still be silently swallowed there). Un-skip it once a properly load-tested fix lands.
 
-### Fixed — a bare `_` retry on Gmail (and any contenteditable) could be silently swallowed for up to 1.5s — TTL fix shipped, then reverted (see entry above) (`@opencues/runtime` 0.35.1 → 0.35.2, `@opencues/chrome` 0.2.181 → 0.2.182)
+### Fixed — a bare `_` retry on Gmail (and any contenteditable) could be silently swallowed for up to 1.5s — TTL fix shipped, then reverted (see entry above) (`@opencues/runtime` 0.35.1 → 0.35.2, `@opencues/chrome` 0.2.185 → 0.2.186)
 
 > **This fix was reverted the same day** (chrome no longer overrides the TTL — see the entry above). Left here for the record: the bug this describes is real and still unfixed on chrome; the fix described below correctly solved it in isolation but shipped alongside an unrelated, more severe regression that forced a rollback of both.
 
@@ -61,9 +61,9 @@ Reported live: "when I put down the `_` my cursor moves, then after it renders t
 
 Live-verified in shell via a temporary per-write trace: 7 consecutive spinner-frame writes across a 432ms resolve window all held `cursor=22` before and after `setCursorOffset`, where the unfixed code held `cursor=0`. Mutation-tested at the unit level too — both new `blank-loading.test.ts` cursor-preservation cases fail against the reverted source and pass with the fix. Confirmed on OpenCode as well (same shared module, same final landed-cursor position). The fix is host-agnostic (`getCursorOffset`/`setCursorOffset` are both required `HostAdapter` methods) so it costs nothing on a host whose `setText` doesn't reset cursor.
 
-**Chrome checked separately (`@opencues/chrome` 0.2.181, no version bump — test-only):** a new real-extension e2e test (`tests/e2e/blank-loading-cursor.e2e.test.ts`) drives a delayed fluid-blank fill through a live spinner and samples `selectionStart` throughout the resolve window — passes clean. Mutation-testing it turned up something worth recording: reverting this exact runtime fix and rebuilding, the chrome test **still passed**. Chrome's own `diffWriteText` (`opencues-bootstrap.ts`) already wraps every `setText` call — normal-input and contenteditable alike — with its own independent capture-before/restore-after of the cursor, regardless of the caller. So this OpenTUI-class bug structurally cannot reproduce on chrome's adapter layer, with or without today's fix; the new test is kept as an end-to-end pin of that observable contract (via chrome's own protection), not as evidence the runtime module's fix does anything there.
+**Chrome checked separately (`@opencues/chrome` 0.2.185, no version bump — test-only):** a new real-extension e2e test (`tests/e2e/blank-loading-cursor.e2e.test.ts`) drives a delayed fluid-blank fill through a live spinner and samples `selectionStart` throughout the resolve window — passes clean. Mutation-testing it turned up something worth recording: reverting this exact runtime fix and rebuilding, the chrome test **still passed**. Chrome's own `diffWriteText` (`opencues-bootstrap.ts`) already wraps every `setText` call — normal-input and contenteditable alike — with its own independent capture-before/restore-after of the cursor, regardless of the caller. So this OpenTUI-class bug structurally cannot reproduce on chrome's adapter layer, with or without today's fix; the new test is kept as an end-to-end pin of that observable contract (via chrome's own protection), not as evidence the runtime module's fix does anything there.
 
-### Added — the answer glimmers in: a scramble-settle transition when a substitution lands (`@opencues/core` 0.54.0 → 0.55.0, `@opencues/runtime` 0.34.4 → 0.35.0, `@opencues/chrome` 0.2.179 → 0.2.181, `@opencues/opencode` 0.2.15 → 0.2.16, `@opencues/shell` 0.2.21 → 0.2.22, `@opencues/dsh` 0.2.14 → 0.2.15)
+### Added — the answer glimmers in: a scramble-settle transition when a substitution lands (`@opencues/core` 0.54.0 → 0.55.0, `@opencues/runtime` 0.34.6 → 0.35.0, `@opencues/chrome` 0.2.184 → 0.2.185, `@opencues/opencode` 0.2.15 → 0.2.16, `@opencues/shell` 0.2.21 → 0.2.22; dsh bundle regen folded into the Removed entry at the top)
 
 Until now a landed substitution just swapped: `capital of france _` became `Paris` between two frames. New `glimmer-transition-ms` scalar (Appearance; `off | 300 | 600 | 900`, default 300): when a fluid-blank answer, a transform-blank rewrite, or a keyword blank fill lands, the landed span first blinks, then churns through confusable glyphs — a letter only ever swaps within its own confusable group, so the text reads as *decoding* rather than noise — easing to the clean final text over the configured window. The animation is ported from the Glimmer extension prototype's scramble engine (`experiments/roi-debug/lib/scramble.js`).
 
@@ -78,6 +78,40 @@ Found while scoping the glimmer entry above: only `BlankFill` actually gated its
 ### Fixed — the monorepo's shell build silently jumped to Babel 8 and broke (root `package.json`, no package version — build tooling only)
 
 Root `package.json`'s `pnpm.overrides` pinned `"@babel/core": ">=7.29.6"` — a floor with no ceiling, originally meant to force a patched 7.x version. When Babel 8.0.1 shipped, pnpm's resolver satisfied that range with the new major release for every peer edge in the workspace, including `babel-preset-solid` (a `@opentui/solid` dependency `integrations/shell`'s bundler needs), which only supports Babel 7. `bun run bundle` in `integrations/shell` failed outright: "Requires Babel ^7.0.0-0, but was loaded with 8.0.1." Bounded the override to `">=7.29.6 <8.0.0"` — keeps the original security-floor intent, stops a future major bump from silently propagating across every peer-resolved package in the workspace again.
+### Fixed — a replace no longer eats the space beside it (`@opencues/runtime` 0.34.5 → 0.34.6, `@opencues/chrome` 0.2.183 → 0.2.184, `@opencues/dsh` 0.2.15 → 0.2.16)
+
+`replace-parse-mode` splices your value in where the old text was and consumes the imperative that asked for it. When something sat BETWEEN the two, the space that separated them went with the imperative:
+
+```
+her name is Sarha in the invite fix the spelling _
+  →  her name is Sarahin the invite
+```
+
+And when the imperative came first, the words that followed it were moved behind the value rather than in front of it:
+
+```
+uppercase it _ the ticker is aapl
+  →  AAPLthe ticker is
+```
+
+**Where you saw it.** Any correction made mid-sentence, which is most of them. It was invisible until now because the branch's only previous caller rewrote the whole body, so the target and the imperative were always touching and the gap between them was always just the one space.
+
+The gap's two edges are no longer the same thing. The edge that touched the imperative goes with it; the edge that touched your text is a word boundary in text that survives, and stays. A gap of newlines is structure and is preserved as it always was.
+
+### Fixed — chrome popup no longer silently disables the chrome-host integration, and its diagnostics stop lying about a dead host (`@opencues/chrome` 0.2.182 → 0.2.183)
+
+Three related fixes to the popup's relationship with the native-messaging host, all found chasing one user report ("the chrome-host toggle vanished and *test api key* does nothing, but self-check passes"):
+
+- **The defer force-off race is defused.** Opening the popup while the host port was momentarily down (MV3 worker waking cold, the 30-second reconnect window, a WSL restart) used to silently write `deferToChromeHost: false` — after which the service worker ignored every future host push and the next Save wiped the host-pushed keys and bundle. A transient blip became a persistently disabled integration with no error anywhere. Now the toggle stays visible, checked, and unpersisted with a hover explaining the host is reconnecting; only the user unticks it.
+- **Self-check reports the LIVE port state.** The keys/bundle lines it prints are storage reads that persist from past connections, so a dead host still looked fully healthy. A new `chrome-host: connected / NOT connected` line distinguishes "host live" from "storage warm", and the disconnected form says explicitly that the stored keys/bundle do not prove the host is running.
+- **`test api key` probes host-pushed keys too.** The popup deliberately never prefills host-forwarded keys into its inputs (that would invite copying secrets out of the host's env into popup storage) — but for most chrome-host users those are the *only* keys, so the button reported "no API keys entered" against a fully working runtime. Host-bag keys are now probed with a `(host)` label; values still never render, only the env name and HTTP status.
+- **The `chrome://restart` requirement is finally written down.** Chrome on Windows reads the `NativeMessagingHosts` registry key at browser startup and caches it for the life of the browser process — registering the chrome-host while Chrome is running leaves every connection attempt failing against the stale cache, with nothing wrong on disk and an extension reload powerless to fix it (it restarts the service worker, not the browser process). The install-host success print now leads with the restart requirement, the popup self-check's disconnected advice names it, and the full debugging signature (dead port + correct artefacts + hand-driven `.bat` works + zero `[chrome]` log lines because the log relay routes through the very port that's down) is documented in `integrations/chrome/CLAUDE.md` and `docs/features/chrome-sync.md`.
+
+### Added — `replace-parse-mode`: single-substring edits splice deterministically instead of whole-buffer merging (`@opencues/core` 0.54.0 → 0.55.0, `@opencues/runtime` 0.34.4 → 0.34.5, `@opencues/dsh` 0.2.14 → 0.2.15, `@opencues/chrome` 0.2.179 → 0.2.182)
+
+New scalar, **on by default** (`replace-parse-mode: off` disables and saves the extra call). An imperative `_` ask ("her name is Sarha fix the spelling _") dispatches a small replace-detector LLM call **in parallel** with TransformBlank's fused call — zero added wall-clock, one extra small prefix-cached call per imperative `_`. When the detector identifies a single-substring replacement AND every claim survives the runtime's deterministic gate (command and target verified as verbatim buffer substrings, target unique outside the command, first-occurrence-safe), the result takes the resolver's bounded-splice path — text you didn't point at is structurally untouchable, and the diff is the two words that changed rather than a whole-buffer merge. Anything else — wrong shape, unverifiable claim, detector error — falls back to the fused merge exactly as before: the detector can only upgrade a dispatch, never degrade one.
+
+The default was earned, not assumed: `tests/benchmarks/fluid-blank-replace/` (66 cases, driving the shipping prompt/parser/verifier from `@opencues/core` directly) shows gemma-4-31b at 100% class accuracy, 100% verified splices, **zero** fill→replace false positives, and **zero** under-application false positives on the dedicated transform-vs-replace boundary category — and every failure mode (wrong class, unverifiable claim, detector error, provider throttle) degrades to the fused path byte-identically. In the first live test the splice also *corrected* a fused mistake (`the ticker aapl in uppercase _` → fused rewrote the whole buffer wrong; the splice produced `the ticker AAPL`).
 
 ### Fixed — a note no longer quotes a whole paragraph when the script has no spaces (`@opencues/runtime` 0.34.3 → 0.34.4, `@opencues/chrome` 0.2.178 → 0.2.179, `@opencues/dsh` 0.2.13 → 0.2.14)
 

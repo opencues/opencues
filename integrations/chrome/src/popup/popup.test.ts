@@ -194,12 +194,20 @@ describe('init() — happy path', () => {
     expect(byId<HTMLInputElement>('deferToChromeHost').disabled).toBe(false);
   });
 
-  it('forces the defer toggle OFF and persists it when the host is gone but the toggle was checked', async () => {
+  it('keeps the defer toggle ON, visible, and unpersisted when the host is down but the toggle was checked', async () => {
+    // A down port at popup-open time is routinely transient (SW retries
+    // every 30s). The pre-0.2.183 behaviour force-wrote defer OFF here,
+    // which made the SW ignore every future host push and let the next
+    // Save wipe the host bags — a blip became a persistently disabled
+    // integration. Pin the fix: toggle stays checked + visible, nothing
+    // is written.
     mocks.loadConfig.mockResolvedValue({ ...DEFAULT_CONFIG, deferToChromeHost: true });
     setupChromeMock({ hostConnected: false });
     await importPopup();
-    expect(byId<HTMLInputElement>('deferToChromeHost').checked).toBe(false);
-    expect(mocks.saveConfig).toHaveBeenCalledWith({ deferToChromeHost: false });
+    expect(byId<HTMLInputElement>('deferToChromeHost').checked).toBe(true);
+    const label = document.querySelector('label.defer-toggle') as HTMLLabelElement;
+    expect(label.style.display).toBe('');
+    expect(mocks.saveConfig).not.toHaveBeenCalledWith({ deferToChromeHost: false });
   });
 });
 
@@ -374,6 +382,34 @@ describe('diag-run — self-check diagnostics', () => {
     await flushAsync();
     expect(byId<HTMLElement>('diag-out').textContent).toMatch(/no LLM API keys set/);
   });
+
+  it('shows a live chrome-host connected line when the port is up', async () => {
+    setupChromeMock({ hostConnected: true });
+    await importPopup();
+    byId<HTMLButtonElement>('diag-run').click();
+    await flushAsync();
+    expect(byId<HTMLElement>('diag-out').textContent).toMatch(/chrome-host: connected/);
+  });
+
+  it('warns that host storage is stale evidence when the port is down', async () => {
+    // Host keys + bundle in storage persist from PAST connections; the
+    // self-check must not let them masquerade as a live host.
+    setupChromeMock({
+      hostConnected: false,
+      storageContents: {
+        opencues_host_keys: { GROQ_API_KEY: 'gsk-host' },
+        opencues_bundle: { files: { 'CUES.md': 'zephyr' } },
+      },
+    });
+    await importPopup();
+    byId<HTMLButtonElement>('diag-run').click();
+    await flushAsync();
+    const text = byId<HTMLElement>('diag-out').textContent ?? '';
+    expect(text).toMatch(/chrome-host: NOT connected/);
+    expect(text).toMatch(/persist from a previous session/);
+    // The storage facts still render — the warning contextualises them.
+    expect(text).toMatch(/bundle pushed by host: 1 files/);
+  });
 });
 
 describe('diag-probe — per-provider key probe', () => {
@@ -421,5 +457,38 @@ describe('diag-probe — per-provider key probe', () => {
     const out = byId<HTMLElement>('diag-out');
     expect(out.textContent).toMatch(/CEREBRAS_API_KEY.*OK/);
     expect(out.querySelector('.diag-ok')).not.toBeNull();
+  });
+
+  it('with no typed keys, host-pushed keys are probed with a (host) label and the value never renders', async () => {
+    setupChromeMock({ storageContents: { opencues_host_keys: { GROQ_API_KEY: 'gsk-host-secret-value' } } });
+    await importPopup();
+    byId<HTMLButtonElement>('diag-probe').click();
+    await flushAsync();
+    const text = byId<HTMLElement>('diag-out').textContent ?? '';
+    expect(text).toMatch(/Probing chrome-host-pushed keys/);
+    expect(text).toMatch(/GROQ_API_KEY \(host\).*200 OK/);
+    expect(text).not.toMatch(/no API keys entered/);
+    expect(text).not.toContain('gsk-host-secret-value');
+  });
+
+  it('a typed key shadows the host-pushed key of the same provider (probed once, as typed)', async () => {
+    setupChromeMock({ storageContents: { opencues_host_keys: { GROQ_API_KEY: 'gsk-host' } } });
+    await importPopup();
+    byId<HTMLInputElement>('key_GROQ_API_KEY').value = 'gsk-typed';
+    byId<HTMLButtonElement>('diag-probe').click();
+    await flushAsync();
+    const text = byId<HTMLElement>('diag-out').textContent ?? '';
+    expect(text).not.toMatch(/GROQ_API_KEY \(host\)/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('host keys without a wired probe endpoint are skipped silently', async () => {
+    setupChromeMock({ storageContents: { opencues_host_keys: { FINNHUB_API_KEY: 'finnhub-key' } } });
+    await importPopup();
+    byId<HTMLButtonElement>('diag-probe').click();
+    await flushAsync();
+    const text = byId<HTMLElement>('diag-out').textContent ?? '';
+    expect(text).not.toMatch(/FINNHUB_API_KEY/);
+    expect(text).toMatch(/no API keys entered/);
   });
 });
