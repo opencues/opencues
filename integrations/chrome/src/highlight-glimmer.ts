@@ -32,18 +32,6 @@ export function supportsHighlightGlimmer(): boolean {
   return typeof CSS !== 'undefined' && 'highlights' in CSS && typeof Highlight !== 'undefined';
 }
 
-/** First ancestor with a real (non-transparent) computed background —
- *  what a "hidden" glyph must be painted in to vanish against it. */
-function resolveBackgroundColor(el: Element | null): string {
-  let cur: Element | null = el;
-  while (cur) {
-    const bg = getComputedStyle(cur).backgroundColor;
-    if (bg && bg !== 'transparent' && !/^rgba\(\s*\d+,\s*\d+,\s*\d+,\s*0\s*\)$/.test(bg)) return bg;
-    cur = cur.parentElement;
-  }
-  return '#ffffff';
-}
-
 const DECORATION_STYLES: Record<string, string> = {
   'underline-solid':  'text-decoration-line: underline; text-decoration-style: solid',
   'underline-wavy':   'text-decoration-line: underline; text-decoration-style: wavy',
@@ -73,9 +61,8 @@ export interface HighlightGlimmerOptions {
    *  computed text color. */
   textColor?: string;
   decorationColor?: string;
-  /** What "hidden" glyphs are painted in — defaults to the nearest
-   *  ancestor's real background color (bg-on-bg vanishes; `transparent`
-   *  proved unreliable in highlight paint on live pages). */
+  /** What "hidden" glyphs are painted in — defaults to `transparent`
+   *  (invisible against any background, including gradients/images). */
   hideColor?: string;
   /** Where the instance's <style> element lands — pass a shadow root's
    *  host document position when the target lives inside one
@@ -195,13 +182,13 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
     : (targetRange.startContainer as Element);
   const textColor = options.textColor ?? (anchorEl ? getComputedStyle(anchorEl).color : '#000');
   const decoColor = options.decorationColor ?? textColor;
-  // Glyph-hiding color: the field's OWN background, not `transparent` —
-  // painting bg-on-bg is visually identical when it works and immune to
-  // any special-casing of transparent in highlight paint (live report:
-  // `color: transparent` left the underlying text fully visible on a
-  // real page while the rest of the effect ran). Walk up to the first
-  // ancestor with a real background.
-  const hideColor = options.hideColor ?? resolveBackgroundColor(anchorEl);
+  // Glyph-hiding color: transparent — invisible against ANY background
+  // (gradients, images, dark themes), unlike bg-color matching. An
+  // earlier "text never hides" report briefly implicated transparent in
+  // highlight paint, but the real culprit was dead Ranges from Gmail's
+  // post-write DOM normalization (fixed by the deferred verified start
+  // in the bootstrap binding) — transparent itself was fine.
+  const hideColor = options.hideColor ?? 'transparent';
 
   const styleEl = doc.createElement('style');
   (options.styleParent ?? doc.head).appendChild(styleEl);
