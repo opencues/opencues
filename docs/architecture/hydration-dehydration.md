@@ -46,7 +46,7 @@ the catalog protection covered exactly the data the user had NOT put
 in the buffer. Dehydration closes the loop: "safe means safe" for the
 whole exchange.
 
-## The 9 outbound channels (coverage table)
+## The 10 outbound channels (coverage table)
 
 Every LLM-bound copy of buffer text is dehydrated. One open channel
 defeats the claim — this table IS the coverage contract; extend it
@@ -63,6 +63,7 @@ when adding a source.
 | 7 | Word-cues (ConfigSource + RoutedWordSourceGroup) | PII words **dropped from dispatch entirely** (`isPiiWord`) — no LLM synonyms for your name; `raw`-parser path dehydrates the buffer | raw-parser alternatives hydrated |
 | 8 | AgentRewrite `DOCUMENT:` | `agent-rewrite.ts:callLLMOnce` — windowed doc dehydrated, `[CURSOR]` at `mapOffset` | hydrate LLM output BEFORE window splice + three-way merge (see below) |
 | 9 | blank-weave `PRIOR TEXT:` | `blank-weave.ts` — priorContext dehydrated (the `⟦VALUE⟧` weave token is not bracket-shaped; hydration never touches it) | woven output hydrated |
+| 10 | replace-detect `INPUT:` (replace-parse-mode) | `transform-blank-source.ts` — the parallel detector ships the SAME `inputForLLM` channel 2 already dehydrated; no second scrub needed, no new raw copy exists | `verifyReplaceDetect`'s `hydrateField` — echoed `[TOKEN]`s in TARGET/COMMAND/VALUE substitute to values BEFORE the verbatim-substring verification, so the splice geometry is derived in value space; an unknown token fails the substring check and falls back to fused (safe) |
 
 Plus the **defense-in-depth floor** (below) covering anything missed.
 

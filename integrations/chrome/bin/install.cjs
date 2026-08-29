@@ -387,6 +387,8 @@ function installHostUnix(extensionId, kind) {
   }
   console.log(`\nDone. Native-messaging host registered for extension ${extensionId}.`);
   console.log('Reload the extension at chrome://extensions to pick up the new port.');
+  console.log('If the port still won\'t open, fully restart the browser (chrome://restart)');
+  console.log('— some Chrome builds cache native-host lookups for the life of the process.');
 }
 
 function installHostWsl(extensionId) {
@@ -468,9 +470,18 @@ function installHostWsl(extensionId) {
   console.log(`  registered HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${HOST_NAME}`);
 
   console.log(`\nDone. Native-messaging host registered for extension ${extensionId}.`);
-  console.log('Reload the extension at chrome://extensions to pick up the new port.');
-  console.log('Check the service worker logs (chrome://extensions → inspect views: service worker)');
-  console.log('for "native host port opened" — and the host should push an initial bundle within 1s.');
+  console.log('');
+  console.log('⚠ If Chrome is currently running, you MUST fully restart it: type');
+  console.log('  chrome://restart in the address bar (keeps your tabs). Chrome on');
+  console.log('  Windows reads the NativeMessagingHosts registry key at browser');
+  console.log('  startup and caches it for the life of the process — a running');
+  console.log('  Chrome will keep failing to spawn this host until restarted.');
+  console.log('  Reloading the extension is NOT enough (that only restarts the');
+  console.log('  service worker, not the browser process holding the cache).');
+  console.log('');
+  console.log('Then check the service worker logs (chrome://extensions → inspect');
+  console.log('views: service worker) for "native host port opened" — the host');
+  console.log('should push an initial bundle within 1s.');
 }
 
 function installHostWindows(_extensionId) {

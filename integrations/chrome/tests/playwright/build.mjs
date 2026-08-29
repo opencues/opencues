@@ -40,6 +40,12 @@ const commonOpts = {
     // disrupted the Draft.js/React harness init before window.__OC was set).
     'node:fs': resolve(chromeRoot, 'src/stubs/node-builtin-stub.ts'),
     'node:path': resolve(chromeRoot, 'src/stubs/node-builtin-stub.ts'),
+    // boot-common grew node:os + node:child_process requires (session-
+    // commitments kick) after this stub list was written — the suite is
+    // run-on-demand, so the build rot went unnoticed until the glimmer
+    // harness was added. Same stub treatment as fs/path.
+    'node:os': resolve(chromeRoot, 'src/stubs/node-builtin-stub.ts'),
+    'node:child_process': resolve(chromeRoot, 'src/stubs/node-builtin-stub.ts'),
   },
 };
 
@@ -69,6 +75,12 @@ await build({
   // supplied in commonOpts.define; loader settings for React's
   // CommonJS-style require chain are picked up by esbuild's default
   // resolver.
+});
+
+await build({
+  ...commonOpts,
+  entryPoints: [resolve(here, 'harness-glimmer.ts')],
+  outfile: resolve(here, 'harness-glimmer-bundle.js'),
 });
 
 // eslint-disable-next-line no-console

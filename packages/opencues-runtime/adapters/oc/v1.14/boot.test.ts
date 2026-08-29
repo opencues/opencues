@@ -142,4 +142,31 @@ describe('OpenCode v1.14 boot()', () => {
       result.resetBufferState();
     }).not.toThrow();
   });
+
+  it('glimmer is RENDER-ONLY: frames arrive as textOverride directives, the buffer is NEVER written', async () => {
+    // Mirrors the shell band's pin (adapters/shell/v1/boot.test.ts) —
+    // real-write mode is retired on BOTH OpenTUI bands; the fork
+    // bootstrap paints the override diff as a display-only overlay.
+    const setTextCalls: string[] = [];
+    const text = 'hello zephyr world';
+    const result = boot({
+      ...minimalHost,
+      getText: () => text,
+      setText: (s: string) => { setTextCalls.push(s); },
+    });
+    result.glimmer.start(6, 'zephyr');
+    await new Promise((r) => setTimeout(r, 40));
+    const frames = result.collectRenderDirectives(text, 12);
+    const override = frames.map((d) => d.textOverride).find((o): o is string => typeof o === 'string');
+    expect(override, 'render-only glimmer must emit a textOverride directive').toBeDefined();
+    expect(override).toHaveLength(text.length);
+    expect(override).not.toBe(text);
+    expect(setTextCalls, 'the buffer must never hold a scrambled frame').toEqual([]);
+    result.glimmer.cancel(false);
+    const after = result.collectRenderDirectives(text, 12)
+      .map((d) => d.textOverride).find((o): o is string => typeof o === 'string');
+    expect(after).toBeUndefined();
+    expect(setTextCalls).toEqual([]);
+    result.dispose();
+  });
 });

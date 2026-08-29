@@ -25,6 +25,7 @@ import { Resolver } from '../../../src/modules/resolver';
 import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { BlankFill } from '../../../src/modules/blank-fill';
 import { BlankLoadingAnimator, parseCustomFrames, parseRgbColors, parseAnsiColors, parseFrameIntervalMs, DEFAULT_RGB_PALETTE, DEFAULT_ANSI_PALETTE } from '../../../src/modules/blank-loading';
+import { GlimmerRender, parseGlimmerTransitionMs } from '../../../src/modules/glimmer-render';
 import { MarkdownRender } from '../../../src/modules/markdown-render';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { HighlightState } from '../../../src/state/highlight-state';
@@ -662,12 +663,32 @@ export function boot(host: HostInfo): BootResult {
     };
   });
 
+  // Glimmer transition — scramble-settle when a substitution LANDS
+  // (`glimmer-transition-ms`). Owned at this layer for the same reason
+  // as blankLoading above: CC hand-wires its modules instead of calling
+  // buildSharedRuntime, so the shared construction there doesn't cover
+  // this band (see boot-bands-wiring.test.ts). Registered AFTER the
+  // loading-colour handler so its whole-string textOverride is the
+  // frame's final word while it runs. Display-only: textOverride +
+  // forceRender, never setText.
+  const glimmer = new GlimmerRender({
+    adapter,
+    durationMs: () => parseGlimmerTransitionMs(
+      configLoader.opencuesState.settings.get('glimmer-transition-ms'),
+    ),
+    log: msg => log('debug', msg),
+  });
+  adapter.onRender((ctx) => {
+    const override = glimmer.getTextOverride(ctx.text);
+    return override !== null ? { textOverride: override } : null;
+  });
+
   // Routing is deterministic (blankShapes) — the old LLM BlankIntent gate
   // was retired.
   // integration-weave LLM (blanks bucket, native NodeHttpAdapter fallback).
   // No-ops to static unless `integration-weave-mode: on` + a blank opts in.
   const blankWeaver = buildBlankWeaver(configLoader, () => apiKeys, undefined, (lvl, msg) => log(lvl, msg));
-  const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading, blankWeaver, undoJournal);
+  const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading, blankWeaver, undoJournal, glimmer);
   configLoader.load().then(() => blankFill.subscribe()).catch(() => { /* logged */ });
   void blankFill; // silence unused — referenced by future phases
 
@@ -751,6 +772,7 @@ export function boot(host: HostInfo): BootResult {
   // Aggregate LLM usage meter — passive accounting for `opencues usage`.
   startUsageMeter(log, { host: 'claude-code' });
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
+    glimmer,
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
     defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',

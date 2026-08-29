@@ -20,21 +20,39 @@ import {
 import type { HostAdapter } from '../adapter';
 
 // Minimal HostAdapter stub — only the bits the animator touches.
-function makeAdapter(initial: string): {
+// getCursorOffset/setCursorOffset are real HostAdapter methods (not
+// optional), so every write path that calls them needs a working stub —
+// mirrors a host like OpenTUI where setText resets cursor as a side
+// effect: cursorCalls records every explicit setCursorOffset request so
+// tests can assert the animator actually restores it.
+function makeAdapter(initial: string, initialCursor = 0): {
   adapter: HostAdapter;
   setTextCalls: string[];
+  cursorCalls: number[];
+  getCursor: () => number;
   setBufferDirect: (s: string) => void;
+  setCursorDirect: (n: number) => void;
 } {
   let buffer = initial;
+  let cursor = initialCursor;
   const setTextCalls: string[] = [];
+  const cursorCalls: number[] = [];
   const adapter: Partial<HostAdapter> = {
     getText: () => buffer,
-    setText: (s: string) => { buffer = s; setTextCalls.push(s); },
+    setText: (s: string) => {
+      buffer = s; setTextCalls.push(s);
+      cursor = 0; // OpenTUI-like side effect: setText resets cursor
+    },
+    getCursorOffset: () => cursor,
+    setCursorOffset: (n: number) => { cursor = n; cursorCalls.push(n); },
   };
   return {
     adapter: adapter as HostAdapter,
     setTextCalls,
+    cursorCalls,
+    getCursor: () => cursor,
     setBufferDirect: (s: string) => { buffer = s; },
+    setCursorDirect: (n: number) => { cursor = n; },
   };
 }
 
@@ -306,6 +324,52 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
     vi.advanceTimersByTime(100);   // tick → can't find wordIndex 1 → drop quietly
     expect(setTextCalls).toEqual([]);
     expect(a.active).toBe(false);
+  });
+});
+
+// Regression pin (reported live, opencode/shell — "cursor moves during the
+// wait, then corrects once the answer lands"): OpenTUI's setText resets
+// cursor to 0 as a side effect, and _writeChar had no restore, so every
+// ~150ms animation tick visibly dragged the cursor to buffer-start for the
+// whole wait. makeAdapter's setText mirrors that OpenTUI behavior
+// (resets cursor to 0 on every call) specifically so a regression here
+// shows up as a failing assertion, not a silent no-op.
+describe('BlankLoadingAnimator — cursor preservation', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('restores the cursor after every tick, even though setText resets it', () => {
+    const { adapter, getCursor, cursorCalls } = makeAdapter('volume _ more text', 12);
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
+    a.start(1);
+    for (let i = 0; i < 5; i++) {
+      vi.advanceTimersByTime(100);
+      // If setText's reset (to 0) were left unrestored, this would read 0
+      // on every iteration instead of the cursor position we started with.
+      expect(getCursor()).toBe(12);
+    }
+    expect(cursorCalls).toEqual([12, 12, 12, 12, 12]);
+  });
+
+  it('restores the cursor on the _rescueDisplacedGlyph path too', () => {
+    // Word indices shifted under the animator (text inserted before the
+    // slot) — the glyph ends up displaced from where the animator expects
+    // it. Non-ASCII + occurs exactly once → the rescue path fires, which
+    // has its own separate setText call outside _writeChar.
+    const { adapter, getCursor, setTextCalls, setBufferDirect } = makeAdapter('volume _ more text', 20);
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'braille-rotate', frameIntervalMs: () => 100 });
+    a.start(1);
+    vi.advanceTimersByTime(100); // real write: '_' → '⠁' (frame 1) — the glyph the slot now owns
+    expect(setTextCalls.at(-1)).toBe('volume ⠁ more text');
+    // Simulate text inserted before the slot, shifting wordIndex 1 to a
+    // different word — the glyph is still in the buffer, just displaced.
+    setBufferDirect('inserted words here ' + setTextCalls.at(-1));
+    vi.advanceTimersByTime(100); // next tick: word at index 1 ("words") isn't a frame char → rescue path
+    // Confirm the rescue path actually fired a second real write (not a
+    // no-op) — otherwise this assertion wouldn't be testing anything.
+    expect(setTextCalls).toHaveLength(2);
+    expect(setTextCalls.at(-1)).toBe('inserted words here volume _ more text');
+    expect(getCursor()).toBe(20);
   });
 });
 

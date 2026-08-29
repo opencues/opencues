@@ -1,0 +1,676 @@
+<title>Glimmer bench — swap + decoration</title>
+<style>
+  :root {
+    --bg: #EEF1EA; --surface: #FFFFFF; --grid: #D8DED2; --text: #202821;
+    --muted: #5C6B5F; --accent: #C97F1F; --accent-ink: #FFFFFF; --accent-2: #3D7A5C; --danger: #B14A3A;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1B2420; --surface: #223129; --grid: #2E4137; --text: #E9E4D8; --muted: #8FA398; --accent: #E3A23C; --accent-ink: #1B2420; --accent-2: #6FA98A; --danger: #D97A65; }
+  }
+  :root[data-theme="dark"] { --bg: #1B2420; --surface: #223129; --grid: #2E4137; --text: #E9E4D8; --muted: #8FA398; --accent: #E3A23C; --accent-ink: #1B2420; --accent-2: #6FA98A; --danger: #D97A65; }
+  :root[data-theme="light"] { --bg: #EEF1EA; --surface: #FFFFFF; --grid: #D8DED2; --text: #202821; --muted: #5C6B5F; --accent: #C97F1F; --accent-ink: #FFFFFF; --accent-2: #3D7A5C; --danger: #B14A3A; }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; padding: 24px 20px 64px; }
+
+  .wrap { max-width: 760px; margin: 0 auto; }
+  header { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; padding-bottom: 12px; margin-bottom: 18px; border-bottom: 1.5px solid var(--text); }
+  header h1 { font-family: var(--mono); font-size: clamp(18px, 4vw, 24px); margin: 0; text-wrap: balance; }
+  header .tag { font-family: var(--mono); font-size: 11px; color: var(--muted); text-align: right; }
+
+  .controls-bar {
+    position: sticky; top: 0; z-index: 5;
+    background: var(--surface);
+    border: 1px solid var(--grid);
+    border-radius: 3px;
+    padding: 14px 16px;
+    margin-bottom: 18px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px 20px;
+    align-items: center;
+  }
+  .ctl { display: flex; flex-direction: column; gap: 4px; min-width: 130px; }
+  .ctl label { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  .ctl .row { display: flex; align-items: center; gap: 8px; }
+  .ctl.checkrow { flex-direction: row; align-items: center; gap: 8px; min-width: unset; }
+  .ctl.checkrow label { text-transform: none; font-size: 13px; letter-spacing: 0; color: var(--text); font-family: var(--sans); }
+  input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 90px; }
+  input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+  select { font-family: var(--sans); font-size: 13px; padding: 6px 8px; border-radius: 3px; border: 1px solid var(--grid); background: var(--surface); color: var(--text); }
+  .ctl .val { font-family: var(--mono); font-size: 12.5px; min-width: 3.5ch; font-variant-numeric: tabular-nums; }
+  button {
+    font-family: var(--sans); font-size: 13px; font-weight: 600; padding: 9px 16px;
+    border-radius: 3px; border: 1px solid var(--grid); background: var(--surface); color: var(--text); cursor: pointer;
+  }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .stats-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 1px;
+    background: var(--grid);
+    border: 1px solid var(--grid);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 20px;
+    font-family: var(--mono);
+  }
+  .stat { background: var(--surface); padding: 10px 12px; }
+  .stat .k { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 3px; }
+  .stat .v { font-size: 17px; font-variant-numeric: tabular-nums; }
+  .stat .v.ok { color: var(--accent-2); }
+  .stat .v.warn { color: var(--danger); }
+
+  .prose {
+    background: var(--surface);
+    border: 1px solid var(--grid);
+    border-radius: 3px;
+    padding: 24px 26px;
+    font-size: 17px;
+    line-height: 1.75;
+  }
+  .prose p { margin: 0 0 1.1em; text-wrap: pretty; }
+  .prose p:last-child { margin-bottom: 0; }
+
+  /* ---- Decoration pool — verbatim from demo3-highlight-decoration.html's
+     DECORATION_POOL (the decoration-line buckets only; its separate
+     occlusion pool wasn't asked for and isn't included here). Longhand
+     properties, black-only, matching the source exactly. */
+  ::highlight(oc-deco-underline-solid)  { text-decoration-line: underline;    text-decoration-style: solid;  text-decoration-color: var(--text); }
+  ::highlight(oc-deco-underline-wavy)   { text-decoration-line: underline;    text-decoration-style: wavy;   text-decoration-color: var(--text); }
+  ::highlight(oc-deco-underline-dotted) { text-decoration-line: underline;    text-decoration-style: dotted; text-decoration-color: var(--text); }
+  ::highlight(oc-deco-underline-double) { text-decoration-line: underline;    text-decoration-style: double; text-decoration-color: var(--text); }
+  ::highlight(oc-deco-strike-solid)     { text-decoration-line: line-through; text-decoration-style: solid;  text-decoration-color: var(--text); }
+  ::highlight(oc-deco-strike-wavy)      { text-decoration-line: line-through; text-decoration-style: wavy;   text-decoration-color: var(--text); }
+  ::highlight(oc-deco-overline-solid)   { text-decoration-line: overline;     text-decoration-style: solid;  text-decoration-color: var(--text); }
+  ::highlight(oc-deco-overline-dashed)  { text-decoration-line: overline;     text-decoration-style: dashed; text-decoration-color: var(--text); }
+
+  /* ---- Combo pools (picker follow-up): single + combined-line variants
+     in one consistent style each — solid set and dotted set. */
+  ::highlight(oc-deco-strike-dotted)    { text-decoration-line: line-through; text-decoration-style: dotted; text-decoration-color: var(--text); }
+  ::highlight(oc-deco-overline-dotted)  { text-decoration-line: overline;     text-decoration-style: dotted; text-decoration-color: var(--text); }
+  ::highlight(oc-deco-uo-solid)   { text-decoration-line: underline overline;              text-decoration-style: solid;  text-decoration-color: var(--text); }
+  ::highlight(oc-deco-us-solid)   { text-decoration-line: underline line-through;          text-decoration-style: solid;  text-decoration-color: var(--text); }
+  ::highlight(oc-deco-uos-solid)  { text-decoration-line: underline overline line-through; text-decoration-style: solid;  text-decoration-color: var(--text); }
+  ::highlight(oc-deco-uo-dotted)  { text-decoration-line: underline overline;              text-decoration-style: dotted; text-decoration-color: var(--text); }
+  ::highlight(oc-deco-us-dotted)  { text-decoration-line: underline line-through;          text-decoration-style: dotted; text-decoration-color: var(--text); }
+  ::highlight(oc-deco-uos-dotted) { text-decoration-line: underline overline line-through; text-decoration-style: dotted; text-decoration-color: var(--text); }
+
+  footer { margin-top: 26px; padding-top: 12px; border-top: 1px solid var(--grid); font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Glimmer bench — swap + decoration</h1>
+    <div class="tag">lazy geometry + viewport culling + rAF ticks<br>O(B) registration, O(k-visible) per tick</div>
+  </header>
+
+  <div class="controls-bar">
+    <div class="ctl">
+      <label for="wordSlider">Word count</label>
+      <div class="row"><input type="range" id="wordSlider" min="10" max="500" step="10" value="60" /><span class="val" id="wordVal">60</span></div>
+    </div>
+    <div class="ctl">
+      <label for="activeSlider">Swap active %</label>
+      <div class="row"><input type="range" id="activeSlider" min="10" max="100" step="10" value="40" /><span class="val" id="activeVal">40%</span></div>
+    </div>
+    <div class="ctl">
+      <label for="rerollSlider">Word re-roll %/tick</label>
+      <div class="row"><input type="range" id="rerollSlider" min="10" max="100" step="10" value="30" /><span class="val" id="rerollVal">30%</span></div>
+    </div>
+    <div class="ctl checkrow">
+      <input type="checkbox" id="decoEnabled" checked />
+      <label for="decoEnabled">Decoration (optional)</label>
+    </div>
+    <div class="ctl checkrow">
+      <input type="checkbox" id="decoFollowSwap" />
+      <label for="decoFollowSwap">Deco on swapped chars only</label>
+    </div>
+    <div class="ctl">
+      <label for="decoPool">Deco pool</label>
+      <select id="decoPool">
+        <option value="solid-combos" selected>Solid combos</option>
+        <option value="dotted-combos">Dotted combos</option>
+        <option value="mixed8">Mixed (original 8)</option>
+      </select>
+    </div>
+    <div class="ctl">
+      <label for="decoSlider">Decoration density</label>
+      <div class="row"><input type="range" id="decoSlider" min="0" max="100" step="5" value="70" /><span class="val" id="decoVal">70%</span></div>
+    </div>
+    <div class="ctl">
+      <label>&nbsp;</label>
+      <div class="row">
+        <button id="toggleRun" class="primary">Start</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats-strip">
+    <div class="stat"><div class="k">Characters</div><div class="v" id="statChars">—</div></div>
+    <div class="stat"><div class="k">Words</div><div class="v" id="statWords">—</div></div>
+    <div class="stat"><div class="k">Setup (no measure)</div><div class="v" id="statSetup">—</div></div>
+    <div class="stat"><div class="k">Geo built (words)</div><div class="v" id="statGeo">—</div></div>
+    <div class="stat"><div class="k">DOM calls (cume)</div><div class="v" id="statDomCalls">—</div></div>
+    <div class="stat"><div class="k">Visible paras</div><div class="v" id="statVisible">—</div></div>
+    <div class="stat"><div class="k">Offset buckets</div><div class="v" id="statBuckets">—</div></div>
+    <div class="stat"><div class="k">Swap active</div><div class="v" id="statActive">—</div></div>
+    <div class="stat"><div class="k">Words re-rolled</div><div class="v" id="statTouched">—</div></div>
+    <div class="stat"><div class="k">Deco active</div><div class="v" id="statDecoActive">—</div></div>
+    <div class="stat"><div class="k">Avg ms/tick</div><div class="v ok" id="statTick">—</div></div>
+  </div>
+
+  <div class="prose" id="prose"></div>
+
+  <footer>Tier-2 on top of offset bucketing: setup measures NOTHING — a word's geometry (one <code>getClientRects()</code> + cumulative <code>measureText</code>) is built lazily on the first tick that re-rolls it, and words in off-screen paragraphs (IntersectionObserver, 100px margin) stop re-rolling once the observer reports them out, so per-tick cost tracks the <em>viewport</em>, not the document. Paragraphs default to visible so a starved observer degrades to "no culling", never "no animation". Tier-1: cadence comes from <code>setTimeout(70)</code>, but each tick's mutations are offered to the next real frame via <code>requestAnimationFrame</code> (24ms fallback runs unaligned when frames are starved — headless, prerender), and hidden tabs skip the work entirely. Scroll note: a word that scrolls out mid-run keeps its frozen scramble until it scrolls back in and re-rolls; X-offsets survive vertical scroll because only intra-word deltas are ever used.</footer>
+</div>
+
+<script>
+(function () {
+  const WORDS = ('the quick brown fox jumps over lazy dog while thinking about '
+    + 'whether kerning matters more than raw width when arranging letters '
+    + 'across a paragraph that wraps unpredictably depending on viewport '
+    + 'size font family and the specific characters chosen for each word '
+    + 'inside this ever growing block of text used purely to measure how '
+    + 'well the permutation swap technique holds up as the character count '
+    + 'increases from a single short word toward several hundred distinct '
+    + 'words spread across many lines of wrapped paragraph content styled '
+    + 'with a real serif or sans typeface rendered by the actual browser '
+    + 'engine rather than approximated through canvas text measurement '
+    + 'alone which cannot know where line breaks will actually occur once '
+    + 'the container width forces text to wrap onto a new visual line')
+    .split(/\s+/);
+
+  const prose = document.getElementById('prose');
+  const wordSlider = document.getElementById('wordSlider');
+  const wordVal = document.getElementById('wordVal');
+  const activeSlider = document.getElementById('activeSlider');
+  const activeVal = document.getElementById('activeVal');
+  const rerollSlider = document.getElementById('rerollSlider');
+  const rerollVal = document.getElementById('rerollVal');
+  const decoEnabled = document.getElementById('decoEnabled');
+  const decoSlider = document.getElementById('decoSlider');
+  const decoVal = document.getElementById('decoVal');
+
+  wordSlider.addEventListener('input', () => { wordVal.textContent = wordSlider.value; });
+  activeSlider.addEventListener('input', () => { activeVal.textContent = activeSlider.value + '%'; });
+  rerollSlider.addEventListener('input', () => { rerollVal.textContent = rerollSlider.value + '%'; });
+  decoSlider.addEventListener('input', () => { decoVal.textContent = decoSlider.value + '%'; });
+
+  function generateText(n) {
+    const out = [];
+    for (let i = 0; i < n; i++) out.push(WORDS[i % WORDS.length]);
+    const paras = [];
+    for (let i = 0; i < out.length; i += 35) paras.push(out.slice(i, i + 35).join(' ') + '.');
+    return paras;
+  }
+
+  // ---- Structure state. Char indices are assigned in document order at
+  // rebuild (string scan only — no layout reads), so each paragraph and
+  // each word owns a contiguous index span. Ranges are built at rebuild
+  // too: Range creation is NOT a layout operation (setStart/setEnd on a
+  // text node touches no geometry) and the decoration pool needs
+  // doc-wide Ranges regardless — only MEASUREMENT is lazy.
+  let charRanges = [];
+  let wordGroups = [];         // per word: array of char indices (contiguous)
+  let wordMeta = [];           // per word: { tn, start, text } — enough to measure it later
+  let wordPara = [];           // per word: paragraph index
+  let paraChar = [];           // per paragraph: [charStart, charEnd)
+  let paraVisible = [];        // per paragraph: is it in/near the viewport right now
+  let geoBuilt = null;         // Uint8Array per word: geometry measured yet?
+  let geoBuiltCount = 0;
+  let charPosX = new Float32Array(0); // filled lazily, word by word
+  let styleEl = null;
+  let observer = null;
+
+  // ---- Offset buckets (unchanged from the O(B) rewrite).
+  let bucketMap = new Map();
+  let charKey = [];
+  let swapActiveCount = 0;
+  let wordActive = [];
+
+  // ---- Decoration pools, selectable via the dropdown. Every bucket in
+  // every pool is registered up front (the union is still a small
+  // constant — 20 buckets — regardless of document length), so switching
+  // pools mid-run needs no re-registration: decorationTick simply
+  // samples from whichever list is selected, and since it clears +
+  // re-samples every tick, a pool switch takes effect on the next tick.
+  const DECORATION_POOLS = {
+    'mixed8': [
+      'deco-underline-solid', 'deco-underline-wavy', 'deco-underline-dotted', 'deco-underline-double',
+      'deco-strike-solid', 'deco-strike-wavy', 'deco-overline-solid', 'deco-overline-dashed',
+    ],
+    'solid-combos': [
+      'deco-underline-solid', 'deco-strike-solid', 'deco-overline-solid',
+      'deco-uo-solid', 'deco-us-solid', 'deco-uos-solid',
+    ],
+    'dotted-combos': [
+      'deco-underline-dotted', 'deco-strike-dotted', 'deco-overline-dotted',
+      'deco-uo-dotted', 'deco-us-dotted', 'deco-uos-dotted',
+    ],
+  };
+  const ALL_DECO_BUCKETS = Array.from(new Set(Object.values(DECORATION_POOLS).flat()));
+  let decoBuckets = {};
+  let currentBucket = [];
+  let decoAssigned = [];
+
+  const measureCtx = document.createElement('canvas').getContext('2d');
+  let domCallCount = 0;
+
+  function teardown() {
+    if (observer) { observer.disconnect(); observer = null; }
+    if (styleEl) { styleEl.remove(); styleEl = null; }
+    for (const b of bucketMap.values()) CSS.highlights.delete(b.name);
+    for (const name of ALL_DECO_BUCKETS) CSS.highlights.delete('oc-' + name);
+    bucketMap = new Map();
+    charKey = [];
+    swapActiveCount = 0;
+    wordActive = [];
+    charRanges = [];
+    wordGroups = [];
+    wordMeta = [];
+    wordPara = [];
+    paraChar = [];
+    paraVisible = [];
+    geoBuilt = null;
+    geoBuiltCount = 0;
+    charPosX = new Float32Array(0);
+    decoBuckets = {};
+    currentBucket = [];
+    decoAssigned = [];
+  }
+
+  // ---- Tier-2 rebuild: NO layout reads at all. String-scan the words,
+  // build Ranges (cheap, layout-free), wire the IntersectionObserver.
+  // The old "Setup (geometry)" cost is deferred into ensureGeometry(),
+  // paid per-word on first re-roll — so it lands only for words the
+  // viewport ever actually animates, spread across the first ticks.
+  function rebuild() {
+    const t0 = performance.now();
+    teardown();
+    domCallCount = 0;
+    const n = Number(wordSlider.value);
+    prose.innerHTML = generateText(n).map((p) => `<p>${p}</p>`).join('');
+
+    {
+      const cs = getComputedStyle(prose);
+      measureCtx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    }
+
+    const pEls = prose.querySelectorAll('p');
+    const paraIndexOf = new Map();
+    pEls.forEach((p, pi) => {
+      paraIndexOf.set(p, pi);
+      const tn = p.firstChild;
+      const charStart = charRanges.length;
+      if (tn) {
+        const text = tn.data;
+        const wordRe = /[a-zA-Z]+/g;
+        let m;
+        while ((m = wordRe.exec(text))) {
+          const group = [];
+          for (let k = 0; k < m[0].length; k++) {
+            const idx = m.index + k;
+            const r = new Range();
+            r.setStart(tn, idx);
+            r.setEnd(tn, idx + 1);
+            charRanges.push(r);
+            group.push(charRanges.length - 1);
+          }
+          wordGroups.push(group);
+          wordMeta.push({ tn, start: m.index, text: m[0] });
+          wordPara.push(pi);
+        }
+      }
+      paraChar.push([charStart, charRanges.length]);
+      // Default VISIBLE until the observer says otherwise. Culling is a
+      // perf optimization, so its failure mode must be "no culling"
+      // (previous behavior), never "no animation" — IntersectionObserver
+      // is frame-driven and can be starved (headless, prerender,
+      // background windows), and starting at false would freeze the
+      // whole effect in exactly those cases. On a normal browser the
+      // observer's first callback lands within a frame or two and
+      // off-screen paragraphs get culled from then on.
+      paraVisible.push(true);
+    });
+
+    charPosX = new Float32Array(charRanges.length).fill(NaN);
+    geoBuilt = new Uint8Array(wordGroups.length);
+    geoBuiltCount = 0;
+
+    styleEl = document.createElement('style');
+    document.head.appendChild(styleEl);
+    for (const name of ALL_DECO_BUCKETS) {
+      const h = new Highlight();
+      CSS.highlights.set('oc-' + name, h);
+      decoBuckets[name] = h;
+    }
+    charKey = new Array(charRanges.length).fill(null);
+    currentBucket = new Array(charRanges.length).fill(null);
+    wordActive = wordGroups.map(() => []);
+
+    observer = new IntersectionObserver((entries) => {
+      for (const e of entries) paraVisible[paraIndexOf.get(e.target)] = e.isIntersecting;
+      updateVisibleStat();
+    }, { rootMargin: '100px', threshold: 0 });
+    pEls.forEach((p) => observer.observe(p));
+
+    const setupMs = performance.now() - t0;
+    document.getElementById('statChars').textContent = charRanges.length;
+    document.getElementById('statWords').textContent = wordGroups.length;
+    document.getElementById('statSetup').textContent = setupMs.toFixed(1) + 'ms';
+    document.getElementById('statGeo').textContent = '0/' + wordGroups.length;
+    document.getElementById('statDomCalls').textContent = '0';
+    document.getElementById('statBuckets').textContent = '0';
+    updateVisibleStat();
+    console.log('[glimmer-bench] rebuilt (lazy):', { chars: charRanges.length, words: wordGroups.length, setupMs });
+  }
+
+  function updateVisibleStat() {
+    let v = 0;
+    for (const flag of paraVisible) if (flag) v++;
+    document.getElementById('statVisible').textContent = v + '/' + paraVisible.length;
+  }
+
+  // ---- The deferred measurement: exactly the word-batched cumulative-
+  // measureText technique from before, just invoked per word on demand
+  // instead of for every word up front.
+  function ensureGeometry(wi) {
+    if (geoBuilt[wi]) return;
+    const meta = wordMeta[wi];
+    const group = wordGroups[wi];
+    const wr = new Range();
+    wr.setStart(meta.tn, meta.start);
+    wr.setEnd(meta.tn, meta.start + meta.text.length);
+    const rects = wr.getClientRects();
+    domCallCount++;
+    if (rects.length === 1) {
+      const rect = rects[0];
+      const cum = [0];
+      for (let k = 1; k <= meta.text.length; k++) cum.push(measureCtx.measureText(meta.text.slice(0, k)).width);
+      const measuredWidth = cum[cum.length - 1];
+      const corr = measuredWidth > 0 ? rect.width / measuredWidth : 1;
+      for (let k = 0; k < group.length; k++) charPosX[group[k]] = rect.left + cum[k] * corr;
+    } else {
+      // Rare: word wrapped mid-line — per-character fallback for just this word.
+      for (let k = 0; k < group.length; k++) {
+        charPosX[group[k]] = charRanges[group[k]].getBoundingClientRect().left;
+        domCallCount++;
+      }
+    }
+    geoBuilt[wi] = 1;
+    geoBuiltCount++;
+  }
+
+  function bucketKeyFor(dx) { return Math.round(dx * 2) / 2; }
+
+  function getBucket(key) {
+    let b = bucketMap.get(key);
+    if (b === undefined) {
+      const name = 'oc-off-' + String(key).replace('-', 'n').replace('.', 'p');
+      const h = new Highlight();
+      CSS.highlights.set(name, h);
+      styleEl.sheet.insertRule(
+        `::highlight(${name}) { color: transparent; text-shadow: ${key}px 0 0 var(--text); }`,
+        styleEl.sheet.cssRules.length
+      );
+      b = { h, name };
+      bucketMap.set(key, b);
+    }
+    return b;
+  }
+
+  function assignChar(idx, dx) {
+    const key = bucketKeyFor(dx);
+    const prev = charKey[idx];
+    if (prev === key) return;
+    if (prev !== null) bucketMap.get(prev).h.delete(charRanges[idx]);
+    else swapActiveCount++;
+    getBucket(key).h.add(charRanges[idx]);
+    charKey[idx] = key;
+  }
+
+  function releaseChar(idx) {
+    const prev = charKey[idx];
+    if (prev !== null) {
+      bucketMap.get(prev).h.delete(charRanges[idx]);
+      charKey[idx] = null;
+      swapActiveCount--;
+    }
+  }
+
+  function partialShuffleSelect(arr, k) {
+    const n = arr.length;
+    for (let i = 0; i < k; i++) {
+      const j = i + Math.floor(Math.random() * (n - i));
+      const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+    }
+    return arr.slice(0, k);
+  }
+
+  function shuffleInPlace(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+    }
+    return arr;
+  }
+
+  const tickTimes = [];
+
+  // ---- Swap tick: additionally gated on paragraph visibility. An
+  // off-screen word never re-rolls, never measures, never registers a
+  // bucket — per-tick cost tracks what's on screen, not document size.
+  //
+  // PHASE-SEPARATED reads then writes, and this is load-bearing: the
+  // first lazy version called ensureGeometry (a layout READ) inline in
+  // the same loop as the bucket mutations (style WRITES), so every
+  // newly-measured word forced a synchronous reflow of a
+  // just-invalidated layout — measured at 534ms for one tick that
+  // built 136 words' geometry, vs ~20ms for the same measurements as
+  // an uninterrupted read pass. Phase 1 below decides the re-roll set
+  // and does ALL measurement back-to-back (reads only); phase 2 does
+  // ALL bucket churn (writes only). At most one forced reflow per
+  // tick, regardless of how many words measure.
+  const rerollScratch = []; // reused across ticks — no per-tick allocation
+  function swapTick(fracPct, rerollPct) {
+    const rerollP = rerollPct / 100;
+    rerollScratch.length = 0;
+
+    // Phase 1 — decide + measure (layout reads only, no style writes).
+    for (let wi = 0; wi < wordGroups.length; wi++) {
+      if (!paraVisible[wordPara[wi]]) continue;
+      if (wordGroups[wi].length < 2) continue;
+      if (Math.random() >= rerollP) continue;
+      ensureGeometry(wi);
+      rerollScratch.push(wi);
+    }
+
+    // Phase 2 — permute + bucket churn (style writes only, no reads).
+    for (const wi of rerollScratch) {
+      const group = wordGroups[wi];
+      const activeCount = Math.min(group.length, Math.max(2, Math.round(group.length * fracPct / 100)));
+      const active = partialShuffleSelect(group.slice(), activeCount);
+      const targets = shuffleInPlace(active.slice());
+      const newSet = new Set(active);
+      for (const idx of wordActive[wi]) if (!newSet.has(idx)) releaseChar(idx);
+      for (let i = 0; i < active.length; i++) {
+        assignChar(active[i], charPosX[targets[i]] - charPosX[active[i]]);
+      }
+      wordActive[wi] = active;
+    }
+    return rerollScratch.length;
+  }
+
+  function releaseAllSwap() {
+    for (let wi = 0; wi < wordActive.length; wi++) {
+      for (const idx of wordActive[wi]) releaseChar(idx);
+      wordActive[wi] = [];
+    }
+  }
+
+  // ---- Decoration tick: geometric skipping per VISIBLE paragraph's
+  // contiguous char span — O(expected k over visible text), untouched by
+  // document length or off-screen paragraphs.
+  function decorationTick(density) {
+    for (const idx of decoAssigned) {
+      decoBuckets[currentBucket[idx]].delete(charRanges[idx]);
+      currentBucket[idx] = null;
+    }
+    decoAssigned = [];
+    if (density <= 0) return 0;
+    const pool = DECORATION_POOLS[document.getElementById('decoPool').value] || DECORATION_POOLS['mixed8'];
+
+    // ---- Follow-swap mode: decoration candidates are ONLY the
+    // characters currently active in the swap (charKey !== null), so
+    // decoration marks land exactly where a glyph is displaced this
+    // moment. Note the decoration paints over the character's ORIGINAL
+    // box (the Range doesn't move — only the shadow does), so in this
+    // mode the marks sit on the vacated slots. The active set is
+    // already small (k), so a plain Bernoulli loop over it is O(k) —
+    // no geometric skipping needed.
+    if (document.getElementById('decoFollowSwap').checked) {
+      for (let wi = 0; wi < wordActive.length; wi++) {
+        for (const idx of wordActive[wi]) {
+          if (Math.random() >= density) continue;
+          const name = pool[Math.floor(Math.random() * pool.length)];
+          decoBuckets[name].add(charRanges[idx]);
+          currentBucket[idx] = name;
+          decoAssigned.push(idx);
+        }
+      }
+      return decoAssigned.length;
+    }
+
+    const full = density >= 0.999;
+    const logq = full ? 0 : Math.log(1 - density);
+    for (let pi = 0; pi < paraChar.length; pi++) {
+      if (!paraVisible[pi]) continue;
+      const s = paraChar[pi][0], e = paraChar[pi][1];
+      if (full) {
+        for (let i = s; i < e; i++) {
+          const name = pool[Math.floor(Math.random() * pool.length)];
+          decoBuckets[name].add(charRanges[i]);
+          currentBucket[i] = name;
+          decoAssigned.push(i);
+        }
+      } else {
+        let i = s - 1;
+        for (;;) {
+          i += 1 + Math.floor(Math.log(1 - Math.random()) / logq);
+          if (i >= e) break;
+          const name = pool[Math.floor(Math.random() * pool.length)];
+          decoBuckets[name].add(charRanges[i]);
+          currentBucket[i] = name;
+          decoAssigned.push(i);
+        }
+      }
+    }
+    return decoAssigned.length;
+  }
+
+  function clearDecoration() {
+    for (const idx of decoAssigned) {
+      decoBuckets[currentBucket[idx]].delete(charRanges[idx]);
+      currentBucket[idx] = null;
+    }
+    decoAssigned = [];
+  }
+
+  let running = false;
+
+  function runTick() {
+    const t0 = performance.now();
+    const touched = swapTick(Number(activeSlider.value), Number(rerollSlider.value));
+
+    if (decoEnabled.checked) {
+      decorationTick(Number(decoSlider.value) / 100);
+    } else if (decoAssigned.length > 0) {
+      clearDecoration();
+    }
+
+    const ms = performance.now() - t0;
+    tickTimes.push(ms);
+    if (tickTimes.length > 30) tickTimes.shift();
+    const avg = tickTimes.reduce((a, b) => a + b, 0) / tickTimes.length;
+
+    document.getElementById('statActive').textContent = swapActiveCount;
+    document.getElementById('statTouched').textContent = touched;
+    document.getElementById('statDecoActive').textContent = decoEnabled.checked ? decoAssigned.length : 'off';
+    document.getElementById('statTick').textContent = avg.toFixed(3) + 'ms';
+    document.getElementById('statBuckets').textContent = bucketMap.size;
+    document.getElementById('statGeo').textContent = geoBuiltCount + '/' + wordGroups.length;
+    document.getElementById('statDomCalls').textContent = domCallCount;
+  }
+
+  // ---- Tier-1: frame-ALIGNED ticking, not frame-DRIVEN. A pure rAF
+  // loop never runs at all when frames are starved (verified directly:
+  // this headless environment fires rAF exactly 0 times in 800ms while
+  // reporting visibilityState 'visible' — and prerendered/background
+  // windows on real browsers can behave the same). So the cadence comes
+  // from setTimeout(70); each round then OFFERS the mutation to the
+  // next real frame via rAF, and if no frame arrives within 24ms falls
+  // back to running unaligned — exactly what setInterval did, so the
+  // fallback is never worse than the old behavior. Hidden tabs skip
+  // the work (document.hidden) but keep the loop armed, preserving the
+  // pause-in-background win without relying on rAF starvation to
+  // deliver it.
+  let timer = null;
+  function tickRound() {
+    if (!running) return;
+    if (document.hidden) { timer = setTimeout(tickRound, 70); return; }
+    let done = false;
+    let fb = null;
+    const raf = requestAnimationFrame(() => {
+      if (done || !running) return;
+      done = true;
+      clearTimeout(fb);
+      runTick();
+      timer = setTimeout(tickRound, 70);
+    });
+    fb = setTimeout(() => {
+      if (done || !running) return;
+      done = true;
+      cancelAnimationFrame(raf);
+      runTick();
+      timer = setTimeout(tickRound, 70);
+    }, 24);
+  }
+
+  document.getElementById('toggleRun').onclick = () => {
+    running = !running;
+    const btn = document.getElementById('toggleRun');
+    if (running) {
+      btn.textContent = 'Stop';
+      tickRound();
+    } else {
+      btn.textContent = 'Start';
+      clearTimeout(timer);
+      releaseAllSwap();
+      clearDecoration();
+      document.getElementById('statDecoActive').textContent = decoEnabled.checked ? '0' : 'off';
+      document.getElementById('statActive').textContent = '0';
+    }
+  };
+
+  let rebuildDebounce = null;
+  wordSlider.addEventListener('change', () => {
+    const wasRunning = running;
+    if (wasRunning) document.getElementById('toggleRun').click();
+    clearTimeout(rebuildDebounce);
+    rebuildDebounce = setTimeout(() => {
+      rebuild();
+      tickTimes.length = 0;
+    }, 120);
+  });
+
+  rebuild();
+})();
+</script>

@@ -106,6 +106,30 @@ What `install chrome-host` writes (platform-specific):
 Uninstall: `pnpm exec opencues uninstall chrome-host`. Cleans up
 manifests, the WSL `.bat` shim, and the registry key.
 
+### ⚠ Registering while Chrome is running requires `chrome://restart`
+
+Chrome on Windows reads the `NativeMessagingHosts` registry key **at
+browser startup** and caches it for the life of the browser process.
+If you install (or re-install) the chrome-host while Chrome is already
+running, every connection attempt keeps resolving against the stale
+cached registry and fails — the extension retries every 30 seconds,
+forever, with nothing visibly wrong: the registry entry, manifest, and
+`.bat` shim are all correct on disk, and running the `.bat` by hand
+works. Reloading the extension does **not** help (that restarts the
+extension's service worker, not the browser process holding the
+cache). Type `chrome://restart` in the address bar (keeps your tabs),
+then confirm via the popup's **run self-check** — the `chrome-host:`
+line should say connected — or the service-worker console (`native
+host port opened` + `bundle stored`).
+
+If it still won't connect after a restart, compare the extension ID
+shown on the chrome://extensions card against the ID in the manifest's
+`allowed_origins` — unpacked extension IDs change with the load path,
+and a mismatch fails with "Access to the specified native messaging
+host is forbidden" in the service-worker console. Re-run
+`opencues install chrome-host --extension-id <current-id>` (and
+restart Chrome again) to fix.
+
 ### Why WSL is the trickiest platform — and what makes it work
 
 1. Chrome runs as a Windows process. It can only spawn Windows

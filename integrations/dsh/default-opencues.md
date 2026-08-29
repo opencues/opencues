@@ -32,6 +32,17 @@ nav-keymap: auto
 # regardless. Non-reasoning providers (anthropic, gemini) ignore it.
 max-thinking: on
 
+# replace-parse — single-substring edits ("her name is Sarha fix the
+# spelling _") splice deterministically instead of whole-buffer merging.
+# A small detector call runs IN PARALLEL with transform-blank's fused
+# call (zero added latency, one extra small LLM call per imperative _);
+# only a detection whose command/target verify as verbatim buffer
+# substrings ever splices — text you didn't point at is structurally
+# untouchable. Anything else falls back to the fused rewrite unchanged.
+#   on  (default): parallel detector armed.
+#   off          : always the fused whole-buffer path (saves the call).
+replace-parse-mode: on
+
 # Forwards a low-fan-out, sanitized snapshot of the focused field
 # (label, placeholder, aria-*, input type, page title, page url
 # origin+path, meta description) to the fluid-blank LLM call ONLY,
@@ -238,6 +249,17 @@ blank-loading-frames: ·,•,●,•,·
 blank-loading-colors-rgb:  #ef4444,#f59e0b,#10b981,#06b6d4,#3b82f6
 blank-loading-colors-ansi: red,yellow,green,cyan,blue
 blank-loading-interval-ms: 150
+
+# Glimmer transition — scramble-settle animation when an answer or
+# rewrite LANDS (the loading animation above covers the wait; this
+# covers the arrival). The landed span blinks, then churns through
+# confusable glyphs into the final text over this window. Display-only:
+# the buffer commits instantly either way, so `off` reproduces the
+# pre-feature instant swap byte-for-byte. Shared by fluid-blank,
+# transform-blank, and keyword blank fills. Values: off | 300 | 600 | 900.
+# Paints on Claude Code + Gemini CLI today; other hosts fall back to
+# the instant swap.
+glimmer-transition-ms: 900
 
 # The selector/satellite menu schema (tips + per-value descriptions
 # for every setting above) is now owned by the @opencues/core

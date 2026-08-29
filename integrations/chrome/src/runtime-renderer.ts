@@ -64,6 +64,22 @@ function plainOffsetsToDomRanges(target: HTMLElement, offsets: PlainRange[]): Ra
  * over a typical chat-input subtree), so always-rebuild is the right
  * trade.
  */
+// ---- Glimmer suppression: while a highlight-glimmer transition is
+// animating a span, the cue paint (oc-dim / oc-active) is withheld so
+// the gray active background and dim recolor can't show through the
+// animation. Set/cleared by the bootstrap's playGlimmer binding.
+let _glimmerSuppressed = false;
+export function setGlimmerSuppression(on: boolean): void {
+  _glimmerSuppressed = on;
+  if (on) {
+    const highlights = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights;
+    // Take effect immediately, not just on the next render pass — the
+    // animation starts in the same task as the substitution's render.
+    highlights?.delete('oc-dim');
+    highlights?.delete('oc-active');
+  }
+}
+
 export function applyDirectives(target: HTMLElement, directives: RenderDirectives[], pushMode: PushMode = 'none'): void {
   if (!hasHighlightAPI) return;
 
@@ -99,8 +115,19 @@ export function applyDirectives(target: HTMLElement, directives: RenderDirective
   const Highlight = (window as { Highlight?: typeof globalThis.Highlight }).Highlight;
   const highlights = (CSS as unknown as { highlights: Map<string, unknown> }).highlights;
   if (!Highlight) return;
-  highlights.set('oc-dim', new Highlight(...dimRanges));
-  highlights.set('oc-active', new Highlight(...activeRanges));
+  if (_glimmerSuppressed) {
+    // A glimmer transition owns the span right now: the cue paint (gray
+    // active background + dim recolor) must not show through the
+    // animation. Deleting here (every pass re-registers anyway) is the
+    // same proven pipeline that paints them — no reliance on
+    // cross-highlight priority resolution. Restored automatically on
+    // the first render after the animation releases the flag.
+    highlights.delete('oc-dim');
+    highlights.delete('oc-active');
+  } else {
+    highlights.set('oc-dim', new Highlight(...dimRanges));
+    highlights.set('oc-active', new Highlight(...activeRanges));
+  }
 
   // Inline cue note — the terminal splices a gray line under the span; CSS
   // Highlight can't inject text, so chrome paints the SAME note text as a

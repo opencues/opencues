@@ -21,6 +21,7 @@ import type { DynDefs } from '../state/dyn-defs';
 import { BlankLoadingAnimator, parseCustomFrames, parseRgbColors, parseAnsiColors, parseFrameIntervalMs, DEFAULT_RGB_PALETTE, DEFAULT_ANSI_PALETTE, type BlankLoadingMode } from './blank-loading';
 import { buildSafeScriptEnv } from '../security/safe-env';
 import { WEAVE_VALUE_TOKEN, type BlankWeaver } from './blank-weave';
+import type { GlimmerRender } from './glimmer-render';
 
 export interface BlankSlot {
   /** Word index of the `_`. */
@@ -136,6 +137,10 @@ export class BlankFill {
      *  diff + any os-set / file-write side-effect entries) so `undo _`
      *  can revert it. Omit to disable recording. */
     private undoJournal?: UndoJournal,
+    /** Shared glimmer transition (`glimmer-transition-ms`) — animates a
+     *  LANDED fill scrambling into place. Display-only; omitting it (or
+     *  the scalar being `off`) keeps the instant swap. */
+    private glimmer?: GlimmerRender,
   ) {
     if (blankLoading) this._loading = blankLoading;
   }
@@ -1144,7 +1149,12 @@ export class BlankFill {
       this.commitText(newText, newCursor);
       // `[err]` fills are feedback, not changes worth journaling — the
       // command is still in the buffer for the user to fix.
-      if (!isErrResult) this.recordUndo(`${slot.blankName} fill`, cleaned, newText, undoExtras);
+      if (!isErrResult) {
+        this.recordUndo(`${slot.blankName} fill`, cleaned, newText, undoExtras);
+        // Glimmer the landed answer in (display-only; `[err]` feedback
+        // stays instant — an error shouldn't get an arrival animation).
+        this.glimmer?.start(fillStart, primaryFill);
+      }
     };
 
     // ── LLM contextual weave (optional, opt-in, off by default) ──────────
@@ -1227,6 +1237,7 @@ export class BlankFill {
         this.adapter.log('info', `BlankFill: woven integration → "${preview(swapped, 60)}"`);
         this.commitText(finalText, finalCursor);
         this.recordUndo(`${slot.blankName} fill`, cleaned, finalText, undoExtras);
+        this.glimmer?.start(fillStart, swapped);
         this.adapter.emitEvent?.('blank.woven', { blankName: String(blank?.name ?? ''), output: swapped });
       } else {
         // Weave failed / ceded / timed out — land the static fill (one change).

@@ -401,9 +401,9 @@ export class BlankLoadingAnimator {
    *  soft-wrap `\n` / ZWS render-kick inserts chars). Slot word positions are
    *  computed in LOGICAL coords then mapped to painted coords, so the coloured
    *  spinner lines up with what the user sees (the "loading colour is N chars
-   *  too early on mixed CJK+Latin" misalignment \u2014 same wrap/ZWS root cause as
+   *  too early on mixed CJK+Latin" misalignment — same wrap/ZWS root cause as
    *  the dim/highlight drift). When `logicalText` is omitted it defaults to
-   *  `paintedText` (identity map \u2014 back-compat). */
+   *  `paintedText` (identity map — back-compat). */
   getActiveColoredRanges(
     paintedText: string,
     prefer: 'rgb' | 'ansi',
@@ -648,7 +648,11 @@ export class BlankLoadingAnimator {
     if (first === -1) return;
     if (text.indexOf(glyph, first + glyph.length) !== -1) return;  // more than one
     const restored = text.slice(0, first) + '_' + text.slice(first + glyph.length);
+    // Some hosts' setText resets cursor to 0 as a side effect (confirmed
+    // on OpenTUI) — restore it explicitly, same as _writeChar below.
+    const cursor = this._adapter.getCursorOffset();
     this._adapter.setText(restored);
+    this._adapter.setCursorOffset(cursor);
     this._adapter.forceRender?.();
     this._log(`BlankLoading: rescued displaced glyph ${JSON.stringify(glyph)} at ${first}`);
   }
@@ -685,7 +689,18 @@ export class BlankLoadingAnimator {
       if (idx === wordIndex) {
         const before = cleaned.slice(0, m.index);
         const after = cleaned.slice(m.index + m[0].length);
+        // Some hosts' setText resets cursor as a side effect — confirmed
+        // live on OpenTUI (shell/opencode), where it unconditionally
+        // snaps to 0 on every call. Without an explicit restore, every
+        // ~150ms animation tick during the wait visibly drags the user's
+        // cursor to buffer-start until the real answer lands and
+        // BlankFill.commitText sets the correct final cursor — "cursor
+        // moves, then corrects" (reported live, confirmed via a raw
+        // textarea.cursorOffset trace). Mirrors glimmer-render.ts's
+        // _writeFrame, which already does this for its own writes.
+        const cursor = this._adapter.getCursorOffset();
         this._adapter.setText(before + next + after);
+        this._adapter.setCursorOffset(cursor);
         // Without this, async timer-driven setText only buffers pendingText
         // on hosts that consume it via keystroke dispatch (CC 2.1.x). The
         // adapter's forceRender pushes the buffered text actively when not

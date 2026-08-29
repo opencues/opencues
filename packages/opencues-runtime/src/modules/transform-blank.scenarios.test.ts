@@ -780,3 +780,73 @@ describe('TransformBlank — tip entry for `_` must not block substitution', () 
     expect(dynDefs.get(3)).toBeUndefined();
   });
 });
+
+// ─── replace-parse geometry: a SMALL target with words between it and the
+// trigger ────────────────────────────────────────────────────────────────
+//
+// Every scenario above comes from the retired 3-pass EXTRACT, whose target
+// was the whole non-trigger body — so target and trigger were always
+// ADJACENT and the gap between them was always pure whitespace. The splice
+// stripped both edges of that gap and always appended it after the rewrite,
+// and in that one shape both choices are invisible.
+//
+// `replace-parse-mode` (#420) drives the same branch with a target that is a
+// FEW CHARACTERS inside a longer sentence, which makes a gap with real words
+// in it the common case. These pin the two things that then matter: the
+// surviving word boundary, and which side of the rewrite the gap belongs on.
+describe('TransformBlank surgical splice — layout: replace-parse (small target)', () => {
+  it('keeps the word boundary when text sits between target and trigger', async () => {
+    const { adapter, resolver } = setupTransformScenario({
+      originalText: 'her name is Sarha in the invite fix the spelling _',
+      rewrittenText: 'Sarah',
+      target: 'Sarha',
+      instruction: 'fix the spelling',
+    });
+    await resolver.resolveAndApply(adapter.getText());
+    expect(adapter.getText()).toBe('her name is Sarah in the invite');
+  });
+
+  it('re-orders nothing when the trigger comes FIRST', async () => {
+    const { adapter, resolver } = setupTransformScenario({
+      originalText: 'uppercase it _ the ticker is aapl',
+      rewrittenText: 'AAPL',
+      target: 'aapl',
+      instruction: 'uppercase it',
+    });
+    await resolver.resolveAndApply(adapter.getText());
+    expect(adapter.getText()).toBe('the ticker is AAPL');
+  });
+
+  it('still closes the gap when target and trigger ARE adjacent', async () => {
+    const { adapter, resolver } = setupTransformScenario({
+      originalText: 'her name is Sarha fix the spelling _',
+      rewrittenText: 'Sarah',
+      target: 'Sarha',
+      instruction: 'fix the spelling',
+    });
+    await resolver.resolveAndApply(adapter.getText());
+    expect(adapter.getText()).toBe('her name is Sarah');
+  });
+
+  it('leaves punctuation in the gap exactly where it was', async () => {
+    const { adapter, resolver } = setupTransformScenario({
+      originalText: 'ship it to eu-west-1 today, make that frankfurt _',
+      rewrittenText: 'eu-central-1',
+      target: 'eu-west-1',
+      instruction: 'make that frankfurt',
+    });
+    await resolver.resolveAndApply(adapter.getText());
+    expect(adapter.getText()).toBe('ship it to eu-central-1 today,');
+  });
+
+  it('preserves a newline in the gap rather than treating it as a boundary', async () => {
+    const { adapter, resolver } = setupTransformScenario({
+      originalText: 'oven at 425F\nfor the lamb make that celsius _',
+      rewrittenText: '220C',
+      target: '425F',
+      instruction: 'make that celsius',
+    });
+    await resolver.resolveAndApply(adapter.getText());
+    expect(adapter.getText()).toBe('oven at 220C\nfor the lamb');
+  });
+});

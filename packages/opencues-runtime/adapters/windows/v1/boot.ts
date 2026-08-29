@@ -192,6 +192,7 @@ export function boot(host: HostInfo): BootResult {
   // "Usable LLM" = any env key OR the zero-key subscription-CLI rung.
   const hasAnyKey = Object.values(apiKeys).some(Boolean) || pickAutoProvider(apiKeys) !== null;
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
+    glimmer: shared.glimmer,
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
     defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',

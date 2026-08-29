@@ -414,6 +414,17 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
+    scalar: 'replace-parse-mode',
+    group: 'Blanks',
+    camelCase: 'replaceParseMode',
+    description: 'Parallel replace-detector on imperative `_` asks — verified single-substring edits splice deterministically instead of whole-buffer merging',
+    menuTip: 'Detect "fix that _"-style single-substring edits with a parallel LLM call; a verified target/value pair splices deterministically (never touches text you didn\'t point at). One extra small LLM call per imperative `_`.',
+    values: [
+      { id: 'on',  description: 'Enabled (default) — a parallel detector call runs beside FUSED; verified replacements take the bounded-splice path, everything else falls back to fused' },
+      { id: 'off', description: 'Disabled — imperative `_` asks always take the fused whole-buffer merge (skips the extra detector call)' },
+    ],
+  },
+  {
     scalar: 'fluid-config-mode',
     group: 'Cues',
     camelCase: 'fluidConfigMode',
@@ -864,6 +875,19 @@ export const MENU_TUNABLES: readonly MenuTunableSpec[] = [
       { id: '150', description: 'Snappy (default) — 150ms per frame' },
       { id: '75',  description: 'Rapid — 75ms per frame, blurs into motion' },
       { id: '300', description: 'Slow — 300ms per frame, each colour holds twice as long' },
+    ],
+  },
+  {
+    scalar: 'glimmer-transition-ms',
+    group: 'Appearance',
+    menuTip: 'Scramble-settle transition when an answer or rewrite lands: the span blinks, then the new text churns through confusable glyphs into place. Display-only — the buffer commits instantly either way. Shared by fluid-blank, transform-blank, and keyword blank fills.',
+    // Default first (matches parseGlimmerTransitionMs's absent-scalar fallback).
+    values: [
+      { id: '900', description: 'Cinematic (default) — the full slow decode' },
+      { id: '300', description: 'Quick — a subtle flicker as the answer settles' },
+      { id: '600', description: 'Standard — a clear scramble-and-settle decode' },
+      { id: '1500', description: 'Extended — a long, deliberate decode (~21 frames)' },
+      { id: 'off', description: 'No transition — text swaps instantly (pre-feature behaviour)' },
     ],
   },
   {

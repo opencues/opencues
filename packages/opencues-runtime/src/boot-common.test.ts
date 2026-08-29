@@ -105,6 +105,45 @@ describe('createSourceReclassifier', () => {
     // A miss returns the proposed source — proposed='runtime' should pass through.
     expect(r.reclassify('different text', 'runtime')).toBe('runtime');
   });
+
+  // Per-caller ttlMs override — added for the chrome/Gmail poisoned-retry
+  // fix (bare `_` fill, clear, retype within the shared 1500ms window
+  // silently dropped — the runtime's own BlankLoadingAnimator bounce
+  // frame IS the literal string `_`). Chrome now passes a much shorter
+  // TTL than the opencode-tuned 1500ms default; these pin that the
+  // override actually takes effect and that omitting it keeps every
+  // other host's behavior unchanged.
+  describe('ttlMs override', () => {
+    it('a shorter ttlMs expires the stash sooner than the 1500ms default', () => {
+      let now = 1_000_000;
+      const r = createSourceReclassifier(() => now, 400);
+      r.markRuntimeWrite('_');
+      now += 401;  // past the 400ms override, well within the 1500ms default
+      expect(r.reclassify('_', 'user')).toBe('user');
+    });
+
+    it('the poisoned-retry shape: past a short TTL, a genuine retry with identical text is preserved', () => {
+      // Mirrors the live Gmail bug: BlankLoadingAnimator's own bounce
+      // frame write is the literal string `_`; a user clearing the
+      // field and retyping bare `_` moments later must NOT be silently
+      // reclassified 'runtime' and dropped.
+      let now = 1_000_000;
+      const r = createSourceReclassifier(() => now, 400);
+      r.markRuntimeWrite('_');  // the runtime's own spinner frame
+      now += 50;  // still within the short TTL — genuine echo still covered
+      expect(r.reclassify('_', 'user')).toBe('runtime');
+      now += 500;  // past the 400ms TTL — a real retry now lands correctly
+      expect(r.reclassify('_', 'user')).toBe('user');
+    });
+
+    it('omitting ttlMs keeps the 1500ms default (no regression for other hosts)', () => {
+      let now = 1_000_000;
+      const r = createSourceReclassifier(() => now);
+      r.markRuntimeWrite('_');
+      now += 401;  // past chrome's 400ms override, still within the default
+      expect(r.reclassify('_', 'user')).toBe('runtime');
+    });
+  });
 });
 
 describe('createLogFunction', () => {
