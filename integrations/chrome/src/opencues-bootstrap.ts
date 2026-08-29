@@ -3040,7 +3040,7 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
           ctl.baseline = live;
           const remaining = Math.max(250, spec.durationMs - (performance.now() - t0));
           log('debug', `glimmer: animating ${engine.charCount} chars / ${engine.wordCount} words over ${Math.round(remaining)}ms`);
-          void engine.play({ mode: 'appear', direction: 'fwd', durationMs: remaining }).then(() => {
+          void engine.play({ durationMs: remaining }).then(() => {
             if (_glimmer === ctl) cancelActiveHighlightGlimmer();
             settledResolve();
           });

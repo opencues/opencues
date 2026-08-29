@@ -72,14 +72,16 @@ export interface HighlightGlimmerOptions {
 }
 
 export interface HighlightGlimmerPlaySpec {
-  mode?: 'appear' | 'sweep';
-  direction?: 'fwd' | 'rev';
+  /** Scramble duration AFTER the blink lead-in — total wall time is
+   *  BLINK_MS + durationMs, matching the runtime's own recipe
+   *  (GLIMMER_BLINK_MS + glimmer-transition-ms on every other host). */
   durationMs?: number;
-  /** true (default): once a word starts scrambling it churns until the
-   *  end, everything settles at t=1. false: narrow traveling band with
-   *  progressive settle behind it. */
-  tail?: boolean;
 }
+
+/** Blink lead-in: the span sits fully hidden (no shadows) for this long
+ *  before the scramble starts — mirrors the runtime's GLIMMER_BLINK_MS
+ *  ("the blinker blinks, then the transition happens"). */
+const BLINK_MS = 140;
 
 export interface HighlightGlimmer {
   play(spec?: HighlightGlimmerPlaySpec): Promise<void>;
@@ -319,9 +321,9 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
     return arr.slice(0, k);
   }
 
-  function scrambleWord(wi: number): void {
+  function scrambleWord(wi: number, pct: number = activePct): void {
     const group = wordGroups[wi];
-    const activeCount = Math.min(group.length, Math.max(2, Math.round(group.length * activePct / 100)));
+    const activeCount = Math.min(group.length, Math.max(2, Math.round(group.length * pct / 100)));
     const active = partialShuffleSelect(group.slice(), activeCount);
     const targets = shuffleInPlace(active.slice()); // permutation of active onto itself — collision-free by bijection
     const newSet = new Set(active);
@@ -397,73 +399,56 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
   }
 
   let playResolve: (() => void) | null = null;
-  let wordSettled: Uint8Array | null = null;
 
   function finishPlay(): void {
     stopLoop();
     releaseAll();
-    wordSettled = null;
+
     if (playResolve) { const r = playResolve; playResolve = null; r(); }
   }
 
   return {
-    play({ mode = 'appear', direction = 'fwd', durationMs = 900, tail = true }: HighlightGlimmerPlaySpec = {}): Promise<void> {
+    play({ durationMs = 900 }: HighlightGlimmerPlaySpec = {}): Promise<void> {
       finishPlay(); // one at a time — a second play() skips the first to its end
       if (N === 0) return Promise.resolve();
-      const dir = direction === 'rev' ? -1 : 1;
-      const hidden = mode === 'appear';
-      const bandW = Math.max(2, Math.round(W * 0.12));
-      wordSettled = new Uint8Array(W);
-      // Appear mode: the span's REAL text is hidden for the ENTIRE run —
-      // every char goes into the hide bucket at t=0 and stays there
-      // until the animation finishes (finishPlay's releaseAll is what
-      // reveals the text, all at once). Scramble shadows layer on top
-      // via the offset buckets: a char in both buckets paints the same
-      // hide color plus the offset rule's text-shadow, so the dance is
-      // visible over the darkness. Nothing is progressively revealed
-      // mid-run — the settle-front only governs which words are
-      // actively scrambling at any moment.
-      if (hidden) {
-        for (let i = 0; i < N; i++) { hideBucket.add(charRanges[i]); hiddenChars.add(i); }
-      }
+      // The FAMILY recipe — mirrors the runtime's own frames on every
+      // other host (glimmer-render.ts `_tick`), adapted to displacement:
+      //   1. Blink lead-in (BLINK_MS): the whole span fully hidden, no
+      //      shadows — the runtime paints all-blanks here.
+      //   2. Churn: UNIFORM whole-span scrambling (no directional
+      //      front), density stepping 45 → 30 → 15 over the duration —
+      //      exactly the runtime's easing breakpoints (0.45 to 55%,
+      //      0.30 to 75%, 0.15 after). Density maps to the fraction of
+      //      each word's characters displaced per frame; the rest sit
+      //      hidden, like the runtime's untouched-blank characters.
+      //   3. Settle: everything released at once — full text appears.
+      // The span's REAL text stays in the hide bucket the ENTIRE run;
+      // only finishPlay's releaseAll reveals it.
+      for (let i = 0; i < N; i++) { hideBucket.add(charRanges[i]); hiddenChars.add(i); }
       const startTs = performance.now();
       const promise = new Promise<void>((res) => { playResolve = res; });
 
       tickFn = () => {
-        const settled = wordSettled!;
-        const t = (performance.now() - startTs) / durationMs;
-        if (t >= 1) { finishPlay(); return; }
+        const elapsed = performance.now() - startTs;
+        if (elapsed >= BLINK_MS + durationMs) { finishPlay(); return; }
         // Liveness: if the editor rewrote the span's nodes after we
         // built (a char range collapses when its text node leaves the
         // document), the highlights paint nothing — finish immediately
         // so the real text shows rather than a dead dark span.
         if (charRanges[0].collapsed || charRanges[N - 1].collapsed) { finishPlay(); return; }
-        const front = tail ? t * W : t * (W + bandW);
-        // Phase 1 — layout reads only.
+        if (elapsed < BLINK_MS) return; // blink: hidden, still, silent
+        const p = (elapsed - BLINK_MS) / durationMs;
+        const densityPct = p < 0.55 ? 45 : p < 0.75 ? 30 : 15;
+        // Phase 1 — layout reads only (all words, first churn tick
+        // builds all geometry back-to-back; spans are small).
         const scrambling: number[] = [];
         for (let wi = 0; wi < W; wi++) {
-          if (settled[wi]) continue;
-          const pos = dir > 0 ? wi : W - 1 - wi;
-          const on = tail ? pos <= front : (pos <= front && pos > front - bandW);
-          if (on && wordGroups[wi].length >= 2) { ensureGeometry(wi); scrambling.push(wi); }
+          if (wordGroups[wi].length < 2) continue;
+          ensureGeometry(wi);
+          scrambling.push(wi);
         }
-        // Phase 2 — style writes only. "Settling" mid-run just stops a
-        // word's scramble (its shadows go dark until the finish reveals
-        // everything) — it never unhides.
-        for (let wi = 0; wi < W; wi++) {
-          if (settled[wi]) continue;
-          const group = wordGroups[wi];
-          const pos = dir > 0 ? wi : W - 1 - wi;
-          const settleNow = tail
-            ? (group.length < 2 && pos <= front)
-            : (pos <= front - bandW || (group.length < 2 && pos <= front));
-          if (settleNow) {
-            for (const idx of wordActive[wi]) releaseChar(idx);
-            wordActive[wi] = [];
-            settled[wi] = 1;
-          }
-        }
-        for (const wi of scrambling) scrambleWord(wi);
+        // Phase 2 — style writes only.
+        for (const wi of scrambling) scrambleWord(wi, densityPct);
         decorationPass();
       };
       loopRound();
