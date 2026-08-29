@@ -10,15 +10,17 @@
 # ./time-blank.sh with `get`, which prints the local time (HH:MM)
 # to stdout. That value replaces the `_` in the buffer.
 #
-# How the runtime picks it up: BlankSource scans every `_` for a
-# keyword (`blankKeywords`) within `blankProximity` words. If found,
-# it invokes the colocated script. The script gets stdin context
-# words on `get`; on `set <value>` it would write the new value
-# back. This example is GET-only — there's nothing to set on a
-# clock.
+# How the runtime picks it up: `blankKeywords` desugars into anchored
+# shapes (synthesizeKeywordShapes) matched against the SENTENCE
+# containing `_` — a keyword claims the `_` when it leads that
+# sentence, with anything between keyword and `_` captured as the
+# arg. On a match the runtime invokes the colocated script. The
+# script gets stdin context words on `get`; on `set <value>` it
+# would write the new value back. This example is GET-only — there's
+# nothing to set on a clock.
 #
-# Why no `blankStep` / `blankSuffix` / `blankReplace` here? Defaults
-# work for a read-only blank with no cycling. Look at
+# Why no `blankStep` / `blankSuffix` here? Defaults work for a
+# read-only blank with no cycling. Look at
 # defaults/blanks/volume/BLANK.md for the full set of options.
 # ─────────────────────────────────────────────────────────────────
 
@@ -33,15 +35,12 @@ enabled: false
 # which run on plain text). Cue sources omit this field.
 type: blank
 
-# Triggered when any of these words appears within `blankProximity`
-# words of `_`. Use comma-separated short triggers — they're
-# matched as whole words, case-insensitive.
+# Triggered when one of these leads the sentence containing `_`
+# (each keyword desugars into an anchored shape; anything between
+# keyword and `_` is captured as the arg, so `time _`, `time is _`
+# and `time right now _` all fire). Use comma-separated short
+# triggers — matched as whole words, case-insensitive.
 blankKeywords: time, clock
-
-# Max words between keyword and `_`. 0 means "directly adjacent
-# only" (`time _`). 2 lets `time is _` and `time right now _` fire.
-# Volume / brightness use 3 to handle copulas like `volume is _`.
-blankProximity: 2
 
 # Auto-populate on text-change: as soon as the keyword+`_` pattern
 # is detected, fire `get` without waiting for the user to navigate

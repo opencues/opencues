@@ -1053,13 +1053,16 @@ export class BlankFill {
     //     as a label ("volume 40%") or the integration template renders it.
     //   - an integration template is present — the template IS the rendering
     //     ("volume is now 30%"), so the typed keyword must go.
-    //   - the shape captured an ARG ("weather oslo _", "nvda _", "define X _")
+    //   - the shape captured an ARG ("weather oslo _", "define X _")
     //     — the arg was part of the query and the output embeds it, so the
     //     whole "<keyword> <arg>" command span is consumed.
     //
     // A BARE keyword GET with no captured arg and no integration ("brightness
     // _") instead just FILLs the `_`, KEEPING the keyword as the label
     // ("brightness 50%") — clearing it would strand a context-free value.
+    // Note a ticker like "nvda _" or "btc _" is THIS case, not an arg-capture:
+    // the ticker IS the keyword, the synthesized bare shape has no value
+    // group, so the label stays ("btc BTC: $78,018.00").
     // Legacy non-shaped keyword blanks fall through to the gentle
     // keyword-clear path (blankClearKeywords); plain `_` in prose just
     // fills at the cursor.

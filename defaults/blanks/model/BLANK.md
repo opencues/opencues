@@ -26,9 +26,9 @@ blankKeywords: model, models
 blankShapes: [{"pattern":"^(?:what(?:'s|s| is) )?(?:my |the )?model for (cues|auditors|blanks)\\s*\\??\\s*_$","action":"get","valueGroup":1},{"pattern":"^((?:list |show |available |what )?models)\\s*\\??\\s*_$","action":"get","valueGroup":1},{"pattern":"^((?:what(?:'s|s| is) )?(?:my |the )?(?:current |active )?model(?: am i (?:using|on))?(?: in use)?)\\s*\\??\\s*_$","action":"get","valueGroup":1},{"pattern":"^(which model(?: (?:am i (?:using|on)|is (?:this|active|in use)))?)\\s*\\??\\s*_$","action":"get","valueGroup":1}]
 blankAutoPopulate: true
 blankFormat: string
-# Auto: bare "whats my model _" → wipe → just the answer. Copula
-# phrasings ("my model is _") → keep → preserves the lead-in.
-blankReplace: auto
+# Clearing is SHAPE-DERIVED (the blankReplace dial was deleted, June 2026):
+# a bare keyword get keeps its label — "whats my model _" fills the `_`
+# and the lead-in stays.
 blankClearOnEdit: true
 blankDismissible: true
 as-context: off

@@ -9,11 +9,10 @@ blankAutoPopulate: true
 blankFormat: string
 tip: Claude / Anthropic service status
 blankDismissible: true
-# Auto: bare "is claude down _" / "claude status _" → wipe → just the
-# Yes/No + reason ("No — all systems operational"). Copula phrasings
-# ("the claude api is _") → keep → preserves the lead-in.
-# The Yes/No answer reads naturally on its own — no get() reformat needed.
-blankReplace: auto
+# Clearing is SHAPE-DERIVED (the blankReplace dial was deleted, June 2026):
+# a bare keyword get keeps its label — "claude status _" fills the `_`
+# with the Yes/No + reason ("No — all systems operational") and the
+# lead-in stays. No get() reformat needed; the answer reads on its own.
 blankClearOnEdit: true
 # Blank-as-context: when blank-context-mode is on, expose Anthropic
 # API status as [CLAUDE-STATUS API] so casual phrasings ("is claude

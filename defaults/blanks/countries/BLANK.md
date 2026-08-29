@@ -6,10 +6,9 @@ blankAutoPopulate: true
 blankFormat: string
 tip: Country fact
 blankReadOnly: true
-blankProximity: 3
-# Auto: bare "population of france _" → wipe → "France population: 66.4M"
-# (country + fact embedded). Copula phrasing → keep.
-blankReplace: auto
+# Clearing is SHAPE-DERIVED (the blankReplace dial was deleted, June 2026):
+# a captured arg consumes the command span — "population of france _" →
+# "France population: 66.4M" (country + fact embedded).
 ---
 
 Implementation: built-in `CountriesBlank` in `@opencues/runtime`

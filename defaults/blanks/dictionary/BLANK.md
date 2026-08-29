@@ -6,10 +6,9 @@ blankAutoPopulate: true
 blankFormat: string
 tip: Dictionary definition
 blankReadOnly: true
-blankProximity: 3
-# Auto: bare "define ephemeral _" → wipe → "ephemeral: lasting for a very short time"
-# (word embedded). Copula phrasing → keep.
-blankReplace: auto
+# Clearing is SHAPE-DERIVED (the blankReplace dial was deleted, June 2026):
+# a captured arg consumes the command span — "define ephemeral _" →
+# "ephemeral: lasting for a very short time" (word embedded).
 # Blank-as-context: deliberately OFF. The "ambient" set for dictionary
 # would be "every word the user looks up" — a surveillance shape that
 # also has no fixed slot list. Keep this as a keyword-triggered lookup.
