@@ -640,19 +640,6 @@ export interface BuildSharedRuntimeOptions {
    *  (default) this is never consulted. */
   readonly httpAdapter?: HttpAdapterShape;
   /**
-   * Switches glimmer to real-write mode for hosts whose renderer doesn't
-   * consume `RenderDirectives.textOverride` (OpenCode, shell, chrome
-   * today — Gemini CLI DOES consume it and must NOT set this, or its
-   * already-working render-only animation would start writing the
-   * buffer instead). Every frame is committed via `adapter.setText`,
-   * marked through the SAME source-reclassifier instance the host's own
-   * `setText`/`pushText` wrapper uses — pass its `markRuntimeWrite`
-   * method directly. See `GlimmerRenderOptions.realWrite` and
-   * docs/architecture/glimmer-realwrite-extension-plan.md for the full
-   * design + per-host side effects. Omit to keep render-only (default —
-   * matches every band's behavior before this option existed). */
-  readonly glimmerRealWrite?: { markRuntimeWrite: (text: string) => void };
-  /**
    * Host-owned glimmer animation — the band delegates the ENTIRE
    * scramble-settle transition to the host and the runtime generates no
    * frames at all (no timer, no writes, no textOverride). Takes
@@ -1836,21 +1823,20 @@ export function buildSharedRuntime(
     : null;
   // Glimmer transition — scramble-settle when a substitution LANDS (the
   // loading animator above covers the in-flight phase; this covers the
-  // arrival). Two modes: render-only (Gemini CLI — registered LAST among
-  // render handlers so its whole-string textOverride is the frame's
-  // final word while it runs) or real-write (opencode/shell/chrome —
-  // `opts.glimmerRealWrite` set), for hosts whose renderer doesn't
-  // consume textOverride. See GlimmerRenderOptions.realWrite.
+  // arrival). Display-only on every host: render-only textOverride
+  // frames (CC / Gemini / OpenCode / shell — the OpenTUI hosts paint
+  // the override diff as an overlay box) or host-owned animation
+  // (chrome, `opts.glimmerHostAnimation`). The buffer never holds a
+  // scrambled frame anywhere.
   const glimmer = new GlimmerRender({
     adapter,
     durationMs: () => parseGlimmerTransitionMs(
       configLoader.opencuesState.settings.get('glimmer-transition-ms'),
     ),
     log: msg => log('debug', msg),
-    realWrite: opts.glimmerRealWrite,
     playHostAnimation: opts.glimmerHostAnimation,
   });
-  if (!opts.glimmerRealWrite && !opts.glimmerHostAnimation) {
+  if (!opts.glimmerHostAnimation) {
     // textOverride path only makes sense when the runtime itself
     // generates frames — host-owned animation never has an override to
     // paint, so skip the render-handler registration entirely.

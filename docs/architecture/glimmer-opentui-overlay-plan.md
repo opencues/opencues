@@ -2,8 +2,8 @@
 
 Status: IMPLEMENTED + LIVE-VERIFIED on both hosts (2026-08-29,
 manual). Sequencing step 3 (deleting glimmer-render.ts's write-mode
-machinery + its tests) is now unblocked and remains the one open
-follow-up. Original plan below, kept as the design record.
+machinery + its tests) was completed the same day — all three steps
+done. Original plan below, kept as the design record.
 
 ## Why
 

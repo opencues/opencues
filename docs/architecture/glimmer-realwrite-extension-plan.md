@@ -1,3 +1,10 @@
+> **SUPERSEDED (2026-08-29).** Real-write mode is retired and its
+> machinery deleted from `glimmer-render.ts`: chrome moved to a
+> host-owned CSS Highlight engine after the Gmail freeze, and
+> OpenCode/shell moved to overlay-painted render-only frames — see
+> `glimmer-opentui-overlay-plan.md`. Kept as the design record of
+> why real-write existed and what it cost.
+
 # Glimmer real-write extension — plan + per-host side effects
 
 ⚠️ **POSTMORTEM (August 2026): chrome is now DISABLED, not just

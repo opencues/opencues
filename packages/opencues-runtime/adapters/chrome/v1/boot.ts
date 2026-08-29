@@ -384,23 +384,15 @@ export function boot(host: HostInfo): BootResult {
     // weaver needs the host's adapter explicitly (mirrors the Resolver below).
     httpAdapter: host.httpAdapter as import('@opencues/core').HttpAdapterShape | undefined,
     // Glimmer on chrome: HOST-OWNED animation (CSS Custom Highlight API,
-    // via the bootstrap's playGlimmer binding), never real-write.
-    //
-    // Real-write stays force-disabled (August 2026): it fired up to ~13
-    // execCommand-driven writes in under a second per landed
-    // substitution — O(field) DOM walking per frame — and correlated
-    // with whole-tab freezes on Gmail, with the writes' own echoes
-    // plausibly outliving the reclassifier's TTL and re-triggering the
-    // resolver on the runtime's own output. That cost model is
-    // structural, not tunable, which is why the replacement delegates
-    // the ENTIRE animation to a restyling engine that never touches the
-    // text DOM (zero writes, zero undo entries, nothing for managed-
-    // editor reconcilers to revert). OpenCode and shell keep real-write
-    // mode — both separately live-verified, neither shares chrome's
-    // execCommand write cost. No playGlimmer binding → no transition
-    // animation at all (text just appears — never fall back to
-    // real-write).
-    glimmerRealWrite: undefined,
+    // via the bootstrap's playGlimmer binding). The retired real-write
+    // mode fired up to ~13 execCommand-driven writes in under a second
+    // per landed substitution — O(field) DOM walking per frame — and
+    // froze Gmail tabs (August 2026); that cost model was structural,
+    // not tunable, which is why the replacement delegates the ENTIRE
+    // animation to a restyling engine that never touches the text DOM
+    // (zero writes, zero undo entries, nothing for managed-editor
+    // reconcilers to revert). No playGlimmer binding → no transition
+    // animation at all (text just appears).
     glimmerHostAnimation: host.playGlimmer
       ? (spec) => host.playGlimmer!(spec)
       : undefined,

@@ -58,9 +58,8 @@ offset→visual API), so a span that wraps, sits on another line than
 the caret, or whose line exceeds the pane width simply doesn't paint —
 the real final text shows, the same graceful give-up chrome's engine
 uses. The earlier real-write mode (every frame committed via
-`adapter.setText`, reclassifier-marked) is retired on both bands but
-its runtime machinery remains until this ships live-verified; design +
-sequencing: [`docs/architecture/glimmer-opentui-overlay-plan.md`](../architecture/glimmer-opentui-overlay-plan.md).
+`adapter.setText`, reclassifier-marked) is retired and its runtime
+machinery deleted; design + sequencing record: [`docs/architecture/glimmer-opentui-overlay-plan.md`](../architecture/glimmer-opentui-overlay-plan.md).
 
 All delivery modes give the same guarantees, resting on one invariant:
 **the buffer holds the final landed text for the entire animation** —
@@ -84,7 +83,7 @@ ever needs restoring, because nothing was ever dirty.
   resolver re-dispatch, no AgentRewrite debounce reset, no config
   hot-reload churn — trivially true now that no mode writes the buffer.
   (The retired real-write mode achieved this via reclassifier marking;
-  that machinery lives on only as unreferenced code pending deletion.)
+  its machinery was deleted from `glimmer-render.ts` 2026-08-29.)
 
 ## Host support
 

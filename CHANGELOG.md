@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed — glimmer's real-write machinery deleted (`@opencues/runtime` 0.37.0 → 0.38.0, `@opencues/chrome` 0.2.197 → 0.2.198)
+
+With the OpenTUI overlay mode live-verified on both hosts (entry below), the write-mode code is gone rather than dormant: `GlimmerRenderOptions.realWrite`, `_writeFrame`, the restore-on-cancel branch, `ActiveGlimmer.bufferedText`, `BuildSharedRuntimeOptions.glimmerRealWrite`, and the 9 write-mode tests. `locate()` simplifies to anchoring on `finalText` (the buffer is never written, so the landed text is always the anchor). `HostAdapter.markRuntimeWrite` stays — it's the general host contract for out-of-band buffer writers (blank-loading still uses the host-side reclassifier path), only its glimmer consumer died. `glimmer-realwrite-extension-plan.md` carries a superseded banner as the design record. Chrome band's dead `glimmerRealWrite: undefined` line removed (bundle bytes change → lockstep bump).
+
 ### Changed — glimmer goes display-only on OpenCode + shell: textOverride frames painted as an overlay, the buffer never holds a scrambled frame (`@opencues/runtime` 0.36.2 → 0.37.0, `@opencues/shell` 0.2.21 → 0.2.22, `@opencues/opencode` 0.2.15 → 0.2.16)
 
 Real-write mode is retired on both OpenTUI bands. The bands now boot glimmer render-only (the CC/Gemini branch — no new runtime concepts), the 1:1-length `textOverride` frames flow out through `collectRenderDirectives`, and each host bootstrap diffs the frame against the true text and floats the scrambled slice as an absolute overlay box over the textarea — the inline-note overlay pattern generalized (shell: `app.tsx` signal + box; OC: `opencuesGlimmerOverlay` signal + a `setup.sh`-injected box in the patched prompt). Overlay geometry is cursor-anchored (OpenTUI exposes no offset→visual API): single-logical-line, caret-on-line, unwrapped-line guards, else the overlay simply doesn't paint and the real final text shows — the same graceful give-up chrome's engine uses.

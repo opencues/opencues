@@ -1,38 +1,35 @@
 // GlimmerRender — scramble-settle transition when a substituted answer
 // lands (fluid-blank, transform-blank, keyword blank fills).
 //
-// TWO delivery modes, same scramble/blink/splice logic underneath:
+// TWO delivery modes; in BOTH the buffer commits INSTANTLY and never
+// holds a scrambled frame — the animation is pure display:
 //
-// RENDER-ONLY (Claude Code, Gemini CLI): the buffer commits INSTANTLY;
-// only the PAINTED string animates, via `RenderDirectives.textOverride`
-// from a render handler, driven by bare `adapter.forceRender()` calls that
-// no band routes back into onTextChange. Nothing here can poison the
-// Resolver's dispatch, BlankFill's span invalidation, AgentRewrite's
-// debounce, or ConfigLoader.maybeReload, because nothing writes.
+// RENDER-ONLY (Claude Code, Gemini CLI, OpenCode, shell): only the
+// PAINTED string animates, via `RenderDirectives.textOverride` from a
+// render handler, driven by bare `adapter.forceRender()` calls that no
+// band routes back into onTextChange. CC applies the override
+// whole-string; Gemini slices it per line; the OpenTUI hosts diff it
+// against the true text and float the changed slice as an overlay box
+// (see docs/architecture/glimmer-opentui-overlay-plan.md). Nothing
+// here can poison the Resolver's dispatch, BlankFill's span
+// invalidation, AgentRewrite's debounce, or ConfigLoader.maybeReload,
+// because nothing writes.
 //
-// REAL-WRITE (OpenCode, shell, chrome — hosts whose renderer never reads
-// `textOverride`): pass `realWrite: { markRuntimeWrite }` and every frame
-// is committed via `adapter.setText()` instead, marked through the host's
-// source-reclassifier FIRST so it's classified 'runtime' — the same
-// mechanism `blank-loading.ts` already uses for its per-tick spinner
-// writes. That reclassification is what keeps a real-write glimmer from
-// poisoning BlankFill (which gates its whole onTextChange handler on
-// `e.source === 'user'`); AgentRewrite and ConfigLoader gate the same way
-// as of the fix alongside this mode (see
-// docs/architecture/glimmer-realwrite-extension-plan.md for the full
-// trace of what does and doesn't need that gate, and the per-host side
-// effects — OpenTUI's extmark-wipe-on-setText, chrome's MutationObserver-
-// fighting rich-text editors — that a real write inherits per host).
-// Both modes reuse `getTextOverride()`'s span-location + splice logic —
-// write mode just also commits what it locates instead of only painting
-// it, and explicitly restores the clean final text on settle (render-only
-// mode never needs that: the buffer was always already final).
+// HOST-OWNED (chrome): `playHostAnimation` delegates the ENTIRE
+// transition to the host (a CSS Custom Highlight API engine that
+// restyles glyphs); the runtime generates no frames at all.
 //
-// Claude Code applies overrides whole-string; Gemini slices a whole-buffer
-// override per line — both safe because the override/write is ALWAYS the
-// same length as the ctx text (blink and scramble are 1:1 char
-// substitutions, newlines preserved) — which is also what keeps a
-// real-write frame length-stable across every host.
+// The override is ALWAYS the same length as the ctx text (blink and
+// scramble are 1:1 char substitutions, newlines preserved) — the
+// load-bearing invariant every consumer's splice/diff relies on.
+//
+// A third mode — REAL-WRITE, which committed every 70ms frame via
+// `adapter.setText` with source-reclassifier marking — shipped for the
+// OpenTUI hosts and was retired 2026-08-29 once their overlay
+// consumption landed (and was never safe on chrome, where it froze
+// Gmail). If you're re-introducing anything like it, read
+// docs/architecture/glimmer-realwrite-extension-plan.md and the
+// overlay plan's "Why" first.
 //
 // The scramble table + recipe are ported from the Glimmer extension
 // prototype (experiments/roi-debug/lib/scramble.js), itself extracted from
@@ -118,17 +115,6 @@ interface ActiveGlimmer {
    *  by getTextOverride. Caching per tick (not per render) keeps extra
    *  host repaints between ticks from churning faster than the cadence. */
   frameText: string;
-  /**
-   * Write mode only: the text CURRENTLY sitting in the buffer at this
-   * span — whatever `_writeFrame` last actually wrote, or `finalText`
-   * itself before the first write. Render-only mode never reads this;
-   * its buffer always literally contains `finalText` (nothing writes
-   * there), so `locate()` anchors on `finalText` directly. Write mode's
-   * buffer holds the PREVIOUS frame once any write has happened, so
-   * each subsequent `locate()` call has to search for THAT, not the
-   * long-gone original landed text.
-   */
-  bufferedText: string;
   startedAt: number;
   durationMs: number;
 }
@@ -141,19 +127,6 @@ export interface GlimmerRenderOptions {
   /** Test seam / determinism hook: PRNG used for every scramble frame. */
   rand?: () => number;
   log?: (msg: string) => void;
-  /**
-   * Real-write mode — REQUIRED on hosts whose renderer doesn't consume
-   * `RenderDirectives.textOverride` (OpenCode, shell, chrome today).
-   * Omit to keep the render-only path (Claude Code, Gemini CLI).
-   *
-   * `markRuntimeWrite` MUST be the same source-reclassifier instance the
-   * host's own `setText`/`pushText` wrapper uses — every frame calls it
-   * with the frame's full post-write text BEFORE calling
-   * `adapter.setText`, exactly mirroring `blank-loading.ts`'s pattern.
-   */
-  realWrite?: {
-    markRuntimeWrite: (text: string) => void;
-  };
   /**
    * Host-owned animation — the host plays the ENTIRE transition itself
    * and the runtime skips frame generation completely (no timer, no
@@ -178,9 +151,9 @@ export interface GlimmerRenderOptions {
 
 /**
  * One active transition at a time (a second `start()` replaces the first —
- * substitutions are user-paced, overlap is a re-summon). Render-only unless
- * `realWrite` is configured (see GlimmerRenderOptions.realWrite) — this
- * class never calls setText/pushText on its own initiative otherwise.
+ * substitutions are user-paced, overlap is a re-summon). Display-only:
+ * this class NEVER calls setText/pushText — the buffer holds the final
+ * landed text for the whole animation on every host.
  */
 export class GlimmerRender {
   private _active: ActiveGlimmer | null = null;
@@ -219,7 +192,6 @@ export class GlimmerRender {
       start: Math.max(0, startOffset),
       finalText,
       frameText: blankOut(finalText),
-      bufferedText: finalText, // buffer still holds the real landed text — nothing written yet
       startedAt: Date.now(),
       durationMs,
     };
@@ -240,47 +212,24 @@ export class GlimmerRender {
       try { h.cancel(); } catch { /* host mid-teardown */ }
     }
     if (this._timer !== null) { clearInterval(this._timer); this._timer = null; }
-    const wasActive = this._active;
-    if (wasActive === null) return;
+    if (this._active === null) return;
     this._active = null;
-    // Write mode: restore a dirtied buffer UNCONDITIONALLY — regardless
-    // of `repaint`. Render-only mode never touches the buffer, so an
-    // abandoned animation (e.g. `start()`'s own `cancel(false)` when a
-    // second substitution re-summons before the first settles) is
-    // harmless there: the buffer already held the correct text the whole
-    // time. In write mode the SAME abandon would otherwise leave
-    // whatever scrambled frame was last written permanently sitting in
-    // the user's buffer — worse than one extra restore write. Wrapped in
-    // try/catch: cancel() can fire during host teardown (dispose()),
-    // when the adapter may already be gone.
-    if (this.opts.realWrite && wasActive.bufferedText !== wasActive.finalText) {
-      try { this._writeFrame(wasActive, wasActive.finalText); } catch { /* host mid-teardown */ }
-      return;
-    }
+    // Nothing to restore — the buffer was never written; an abandoned
+    // animation (e.g. `start()`'s own `cancel(false)` when a second
+    // substitution re-summons before the first settles) is harmless.
     if (repaint) this._repaint();
   }
 
   /**
-   * Locate `anchorText` in `ctxText` and splice `glyphs` in its place.
-   * Exact position first; tolerates small offset drift (ZWS strips, host
-   * indent) by searching near the expected spot. Pure — takes `active`
-   * explicitly rather than reading `this._active`, so it works the same
-   * whether the transition is still active (every normal tick) or has
-   * just been cleared (write mode's settle call, after `cancel()` has
-   * already nulled `_active`).
-   *
-   * `anchorText` is NOT always `active.finalText`: render-only mode never
-   * touches the buffer, so it's always there verbatim and callers pass
-   * `finalText`. Write mode's OWN previous frame is what's actually
-   * sitting in the buffer once any write has happened, so its callers
-   * pass `active.bufferedText` instead — searching for `finalText` there
-   * would fail every tick after the first (the buffer no longer contains
-   * it) and read as "span gone" when nothing is actually wrong.
-   *
-   * Returns null when `anchorText` isn't found — callers decide what
-   * "not found" means for their case.
+   * Locate `active.finalText` in `ctxText` and splice `glyphs` in its
+   * place. Exact position first; tolerates small offset drift (ZWS
+   * strips, host indent) by searching near the expected spot. The
+   * buffer is never written during an animation, so the landed text is
+   * always the anchor. Returns null when it isn't found — the span is
+   * gone (user edit / another module's rewrite) and the caller cancels.
    */
-  private locate(active: ActiveGlimmer, ctxText: string, anchorText: string, glyphs: string): string | null {
+  private locate(active: ActiveGlimmer, ctxText: string, glyphs: string): string | null {
+    const anchorText = active.finalText;
     let at = ctxText.startsWith(anchorText, active.start)
       ? active.start
       : ctxText.indexOf(anchorText, Math.max(0, active.start - 16));
@@ -298,9 +247,7 @@ export class GlimmerRender {
     const a = this._active;
     if (a === null) return null;
     if (a.frameText === a.finalText) return null;
-    // Render-only: the buffer is never written, so it always literally
-    // contains `finalText` — that's the anchor.
-    const spliced = this.locate(a, ctxText, a.finalText, a.frameText);
+    const spliced = this.locate(a, ctxText, a.frameText);
     if (spliced === null) {
       // The span is gone — the user edited it or another module rewrote the
       // buffer. Stop silently: the buffer is the truth, never fight it.
@@ -333,52 +280,7 @@ export class GlimmerRender {
   }
 
   private _repaint(): void {
-    if (this.opts.realWrite) {
-      const a = this._active;
-      if (a === null) return;
-      try {
-        // Not the settle path (that calls _writeFrame directly, after
-        // `_active` is already null) — this is a normal in-flight tick,
-        // so a "span gone" result means the user edited it: self-cancel,
-        // same documented guarantee the render-only path gives via
-        // getTextOverride's cancel(false).
-        if (!this._writeFrame(a, a.frameText)) this.cancel(false);
-      } catch { /* host mid-teardown */ }
-      return;
-    }
     try { this.opts.adapter.forceRender?.(); } catch { /* host mid-teardown */ }
-  }
-
-  /**
-   * Write-mode only: splice `glyphs` into the LIVE buffer at the landed
-   * span (via `locate()` — the same span-location + drift-tolerance the
-   * render-only path uses), mark it via the host's reclassifier BEFORE
-   * writing so BlankFill/AgentRewrite/ConfigLoader treat it as a runtime
-   * write, then restore the adapter's cursor (setText implementations
-   * vary in whether they preserve cursor position on their own).
-   * `active` is passed explicitly (not read from `this._active`) so this
-   * also works for the settle call, made AFTER `cancel()` has already
-   * cleared `_active` — using the live field there would silently no-op.
-   * Returns false when the span wasn't found (nothing written) so
-   * callers on the normal-tick path can self-cancel, same guarantee the
-   * render-only path gives via getTextOverride's cancel(false).
-   */
-  private _writeFrame(active: ActiveGlimmer, glyphs: string): boolean {
-    const ctxText = this.opts.adapter.getText();
-    // Anchor on whatever's ACTUALLY in the buffer right now (the
-    // previous frame, or finalText before the first write) — see
-    // locate()'s doc comment for why this differs from the render-only
-    // path.
-    const spliced = this.locate(active, ctxText, active.bufferedText, glyphs);
-    // Span gone — the user edited it or another module rewrote the
-    // buffer. The buffer is the truth, never fight it.
-    if (spliced === null) return false;
-    const cursor = this.opts.adapter.getCursorOffset();
-    this.opts.realWrite!.markRuntimeWrite(spliced);
-    this.opts.adapter.setText(spliced);
-    this.opts.adapter.setCursorOffset(cursor);
-    active.bufferedText = glyphs; // this is what the NEXT tick will find in the buffer
-    return true;
   }
 
   dispose(): void {
