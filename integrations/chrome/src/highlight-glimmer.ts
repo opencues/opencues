@@ -212,6 +212,14 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
   const registered: string[] = [];
 
   function registerHighlight(name: string, h: Highlight): Highlight {
+    // Out-prioritize the extension's own span rendering (oc-active
+    // paints a background-color over the substituted span; oc-dim
+    // recolors). Overlapping custom highlights resolve per-property by
+    // priority, so while a glimmer highlight covers a range, its
+    // `background-color: transparent` and hide color beat the cue
+    // paint — and the moment the animation releases/destroys, the
+    // normal rendering shows through again with no coordination code.
+    (h as Highlight & { priority: number }).priority = 100;
     CSS.highlights.set(name, h);
     registered.push(name);
     return h;
@@ -222,7 +230,7 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
     if (!DECORATION_STYLES[name]) throw new Error('unknown decoration: ' + name);
     decoBuckets[name] = registerHighlight(prefix + '-deco-' + name, new Highlight());
     sheet.insertRule(
-      `::highlight(${prefix}-deco-${name}) { ${DECORATION_STYLES[name]}; text-decoration-color: ${decoColor}; background-color: transparent; }`,
+      `::highlight(${prefix}-deco-${name}) { ${DECORATION_STYLES[name]}; text-decoration-color: ${decoColor}; background-color: transparent !important; }`,
       sheet.cssRules.length,
     );
   }
@@ -231,7 +239,7 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
 
   const hideBucket = registerHighlight(prefix + '-hide', new Highlight());
   sheet.insertRule(
-    `::highlight(${prefix}-hide) { color: ${hideColor}; background-color: transparent; }`,
+    `::highlight(${prefix}-hide) { color: ${hideColor} !important; background-color: transparent !important; }`,
     sheet.cssRules.length,
   );
   let hiddenChars = new Set<number>();
@@ -242,7 +250,7 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
       const name = prefix + '-off-' + String(key).replace('-', 'n').replace('.', 'p');
       const h = registerHighlight(name, new Highlight());
       sheet.insertRule(
-        `::highlight(${name}) { color: ${hideColor}; background-color: transparent; text-shadow: ${key}px 0 0 ${textColor}; }`,
+        `::highlight(${name}) { color: ${hideColor} !important; background-color: transparent !important; text-shadow: ${key}px 0 0 ${textColor}; }`,
         sheet.cssRules.length,
       );
       b = { h, name };
