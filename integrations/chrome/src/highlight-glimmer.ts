@@ -419,11 +419,12 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
       //      front), density stepping 45 → 30 → 15 over the duration —
       //      exactly the runtime's easing breakpoints (0.45 to 55%,
       //      0.30 to 75%, 0.15 after). Density maps to the fraction of
-      //      each word's characters displaced per frame; the rest sit
-      //      hidden, like the runtime's untouched-blank characters.
-      //   3. Settle: everything released at once — full text appears.
-      // The span's REAL text stays in the hide bucket the ENTIRE run;
-      // only finishPlay's releaseAll reveals it.
+      //      each word's characters displaced per frame; THE REST SHOW
+      //      THE REAL NEW TEXT — on every other host the un-scrambled
+      //      characters of a churn frame are the genuine final glyphs,
+      //      so the answer is mostly readable immediately and boils
+      //      into clarity. The global hide ends with the blink.
+      //   3. Settle: everything released — full text, clean.
       for (let i = 0; i < N; i++) { hideBucket.add(charRanges[i]); hiddenChars.add(i); }
       const startTs = performance.now();
       const promise = new Promise<void>((res) => { playResolve = res; });
@@ -437,6 +438,13 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
         // so the real text shows rather than a dead dark span.
         if (charRanges[0].collapsed || charRanges[N - 1].collapsed) { finishPlay(); return; }
         if (elapsed < BLINK_MS) return; // blink: hidden, still, silent
+        // Blink -> churn boundary: drop the global hide. From here on,
+        // only actively-displaced characters are hidden IN PLACE (their
+        // offset bucket does that); everything else is the real answer.
+        if (hiddenChars.size > 0) {
+          for (const idx of hiddenChars) hideBucket.delete(charRanges[idx]);
+          hiddenChars = new Set();
+        }
         const p = (elapsed - BLINK_MS) / durationMs;
         const densityPct = p < 0.55 ? 45 : p < 0.75 ? 30 : 15;
         // Phase 1 — layout reads only (all words, first churn tick
