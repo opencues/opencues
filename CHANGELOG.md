@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed — FluidBlank can WIPE a bare terminal lookup with no host field declaration (`@opencues/core` 0.55.2 → 0.56.0)
+### Fixed — FluidBlank can WIPE a bare terminal lookup with no host field declaration (`@opencues/core` 0.55.2 → 0.56.0; `@opencues/dsh` 0.2.17 → 0.2.18 — inline bundle regenerated with this core)
 
 `ffmpeg command to convert a video to web-ready mp4 _` used to always FILL — the ask stayed on screen and only `_` was replaced — because WIPE (replacing the whole field with the answer) required a host to declare the field `singleLine`, and no native host adapter does that; it's a browser field shape. The README's hero video claimed WIPE for exactly this case and was wrong.
 
