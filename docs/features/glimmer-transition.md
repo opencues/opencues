@@ -62,18 +62,29 @@ uses. The earlier real-write mode (every frame committed via
 its runtime machinery remains until this ships live-verified; design +
 sequencing: [`docs/architecture/glimmer-opentui-overlay-plan.md`](../architecture/glimmer-opentui-overlay-plan.md).
 
-Both modes give the same guarantees:
+All delivery modes give the same guarantees, resting on one invariant:
+**the buffer holds the final landed text for the entire animation** —
+the scramble is pure display (a painted override on CC/Gemini, an
+overlay box on OC/shell, a Highlight-API restyle on chrome). Nothing
+ever needs restoring, because nothing was ever dirty.
 
-- Submitting mid-animation submits the **final** text — real-write
-  mode explicitly restores the clean final text on cancel (a fast
-  re-summon, dispose, or the transition settling), so there's no
-  window where a scrambled frame could be submitted.
-- Editing mid-animation wins instantly: the moment the landed text is
-  no longer verbatim in the buffer, the transition self-cancels.
-- No background machinery mistakes the frames for user input: no
+- **Interrupting the animation (typing into it) yields the final text
+  plus your edit, instantly.** Your keystroke lands in the real buffer
+  — which already contains the full answer — exactly where you typed
+  it, and the transition self-cancels the moment the landed text is no
+  longer verbatim present. What you see after the very next frame is
+  the finished answer with your edit applied: no scrambled residue, no
+  lost keystroke, no waiting out the animation. (Chrome pins the
+  cancel-releases-everything half in `glimmer-engine.pw.test.ts`; the
+  runtime pins self-cancel in `glimmer-render.test.ts`.)
+- Submitting mid-animation submits the **final** text — same invariant;
+  there is no window in which a scrambled frame exists anywhere a
+  submit could read from.
+- No background machinery mistakes animation frames for user input: no
   resolver re-dispatch, no AgentRewrite debounce reset, no config
-  hot-reload churn — real-write mode's reclassifier marking is what
-  extends this guarantee to hosts that actually touch the buffer.
+  hot-reload churn — trivially true now that no mode writes the buffer.
+  (The retired real-write mode achieved this via reclassifier marking;
+  that machinery lives on only as unreferenced code pending deletion.)
 
 ## Host support
 
@@ -81,8 +92,8 @@ Both modes give the same guarantees:
 |---|---|
 | Claude Code | animates (render-only) |
 | Gemini CLI | animates (render-only) |
-| OpenCode | animates (render-only display overlay, runtime 0.37.0 — buffer never holds a scrambled frame; band pin: `adapters/oc/v1.14/boot.test.ts`). Overlay painting NOT yet live-verified — the prior real-write mode was, and its machinery stays until this is. |
-| shell | animates (render-only display overlay, runtime 0.37.0 — same contract + pin as OC, `adapters/shell/v1/boot.test.ts`). Overlay painting NOT yet live-verified. |
+| OpenCode | animates (render-only display overlay, runtime 0.37.0 — buffer never holds a scrambled frame; band pin: `adapters/oc/v1.14/boot.test.ts`). Live-verified 2026-08-29 (manual, real fork). |
+| shell | animates (render-only display overlay, runtime 0.37.0 — same contract + pin as OC, `adapters/shell/v1/boot.test.ts`). Live-verified 2026-08-29 (manual, oc-shell). |
 | chrome | animates (**host-owned** — a third delivery mode): the runtime delegates the whole transition via `GlimmerRenderOptions.playHostAnimation` to a CSS Custom Highlight API engine (`integrations/chrome/src/highlight-glimmer.ts`) that restyles glyphs — displacement swaps behind the same blink + 45/30/15 easing recipe — without ever writing the text DOM. Real-write mode remains hard-disabled there (it froze Gmail tabs — O(field) DOM walking per frame; see `CHANGELOG.md`); the Highlight engine is the structural replacement, not a tuned retry. Un-scrambled churn characters show the real final glyphs, matching the family look; the one irreducible difference is displacement of real glyphs rather than confusable-glyph substitution (the Highlight API cannot change which character renders). |
 
 Error substitutes (`[err] …` fills, missing-key fallbacks) never

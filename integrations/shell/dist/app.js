@@ -353,6 +353,8 @@ var blankInvoke = createBlankInvoke(blanksRegistry);
 var sourceReclassifier = createSourceReclassifier();
 var bootResult;
 var _onInlineNoteChange;
+var _onGlimmerOverlayChange;
+var _lastGlimmerOverlay = null;
 var _termLog;
 var _termLastNoteText = null;
 var INJ_MARK = "\xA0";
@@ -430,6 +432,7 @@ function startOpenCues(opts) {
   if (bootResult)
     return bootResult;
   _onInlineNoteChange = opts.onInlineNoteChange;
+  _onGlimmerOverlayChange = opts.onGlimmerOverlayChange;
   const log = (level, msg, data) => {
     try {
       const ts = new Date().toISOString().slice(11, 23);
@@ -774,6 +777,7 @@ function triggerOpenCuesRender(text, cursor) {
   const desiredColored = new Map;
   let noteAnchor = null;
   let noteSpanEnd = 0;
+  let glimmerOverride = null;
   const directiveSets = bootResult.collectRenderDirectives(text, cursor);
   for (const directives of directiveSets) {
     if (noteAnchor === null && directives.inlineNote && directives.inlineNote.text) {
@@ -805,6 +809,32 @@ function triggerOpenCuesRender(text, cursor) {
         const hex = r.rgb.toLowerCase();
         desiredColored.set(`load:${hex}:${r.start}:${r.end}`, { hex, start: r.start, end: r.end });
       }
+    }
+    if (glimmerOverride === null && typeof directives.textOverride === "string") {
+      glimmerOverride = directives.textOverride;
+    }
+  }
+  let nextOverlay = null;
+  if (glimmerOverride !== null && glimmerOverride !== text && glimmerOverride.length === text.length) {
+    let d0 = 0;
+    while (d0 < text.length && text[d0] === glimmerOverride[d0])
+      d0++;
+    let d1 = text.length;
+    while (d1 > d0 && text[d1 - 1] === glimmerOverride[d1 - 1])
+      d1--;
+    const lineStart = text.lastIndexOf(`
+`, d0 - 1) + 1;
+    const lineEndIdx = text.indexOf(`
+`, d0);
+    const lineEnd = lineEndIdx === -1 ? text.length : lineEndIdx;
+    const vc = textarea.visualCursor;
+    const paneWidth = textarea.width ?? 0;
+    if (d1 <= lineEnd && cursor >= lineStart && cursor <= lineEnd && vc && typeof vc.visualRow === "number" && paneWidth > 0 && inlineNoteBoxColumn(text, lineEnd) < paneWidth) {
+      nextOverlay = {
+        text: glimmerOverride.slice(d0, d1),
+        row: vc.visualRow,
+        col: inlineNoteBoxColumn(text, d0)
+      };
     }
   }
   syncNoteInjection(noteAnchor !== null, noteSpanEnd);
@@ -886,6 +916,13 @@ function triggerOpenCuesRender(text, cursor) {
   try {
     _onInlineNoteChange?.(noteAnchor);
   } catch {}
+  const overlayChanged = _lastGlimmerOverlay === null !== (nextOverlay === null) || _lastGlimmerOverlay !== null && nextOverlay !== null && (_lastGlimmerOverlay.text !== nextOverlay.text || _lastGlimmerOverlay.row !== nextOverlay.row || _lastGlimmerOverlay.col !== nextOverlay.col);
+  if (overlayChanged) {
+    _lastGlimmerOverlay = nextOverlay;
+    try {
+      _onGlimmerOverlayChange?.(nextOverlay);
+    } catch {}
+  }
 }
 
 // src/app.tsx
@@ -894,6 +931,7 @@ function App(props) {
   const renderer = useRenderer();
   const [tip, setTip] = createSignal(null);
   const [note, setNote] = createSignal(null);
+  const [glimmerSeg, setGlimmerSeg] = createSignal(null);
   const tipParts = () => {
     const t = tip();
     if (t == null)
@@ -991,6 +1029,12 @@ function App(props) {
       onTipChange: (t) => setTip(t),
       onInlineNoteChange: (n) => {
         setNote(n);
+        try {
+          renderer.requestRender?.();
+        } catch {}
+      },
+      onGlimmerOverlayChange: (seg) => {
+        setGlimmerSeg(seg);
         try {
           renderer.requestRender?.();
         } catch {}
@@ -1119,76 +1163,91 @@ function App(props) {
           return _el$9;
         })();
       })(), null);
-      _$insert(_el$6, (() => {
-        var _c$2 = _$memo(() => tip() != null);
+      _$insert(_el$7, (() => {
+        var _c$2 = _$memo(() => glimmerSeg() != null);
         return () => _c$2() && (() => {
           var _el$1 = _$createElement("box"), _el$10 = _$createElement("text");
           _$insertNode(_el$1, _el$10);
-          _$insert(_el$1, (() => {
-            var _c$3 = _$memo(() => !!tipParts()?.head);
-            return () => _c$3() && (() => {
-              var _el$12 = _$createElement("box"), _el$13 = _$createElement("text"), _el$15 = _$createElement("text"), _el$16 = _$createTextNode(` `);
-              _$insertNode(_el$12, _el$13);
-              _$insertNode(_el$12, _el$15);
-              _$setProp(_el$12, "style", {
+          _$insert(_el$10, () => glimmerSeg().text);
+          _$effect((_$p) => _$setProp(_el$1, "style", {
+            position: "absolute",
+            top: glimmerSeg().row,
+            left: glimmerSeg().col,
+            zIndex: 11
+          }, _$p));
+          return _el$1;
+        })();
+      })(), null);
+      _$insert(_el$6, (() => {
+        var _c$3 = _$memo(() => tip() != null);
+        return () => _c$3() && (() => {
+          var _el$11 = _$createElement("box"), _el$12 = _$createElement("text");
+          _$insertNode(_el$11, _el$12);
+          _$insert(_el$11, (() => {
+            var _c$4 = _$memo(() => !!tipParts()?.head);
+            return () => _c$4() && (() => {
+              var _el$14 = _$createElement("box"), _el$15 = _$createElement("text"), _el$17 = _$createElement("text"), _el$18 = _$createTextNode(` `);
+              _$insertNode(_el$14, _el$15);
+              _$insertNode(_el$14, _el$17);
+              _$setProp(_el$14, "style", {
                 flexDirection: "row",
                 height: 1
               });
-              _$insertNode(_el$13, _$createTextNode(`C_`));
-              _$setProp(_el$13, "fg", "#ffffff");
-              _$insertNode(_el$15, _el$16);
+              _$insertNode(_el$15, _$createTextNode(`C_`));
               _$setProp(_el$15, "fg", "#ffffff");
-              _$insert(_el$15, () => tipParts().head, null);
-              _$effect((_$p) => _$setProp(_el$13, "attributes", TextAttributes.INVERSE, _$p));
-              return _el$12;
+              _$insertNode(_el$17, _el$18);
+              _$setProp(_el$17, "fg", "#ffffff");
+              _$insert(_el$17, () => tipParts().head, null);
+              _$effect((_$p) => _$setProp(_el$15, "attributes", TextAttributes.INVERSE, _$p));
+              return _el$14;
             })();
-          })(), _el$10);
-          _$insert(_el$1, () => tipRows().map((row) => (() => {
-            var _el$17 = _$createElement("box");
-            _$setProp(_el$17, "style", {
+          })(), _el$12);
+          _$insert(_el$11, () => tipRows().map((row) => (() => {
+            var _el$19 = _$createElement("box");
+            _$setProp(_el$19, "style", {
               flexDirection: "row",
               height: 1
             });
-            _$insert(_el$17, () => renderSpans(row));
-            return _el$17;
-          })()), _el$10);
-          _$insertNode(_el$10, _$createTextNode(` `));
-          _$effect((_$p) => _$setProp(_el$1, "style", {
+            _$insert(_el$19, () => renderSpans(row));
+            return _el$19;
+          })()), _el$12);
+          _$insertNode(_el$12, _$createTextNode(` `));
+          _$effect((_$p) => _$setProp(_el$11, "style", {
             height: (tipParts()?.head ? 1 : 0) + tipRows().length + 1,
             width: "100%",
             flexDirection: "column"
           }, _$p));
-          return _el$1;
+          return _el$11;
         })();
       })(), null);
       return _el$6;
     })();
   }
   return (() => {
-    var _el$18 = _$createElement("box"), _el$19 = _$createElement("box"), _el$20 = _$createElement("textarea"), _el$21 = _$createElement("box");
-    _$insertNode(_el$18, _el$19);
-    _$insertNode(_el$18, _el$21);
-    _$setProp(_el$18, "style", {
+    var _el$20 = _$createElement("box"), _el$21 = _$createElement("box"), _el$22 = _$createElement("textarea"), _el$23 = _$createElement("box");
+    _$insertNode(_el$20, _el$21);
+    _$insertNode(_el$20, _el$23);
+    _$setProp(_el$20, "style", {
       flexDirection: "column",
       width: "100%",
       height: "100%",
       paddingLeft: 1,
       paddingRight: 1
     });
-    _$insertNode(_el$19, _el$20);
-    _$setProp(_el$19, "style", {
+    _$insertNode(_el$21, _el$22);
+    _$setProp(_el$21, "style", {
       flexGrow: 1,
       width: "100%"
     });
     _$use((t) => {
       textarea = t;
-    }, _el$20);
-    _$setProp(_el$20, "style", {
+    }, _el$22);
+    _$setProp(_el$22, "style", {
       width: "100%",
       height: "100%"
     });
-    _$setProp(_el$20, "wrapMode", "word");
-    _$setProp(_el$21, "style", {
+    _$setProp(_el$22, "wrapMode", "word");
+    _$setProp(_el$23, "style", {
       height: 1,
       width: "100%",
       flexDirection: "row",
@@ -1196,29 +1255,29 @@ function App(props) {
       paddingLeft: 1,
       paddingRight: 1
     });
-    _$insert(_el$21, (() => {
-      var _c$4 = _$memo(() => tip() != null);
-      return () => _c$4() ? (() => {
-        var _el$22 = _$createElement("text");
-        _$setProp(_el$22, "fg", "#ffffff");
-        _$insert(_el$22, tip);
-        return _el$22;
+    _$insert(_el$23, (() => {
+      var _c$5 = _$memo(() => tip() != null);
+      return () => _c$5() ? (() => {
+        var _el$24 = _$createElement("text");
+        _$setProp(_el$24, "fg", "#ffffff");
+        _$insert(_el$24, tip);
+        return _el$24;
       })() : (() => {
-        var _el$23 = _$createElement("box"), _el$24 = _$createElement("text"), _el$26 = _$createElement("text");
-        _$insertNode(_el$23, _el$24);
-        _$insertNode(_el$23, _el$26);
-        _$setProp(_el$23, "style", {
+        var _el$25 = _$createElement("box"), _el$26 = _$createElement("text"), _el$28 = _$createElement("text");
+        _$insertNode(_el$25, _el$26);
+        _$insertNode(_el$25, _el$28);
+        _$setProp(_el$25, "style", {
           flexDirection: "row"
         });
-        _$insertNode(_el$24, _$createTextNode(`C_`));
-        _$setProp(_el$24, "fg", "#ffffff");
-        _$insertNode(_el$26, _$createTextNode(` OpenCues_ \xB7 Submit: Ctrl+Alt+S \xB7 Cancel: Ctrl+Alt+Q`));
+        _$insertNode(_el$26, _$createTextNode(`C_`));
         _$setProp(_el$26, "fg", "#ffffff");
-        _$effect((_$p) => _$setProp(_el$24, "attributes", TextAttributes.INVERSE, _$p));
-        return _el$23;
+        _$insertNode(_el$28, _$createTextNode(` OpenCues_ \xB7 Submit: Ctrl+Alt+S \xB7 Cancel: Ctrl+Alt+Q`));
+        _$setProp(_el$28, "fg", "#ffffff");
+        _$effect((_$p) => _$setProp(_el$26, "attributes", TextAttributes.INVERSE, _$p));
+        return _el$25;
       })();
     })());
-    return _el$18;
+    return _el$20;
   })();
 }
 function runTmux(tmuxBin, args) {

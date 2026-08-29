@@ -1,8 +1,9 @@
 # Plan: display-only glimmer for OpenCode + shell (retiring real-write)
 
-Status: PLAN — not implemented. Written after the chrome host-owned
-glimmer shipped, as the design for bringing OC/shell up to the same
-"buffer never holds a scrambled frame" property.
+Status: IMPLEMENTED + LIVE-VERIFIED on both hosts (2026-08-29,
+manual). Sequencing step 3 (deleting glimmer-render.ts's write-mode
+machinery + its tests) is now unblocked and remains the one open
+follow-up. Original plan below, kept as the design record.
 
 ## Why
 
