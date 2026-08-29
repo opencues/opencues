@@ -3009,22 +3009,33 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
       const tryStart = () => {
         if (ctl.cancelled) return;
         let live = '';
-        let spanOk = false;
+        let at = -1;
         try {
           live = walkPlainText(target).text;
-          spanOk = live.slice(spec.startOffset, spec.startOffset + spec.finalText.length) === spec.finalText;
-        } catch { spanOk = false; }
-        if (!spanOk) {
+          // Tolerant locate — MIRRORS the runtime's own glimmer-render
+          // locate(): exact position first, then search from 16 chars
+          // left of the expected spot. Chrome offsets drift (ZWS strips,
+          // block-boundary newline emission after editor normalization),
+          // and the runtime hosts animate through that drift every time;
+          // demanding an exact-offset match here silently skipped the
+          // animation for any drifted landing (fluid-blank answers were
+          // hitting this) — a parity break, not a safety feature.
+          at = live.startsWith(spec.finalText, Math.max(0, spec.startOffset))
+            ? Math.max(0, spec.startOffset)
+            : live.indexOf(spec.finalText, Math.max(0, spec.startOffset - 16));
+        } catch { at = -1; }
+        if (at === -1) {
           if (performance.now() - t0 > MAX_WAIT_MS) { giveUp('span never stabilized in the DOM'); return; }
           ctl.retryTimer = setTimeout(tryStart, 50);
           return;
         }
+        if (at !== spec.startOffset) log('debug', `glimmer: span drifted ${at - spec.startOffset} chars — animating at the located position`);
         try {
           // Span → Range via the img-aware dom-walk helpers (plain-text
           // offsets count emoji-<img> alt chars; alt-backed chars have
           // no text node and simply don't scramble — boundaries exact).
-          const startPos = domPositionOfPlainOffset(target, Math.max(0, spec.startOffset));
-          const endPos = domPositionOfPlainOffset(target, spec.startOffset + spec.finalText.length);
+          const startPos = domPositionOfPlainOffset(target, at);
+          const endPos = domPositionOfPlainOffset(target, at + spec.finalText.length);
           const range = document.createRange();
           range.setStart(startPos.node, startPos.offset);
           range.setEnd(endPos.node, endPos.offset);
