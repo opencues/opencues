@@ -6,7 +6,6 @@ blankAutoPopulate: true
 blankFormat: string
 tip: Stock price
 blankReadOnly: true
-blankProximity: 1
 blankKeywordExpansions.rddt: Reddit
 blankKeywordExpansions.nvda: Nvidia
 blankKeywordExpansions.aapl: Apple
@@ -14,9 +13,9 @@ blankKeywordExpansions.googl: Alphabet
 blankKeywordExpansions.msft: Microsoft
 blankKeywordExpansions.amzn: Amazon
 blankKeywordExpansions.tsla: Tesla
-# Auto: bare "nvda _" → wipe → "NVDA: $198.47" (ticker embedded).
-# "nvda is _" or copula phrasings → keep → "nvda is NVDA: $198.47".
-blankReplace: auto
+# Clearing is SHAPE-DERIVED (the blankReplace dial was deleted, June 2026):
+# a bare ticker is the KEYWORD, not a captured arg, so the label stays —
+# "nvda _" → "nvda NVDA: $198.47".
 # Blank-as-context: when blank-context-mode is on, expose 5 popular
 # tickers as ambient tokens ([STOCKS NVDA], [STOCKS AAPL], …) so
 # fluid-blank + transform-blank can route casual prose ("how are

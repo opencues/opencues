@@ -3,17 +3,14 @@ name: gh-issues
 type: blank
 tip: open issue count for a github repo
 blankKeywords: gh-issues
-# Allow `owner/repo` between the keyword and `_`. Without this,
-# `blankKeywords` must be immediately adjacent to `_` (proximity 0).
-blankProximity: 2
 blankAutoPopulate: true
 blankReadOnly: true
 impl: ./blank.js
 network: [api.github.com]
 storage: gh-issues
-# Auto: bare "gh-issues opencues/opencues _" → wipe → "opencues/opencues: 42 open"
-# (repo embedded). Copula phrasing → keep.
-blankReplace: auto
+# Clearing is SHAPE-DERIVED (the blankReplace dial was deleted, June 2026):
+# a captured arg consumes the command span — "gh-issues opencues/opencues _"
+# → "opencues/opencues: 42 open" (repo embedded).
 ---
 
 User-shipped JS blank demo. Type `gh-issues owner/repo _` and the

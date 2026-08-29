@@ -33,7 +33,7 @@ result shape + a small metadata vocabulary.
 | Source | Trigger | LLM output | Substitute mechanism |
 |---|---|---|---|
 | **`BlankSource`** (`blank-source.ts`) | `<keyword> _` matches a folder under `blanks/` | None — runs a script / sync stepValues / built-in JS impl | Deterministic splice via `blank-fill.ts`. Slot bounds come from the parser (keyword + `_` positions), not from LLM. |
-| **`FluidBlankSource`** (`fluid-blank-source.ts`) | unbound `_` (no `BlankSource` match) | Short answer (e.g. "Paris") | FILL by default (substitutes only the `_`, preserving surrounding prose). WIPEs the whole field ONLY on a host `singleLine`/`disposable` declaration + the `bufferIsExactlyTheLookup` floor (buffer===query). See § WIPE gate. |
+| **`FluidBlankSource`** (`fluid-blank-source.ts`) | unbound `_` (no `BlankSource` match) | Short answer (e.g. "Paris") | FILL by default (substitutes only the `_`, preserving surrounding prose). WIPEs the whole field on a host `disposable` declaration, OR on the `bufferIsExactlyTheLookup` floor (buffer===query, no host declaration needed) AND the model's MODE vote saying WIPE. See § WIPE gate. |
 | **`TransformBlankSource`** (`transform-blank-source.ts`) | imperative phrase next to `_` (e.g. "make past tense _") | The whole final buffer (`FULL_REWRITE`) from a single fused LLM call | **One path.** Always `threeWayMerge` against the live buffer. |
 | **`SentenceCueSource`** (`sentence-cue-source.ts`) | one cue per sentence at `scope: sentence` | Sentence alternatives | Passive — registers a DynDef; cycling swaps the sentence via the existing word-cue cycle path. Never touches the buffer until the user presses Ctrl+Alt+Up. |
 | **`ConfigIntentSource`** (`config-intent-source.ts`) | unbound `_` interpreted as a settings change ("make it louder _") | Setting + value classification | Selector-satellite shaped result with `clearOnEdit: true`; substitute wipes the summon phrase via `spanStart=summonPhraseStart(text), spanEnd=text.length` (the last sentence terminator / line break before `_`, or 0 if none) so prior user content before the settings command is preserved, then hands off to standard cycling. |
@@ -190,16 +190,58 @@ FluidBlank stays on the deterministic slot splice because:
 2. The slot bounds (`target.start`, `target.end`) come from the
    parser's known `_` position. The LLM has no input into them.
 3. FluidBlank is FILL by default — it replaces only the `_`, never a wider
-   span. It WIPEs (replaces the whole field) ONLY when the host declares the
-   field `singleLine`/`disposable` AND `bufferIsExactlyTheLookup(buffer, span)`
-   holds (trimmed buffer === trimmed span, no `\n\n`). Because the WIPE span is
-   then exactly the buffer (0..len), it still can never concat-tail content the
-   answer didn't cover — there is nothing else in the buffer. Any future source
-   that replaces more than the slot MUST route its WIPE decision through
-   `bufferIsExactlyTheLookup` (or a host `disposable` declaration) — never a
-   sentence-shape heuristic (that heuristic collapsed foreign-language
-   sentences and was retired in commit `f62dcd28`; the field-declared successor
-   is the `a534a99e` "standalone-value WIPE" shape, generalised).
+   span. It WIPEs (replaces the whole field) in exactly two cases:
+   (a) the host declares the field `disposable`, or (b)
+   `bufferIsExactlyTheLookup(buffer, span)` holds (trimmed buffer === trimmed
+   span, no `\n\n` — no host declaration required any more) AND the model's
+   own `MODE` line votes `WIPE`. Because the WIPE span is then exactly the
+   buffer (0..len), it still can never concat-tail content the answer didn't
+   cover — there is nothing else in the buffer. `bufferIsExactlyTheLookup`
+   alone is NOT sufficient for case (b): it is true for both a terse lookup
+   ("capital of france _") and a compact factual sentence with a mid-span gap
+   ("Water boils at _ degrees Celsius" — FluidBlank's own COMPACT FACTUAL
+   segmentation rule makes SPAN the whole buffer for that shape too); only the
+   model's classification tells those two apart, and the deterministic floor
+   is what makes trusting that vote safe — it has already proven there is
+   nothing else in the buffer to lose before the vote is even consulted, so
+   the vote only picks which of two already-safe splices applies. This is
+   NOT the retired model-decides-alone heuristic (that one authorized
+   destroying content it could misjudge — it collapsed foreign-language
+   sentences and multi-paragraph buffers, and was retired in commit
+   `f62dcd28`); accepted residual risk: a model that mis-votes WIPE on a
+   copula/equation sentence ("the answer is _") loses that sentence's
+   phrasing in favour of the bare answer — see the "accepted tradeoff" test
+   in `fluid-blank-source.test.ts`. Any future source that replaces more than
+   the slot MUST route its WIPE decision through `bufferIsExactlyTheLookup`
+   (or a host `disposable` declaration) — never a heuristic that guesses
+   from sentence shape ALONE, with no floor underneath it.
+
+### FILL's "restated clause" splice-widening fix (core 0.56.1)
+
+Separate from the WIPE gate, and a pre-existing bug the WIPE-gate work
+surfaced rather than caused: FILL's default splice replaces only the literal
+`_` character (`target.start`/`target.end` — the resolver's `isMultiWordSpan`
+check is false when `spanStart` is absent). That's correct for a bare-delta
+answer ("the cube root of 27 is _" → "3"), but FluidBlank's own ANSWER RULE 5
+tells the model to answer a mid-sentence gap with the FULL restated clause
+("Water boils at _ degrees Celsius" → "Water boils at 100 degrees Celsius").
+Splicing that at just `_` duplicates the surrounding words. Confirmed live
+against cerebras + groq, not theorized: `There are _ continents` →
+`There are 7 continents` spliced at `_` alone produced
+`There are There are 7 continents continents`.
+
+`findRestatedClauseSpan(text, span, answer)` detects the shape
+deterministically — no model-vote trust involved, unlike the WIPE gate: it
+splits the verified SPAN on its `_` into a prefix and suffix (both must be
+non-empty; an edge `_` has nothing to restate, so it's the bare-delta shape
+by construction) and checks whether the answer's trimmed text starts with
+the prefix and ends with the suffix (case-insensitive). When it matches, the
+splice widens to the whole verified SPAN range — same `spanStart`/`spanEnd`
+mechanism WIPE uses, so it routes through the identical resolver branch, but
+`metadata.fluidBlankMode` stays `'FILL'` (the ask outside the SPAN, if any,
+is still untouched — this is not a WIPE). `findSpanCharRange` requires the
+SPAN to be a verbatim buffer substring, so a hallucinated/mangled SPAN falls
+through to the pre-fix bare-`_` splice rather than risk a wrong range.
 
 ---
 
@@ -239,8 +281,8 @@ primitive already pays for.
 - `packages/opencues-runtime/src/modules/blank-fill.ts` +
   `blank-fill.test.ts` — pins the deterministic slot splice path for
   BlankSource + FluidBlankSource. Fill is additive by default (FluidBlank's
-  field-declared WIPE is a separate resolver-side whole-span splice — see
-  § WIPE gate above); clearing of the command span is shape-derived (captured
+  WIPE path is a separate resolver-side whole-span splice — see § WIPE gate
+  above); clearing of the command span is shape-derived (captured
   arg / typed set-step / `integration:` template consumes the span; a bare
   keyword get keeps its label).
 - `tests/benchmarks/transform-blank/` — `prod.ts` validates the LLM

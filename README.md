@@ -40,12 +40,31 @@
 
 The model comes to your cursor, both ways. **Cues** react to what you've already written and surface a fix or a sharper line inline, unprompted. **Blanks** act on demand: end a line with `_` and the model fills in the rest. No chat window, no copy-paste, no context switch.
 
-<!-- Slot 1, the hero. One span asked four times, `_` walking the whole
-     history back, then a fresh line the runtime WIPES rather than fills.
-     Cut from the block system in opencues-web (films/medium-film.html,
-     film27) - not a framed composition, just the terminal on transparency,
-     so it sits on whichever ground GitHub renders the README in. -->
-<img width="100%" alt="A brief written, grown twice, translated, then walked back - and an ffmpeg command on a fresh line" src="assets/readme-1-hero.webp">
+<!-- Slot 1, the hero. ONE span asked four times - a brief written, rewritten
+     in place, grown, then translated - and every answer walkable back through
+     `_`. Then a fresh line the runtime WIPES rather than fills, because the
+     buffer holds nothing but the question.
+
+     Every answer is the product's own, captured through the runtime's own
+     fused transform-blank prompt at the product's settings (cerebras
+     gemma-4-31b, temperature 0, seed 42) and pinned by a capture file, so
+     the film fails its gate if the values ever stop being what the product
+     says: opencues-web `artifact-kit/layouts/solo/captures/`.
+
+     Cut from two `layouts/solo` configs joined at the step level
+     (`solo/join-readme-hero.py`), not hand-authored: a bare terminal block
+     on transparency, no catalog wrapper and no frame, so it sits on
+     whichever ground GitHub renders the README in. The earlier
+     `films/readme-hero-live.py` cut of this is deprecated - it hand-wrote
+     its states, which is the one thing that system exists to prevent.
+
+     Every answer GLIMMERS in - the 140ms blink then the 70ms churn easing
+     0.45 to 0.15, glimmer-render.ts's own recipe at the product's default
+     900ms - because since v0.7.8 that is how a substitution lands on every
+     host, and a film whose answer hard-cuts is showing something the
+     product no longer does. Derived, not opted into: the kit emits it on
+     every blank `resolved` (opencues-web artifact-kit, derive.py `_glim`). -->
+<img width="100%" alt="One prompt improved, rewritten as a senior engineer would, grown with a security paragraph, translated to Japanese - then an ffmpeg command answered on a fresh line" src="assets/readme-1-hero.webp">
 
 OpenCues is platform, model, and provider agnostic, engineered from the ground up to enable native inline AI.
 
@@ -131,7 +150,13 @@ Running a lot of these at once? `opencues usage` prices every LLM call your
 hosts have made, across features, so the total isn't a guess.
 
 <!-- Slot 3. The blanks that call nothing at all, ending on one that
-     writes back to the machine. film30. -->
+     writes back to the machine. Cut from three `layouts/solo` block configs
+     joined at the step level (`solo/join-readme-local.py`), replacing the
+     film30 film-runner cut: the layouts system carries the landing glimmer
+     (see the hero's comment) and the derivation fixed a film30 truth bug -
+     `btc _` is a bare keyword get, so the product KEEPS the label
+     (`btc BTC: $78,018.00`); film30 wiped it. Values are film30's own
+     captured set, carried as data. -->
 <img width="100%" alt="A price, a forecast, and a system volume you can turn - none of them asking a model" src="assets/readme-3-local.webp">
 
 <br><br><br><br>

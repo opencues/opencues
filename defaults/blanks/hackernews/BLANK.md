@@ -8,10 +8,8 @@ blankFormat: string
 tip: Hacker News
 blankReadOnly: true
 blankDismissible: true
-blankProximity: 3
-# Auto: bare "hn _" → wipe → "<top story title>" (self-contained).
-# Copula phrasing → keep.
-blankReplace: auto
+# Clearing is SHAPE-DERIVED (the blankReplace dial was deleted, June 2026):
+# a bare keyword get keeps its label — "hn _" → "hn <top story title>".
 # Blank-as-context: when blank-context-mode is on, expose the current
 # top story as [HACKERNEWS TOP] so casual phrasings ("anything
 # interesting on hn _", "write a quick comment about today's top hn

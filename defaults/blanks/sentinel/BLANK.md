@@ -2,17 +2,12 @@
 name: sentinel
 type: blank
 blankKeywords: set sentinel, remove sentinel
-# Allow up to 16 words between the keyword and `_` so multi-word
+# Routing is shape-derived: the synthesized keyword shapes capture
+# everything between the keyword and `_` as the arg, so multi-word
 # values land correctly (e.g. `set sentinel signOff Best from sunny
-# London _`). 16 covers any realistic sentinel value (~80 chars of
-# prose) while keeping false-positive matches narrow — without it,
-# the proximity-0 default makes the blank silently miss every
-# non-single-word value (TransformBlank wins the slot instead). A
-# user with an unusually long value (>16 words / ~80 chars) falls
-# back to `opencues identity set` from the CLI, which has no
-# proximity limit. The 256-char value cap (validateSentinelWrite)
-# still gates the actual content of any matched write.
-blankProximity: 16
+# London _`). The 256-char value cap (validateSentinelWrite) still
+# gates the actual content of any matched write; `opencues identity
+# set` from the CLI takes values of any length.
 blankFormat: string
 blankClearKeywords: true
 blankClearOnEdit: true

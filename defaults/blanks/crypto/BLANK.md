@@ -6,7 +6,6 @@ blankAutoPopulate: true
 blankFormat: string
 tip: Crypto price (USD)
 blankReadOnly: true
-blankProximity: 1
 blankKeywordExpansions.btc: Bitcoin
 blankKeywordExpansions.eth: Ethereum
 blankKeywordExpansions.sol: Solana
@@ -22,9 +21,9 @@ blankKeywordExpansions.ltc: Litecoin
 blankKeywordExpansions.bnb: Binance Coin
 blankKeywordExpansions.trx: TRON
 blankKeywordExpansions.shib: Shiba Inu
-# Auto: bare "btc _" → wipe → "BTC: $78,542.00" (ticker embedded).
-# Copula phrasing → keep.
-blankReplace: auto
+# Clearing is SHAPE-DERIVED (the blankReplace dial was deleted, June 2026):
+# a bare ticker is the KEYWORD, not a captured arg, so the label stays —
+# "btc _" → "btc BTC: $78,542.00".
 # Blank-as-context: when blank-context-mode is on, expose BTC + ETH
 # as ambient tokens ([CRYPTO BTC], [CRYPTO ETH]) so casual phrasings
 # ("how is bitcoin doing _", "crypto check _", "digital currency _")

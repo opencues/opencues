@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — FluidBlank can WIPE a bare terminal lookup with no host field declaration (`@opencues/core` 0.55.2 → 0.56.0; `@opencues/dsh` 0.2.17 → 0.2.18 — inline bundle regenerated with this core)
+
+`ffmpeg command to convert a video to web-ready mp4 _` used to always FILL — the ask stayed on screen and only `_` was replaced — because WIPE (replacing the whole field with the answer) required a host to declare the field `singleLine`, and no native host adapter does that; it's a browser field shape. The README's hero video claimed WIPE for exactly this case and was wrong.
+
+The WIPE gate now has two independent checks instead of one: the existing `disposable` host declaration (unchanged), or — new — `bufferIsExactlyTheLookup` (the buffer is provably nothing but the query, no paragraph break) **combined with the model's own MODE vote**, with no host declaration required. Buffer-is-exactly-the-lookup alone isn't enough to fire WIPE: it's true for both a terse lookup ("capital of france _") and a compact factual sentence with a mid-span gap ("Water boils at _ degrees Celsius" — FluidBlank's own segmentation rule makes SPAN the whole buffer there too). Only the model's shape classification tells those two apart, and the deterministic floor is what makes trusting that vote safe — it already proves nothing else is in the buffer to lose before the vote is consulted, so the vote only picks which of two non-destructive splices applies. This is not the model-decides-alone heuristic that got retired in `f62dcd28` for flattening real documents; that one let the model authorize destroying content it might have misjudged with no floor underneath it at all.
+
+Accepted tradeoff: a model that mis-votes WIPE on a copula/equation sentence ("the answer is _") now loses that sentence's phrasing in favour of the bare answer, same as it always could on a `disposable` field. Verified live against cerebras + groq (temp=0, seed=42): both correctly WIPE the ffmpeg case and the MODE_RULES worked example ("capital of france _"); both also vote WIPE on compact factual sentences like "Water boils at _ degrees Celsius", which MODE_RULES nominally routes to FILL — but that's benign here, not a regression, because of the fix below.
+
+Full design + the compact-factual-sentence tradeoff table: [`docs/architecture/blank-sources.md`](docs/architecture/blank-sources.md) § WIPE gate.
+
+### Fixed — FluidBlank's FILL splice duplicated the sentence on a restated-clause answer (`@opencues/core` 0.56.0 → 0.56.1)
+
+Found while validating the fix above, against real provider output rather than a mock: `There are _ continents` answered with the full restated clause `There are 7 continents` (FluidBlank's own ANSWER RULE 5 tells the model to do this for a mid-sentence gap) — and FILL spliced that answer at just the `_` character, producing `There are There are 7 continents continents`. Confirmed live on both cerebras and groq, and reproduced directly against the resolver's real splice primitive (`applyMarkdownAwareSplice`), not just theorized.
+
+Pre-existing bug, unrelated to and untouched by the WIPE-gate work above — FILL's splice range never changed until now. New `findRestatedClauseSpan` detects the shape deterministically: no model-vote trust needed, just a string check on whether the model's own answer echoes the verified span's prefix and suffix around `_`. When it does, the splice widens from the bare `_` character to the whole verified span (still tagged `FILL`, not `WIPE` — the ask outside the span, if any, survives); a bare-delta answer ("3", "Paris") is unaffected, and a span the model can't verify verbatim in the buffer falls back to the pre-fix behavior rather than risk a wrong range.
+
 ## [0.7.8] - 2026-08-29
 
 ### Removed — glimmer's real-write machinery deleted (`@opencues/runtime` 0.37.0 → 0.38.0, `@opencues/chrome` 0.2.199 → 0.2.200, `@opencues/dsh` 0.2.16 → 0.2.17 — inline bundle regenerated)

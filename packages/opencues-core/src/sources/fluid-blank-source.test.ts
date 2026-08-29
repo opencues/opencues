@@ -6,7 +6,7 @@
 
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
-import { FluidBlankSource, renderAmbientBlock, bufferIsExactlyTheLookup } from './fluid-blank-source';
+import { FluidBlankSource, renderAmbientBlock, bufferIsExactlyTheLookup, findRestatedClauseSpan } from './fluid-blank-source';
 import { HttpAdapter, CueContext, AmbientContext } from '../types';
 import { getProvider } from '../llm-provider';
 
@@ -156,9 +156,12 @@ describe('FluidBlankSource', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Model-decided MODE field — the model emits a MODE line (FILL/WIPE); the
-// runtime IGNORES it (fluid is always-FILL / static resolution), but absent
-// or unrecognised. Model proposes, runtime validates.
+// Model-decided MODE field — the model emits a MODE line (FILL/WIPE). The
+// runtime now CONSULTS it, but only as the disambiguator once the
+// deterministic buffer===lookup floor already holds (see the WIPE gate in
+// getCues + bufferIsExactlyTheLookup's doc comment). Absent/unrecognised
+// MODE, or a floor that doesn't hold, both fall back to FILL. Model
+// proposes; the floor is what makes trusting the proposal safe.
 // ---------------------------------------------------------------------------
 
 describe('FluidBlankSource — model-decided MODE field', () => {
@@ -169,10 +172,14 @@ describe('FluidBlankSource — model-decided MODE field', () => {
     model: 'test-model',
   };
 
-  it('always FILLs even when the model proposes WIPE on a copula sentence (static resolution)', async () => {
-    // "X is _" — the model is WIPE-biased here, but a WIPE would collapse
-    // "the answer is " → "42". Fluid is always-FILL now, so the model's WIPE
-    // vote is ignored and only the `_` is replaced.
+  it('WIPEs a copula sentence when the model votes WIPE and the floor holds (the accepted tradeoff)', async () => {
+    // "the answer is _" — a well-behaved model follows MODE_RULES and votes
+    // FILL for a copula sentence (see the two tests below); this pins what
+    // happens if it doesn't. The floor holds (buffer===span, no paragraph
+    // break), so the vote is now trusted and "the answer is" is lost in
+    // favour of the bare answer. This is the accepted tradeoff for enabling
+    // WIPE on bare terminal buffers with no host declaration (the ffmpeg
+    // case) — see docs/architecture/blank-sources.md § WIPE gate.
     const src = new FluidBlankSource({
       ...baseConfig,
       httpAdapter: makeMockAdapter([
@@ -180,12 +187,16 @@ describe('FluidBlankSource — model-decided MODE field', () => {
       ]),
     });
     const r = (await src.getCues(ctxFromText('the answer is _'))).results[0]!;
-    assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
-    assert.strictEqual(r.spanStart, undefined);
-    assert.strictEqual(r.spanEnd, undefined);
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'WIPE');
+    assert.strictEqual(r.spanStart, 0);
+    assert.strictEqual(r.spanEnd, 'the answer is _'.length);
   });
 
-  it('always FILLs a terse phrase even when the model proposes FILL (span left unset)', async () => {
+  it('FILLs a terse phrase when the model votes FILL, even though the floor holds', async () => {
+    // The floor alone would qualify this for WIPE (buffer===span, no
+    // paragraph break) — it's the model's own FILL vote that keeps it a
+    // FILL. Mirrors the "Water boils at _ degrees Celsius" case in the WIPE
+    // gate suite above.
     const src = new FluidBlankSource({
       ...baseConfig,
       httpAdapter: makeMockAdapter([
@@ -198,9 +209,10 @@ describe('FluidBlankSource — model-decided MODE field', () => {
     assert.strictEqual(r.spanEnd, undefined);
   });
 
-  it('IGNORES a model MODE: WIPE — fluid always FILLs (static resolution)', async () => {
-    // Static-resolution design: the model's MODE vote is ignored; fluid only
-    // ever fills the `_`. A terse phrase that used to WIPE now FILLs the gap.
+  it('FILLs when the model votes WIPE but the floor does NOT hold (extra content outside the span)', async () => {
+    // The floor is the gate that can't be talked past: "trivia " sits
+    // outside the model's own SPAN, so buffer !== span and the vote never
+    // even gets consulted.
     const src = new FluidBlankSource({
       ...baseConfig,
       httpAdapter: makeMockAdapter([
@@ -229,20 +241,27 @@ describe('FluidBlankSource — model-decided MODE field', () => {
     assert.deepStrictEqual(result.results, []);
   });
 
-  it('always FILLs even on a terse phrase with no MODE line', async () => {
-    // No FILL/WIPE heuristic remains — fluid FILLs regardless, so a terse
-    // fragment fills the gap rather than wiping.
+  it('FILLs a terse phrase with no MODE line at all (floor holds but there is no vote to trust)', async () => {
+    // Deliberately a DIFFERENT phrase from the other tests in this file that
+    // exercise 'capital of france _' with no ambient — that exact text +
+    // config combo is the FluidBlank variant-pool cache key (static across
+    // the whole test file), and this file already runs it to success twice
+    // elsewhere; a third success here would tip a LATER test (the sentinels
+    // "omits ambient block" test) into a cache-hit and starve it of its own
+    // LLM dispatch. Keep WIPE-gate tests on their own cache keys.
+    const input = 'unicode for ampersand _';
     const src = new FluidBlankSource({
       ...baseConfig,
       httpAdapter: makeMockAdapter([
-        'SPAN: capital of france _\nANSWER: Paris',
+        `SPAN: ${input}\nANSWER: U+0026`,
       ]),
     });
-    const r = (await src.getCues(ctxFromText('trivia capital of france _'))).results[0]!;
+    const r = (await src.getCues(ctxFromText(input))).results[0]!;
     assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
+    assert.strictEqual(r.spanStart, undefined);
   });
 
-  it('falls back to the heuristic when MODE is unrecognised', async () => {
+  it('FILLs when MODE is unrecognised garbage (normalizeMode returns null, never WIPE)', async () => {
     const src = new FluidBlankSource({
       ...baseConfig,
       httpAdapter: makeMockAdapter([
@@ -250,16 +269,14 @@ describe('FluidBlankSource — model-decided MODE field', () => {
       ]),
     });
     const r = (await src.getCues(ctxFromText('the answer is _'))).results[0]!;
-    // Garbage MODE → ignored → heuristic ("is _") → FILL.
     assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
+    assert.strictEqual(r.spanStart, undefined);
   });
 
   it('never WIPEs a multi-paragraph buffer even when the model proposes WIPE (data-loss fail-safe)', async () => {
-    // Heuristic says FILL ("...is _"), so the pre-dispatch multi-paragraph
-    // guard does NOT bail; the LLM runs and proposes WIPE. The FILL floor
-    // (plus the defense-in-depth multi-paragraph backstop) refuses the WIPE
-    // so the user's prior paragraph is preserved — a bare-lookup WIPE would
-    // collapse two paragraphs into one.
+    // The floor's \n\n guard fires before the model's vote is even read —
+    // a bare-lookup WIPE would otherwise collapse two real paragraphs into
+    // one just because the model voted WIPE on the trailing sentence.
     const text = 'first paragraph of real content.\n\nthe answer is _';
     const src = new FluidBlankSource({
       ...baseConfig,
@@ -872,11 +889,21 @@ describe('FluidBlank fail-safe: multi-paragraph WIPE guard', () => {
 });
 
 // ---------------------------------------------------------------------------
-// WIPE gate — the host declares the field's shape (singleLine / disposable),
-// the runtime replaces the whole field ONLY when it is provably nothing but
-// the query (bufferIsExactlyTheLookup). The precedent for any future WIPE.
+// WIPE gate — TWO independent checks, both required (except `disposable`,
+// which is a strong-enough host guarantee on its own):
+//   1. bufferIsExactlyTheLookup — deterministic, data-loss-free floor: the
+//      buffer is provably nothing but the query (no paragraph break).
+//   2. the model's own MODE line — the floor alone can't distinguish a
+//      terse lookup ("capital of france _") from a compact factual sentence
+//      with a mid-span gap ("Water boils at _ degrees Celsius" — SPAN is
+//      the whole buffer for that shape too); only the model's shape
+//      classification tells them apart. No host declaration (singleLine)
+//      is required any more — this is what makes a bare terminal buffer
+//      like `ffmpeg command to convert a video to web-ready mp4 _` (no
+//      ambient at all) eligible for WIPE.
+// The precedent for any future WIPE.
 // ---------------------------------------------------------------------------
-describe('FluidBlankSource — WIPE gate (field-declared, buffer===lookup floor)', () => {
+describe('FluidBlankSource — WIPE gate (buffer===lookup floor + model MODE vote)', () => {
   const baseConfig = {
     provider: getProvider('groq')!,
     endpoint: 'https://example.test/v1/chat/completions',
@@ -894,29 +921,66 @@ describe('FluidBlankSource — WIPE gate (field-declared, buffer===lookup floor)
     assert.strictEqual(bufferIsExactlyTheLookup('reddit com _', undefined), false);
   });
 
-  it('singleLine + buffer===lookup → WIPE (whole field replaced)', async () => {
-    const src = srcWith('SPAN: reddit com _\nANSWER: https://www.reddit.com\nMODE: FILL');
-    const r = (await src.getCues(ctx('reddit com _', { app: 'chrome', singleLine: true }))).results[0]!;
+  it('buffer===lookup + model says WIPE, NO ambient at all → WIPE (the terminal/CLI path — no host declaration needed)', async () => {
+    const src = srcWith('SPAN: reddit com _\nANSWER: https://www.reddit.com\nMODE: WIPE');
+    const r = (await src.getCues(ctx('reddit com _'))).results[0]!;
     assert.strictEqual(r.metadata?.fluidBlankMode, 'WIPE');
     assert.strictEqual(r.spanStart, 0);
     assert.strictEqual(r.spanEnd, 'reddit com _'.length);
   });
 
-  it('singleLine but buffer has OTHER content (buffer≠lookup) → FILL (content preserved)', async () => {
+  it('the ffmpeg example: bare terminal buffer, terse-lookup shape → WIPE, whole field replaced', async () => {
+    const input = 'ffmpeg command to convert a video to web-ready mp4 _';
+    const src = srcWith(`SPAN: ${input}\nANSWER: ffmpeg -i input.mov -vcodec libx264 -crf 23 -pix_fmt yuv420p -acodec aac output.mp4\nMODE: WIPE`);
+    const r = (await src.getCues(ctx(input))).results[0]!;
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'WIPE');
+    assert.strictEqual(r.spanStart, 0);
+    assert.strictEqual(r.spanEnd, input.length);
+    assert.strictEqual(r.alternatives[1], 'ffmpeg -i input.mov -vcodec libx264 -crf 23 -pix_fmt yuv420p -acodec aac output.mp4');
+  });
+
+  it('buffer===lookup but model says FILL (compact factual sentence) → stays FILL, not WIPE', async () => {
+    // "Water boils at _ degrees Celsius" — FluidBlank's own COMPACT FACTUAL
+    // rule makes SPAN the whole buffer here too, so the floor alone would
+    // wrongly qualify this for WIPE. The model's MODE:FILL vote is what
+    // keeps it tagged FILL (the ask outside the span, if any, would
+    // survive) rather than a wholesale WIPE authorization.
+    //
+    // spanStart/spanEnd ARE set here — that's the SEPARATE restated-clause
+    // fix (findRestatedClauseSpan; see the "FILL splice widening" describe
+    // block below), not a WIPE. "Water boils at 100 degrees Celsius" restates
+    // the whole clause per ANSWER RULE 5; splicing it at just `_` would
+    // duplicate "Water boils at"/"degrees Celsius" — confirmed as a live bug
+    // against real providers. This test's job is narrower: pin that the
+    // WIPE-gate vote (FILL, not WIPE) is respected regardless.
+    const input = 'Water boils at _ degrees Celsius';
+    const src = srcWith(`SPAN: ${input}\nANSWER: Water boils at 100 degrees Celsius\nMODE: FILL`);
+    const r = (await src.getCues(ctx(input))).results[0]!;
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
+    assert.strictEqual(r.alternatives[1], 'Water boils at 100 degrees Celsius');
+  });
+
+  it('buffer===lookup but model says FILL (another compact factual sentence) → stays FILL, not WIPE', async () => {
+    const input = 'There are _ continents';
+    const src = srcWith(`SPAN: ${input}\nANSWER: There are 7 continents\nMODE: FILL`);
+    const r = (await src.getCues(ctx(input))).results[0]!;
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
+  });
+
+  it('buffer≠lookup (extra content) → FILL regardless of the model MODE (the floor overrides the vote)', async () => {
     const src = srcWith('SPAN: reddit com _\nANSWER: https://www.reddit.com\nMODE: WIPE');
-    const r = (await src.getCues(ctx('John and reddit com _', { app: 'chrome', singleLine: true }))).results[0]!;
+    const r = (await src.getCues(ctx('John and reddit com _'))).results[0]!;
     assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
     assert.strictEqual(r.spanStart, undefined);
   });
 
-  it('no singleLine / no disposable → FILL even on a bare lookup', async () => {
+  it('singleLine ambient no longer required — host declaration is optional, not load-bearing, for this path', async () => {
     const src = srcWith('SPAN: reddit com _\nANSWER: https://www.reddit.com\nMODE: WIPE');
-    const r = (await src.getCues(ctx('reddit com _', { app: 'chrome' }))).results[0]!;
-    assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
-    assert.strictEqual(r.spanStart, undefined);
+    const r = (await src.getCues(ctx('reddit com _', { app: 'chrome', singleLine: true }))).results[0]!;
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'WIPE');
   });
 
-  it('disposable → WIPE even when the buffer holds more than the bare query', async () => {
+  it('disposable → WIPE even when the buffer holds more than the bare query (no model vote needed)', async () => {
     const src = srcWith('SPAN: reddit com _\nANSWER: https://www.reddit.com\nMODE: FILL');
     const r = (await src.getCues(ctx('go to reddit com _', { app: 'launcher', disposable: true }))).results[0]!;
     assert.strictEqual(r.metadata?.fluidBlankMode, 'WIPE');
@@ -930,4 +994,91 @@ describe('FluidBlankSource — WIPE gate (field-declared, buffer===lookup floor)
     assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
     assert.strictEqual(r.spanStart, undefined);
   });
+
+  it('buffer===lookup, NO paragraph break, but MODE line missing/unparseable → FILL (fail-safe default)', async () => {
+    // No MODE line at all — normalizeMode returns null, never 'WIPE'.
+    const src = srcWith('SPAN: reddit com _\nANSWER: https://www.reddit.com');
+    const r = (await src.getCues(ctx('reddit com _'))).results[0]!;
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
+    assert.strictEqual(r.spanStart, undefined);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FILL splice widening — "restated clause" fix. Confirmed as a LIVE bug
+// against real providers (cerebras + groq, temp=0/seed=42), not a
+// hypothetical: "There are _ continents" answered with the full restated
+// clause "There are 7 continents" per ANSWER RULE 5, and splicing that
+// answer at just the `_` character (FILL's default) produced "There are
+// There are 7 continents continents" — confirmed by feeding the real
+// answer through the real resolver splice (applyMarkdownAwareSplice).
+// findRestatedClauseSpan detects the shape deterministically (no model-mode
+// trust needed) and widens the FILL splice to the verified SPAN range.
+// ---------------------------------------------------------------------------
+describe('FluidBlankSource — FILL splice widening (restated-clause fix)', () => {
+  const baseConfig = {
+    provider: getProvider('groq')!,
+    endpoint: 'https://example.test/v1/chat/completions',
+    apiKey: 'test-key',
+    model: 'test-model',
+  };
+  const srcWith = (answer: string) => new FluidBlankSource({ ...baseConfig, httpAdapter: makeMockAdapter([answer]) });
+
+  it('findRestatedClauseSpan: detects a restated clause (both prefix and suffix echoed)', () => {
+    assert.deepStrictEqual(
+      findRestatedClauseSpan('there are _ oceans on earth', 'there are _ oceans on earth', 'there are 5 oceans on earth'),
+      [0, 'there are _ oceans on earth'.length],
+    );
+    // Case-insensitive: models vary capitalization mid-answer.
+    assert.deepStrictEqual(
+      findRestatedClauseSpan('There are _ oceans on Earth', 'There are _ oceans on Earth', 'there are 5 oceans on earth'),
+      [0, 'There are _ oceans on Earth'.length],
+    );
+  });
+
+  it('findRestatedClauseSpan: null for a bare-delta answer (does not echo the prefix/suffix)', () => {
+    assert.strictEqual(
+      findRestatedClauseSpan('there are _ oceans on earth', 'there are _ oceans on earth', '5'),
+      null,
+    );
+  });
+
+  it('findRestatedClauseSpan: null when `_` sits at the span edge (no suffix to restate)', () => {
+    assert.strictEqual(
+      findRestatedClauseSpan('the cube root of 27 is _', 'the cube root of 27 is _', '3'),
+      null,
+    );
+  });
+
+  it('findRestatedClauseSpan: null when the SPAN is not a verbatim buffer substring (hallucinated span)', () => {
+    assert.strictEqual(
+      findRestatedClauseSpan('there are _ oceans on earth', 'there are _ seas on earth', 'there are 5 seas on earth'),
+      null,
+    );
+  });
+
+  it('getCues: restated-clause answer widens the FILL splice to the whole span (the fix)', async () => {
+    const input = 'there are _ oceans on earth';
+    const src = srcWith(`SPAN: ${input}\nANSWER: there are 5 oceans on earth\nMODE: FILL`);
+    const r = (await src.getCues(ctxFromText(input))).results[0]!;
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
+    assert.strictEqual(r.spanStart, 0);
+    assert.strictEqual(r.spanEnd, input.length);
+    assert.strictEqual(r.alternatives[1], 'there are 5 oceans on earth');
+  });
+
+  it('getCues: bare-delta answer keeps the narrow `_`-only splice (unaffected — regression guard)', async () => {
+    const input = "the cube root of 27 is _ that's all i need";
+    const src = srcWith('SPAN: the cube root of 27 is _\nANSWER: 3\nMODE: FILL');
+    const r = (await src.getCues(ctxFromText(input))).results[0]!;
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
+    assert.strictEqual(r.spanStart, undefined);
+    assert.strictEqual(r.spanEnd, undefined);
+  });
+
+  // The resolver-level splice (does this widened range actually stop the
+  // duplication, end to end, through the real substitution primitive) is
+  // pinned in @opencues/runtime — core doesn't depend on runtime, so it
+  // can't reach applyMarkdownAwareSplice directly. See
+  // blank-chain.scenarios.test.ts's "FILL splice widening" describe block.
 });

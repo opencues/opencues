@@ -102,9 +102,12 @@ BANNED_PATTERNS=(
   # NOTE: the removed BLANK.md frontmatter keys (blankReplace,
   # blankConsumeAll/Context, blankProximity, blankAutoPopulate,
   # blankReadOnly, blankFormat, blankTip, blankKeywordExpansions) are
-  # deliberately NOT banned. They are gracefully ignored if present and
-  # still appear (inert) in the shipped defaults/blanks/*/BLANK.md
-  # templates, which are intentionally left untouched. Banning them would
+  # deliberately NOT banned — they are gracefully ignored if present in
+  # user-seeded copies. blankReplace + blankProximity (and the comments
+  # narrating their old semantics, which had gone actively WRONG — e.g.
+  # crypto's claimed bare "btc _" wipes; it keeps its label) were scrubbed
+  # from defaults/blanks/*/BLANK.md 2026-08-29; the rest still appear
+  # (inert, but not lying) in those templates. Banning any of them would
   # force a large allowlist for no behavioural benefit.
 )
 

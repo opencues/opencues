@@ -6,10 +6,10 @@ blankAutoPopulate: true
 blankFormat: string
 tip: Weather
 blankDismissible: true
-blankProximity: 3
-# Auto: bare "weather london _" → wipe → "London: 13°C Overcast"
-# (location embedded). Copula phrasings ("weather is _") → keep.
-blankReplace: auto
+# Clearing is SHAPE-DERIVED (the blankReplace dial was deleted, June 2026):
+# a captured arg consumes the command span — "weather london _" →
+# "London: 13°C Overcast" (location embedded). A bare "weather _" keeps
+# its label.
 # Blank-as-context: when blank-context-mode is on, expose current
 # weather for the user's workCity (from IDENTITY.md) as an ambient
 # token [WEATHER <CITY>] that fluid-blank can route casual phrasings

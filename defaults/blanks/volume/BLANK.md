@@ -5,19 +5,12 @@ tip: system volume
 icon: 🔊
 speak: true
 blankKeywords: volume
-# Allow up to 3 words between the keyword and `_` — so natural
-# phrasings like `volume is _`, `volume was _`, `volume right now _`
-# all fire the blank. Matches the proximity set on the network
-# blanks (weather, countries, hackernews). Default proximity is 0
-# (keyword must be directly adjacent to `_`), which would miss
-# every copula form.
-blankProximity: 3
 blankStep: 6
 blankAutoPopulate: true
 blankSuffix: %
-# Raw numeric answer ("70%") is context-free; keep the "volume" prefix
-# in the buffer so readers know what 70% is measuring.
-blankReplace: keep
+# A bare keyword get keeps its label (shape-derived; the blankReplace dial
+# was deleted, June 2026) — the "volume" prefix stays so readers know what
+# 70% is measuring.
 blankScript: ./volume-blank.sh
 # Sandbox: declared OFF because volume-blank.sh needs:
 #   - /mnt/c/ access (WSL) to reach VolCtl.exe (Windows Core Audio)
