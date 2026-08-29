@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed — a replace no longer eats the space beside it (`@opencues/runtime` 0.34.5 → 0.34.6, `@opencues/chrome` 0.2.182 → 0.2.183, `@opencues/dsh` 0.2.15 → 0.2.16)
+### Fixed — a replace no longer eats the space beside it (`@opencues/runtime` 0.34.5 → 0.34.6, `@opencues/chrome` 0.2.183 → 0.2.184, `@opencues/dsh` 0.2.15 → 0.2.16)
 
 `replace-parse-mode` splices your value in where the old text was and consumes the imperative that asked for it. When something sat BETWEEN the two, the space that separated them went with the imperative:
 
@@ -27,6 +27,14 @@ uppercase it _ the ticker is aapl
 
 The gap's two edges are no longer the same thing. The edge that touched the imperative goes with it; the edge that touched your text is a word boundary in text that survives, and stays. A gap of newlines is structure and is preserved as it always was.
 
+### Fixed — chrome popup no longer silently disables the chrome-host integration, and its diagnostics stop lying about a dead host (`@opencues/chrome` 0.2.182 → 0.2.183)
+
+Three related fixes to the popup's relationship with the native-messaging host, all found chasing one user report ("the chrome-host toggle vanished and *test api key* does nothing, but self-check passes"):
+
+- **The defer force-off race is defused.** Opening the popup while the host port was momentarily down (MV3 worker waking cold, the 30-second reconnect window, a WSL restart) used to silently write `deferToChromeHost: false` — after which the service worker ignored every future host push and the next Save wiped the host-pushed keys and bundle. A transient blip became a persistently disabled integration with no error anywhere. Now the toggle stays visible, checked, and unpersisted with a hover explaining the host is reconnecting; only the user unticks it.
+- **Self-check reports the LIVE port state.** The keys/bundle lines it prints are storage reads that persist from past connections, so a dead host still looked fully healthy. A new `chrome-host: connected / NOT connected` line distinguishes "host live" from "storage warm", and the disconnected form says explicitly that the stored keys/bundle do not prove the host is running.
+- **`test api key` probes host-pushed keys too.** The popup deliberately never prefills host-forwarded keys into its inputs (that would invite copying secrets out of the host's env into popup storage) — but for most chrome-host users those are the *only* keys, so the button reported "no API keys entered" against a fully working runtime. Host-bag keys are now probed with a `(host)` label; values still never render, only the env name and HTTP status.
+- **The `chrome://restart` requirement is finally written down.** Chrome on Windows reads the `NativeMessagingHosts` registry key at browser startup and caches it for the life of the browser process — registering the chrome-host while Chrome is running leaves every connection attempt failing against the stale cache, with nothing wrong on disk and an extension reload powerless to fix it (it restarts the service worker, not the browser process). The install-host success print now leads with the restart requirement, the popup self-check's disconnected advice names it, and the full debugging signature (dead port + correct artefacts + hand-driven `.bat` works + zero `[chrome]` log lines because the log relay routes through the very port that's down) is documented in `integrations/chrome/CLAUDE.md` and `docs/features/chrome-sync.md`.
 
 ### Added — `replace-parse-mode`: single-substring edits splice deterministically instead of whole-buffer merging (`@opencues/core` 0.54.0 → 0.55.0, `@opencues/runtime` 0.34.4 → 0.34.5, `@opencues/dsh` 0.2.14 → 0.2.15, `@opencues/chrome` 0.2.179 → 0.2.182)
 
