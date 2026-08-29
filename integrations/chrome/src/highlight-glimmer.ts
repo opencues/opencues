@@ -135,22 +135,31 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
   const charNode: Text[] = [];
   const charOff: number[] = [];
   let plain = '';
+  const collectFrom = (tn: Text) => {
+    const from = tn === targetRange.startContainer ? targetRange.startOffset : 0;
+    const to = tn === targetRange.endContainer ? targetRange.endOffset : tn.data.length;
+    for (let i = from; i < to; i++) {
+      charNode.push(tn);
+      charOff.push(i);
+      plain += tn.data[i];
+    }
+  };
   {
-    const walker = doc.createTreeWalker(
-      targetRange.commonAncestorContainer,
-      NodeFilter.SHOW_TEXT,
-      { acceptNode: (n) => (targetRange.intersectsNode(n) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) },
-    );
-    let n: Node | null;
-    while ((n = walker.nextNode())) {
-      const tn = n as Text;
-      const from = tn === targetRange.startContainer ? targetRange.startOffset : 0;
-      const to = tn === targetRange.endContainer ? targetRange.endOffset : tn.data.length;
-      for (let i = from; i < to; i++) {
-        charNode.push(tn);
-        charOff.push(i);
-        plain += tn.data[i];
-      }
+    const root = targetRange.commonAncestorContainer;
+    if (root.nodeType === Node.TEXT_NODE) {
+      // Both endpoints inside ONE text node — the common case for a
+      // real substitution span. A TreeWalker never visits its own root,
+      // so walking from here would collect ZERO characters (the live
+      // "animating 0 chars" bug) — process the node directly.
+      collectFrom(root as Text);
+    } else {
+      const walker = doc.createTreeWalker(
+        root,
+        NodeFilter.SHOW_TEXT,
+        { acceptNode: (n) => (targetRange.intersectsNode(n) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) },
+      );
+      let n: Node | null;
+      while ((n = walker.nextNode())) collectFrom(n as Text);
     }
   }
 
