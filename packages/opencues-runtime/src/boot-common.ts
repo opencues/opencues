@@ -234,8 +234,9 @@ export interface SourceReclassifier {
    *  should call this AFTER the write with the actual post-DOM text. */
   markRuntimeWrite(text: string): void;
   /** Returns 'runtime' when the incoming text matches a recent marked
-   *  runtime write (within RUNTIME_WRITE_TTL_MS), otherwise the
-   *  proposed source. */
+   *  runtime write (within the reclassifier's configured TTL — see
+   *  `createSourceReclassifier`'s `ttlMs` param, default
+   *  `RUNTIME_WRITE_TTL_MS`), otherwise the proposed source. */
   reclassify(text: string, proposedSource: 'user' | 'runtime'): 'user' | 'runtime';
 }
 
@@ -257,14 +258,51 @@ export interface SourceReclassifier {
  *  longer window would require producing the exact same full buffer a
  *  runtime write just produced, at which point the buffer is already what
  *  we wrote — no new trigger surface. (Distinct from chrome's credit-based
- *  trust-gate in trust-gate.ts, which this does not touch.) */
+ *  trust-gate in trust-gate.ts, which this does not touch.)
+ *
+ *  That "no new trigger surface" reasoning covers ADVERSARIAL exploit —
+ *  it says nothing about a BENIGN collision: a genuine user retry that
+ *  happens to reproduce recent runtime-authored text verbatim. That's
+ *  common precisely where it hurts most — a short/empty field, where
+ *  `BlankLoadingAnimator`'s own bounce frame IS the literal string `_`
+ *  (`BOUNCE_FRAMES[0]`). Bug found live on chrome/Gmail (contenteditable,
+ *  generic-CE write path — issue found August 2026, opencues.md name TBD):
+ *  bare `_` fill lands, clear the field, retype bare `_` within 1.5s — the
+ *  runtime's own stale `_` frame stash matches the user's fresh `_`
+ *  keystroke and the resolver silently skips it. Reproduced deterministically
+ *  in tests/e2e/reclassifier-poison-ce.e2e.test.ts (chrome). Past the 1.5s
+ *  TTL it works every time, which reads live as "type again, sometimes
+ *  works, feels rate-limited."
+ *
+ *  The 1500ms figure is tuned for OPENCODE's issue #306 (SolidJS reactive
+ *  lag delaying a genuine echo). Chrome's execCommand echoes are
+ *  near-synchronous DOM events — the original 250ms default already
+ *  covered chrome's documented 50-200ms Gmail/Lexical/PM echo window with
+ *  margin to spare. Dropping `markRuntimeWrite` entirely for chrome (the
+ *  fix already used for plain `<input>`/`<textarea>`, see
+ *  reclassifier-poison.e2e.test.ts) is NOT safe here: that fix works
+ *  there only because a plain input's own echo is always `isTrusted:
+ *  false` and gets dropped by an earlier gate regardless — contenteditable
+ *  echoes from `execCommand` are genuinely `isTrusted: true`, so
+ *  `markRuntimeWrite` is load-bearing there (it's what stops the runtime's
+ *  own write from re-triggering the resolver on itself — the original
+ *  May 2026 runaway-loop bug this whole mechanism exists to prevent).
+ *
+ *  Fix: `ttlMs` is now a per-caller override instead of one shared global.
+ *  Every non-chrome host keeps the 1500ms default unchanged (opencode
+ *  still needs it). Chrome passes a much shorter `CHROME_RUNTIME_WRITE_TTL_MS`
+ *  (opencues-bootstrap.ts) — long enough for its own multi-echo window,
+ *  far too short for a human (or scripted) retry to plausibly land inside. */
 export const RUNTIME_WRITE_TTL_MS = 1500;
 
-export function createSourceReclassifier(now: () => number = Date.now): SourceReclassifier {
+export function createSourceReclassifier(
+  now: () => number = Date.now,
+  ttlMs: number = RUNTIME_WRITE_TTL_MS,
+): SourceReclassifier {
   const recent: Array<{ text: string; addedAt: number }> = [];
 
   function pruneStale(t: number): void {
-    const cutoff = t - RUNTIME_WRITE_TTL_MS;
+    const cutoff = t - ttlMs;
     while (recent.length > 0 && recent[0].addedAt < cutoff) recent.shift();
   }
 
