@@ -150,7 +150,13 @@ Running a lot of these at once? `opencues usage` prices every LLM call your
 hosts have made, across features, so the total isn't a guess.
 
 <!-- Slot 3. The blanks that call nothing at all, ending on one that
-     writes back to the machine. film30. -->
+     writes back to the machine. Cut from three `layouts/solo` block configs
+     joined at the step level (`solo/join-readme-local.py`), replacing the
+     film30 film-runner cut: the layouts system carries the landing glimmer
+     (see the hero's comment) and the derivation fixed a film30 truth bug -
+     `btc _` is a bare keyword get, so the product KEEPS the label
+     (`btc BTC: $78,018.00`); film30 wiped it. Values are film30's own
+     captured set, carried as data. -->
 <img width="100%" alt="A price, a forecast, and a system volume you can turn - none of them asking a model" src="assets/readme-3-local.webp">
 
 <br><br><br><br>
