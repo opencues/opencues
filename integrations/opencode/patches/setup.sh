@@ -211,7 +211,10 @@ install_user_blank_runner() {
 
 patch_app_tsx() {
   local app="$OPENCODE_DIR/packages/opencode/src/cli/cmd/tui/app.tsx"
-  if grep -q "startOpenCues" "$app"; then return 0; fi
+  # Same stale-block class as patch_prompt_tsx: restore pristine, then
+  # apply — a marker-based early-return would pin whatever version of
+  # the injection happened to land first.
+  restore_pristine "$app"
   OPENCUES_PINNED_VERSION="$PINNED_VERSION" python3 - "$app" <<'PY'
 import os, sys
 p = sys.argv[1]
@@ -246,6 +249,13 @@ PY
 
 patch_prompt_tsx() {
   local prompt="$OPENCODE_DIR/packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx"
+  # Restore to pristine upstream BEFORE patching — the per-edit
+  # idempotency markers below only guard against DOUBLE-application;
+  # they silently skip a CHANGED injected block on an already-patched
+  # fork (bug class first hit when the glimmer overlay was added to the
+  # note block and re-runs left the old block in place). Footer patches
+  # already did this; prompt now matches.
+  restore_pristine "$prompt"
   python3 - "$prompt" <<'PY'
 import sys
 p = sys.argv[1]
