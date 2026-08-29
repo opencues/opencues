@@ -32,6 +32,18 @@ export function supportsHighlightGlimmer(): boolean {
   return typeof CSS !== 'undefined' && 'highlights' in CSS && typeof Highlight !== 'undefined';
 }
 
+/** First ancestor with a real (non-transparent) computed background —
+ *  what a "hidden" glyph must be painted in to vanish against it. */
+function resolveBackgroundColor(el: Element | null): string {
+  let cur: Element | null = el;
+  while (cur) {
+    const bg = getComputedStyle(cur).backgroundColor;
+    if (bg && bg !== 'transparent' && !/^rgba\(\s*\d+,\s*\d+,\s*\d+,\s*0\s*\)$/.test(bg)) return bg;
+    cur = cur.parentElement;
+  }
+  return '#ffffff';
+}
+
 const DECORATION_STYLES: Record<string, string> = {
   'underline-solid':  'text-decoration-line: underline; text-decoration-style: solid',
   'underline-wavy':   'text-decoration-line: underline; text-decoration-style: wavy',
@@ -61,6 +73,10 @@ export interface HighlightGlimmerOptions {
    *  computed text color. */
   textColor?: string;
   decorationColor?: string;
+  /** What "hidden" glyphs are painted in — defaults to the nearest
+   *  ancestor's real background color (bg-on-bg vanishes; `transparent`
+   *  proved unreliable in highlight paint on live pages). */
+  hideColor?: string;
   /** Where the instance's <style> element lands — pass a shadow root's
    *  host document position when the target lives inside one
    *  (::highlight() rules only reach ranges in their own tree scope). */
@@ -179,6 +195,13 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
     : (targetRange.startContainer as Element);
   const textColor = options.textColor ?? (anchorEl ? getComputedStyle(anchorEl).color : '#000');
   const decoColor = options.decorationColor ?? textColor;
+  // Glyph-hiding color: the field's OWN background, not `transparent` —
+  // painting bg-on-bg is visually identical when it works and immune to
+  // any special-casing of transparent in highlight paint (live report:
+  // `color: transparent` left the underlying text fully visible on a
+  // real page while the rest of the effect ran). Walk up to the first
+  // ancestor with a real background.
+  const hideColor = options.hideColor ?? resolveBackgroundColor(anchorEl);
 
   const styleEl = doc.createElement('style');
   (options.styleParent ?? doc.head).appendChild(styleEl);
@@ -199,7 +222,7 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
     if (!DECORATION_STYLES[name]) throw new Error('unknown decoration: ' + name);
     decoBuckets[name] = registerHighlight(prefix + '-deco-' + name, new Highlight());
     sheet.insertRule(
-      `::highlight(${prefix}-deco-${name}) { ${DECORATION_STYLES[name]}; text-decoration-color: ${decoColor}; }`,
+      `::highlight(${prefix}-deco-${name}) { ${DECORATION_STYLES[name]}; text-decoration-color: ${decoColor}; background-color: transparent; }`,
       sheet.cssRules.length,
     );
   }
@@ -207,7 +230,10 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
   let decoAssigned: number[] = [];
 
   const hideBucket = registerHighlight(prefix + '-hide', new Highlight());
-  sheet.insertRule(`::highlight(${prefix}-hide) { color: transparent; }`, sheet.cssRules.length);
+  sheet.insertRule(
+    `::highlight(${prefix}-hide) { color: ${hideColor}; background-color: transparent; }`,
+    sheet.cssRules.length,
+  );
   let hiddenChars = new Set<number>();
 
   function getBucket(key: number): { h: Highlight; name: string } {
@@ -216,7 +242,7 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
       const name = prefix + '-off-' + String(key).replace('-', 'n').replace('.', 'p');
       const h = registerHighlight(name, new Highlight());
       sheet.insertRule(
-        `::highlight(${name}) { color: transparent; text-shadow: ${key}px 0 0 ${textColor}; }`,
+        `::highlight(${name}) { color: ${hideColor}; background-color: transparent; text-shadow: ${key}px 0 0 ${textColor}; }`,
         sheet.cssRules.length,
       );
       b = { h, name };
