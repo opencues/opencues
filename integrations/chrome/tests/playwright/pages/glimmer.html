@@ -1,0 +1,16 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>glimmer engine harness</title>
+<style>body { font-size: 18px; background: #fff; color: #111; }</style>
+</head>
+<body>
+  <!-- Single text node — the shape a real substitution span has, and
+       the shape that hit the zero-chars TreeWalker-root bug. -->
+  <div id="single" contenteditable="true">the answer is OCGLIMMERVALUE today</div>
+  <!-- Multi text node: words split across inline elements. -->
+  <div id="multi" contenteditable="true">alpha <b>bravo</b> charlie <i>del</i>ta</div>
+  <script src="/tests/playwright/harness-glimmer-bundle.js"></script>
+</body>
+</html>
