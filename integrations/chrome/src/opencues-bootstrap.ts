@@ -37,6 +37,7 @@ import { FetchHttpAdapter } from './adapters/fetch-http-adapter';
 import { setCoreWarn } from '@opencues/core';
 import { createBlanks, type BrowserBlank } from './blanks';
 import { walkPlainText, plainOffsetOfPosition, domPositionOfPlainOffset } from './dom-walk';
+import { createHighlightGlimmer, supportsHighlightGlimmer, type HighlightGlimmer } from './highlight-glimmer';
 
 const STORAGE_PREFIX = 'opencues_runtime:';
 
@@ -216,6 +217,25 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 let bootResult: BootResult | undefined;
 let currentTarget: HTMLElement | null = null;
+
+// ---- Host-owned glimmer transition (CSS Custom Highlight API) — the
+// chrome replacement for real-write mode (which froze Gmail; see the
+// glimmerRealWrite comment in adapters/chrome/v1/boot.ts). One instance
+// per animation; `_activeGlimmerBaseline` is the buffer's full plain
+// text at animation start, so a managed editor's late write-echo (same
+// text re-notified) doesn't cancel the animation while any REAL text
+// change does — Ranges over mutated text are unreliable, the animation
+// must never outlive the text it was built against.
+let _activeHighlightGlimmer: HighlightGlimmer | null = null;
+let _activeGlimmerBaseline: string | null = null;
+
+function cancelActiveHighlightGlimmer(): void {
+  const g = _activeHighlightGlimmer;
+  if (!g) return;
+  _activeHighlightGlimmer = null;
+  _activeGlimmerBaseline = null;
+  try { g.destroy(); } catch { /* target mid-teardown — highlights die with the document */ }
+}
 const speech = new WebSpeechAdapter();
 
 // Source reclassifier — shared helper from boot-common. Stashes the text
@@ -296,6 +316,7 @@ export function publishTarget(el: HTMLElement | null): void {
     return;
   }
   _suspended = false;
+  cancelActiveHighlightGlimmer(); // animation Ranges belong to the OLD buffer — never carry across focus
   currentTarget = el;
   if (bootResult) bootResult.resetBufferState();
   // Genuine change to a DIFFERENT (or first) buffer. resetBufferState() wiped
@@ -2931,6 +2952,69 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // for the read scope; see AmbientContext in @opencues/runtime for
     // the security contract.
     getAmbientContext: () => gatherAmbientContext(currentTarget),
+    // Host-owned glimmer transition — CSS Custom Highlight API engine
+    // (highlight-glimmer.ts). The runtime delegates the whole
+    // scramble-settle animation here and generates no frames of its
+    // own; this binding restyles glyphs and never writes the text DOM,
+    // which is what makes it safe where real-write mode wasn't (the
+    // Gmail freeze). A failed/unsupported animation returns a no-op —
+    // the substitution already landed, only the cosmetic is lost.
+    playGlimmer: (spec) => {
+      const noop = { cancel() { /* nothing started */ } };
+      cancelActiveHighlightGlimmer();
+      const target = currentTarget;
+      // Normal <input>/<textarea>: the value isn't DOM text nodes, so
+      // the Highlight API structurally can't reach it — same profile
+      // gap as cycling/dim (universal-integration). No animation.
+      if (!target || isNormalInput(target) || !supportsHighlightGlimmer()) return noop;
+      try {
+        // Span → Range via the img-aware dom-walk helpers (the runtime
+        // speaks plain-text offsets that count emoji-<img> alt chars;
+        // the engine's own walker would drift on those). Alt-backed
+        // chars have no text node, so they simply don't scramble —
+        // correct degradation, boundaries stay exact.
+        const startPos = domPositionOfPlainOffset(target, Math.max(0, spec.startOffset));
+        const endPos = domPositionOfPlainOffset(target, spec.startOffset + spec.finalText.length);
+        const range = document.createRange();
+        range.setStart(startPos.node, startPos.offset);
+        range.setEnd(endPos.node, endPos.offset);
+        if (range.toString() !== spec.finalText) {
+          log('debug', 'glimmer: span text differs from landed text (emoji/segments) — animating the range as-is');
+        }
+        // ::highlight() rules only reach ranges in their own tree scope
+        // — a target inside a shadow root (Reddit's <reddit-rte>) needs
+        // the stylesheet inside that root.
+        const root = target.getRootNode();
+        const g = createHighlightGlimmer({
+          target: range,
+          styleParent: root instanceof ShadowRoot ? root : undefined,
+        });
+        _activeHighlightGlimmer = g;
+        _activeGlimmerBaseline = walkPlainText(target).text;
+        const settled = g
+          .play({ mode: 'appear', direction: 'fwd', durationMs: spec.durationMs })
+          .then(() => {
+            if (_activeHighlightGlimmer === g) {
+              _activeHighlightGlimmer = null;
+              _activeGlimmerBaseline = null;
+              g.destroy();
+            }
+          });
+        return {
+          cancel: () => {
+            if (_activeHighlightGlimmer === g) {
+              _activeHighlightGlimmer = null;
+              _activeGlimmerBaseline = null;
+            }
+            try { g.destroy(); } catch { /* mid-teardown */ }
+          },
+          settled,
+        };
+      } catch (err) {
+        log('debug', `glimmer: highlight animation skipped: ${err}`);
+        return noop;
+      }
+    },
     // CE.9 — spawnProcess routes through the native-messaging host
     // when installed (`opencues install chrome-host`). Without it,
     // the adapter returns exitCode 127. Content scripts can't talk
@@ -3276,6 +3360,15 @@ export function notifyOpenCuesTextChange(
   // error. Checked here rather than only at boot because the claim usually
   // lands AFTER us: we run at `document_end`, embedded plugins boot later.
   if (deferToEmbeddedHost()) { noteDeferralOnce(); return; }
+
+  // A running highlight-glimmer must die on any REAL text change — its
+  // per-character Ranges were built against the old text. Managed-editor
+  // write echoes re-notify the SAME text (that's the baseline compare),
+  // and those must NOT cancel or the animation would never survive its
+  // own landing on Lexical/PM/Quill.
+  if (_activeHighlightGlimmer !== null && text !== _activeGlimmerBaseline) {
+    cancelActiveHighlightGlimmer();
+  }
 
   let actualSource = sourceReclassifier.reclassify(text, source);
 

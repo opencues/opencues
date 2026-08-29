@@ -73,6 +73,17 @@ export interface HostInfo extends CommonHostInfo {
    */
   httpAdapter?: unknown;
   /**
+   * Host-owned glimmer transition. The bootstrap supplies a CSS Custom
+   * Highlight API engine (integrations/chrome/src/highlight-glimmer.ts)
+   * that plays the whole scramble-settle animation by RESTYLING glyphs —
+   * zero text-DOM writes, so managed editors can't revert it and the
+   * undo stack is untouched (the property real-write mode lacked; it
+   * froze Gmail and stays disabled). Absent → no transition animation
+   * at all on chrome. `cancel()` must synchronously jump to the settled
+   * end state; `settled` resolves on natural completion.
+   */
+  playGlimmer?(spec: { startOffset: number; finalText: string; durationMs: number }): { cancel(): void; settled?: Promise<void> };
+  /**
    * Service-worker-routed GET for the contradiction world-data caches (bank
    * holidays, weather). A content-script fetch to those origins is blocked by
    * the host page's CSP, so the bootstrap supplies a fetch that hops through the
@@ -372,26 +383,27 @@ export function boot(host: HostInfo): BootResult {
     // NodeHttpAdapter (node:https) is stubbed in the browser bundle, so the
     // weaver needs the host's adapter explicitly (mirrors the Resolver below).
     httpAdapter: host.httpAdapter as import('@opencues/core').HttpAdapterShape | undefined,
-    // The CSS Custom Highlight API can't change WHICH glyphs are shown,
-    // only their style — real-write mode is how glimmer would actually
-    // paint here. See docs/architecture/glimmer-realwrite-extension-plan.md.
+    // Glimmer on chrome: HOST-OWNED animation (CSS Custom Highlight API,
+    // via the bootstrap's playGlimmer binding), never real-write.
     //
-    // DISABLED (August 2026) — shipped wired but was only ever verified
-    // against a lightweight synthetic test page, never a real managed
-    // editor under load. Live on Gmail it correlated with the whole tab
-    // freezing: real-write mode fires up to ~13 execCommand-driven
-    // writes in under a second per landed substitution; on Gmail's
-    // heavier DOM reconciliation, those writes' own echoes can plausibly
-    // arrive later than the reclassifier's TTL expects, misclassifying
-    // as fresh user edits and re-triggering the resolver on the
-    // runtime's own output — a feedback loop that compounds. Force
-    // `undefined` unconditionally until glimmer's chrome write volume is
-    // load-tested against a real managed editor (Gmail/Lexical/PM/Quill)
-    // with devtools performance profiling, not just the e2e fixture's
-    // synthetic contenteditable page. OpenCode and shell keep real-write
-    // mode — both are separately live-verified and don't share chrome's
-    // execCommand-driven write cost.
+    // Real-write stays force-disabled (August 2026): it fired up to ~13
+    // execCommand-driven writes in under a second per landed
+    // substitution — O(field) DOM walking per frame — and correlated
+    // with whole-tab freezes on Gmail, with the writes' own echoes
+    // plausibly outliving the reclassifier's TTL and re-triggering the
+    // resolver on the runtime's own output. That cost model is
+    // structural, not tunable, which is why the replacement delegates
+    // the ENTIRE animation to a restyling engine that never touches the
+    // text DOM (zero writes, zero undo entries, nothing for managed-
+    // editor reconcilers to revert). OpenCode and shell keep real-write
+    // mode — both separately live-verified, neither shares chrome's
+    // execCommand write cost. No playGlimmer binding → no transition
+    // animation at all (text just appears — never fall back to
+    // real-write).
     glimmerRealWrite: undefined,
+    glimmerHostAnimation: host.playGlimmer
+      ? (spec) => host.playGlimmer!(spec)
+      : undefined,
   });
   configLoaderRef = shared.configLoader;
 

@@ -563,7 +563,7 @@ import { DimRender } from './modules/dim-render';
 import { Cycling } from './modules/cycling';
 import { BlankFill } from './modules/blank-fill';
 import { BlankLoadingAnimator, parseCustomFrames, parseRgbColors, parseAnsiColors, parseFrameIntervalMs, DEFAULT_RGB_PALETTE, DEFAULT_ANSI_PALETTE } from './modules/blank-loading';
-import { GlimmerRender, parseGlimmerTransitionMs } from './modules/glimmer-render';
+import { GlimmerRender, parseGlimmerTransitionMs, type GlimmerRenderOptions } from './modules/glimmer-render';
 import { MarkdownRender } from './modules/markdown-render';
 import { HighlightState } from './state/highlight-state';
 import { DynDefs } from './state/dyn-defs';
@@ -652,6 +652,18 @@ export interface BuildSharedRuntimeOptions {
    * design + per-host side effects. Omit to keep render-only (default —
    * matches every band's behavior before this option existed). */
   readonly glimmerRealWrite?: { markRuntimeWrite: (text: string) => void };
+  /**
+   * Host-owned glimmer animation — the band delegates the ENTIRE
+   * scramble-settle transition to the host and the runtime generates no
+   * frames at all (no timer, no writes, no textOverride). Takes
+   * priority over both other glimmer modes. Chrome's band sets this
+   * (CSS Custom Highlight API engine — restyles glyphs, never touches
+   * the text DOM, so managed editors can't fight it and the undo stack
+   * stays clean); every other band omits it and keeps its existing
+   * delivery byte-for-byte. See `GlimmerRenderOptions.playHostAnimation`
+   * for the cancel/settled contract.
+   */
+  readonly glimmerHostAnimation?: GlimmerRenderOptions['playHostAnimation'];
 }
 
 /**
@@ -1836,8 +1848,12 @@ export function buildSharedRuntime(
     ),
     log: msg => log('debug', msg),
     realWrite: opts.glimmerRealWrite,
+    playHostAnimation: opts.glimmerHostAnimation,
   });
-  if (!opts.glimmerRealWrite) {
+  if (!opts.glimmerRealWrite && !opts.glimmerHostAnimation) {
+    // textOverride path only makes sense when the runtime itself
+    // generates frames — host-owned animation never has an override to
+    // paint, so skip the render-handler registration entirely.
     adapter.onRender((ctx) => {
       const override = glimmer.getTextOverride(ctx.text);
       return override !== null ? { textOverride: override } : null;

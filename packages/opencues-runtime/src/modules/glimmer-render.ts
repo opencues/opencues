@@ -154,6 +154,26 @@ export interface GlimmerRenderOptions {
   realWrite?: {
     markRuntimeWrite: (text: string) => void;
   };
+  /**
+   * Host-owned animation — the host plays the ENTIRE transition itself
+   * and the runtime skips frame generation completely (no timer, no
+   * scramble text, no writes, no textOverride). Takes priority over
+   * both other modes when provided. Chrome is the motivating host: its
+   * real-write mode froze Gmail (O(field) DOM walking per frame), so
+   * its band delegates to a CSS Custom Highlight API engine that
+   * restyles glyphs without touching the text DOM at all.
+   *
+   * Contract: `cancel()` must synchronously jump the animation to its
+   * settled end state — it is called whenever a second transition
+   * starts, the buffer changes, or the runtime tears down. `settled`
+   * (optional) resolves when the animation completes on its own, so
+   * `active` stops over-reporting after a natural finish.
+   */
+  playHostAnimation?: (spec: {
+    startOffset: number;
+    finalText: string;
+    durationMs: number;
+  }) => { cancel(): void; settled?: Promise<void> };
 }
 
 /**
@@ -165,6 +185,7 @@ export interface GlimmerRenderOptions {
 export class GlimmerRender {
   private _active: ActiveGlimmer | null = null;
   private _timer: ReturnType<typeof setInterval> | null = null;
+  private _hostAnim: { cancel(): void } | null = null;
 
   constructor(private opts: GlimmerRenderOptions) {}
 
@@ -175,6 +196,25 @@ export class GlimmerRender {
     if (durationMs <= 0) return;
     if (!finalText || finalText.trim().length === 0) return;
     this.cancel(false);
+    // Host-owned mode: delegate and stop — no ActiveGlimmer, no timer,
+    // no repaint. The buffer already holds the final text (the caller
+    // committed it before starting the transition), so there is nothing
+    // for the runtime to restore on cancel either.
+    if (this.opts.playHostAnimation) {
+      try {
+        const h = this.opts.playHostAnimation({
+          startOffset: Math.max(0, startOffset), finalText, durationMs,
+        });
+        this._hostAnim = h;
+        h.settled?.then(() => { if (this._hostAnim === h) this._hostAnim = null; });
+        this.opts.log?.(`glimmer: host animation start (len=${finalText.length}, ms=${durationMs})`);
+      } catch (err) {
+        // A failed host animation is a lost cosmetic, never a lost
+        // substitution — the text is already final. Log and move on.
+        this.opts.log?.(`glimmer: host animation failed to start: ${err}`);
+      }
+      return;
+    }
     this._active = {
       start: Math.max(0, startOffset),
       finalText,
@@ -190,10 +230,15 @@ export class GlimmerRender {
 
   /** True while a transition is painting. */
   get active(): boolean {
-    return this._active !== null;
+    return this._active !== null || this._hostAnim !== null;
   }
 
   cancel(repaint: boolean): void {
+    if (this._hostAnim !== null) {
+      const h = this._hostAnim;
+      this._hostAnim = null;
+      try { h.cancel(); } catch { /* host mid-teardown */ }
+    }
     if (this._timer !== null) { clearInterval(this._timer); this._timer = null; }
     const wasActive = this._active;
     if (wasActive === null) return;

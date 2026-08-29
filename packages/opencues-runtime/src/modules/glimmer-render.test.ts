@@ -333,3 +333,83 @@ describe('GlimmerRender — write mode (realWrite)', () => {
     expect(getBuffer()).toBe('zephyr'); // restored, not abandoned
   });
 });
+
+describe('GlimmerRender — host-owned animation (playHostAnimation)', () => {
+  function makeHostAnimGlimmer(durationMs = 900) {
+    const adapterBits = makeAdapter();
+    const specs: { startOffset: number; finalText: string; durationMs: number }[] = [];
+    let cancels = 0;
+    let settleResolve: (() => void) | null = null;
+    const glimmer = new GlimmerRender({
+      adapter: adapterBits.adapter,
+      durationMs: () => durationMs,
+      rand: glimmerStream(42),
+      playHostAnimation: (spec) => {
+        specs.push(spec);
+        return {
+          cancel: () => { cancels++; },
+          settled: new Promise<void>((res) => { settleResolve = res; }),
+        };
+      },
+    });
+    return { glimmer, specs, getCancels: () => cancels, settle: () => settleResolve?.(), ...adapterBits };
+  }
+
+  it('delegates the whole transition: hook called with the spec, no timer, no writes, no renders', () => {
+    vi.useFakeTimers();
+    const { glimmer, specs, setTextCalls, forceRenderCount } = makeHostAnimGlimmer(600);
+    glimmer.start(7, 'ALT-ONE');
+    expect(specs).toEqual([{ startOffset: 7, finalText: 'ALT-ONE', durationMs: 600 }]);
+    expect(glimmer.active).toBe(true);
+    // Advance well past every frame the runtime-owned modes would emit —
+    // host mode must produce ZERO runtime activity.
+    vi.advanceTimersByTime(5000);
+    expect(setTextCalls).toEqual([]);
+    expect(forceRenderCount()).toBe(0);
+    expect(glimmer.getTextOverride('anything ALT-ONE anything')).toBeNull();
+  });
+
+  it('cancel() forwards to the host handle exactly once and clears active', () => {
+    const { glimmer, getCancels } = makeHostAnimGlimmer();
+    glimmer.start(0, 'ALT-ONE');
+    glimmer.cancel(true);
+    glimmer.cancel(true); // idempotent — the handle must not be re-cancelled
+    expect(getCancels()).toBe(1);
+    expect(glimmer.active).toBe(false);
+  });
+
+  it('a second start() cancels the first host animation before delegating again', () => {
+    const { glimmer, specs, getCancels } = makeHostAnimGlimmer();
+    glimmer.start(0, 'ALT-ONE');
+    glimmer.start(4, 'ALT-TWO');
+    expect(getCancels()).toBe(1);
+    expect(specs.map((s) => s.finalText)).toEqual(['ALT-ONE', 'ALT-TWO']);
+    expect(glimmer.active).toBe(true);
+  });
+
+  it('natural completion (settled resolves) clears active without cancelling', async () => {
+    const { glimmer, settle, getCancels } = makeHostAnimGlimmer();
+    glimmer.start(0, 'ALT-ONE');
+    settle();
+    await Promise.resolve(); // let the .then chain run
+    expect(glimmer.active).toBe(false);
+    expect(getCancels()).toBe(0);
+  });
+
+  it('a throwing host hook is swallowed — the substitution is already committed, only the cosmetic is lost', () => {
+    const adapterBits = makeAdapter();
+    const glimmer = new GlimmerRender({
+      adapter: adapterBits.adapter,
+      durationMs: () => 900,
+      playHostAnimation: () => { throw new Error('host mid-teardown'); },
+    });
+    expect(() => glimmer.start(0, 'ALT-ONE')).not.toThrow();
+    expect(glimmer.active).toBe(false);
+  });
+
+  it('scalar off (durationMs <= 0) never calls the host hook', () => {
+    const { glimmer, specs } = makeHostAnimGlimmer(0);
+    glimmer.start(0, 'ALT-ONE');
+    expect(specs).toEqual([]);
+  });
+});
