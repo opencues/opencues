@@ -419,6 +419,15 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
       const hidden = mode === 'appear';
       const bandW = Math.max(2, Math.round(W * 0.12));
       wordSettled = new Uint8Array(W);
+      // Appear mode: the span's REAL text is hidden for the ENTIRE run —
+      // every char goes into the hide bucket at t=0 and stays there
+      // until the animation finishes (finishPlay's releaseAll is what
+      // reveals the text, all at once). Scramble shadows layer on top
+      // via the offset buckets: a char in both buckets paints the same
+      // hide color plus the offset rule's text-shadow, so the dance is
+      // visible over the darkness. Nothing is progressively revealed
+      // mid-run — the settle-front only governs which words are
+      // actively scrambling at any moment.
       if (hidden) {
         for (let i = 0; i < N; i++) { hideBucket.add(charRanges[i]); hiddenChars.add(i); }
       }
@@ -438,7 +447,9 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
           const on = tail ? pos <= front : (pos <= front && pos > front - bandW);
           if (on && wordGroups[wi].length >= 2) { ensureGeometry(wi); scrambling.push(wi); }
         }
-        // Phase 2 — style writes only.
+        // Phase 2 — style writes only. "Settling" mid-run just stops a
+        // word's scramble (its shadows go dark until the finish reveals
+        // everything) — it never unhides.
         for (let wi = 0; wi < W; wi++) {
           if (settled[wi]) continue;
           const group = wordGroups[wi];
@@ -449,14 +460,10 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
           if (settleNow) {
             for (const idx of wordActive[wi]) releaseChar(idx);
             wordActive[wi] = [];
-            if (hidden) for (const idx of group) { if (hiddenChars.delete(idx)) hideBucket.delete(charRanges[idx]); }
             settled[wi] = 1;
           }
         }
-        for (const wi of scrambling) {
-          if (hidden) for (const idx of wordGroups[wi]) { if (hiddenChars.delete(idx)) hideBucket.delete(charRanges[idx]); }
-          scrambleWord(wi);
-        }
+        for (const wi of scrambling) scrambleWord(wi);
         decorationPass();
       };
       loopRound();
