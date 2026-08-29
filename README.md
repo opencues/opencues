@@ -56,7 +56,14 @@ The model comes to your cursor, both ways. **Cues** react to what you've already
      on transparency, no catalog wrapper and no frame, so it sits on
      whichever ground GitHub renders the README in. The earlier
      `films/readme-hero-live.py` cut of this is deprecated - it hand-wrote
-     its states, which is the one thing that system exists to prevent. -->
+     its states, which is the one thing that system exists to prevent.
+
+     Every answer GLIMMERS in - the 140ms blink then the 70ms churn easing
+     0.45 to 0.15, glimmer-render.ts's own recipe at the product's default
+     900ms - because since v0.7.8 that is how a substitution lands on every
+     host, and a film whose answer hard-cuts is showing something the
+     product no longer does. Derived, not opted into: the kit emits it on
+     every blank `resolved` (opencues-web artifact-kit, derive.py `_glim`). -->
 <img width="100%" alt="One prompt improved, rewritten as a senior engineer would, grown with a security paragraph, translated to Japanese - then an ffmpeg command answered on a fresh line" src="assets/readme-1-hero.webp">
 
 OpenCues is platform, model, and provider agnostic, engineered from the ground up to enable native inline AI.
