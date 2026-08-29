@@ -93,14 +93,14 @@ export const GLIMMER_FRAME_MS = 70;
  *  scramble starts — the "blinker blinks, then the transition happens". */
 export const GLIMMER_BLINK_MS = 140;
 
-/** Parse the `glimmer-transition-ms` scalar. Registry default (`300`) when
+/** Parse the `glimmer-transition-ms` scalar. Registry default (`900`) when
  *  absent or unrecognised; `off` (or `0`) disables — 0 means no animation. */
 export function parseGlimmerTransitionMs(raw: string | undefined): number {
-  if (raw === undefined) return 300;
+  if (raw === undefined) return 900;
   const t = raw.trim().toLowerCase();
   if (t === 'off' || t === '0') return 0;
   if (t === '300' || t === '600' || t === '900' || t === '1500') return parseInt(t, 10);
-  return 300;
+  return 900;
 }
 
 /** The blink frame: every glyph blanked, newlines preserved (length 1:1). */

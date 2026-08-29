@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — `glimmer-transition-ms` default 300 → 900 (`@opencues/core` 0.55.1 → 0.55.2, `@opencues/runtime` 0.36.1 → 0.36.2, `@opencues/chrome` 0.2.192 → 0.2.193)
+
+The full slow decode becomes the default everywhere the scalar is absent or unrecognised: `parseGlimmerTransitionMs` fallback, the registry menu order, the shipped `defaults/OPENCUES.md` template, and the feature doc. Existing user files with an explicit value are untouched. (Chrome-specific note: a stale bake-time config snapshot in `dist/configs/` can shadow a newer `~/.cues/OPENCUES.md` when the chrome-host isn't connected — re-running `opencues install chrome` or `opencues sync chrome` refreshes the bake; the live chrome-host push makes edits land without either.)
+
 ### Added — `glimmer-transition-ms: 1500` (`@opencues/core` 0.55.0 → 0.55.1, `@opencues/runtime` 0.36.0 → 0.36.1, `@opencues/chrome` 0.2.184 → 0.2.185)
 
 A fourth duration for the scramble-settle transition: `1500` ("Extended — a long, deliberate decode", ~21 frames at the 70ms tick), alongside the existing `300`/`600`/`900`/`off`. One registry value + the `parseGlimmerTransitionMs` allow-list + the feature doc; every host picks it up through the shared scalar, no per-host wiring.

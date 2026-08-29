@@ -248,7 +248,7 @@ blank-loading-interval-ms: 150
 # transform-blank, and keyword blank fills. Values: off | 300 | 600 | 900.
 # Paints on Claude Code + Gemini CLI today; other hosts fall back to
 # the instant swap.
-glimmer-transition-ms: 300
+glimmer-transition-ms: 900
 
 # The selector/satellite menu schema (tips + per-value descriptions
 # for every setting above) is now owned by the @opencues/core

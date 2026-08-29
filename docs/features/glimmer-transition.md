@@ -9,9 +9,9 @@ covers the *arrival*.
 
 ```
 # ~/.cues/OPENCUES.md
-glimmer-transition-ms: 300   # default — a subtle flicker as the answer settles
+glimmer-transition-ms: 900   # default — the full slow decode
 glimmer-transition-ms: 600   # a clear scramble-and-settle decode
-glimmer-transition-ms: 900   # the full slow decode
+glimmer-transition-ms: 300   # a subtle flicker as the answer settles
 glimmer-transition-ms: 1500  # extended — a long, deliberate decode
 glimmer-transition-ms: off   # instant swap (pre-feature behaviour)
 ```
@@ -53,7 +53,7 @@ consumed `textOverride`): every frame is committed via a real
 source-reclassifier so it's classified `'runtime'` — the same
 mechanism `blank-loading.ts`'s per-tick spinner writes already use.
 Same scramble/blink/splice logic underneath; the buffer genuinely
-holds the scrambled text for the ~440ms (default) transition window
+holds the scrambled text for the ~1040ms (default) transition window
 before settling on the clean final text. See
 [`docs/architecture/glimmer-realwrite-extension-plan.md`](../architecture/glimmer-realwrite-extension-plan.md)
 for the full design + per-host side effects.
@@ -79,7 +79,7 @@ Both modes give the same guarantees:
 | Gemini CLI | animates (render-only) |
 | OpenCode | animates (real-write) — live-verified via the agentic test harness |
 | shell | animates (real-write) — live-verified via the agentic test harness (`glimmer: start` firing correctly, including picking up a hot-reloaded duration change mid-session) |
-| chrome | **disabled** — shipped wired, then hard-disabled (`adapters/chrome/v1/boot.ts` forces `glimmerRealWrite: undefined`) after it caused the whole Gmail tab to freeze in real use, never having been load-tested against a real managed editor. Chrome falls back to no animation (a landed substitution just swaps, matching pre-feature behaviour). Needs devtools performance profiling against Gmail/Lexical/ProseMirror/Quill under real load before re-enabling — the e2e fixture's synthetic contenteditable page is not sufficient, it's what "verified" wrongly meant before this incident. See `CHANGELOG.md` § "glimmer's real-write mode froze Gmail tabs" |
+| chrome | animates (**host-owned** — a third delivery mode): the runtime delegates the whole transition via `GlimmerRenderOptions.playHostAnimation` to a CSS Custom Highlight API engine (`integrations/chrome/src/highlight-glimmer.ts`) that restyles glyphs — displacement swaps behind the same blink + 45/30/15 easing recipe — without ever writing the text DOM. Real-write mode remains hard-disabled there (it froze Gmail tabs — O(field) DOM walking per frame; see `CHANGELOG.md`); the Highlight engine is the structural replacement, not a tuned retry. Un-scrambled churn characters show the real final glyphs, matching the family look; the one irreducible difference is displacement of real glyphs rather than confusable-glyph substitution (the Highlight API cannot change which character renders). |
 
 Error substitutes (`[err] …` fills, missing-key fallbacks) never
 animate — feedback shouldn't get an arrival flourish.

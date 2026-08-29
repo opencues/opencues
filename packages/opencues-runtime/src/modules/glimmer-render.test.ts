@@ -110,8 +110,8 @@ describe('scrambleText', () => {
 });
 
 describe('parseGlimmerTransitionMs', () => {
-  it('absent → registry default 300', () => {
-    expect(parseGlimmerTransitionMs(undefined)).toBe(300);
+  it('absent → registry default 900', () => {
+    expect(parseGlimmerTransitionMs(undefined)).toBe(900);
   });
   it('off / 0 → disabled', () => {
     expect(parseGlimmerTransitionMs('off')).toBe(0);
@@ -124,8 +124,8 @@ describe('parseGlimmerTransitionMs', () => {
     expect(parseGlimmerTransitionMs('1500')).toBe(1500);
   });
   it('junk falls back to the default, never NaN', () => {
-    expect(parseGlimmerTransitionMs('banana')).toBe(300);
-    expect(parseGlimmerTransitionMs('450')).toBe(300);
+    expect(parseGlimmerTransitionMs('banana')).toBe(900);
+    expect(parseGlimmerTransitionMs('450')).toBe(900);
   });
 });
 
