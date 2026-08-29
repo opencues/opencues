@@ -99,7 +99,7 @@ export function parseGlimmerTransitionMs(raw: string | undefined): number {
   if (raw === undefined) return 300;
   const t = raw.trim().toLowerCase();
   if (t === 'off' || t === '0') return 0;
-  if (t === '300' || t === '600' || t === '900') return parseInt(t, 10);
+  if (t === '300' || t === '600' || t === '900' || t === '1500') return parseInt(t, 10);
   return 300;
 }
 

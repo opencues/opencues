@@ -121,6 +121,7 @@ describe('parseGlimmerTransitionMs', () => {
     expect(parseGlimmerTransitionMs('300')).toBe(300);
     expect(parseGlimmerTransitionMs('600')).toBe(600);
     expect(parseGlimmerTransitionMs('900')).toBe(900);
+    expect(parseGlimmerTransitionMs('1500')).toBe(1500);
   });
   it('junk falls back to the default, never NaN', () => {
     expect(parseGlimmerTransitionMs('banana')).toBe(300);

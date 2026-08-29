@@ -875,6 +875,7 @@ export const MENU_TUNABLES: readonly MenuTunableSpec[] = [
       { id: '300', description: 'Quick (default) — a subtle flicker as the answer settles' },
       { id: '600', description: 'Standard — a clear scramble-and-settle decode' },
       { id: '900', description: 'Cinematic — the full slow decode' },
+      { id: '1500', description: 'Extended — a long, deliberate decode (~21 frames)' },
       { id: 'off', description: 'No transition — text swaps instantly (pre-feature behaviour)' },
     ],
   },

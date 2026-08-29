@@ -12,6 +12,7 @@ covers the *arrival*.
 glimmer-transition-ms: 300   # default — a subtle flicker as the answer settles
 glimmer-transition-ms: 600   # a clear scramble-and-settle decode
 glimmer-transition-ms: 900   # the full slow decode
+glimmer-transition-ms: 1500  # extended — a long, deliberate decode
 glimmer-transition-ms: off   # instant swap (pre-feature behaviour)
 ```
 

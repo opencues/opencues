@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — `glimmer-transition-ms: 1500` (`@opencues/core` 0.55.0 → 0.55.1, `@opencues/runtime` 0.36.0 → 0.36.1, `@opencues/chrome` 0.2.184 → 0.2.185)
+
+A fourth duration for the scramble-settle transition: `1500` ("Extended — a long, deliberate decode", ~21 frames at the 70ms tick), alongside the existing `300`/`600`/`900`/`off`. One registry value + the `parseGlimmerTransitionMs` allow-list + the feature doc; every host picks it up through the shared scalar, no per-host wiring.
+
 ### Added — glimmer returns to chrome as a host-owned CSS Highlight API animation (`@opencues/runtime` 0.35.3 → 0.36.0, `@opencues/chrome` 0.2.183 → 0.2.184)
 
 The replacement for the real-write mode disabled in the entry below — a different mechanism, not a tuned retry. The scramble-settle transition on chrome is now played entirely by the host via the CSS Custom Highlight API (`integrations/chrome/src/highlight-glimmer.ts`): per-character `Range`s move between registered `Highlight` buckets whose rules displace glyphs (`text-shadow`), hide them (`color: transparent`), or decorate them. **The text DOM is never written** — managed editors (Lexical/ProseMirror/Quill/Draft.js) cannot see, revert, or record any of it; the undo stack is untouched; per-frame cost is O(animated span), never O(field). That is the structural property real-write lacked (its Gmail freeze was a cost-model problem, not a tuning problem).
