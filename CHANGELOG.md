@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — a replace no longer eats the space beside it (`@opencues/runtime` 0.34.5 → 0.34.6, `@opencues/chrome` 0.2.183 → 0.2.184, `@opencues/dsh` 0.2.15 → 0.2.16)
+
+`replace-parse-mode` splices your value in where the old text was and consumes the imperative that asked for it. When something sat BETWEEN the two, the space that separated them went with the imperative:
+
+```
+her name is Sarha in the invite fix the spelling _
+  →  her name is Sarahin the invite
+```
+
+And when the imperative came first, the words that followed it were moved behind the value rather than in front of it:
+
+```
+uppercase it _ the ticker is aapl
+  →  AAPLthe ticker is
+```
+
+**Where you saw it.** Any correction made mid-sentence, which is most of them. It was invisible until now because the branch's only previous caller rewrote the whole body, so the target and the imperative were always touching and the gap between them was always just the one space.
+
+The gap's two edges are no longer the same thing. The edge that touched the imperative goes with it; the edge that touched your text is a word boundary in text that survives, and stays. A gap of newlines is structure and is preserved as it always was.
+
 ### Fixed — chrome popup no longer silently disables the chrome-host integration, and its diagnostics stop lying about a dead host (`@opencues/chrome` 0.2.182 → 0.2.183)
 
 Three related fixes to the popup's relationship with the native-messaging host, all found chasing one user report ("the chrome-host toggle vanished and *test api key* does nothing, but self-check passes"):
