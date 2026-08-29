@@ -47,16 +47,20 @@ landed keeps every untouched word rock-steady.
 entirely in the render pipeline (`RenderDirectives.textOverride`
 frames driven by `forceRender()` kicks; never `setText`).
 
-**Real-write** (OpenCode, shell — hosts whose renderer never
-consumed `textOverride`): every frame is committed via a real
-`adapter.setText` call, marked through the host's own
-source-reclassifier so it's classified `'runtime'` — the same
-mechanism `blank-loading.ts`'s per-tick spinner writes already use.
-Same scramble/blink/splice logic underneath; the buffer genuinely
-holds the scrambled text for the ~1040ms (default) transition window
-before settling on the clean final text. See
-[`docs/architecture/glimmer-realwrite-extension-plan.md`](../architecture/glimmer-realwrite-extension-plan.md)
-for the full design + per-host side effects.
+**Render-only via display overlay** (OpenCode, shell — as of runtime
+0.37.0): the same `textOverride` frames flow out through
+`collectRenderDirectives`, and the host bootstrap diffs each frame
+against the true text and floats the scrambled slice as an
+absolute-positioned overlay box over the textarea (the inline-note
+overlay pattern generalized). The buffer NEVER holds a scrambled
+frame. Overlay geometry is cursor-anchored (OpenTUI exposes no
+offset→visual API), so a span that wraps, sits on another line than
+the caret, or whose line exceeds the pane width simply doesn't paint —
+the real final text shows, the same graceful give-up chrome's engine
+uses. The earlier real-write mode (every frame committed via
+`adapter.setText`, reclassifier-marked) is retired on both bands but
+its runtime machinery remains until this ships live-verified; design +
+sequencing: [`docs/architecture/glimmer-opentui-overlay-plan.md`](../architecture/glimmer-opentui-overlay-plan.md).
 
 Both modes give the same guarantees:
 
@@ -77,8 +81,8 @@ Both modes give the same guarantees:
 |---|---|
 | Claude Code | animates (render-only) |
 | Gemini CLI | animates (render-only) |
-| OpenCode | animates (real-write) — live-verified via the agentic test harness |
-| shell | animates (real-write) — live-verified via the agentic test harness (`glimmer: start` firing correctly, including picking up a hot-reloaded duration change mid-session) |
+| OpenCode | animates (render-only display overlay, runtime 0.37.0 — buffer never holds a scrambled frame; band pin: `adapters/oc/v1.14/boot.test.ts`). Overlay painting NOT yet live-verified — the prior real-write mode was, and its machinery stays until this is. |
+| shell | animates (render-only display overlay, runtime 0.37.0 — same contract + pin as OC, `adapters/shell/v1/boot.test.ts`). Overlay painting NOT yet live-verified. |
 | chrome | animates (**host-owned** — a third delivery mode): the runtime delegates the whole transition via `GlimmerRenderOptions.playHostAnimation` to a CSS Custom Highlight API engine (`integrations/chrome/src/highlight-glimmer.ts`) that restyles glyphs — displacement swaps behind the same blink + 45/30/15 easing recipe — without ever writing the text DOM. Real-write mode remains hard-disabled there (it froze Gmail tabs — O(field) DOM walking per frame; see `CHANGELOG.md`); the Highlight engine is the structural replacement, not a tuned retry. Un-scrambled churn characters show the real final glyphs, matching the family look; the one irreducible difference is displacement of real glyphs rather than confusable-glyph substitution (the Highlight API cannot change which character renders). |
 
 Error substitutes (`[err] …` fills, missing-key fallbacks) never

@@ -48,6 +48,12 @@ export interface BootResult {
   notifyTextChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
   notifyCursorChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
   collectRenderDirectives(text: string, cursor: number): RenderDirectives[];
+  /** The shared glimmer transition (render-only on this band — frames
+   *  arrive as `textOverride` directives via collectRenderDirectives,
+   *  painted by the host as a display-only overlay; the buffer never
+   *  holds a scrambled frame). Exposed so hosts/tests can start or
+   *  cancel a transition directly. */
+  glimmer: import('../../../src/modules/glimmer-render').GlimmerRender;
   /**
    * Wipe per-buffer runtime state (DynDefs, HighlightState, SpanFill,
    * SelectorSatellite). Fire whenever an external mutation has invalidated
@@ -150,10 +156,16 @@ export function boot(host: HostInfo): BootResult {
   const shared = buildSharedRuntime(adapter, {
     log, configSearchPaths, settingsFile,
     getApiKeys: () => apiKeys,
-    // OpenTUI's extmark renderer doesn't consume RenderDirectives.textOverride
-    // — switch glimmer to real-write mode so it actually paints here. See
-    // docs/architecture/glimmer-realwrite-extension-plan.md.
-    glimmerRealWrite: host.markRuntimeWrite ? { markRuntimeWrite: host.markRuntimeWrite } : undefined,
+    // Glimmer is RENDER-ONLY here now (no glimmerRealWrite): the shared
+    // runtime registers the textOverride onRender handler, the frames
+    // flow out through collectRenderDirectives, and the host bootstrap
+    // paints the override diff as a display-only overlay box over the
+    // textarea (integrations/shell/src/bootstrap.ts). The buffer never
+    // holds a scrambled frame — real-write mode (retired here) wrote
+    // every 70ms frame via setText, which required reclassifier
+    // marking, nuked every extmark per frame, and raced submits
+    // against the restore. See
+    // docs/architecture/glimmer-opentui-overlay-plan.md.
   });
   configLoaderRef = shared.configLoader;
 
@@ -324,6 +336,7 @@ export function boot(host: HostInfo): BootResult {
       const ctx: RenderContext = { text, cursor, externalHighlights: [] };
       return renderEvents.collect(ctx, err => log('error', 'render handler threw', err));
     },
+    glimmer: shared.glimmer,
     resetBufferState() {
       resetSharedBufferState({
         ...shared,

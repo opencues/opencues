@@ -70,6 +70,12 @@ export interface BootResult {
    * extmarks on the textarea.
    */
   collectRenderDirectives(text: string, cursor: number): RenderDirectives[];
+  /** The shared glimmer transition (render-only on this band — frames
+   *  arrive as `textOverride` directives via collectRenderDirectives,
+   *  painted by the fork bootstrap as a display-only overlay; the
+   *  buffer never holds a scrambled frame). Exposed so hosts/tests can
+   *  start or cancel a transition directly. */
+  glimmer: import('../../../src/modules/glimmer-render').GlimmerRender;
   /**
    * Wipe per-buffer runtime state (DynDefs, HighlightState, SpanFill,
    * SelectorSatellite). Fire whenever an external mutation has invalidated
@@ -201,10 +207,16 @@ export function boot(host: HostInfo): BootResult {
   const shared = buildSharedRuntime(adapter, {
     log, configSearchPaths, settingsFile,
     getApiKeys: () => apiKeys,
-    // OpenTUI's extmark renderer doesn't consume RenderDirectives.textOverride
-    // — switch glimmer to real-write mode so it actually paints here. See
-    // docs/architecture/glimmer-realwrite-extension-plan.md.
-    glimmerRealWrite: host.markRuntimeWrite ? { markRuntimeWrite: host.markRuntimeWrite } : undefined,
+    // Glimmer is RENDER-ONLY here now (no glimmerRealWrite): the shared
+    // runtime registers the textOverride onRender handler, frames flow
+    // out through collectRenderDirectives, and the fork bootstrap
+    // paints the override diff as a display-only overlay box over the
+    // textarea (integrations/opencode/patches/opencuesBootstrap.ts).
+    // The buffer never holds a scrambled frame — real-write mode
+    // (retired here, same change as the shell band) wrote every 70ms
+    // frame via setText, requiring reclassifier marking, nuking every
+    // extmark per frame, and racing submits against the restore. See
+    // docs/architecture/glimmer-opentui-overlay-plan.md.
   });
   configLoaderRef = shared.configLoader; // wires isDebugEnabled to OPENCUES.md
 
@@ -414,6 +426,7 @@ export function boot(host: HostInfo): BootResult {
       const ctx: RenderContext = { text, cursor, externalHighlights: [] };
       return renderEvents.collect(ctx, err => log('error', 'render handler threw', err));
     },
+    glimmer: shared.glimmer,
     resetBufferState() {
       resetSharedBufferState(shared);
     },

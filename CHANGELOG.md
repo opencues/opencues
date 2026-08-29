@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — glimmer goes display-only on OpenCode + shell: textOverride frames painted as an overlay, the buffer never holds a scrambled frame (`@opencues/runtime` 0.36.2 → 0.37.0, `@opencues/shell` 0.2.21 → 0.2.22, `@opencues/opencode` 0.2.15 → 0.2.16)
+
+Real-write mode is retired on both OpenTUI bands. The bands now boot glimmer render-only (the CC/Gemini branch — no new runtime concepts), the 1:1-length `textOverride` frames flow out through `collectRenderDirectives`, and each host bootstrap diffs the frame against the true text and floats the scrambled slice as an absolute overlay box over the textarea — the inline-note overlay pattern generalized (shell: `app.tsx` signal + box; OC: `opencuesGlimmerOverlay` signal + a `setup.sh`-injected box in the patched prompt). Overlay geometry is cursor-anchored (OpenTUI exposes no offset→visual API): single-logical-line, caret-on-line, unwrapped-line guards, else the overlay simply doesn't paint and the real final text shows — the same graceful give-up chrome's engine uses.
+
+What this deletes rather than manages: per-frame `setText` writes (~13/sec) with reclassifier marking, the per-frame extmark wipe/rebuild those writes forced, and the settle-restore races (submit/crash mid-frame). Pinned on both bands by a new render-only contract test (`boot.test.ts`: frames arrive as textOverride, `setText` is NEVER called, cancel stops the override); `BootResult.glimmer` exposed on both bands for tests/hosts. NOT yet live-verified on either host — the write-mode machinery in `glimmer-render.ts` stays until it is (see `docs/architecture/glimmer-opentui-overlay-plan.md` § sequencing).
+
 ### Changed — `glimmer-transition-ms` default 300 → 900 (`@opencues/core` 0.55.1 → 0.55.2, `@opencues/runtime` 0.36.1 → 0.36.2, `@opencues/chrome` 0.2.192 → 0.2.193)
 
 The full slow decode becomes the default everywhere the scalar is absent or unrecognised: `parseGlimmerTransitionMs` fallback, the registry menu order, the shipped `defaults/OPENCUES.md` template, and the feature doc. Existing user files with an explicit value are untouched. (Chrome-specific note: a stale bake-time config snapshot in `dist/configs/` can shadow a newer `~/.cues/OPENCUES.md` when the chrome-host isn't connected — re-running `opencues install chrome` or `opencues sync chrome` refreshes the bake; the live chrome-host push makes edits land without either.)
