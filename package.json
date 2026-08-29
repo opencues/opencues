@@ -29,7 +29,7 @@
     "overrides": {
       "brace-expansion": ">=5.0.9",
       "immutable": ">=5.1.8",
-      "@babel/core": ">=7.29.6",
+      "@babel/core": ">=7.29.6 <8.0.0",
       "diff": ">=8.0.3",
       "file-type": ">=21.3.1",
       "seroval": ">=1.5.3",

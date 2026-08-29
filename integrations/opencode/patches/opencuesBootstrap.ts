@@ -78,6 +78,23 @@ const [opencuesInlineNote, setOpencuesInlineNote] = createSignal<{
 } | null>(null)
 export { opencuesInlineNote }
 
+// Glimmer transition frame — the scrambled slice of a landing answer,
+// floated as an absolute overlay OVER the textarea's own text while the
+// arrival animation runs. Render-only: glimmer emits whole-buffer
+// `textOverride` frames (1:1 length with the true text); we diff each
+// frame against the buffer and publish the changed slice at its visual
+// { row, col }. The BUFFER never holds a scrambled frame — real-write
+// mode (which wrote every 70ms frame via setText, with reclassifier
+// marking + per-frame extmark wipes) is retired on this band. See
+// docs/architecture/glimmer-opentui-overlay-plan.md.
+const [opencuesGlimmerOverlay, setOpencuesGlimmerOverlay] = createSignal<{
+  text: string
+  row: number
+  col: number
+} | null>(null)
+export { opencuesGlimmerOverlay }
+let _lastGlimmerOverlay: { text: string; row: number; col: number } | null = null
+
 export interface PromptInputAccess {
   /** Reads the current text from the SolidJS store. */
   read(): string
@@ -334,6 +351,11 @@ export function startOpenCues(opts: {
       const after = opts.promptAccess.cursor()
       trace("setCursorOffset:out", { cursorAfter: after, accepted: after === offset })
     },
+    // Threaded into BuildSharedRuntimeOptions.glimmerRealWrite (see
+    // boot.ts) so glimmer's real-write mode marks its own frames through
+    // the SAME reclassifier setText/pushText already use above — one
+    // instance, no drift between glimmer's marking and everything else's.
+    markRuntimeWrite: (text) => sourceReclassifier.markRuntimeWrite(text),
     // BlankFill needs pushText to deposit async script results back into
     // the prompt. Same plumbing as setText + cursor reposition.
     pushText: (text: string, cursor?: number) => {
@@ -837,6 +859,7 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
   // rather than being covered). ROW = caret visual row + 1 (viewport-relative,
   // wrap/scroll aware); COL = span column (shared inlineNoteBoxColumn).
   let noteAnchor: { text: string; row: number; col: number } | null = null
+  let glimmerOverride: string | null = null
   const directiveSets = bootResult.collectRenderDirectives(text, cursor)
   for (const directives of directiveSets) {
     if (noteAnchor === null && directives.inlineNote && directives.inlineNote.text) {
@@ -871,6 +894,51 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
         desiredColored.set(key, { hex, start: r.start, end: r.end })
       }
     }
+    if (glimmerOverride === null && typeof directives.textOverride === "string") {
+      glimmerOverride = directives.textOverride
+    }
+  }
+
+  // ── Glimmer overlay (display-only) — same geometry contract as the
+  // shell band (integrations/shell/src/bootstrap.ts): OpenTUI exposes
+  // no offset→visual API, so the overlay only paints when it's provable
+  // from what we have — changed region on ONE logical line, caret on
+  // that line (true at land time; a caret that wanders just stops the
+  // overlay and the real final text shows), line unwrapped so
+  // cells-from-line-start IS the visual column. Row = caret visualRow.
+  let nextOverlay: { text: string; row: number; col: number } | null = null
+  if (glimmerOverride !== null && glimmerOverride !== text && glimmerOverride.length === text.length) {
+    let d0 = 0
+    while (d0 < text.length && text[d0] === glimmerOverride[d0]) d0++
+    let d1 = text.length
+    while (d1 > d0 && text[d1 - 1] === glimmerOverride[d1 - 1]) d1--
+    const lineStart = text.lastIndexOf("\n", d0 - 1) + 1
+    const lineEndIdx = text.indexOf("\n", d0)
+    const lineEnd = lineEndIdx === -1 ? text.length : lineEndIdx
+    const gvc = (textarea as any).visualCursor
+    const paneWidth = (textarea as any).width ?? 0
+    if (
+      d1 <= lineEnd &&
+      cursor >= lineStart && cursor <= lineEnd &&
+      gvc && typeof gvc.visualRow === "number" &&
+      paneWidth > 0 &&
+      inlineNoteBoxColumn(text, lineEnd) < paneWidth
+    ) {
+      nextOverlay = {
+        text: glimmerOverride.slice(d0, d1),
+        row: gvc.visualRow,
+        col: inlineNoteBoxColumn(text, d0),
+      }
+    }
+  }
+  const overlayChanged = (_lastGlimmerOverlay === null) !== (nextOverlay === null)
+    || (_lastGlimmerOverlay !== null && nextOverlay !== null && (
+      _lastGlimmerOverlay.text !== nextOverlay.text
+      || _lastGlimmerOverlay.row !== nextOverlay.row
+      || _lastGlimmerOverlay.col !== nextOverlay.col))
+  if (overlayChanged) {
+    _lastGlimmerOverlay = nextOverlay
+    setOpencuesGlimmerOverlay(nextOverlay)
   }
 
   // Delete extmarks no longer wanted. Both maps participate — a key

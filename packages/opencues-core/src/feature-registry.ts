@@ -878,6 +878,19 @@ export const MENU_TUNABLES: readonly MenuTunableSpec[] = [
     ],
   },
   {
+    scalar: 'glimmer-transition-ms',
+    group: 'Appearance',
+    menuTip: 'Scramble-settle transition when an answer or rewrite lands: the span blinks, then the new text churns through confusable glyphs into place. Display-only — the buffer commits instantly either way. Shared by fluid-blank, transform-blank, and keyword blank fills.',
+    // Default first (matches parseGlimmerTransitionMs's absent-scalar fallback).
+    values: [
+      { id: '900', description: 'Cinematic (default) — the full slow decode' },
+      { id: '300', description: 'Quick — a subtle flicker as the answer settles' },
+      { id: '600', description: 'Standard — a clear scramble-and-settle decode' },
+      { id: '1500', description: 'Extended — a long, deliberate decode (~21 frames)' },
+      { id: 'off', description: 'No transition — text swaps instantly (pre-feature behaviour)' },
+    ],
+  },
+  {
     scalar: 'dim-mix',
     group: 'Appearance',
     menuTip: 'How far the dim (unfocused) colour is mixed toward the page background. 0 = identical to host text colour; 100 = fully blended (invisible).',

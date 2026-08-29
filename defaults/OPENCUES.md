@@ -250,6 +250,17 @@ blank-loading-colors-rgb:  #ef4444,#f59e0b,#10b981,#06b6d4,#3b82f6
 blank-loading-colors-ansi: red,yellow,green,cyan,blue
 blank-loading-interval-ms: 150
 
+# Glimmer transition — scramble-settle animation when an answer or
+# rewrite LANDS (the loading animation above covers the wait; this
+# covers the arrival). The landed span blinks, then churns through
+# confusable glyphs into the final text over this window. Display-only:
+# the buffer commits instantly either way, so `off` reproduces the
+# pre-feature instant swap byte-for-byte. Shared by fluid-blank,
+# transform-blank, and keyword blank fills. Values: off | 300 | 600 | 900.
+# Paints on Claude Code + Gemini CLI today; other hosts fall back to
+# the instant swap.
+glimmer-transition-ms: 900
+
 # The selector/satellite menu schema (tips + per-value descriptions
 # for every setting above) is now owned by the @opencues/core
 # FEATURES + MENU_TUNABLES registry — single source of truth shared

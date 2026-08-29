@@ -228,6 +228,14 @@ export interface TerminalBootOpts {
    *  can't splice into the textarea's own render, so app.tsx floats a box
    *  at { row, col }. null clears it. */
   onInlineNoteChange?: (note: InlineNoteAnchor | null) => void;
+  /** Live glimmer-overlay subscriber. Render-only glimmer emits
+   *  whole-buffer `textOverride` frames (1:1 length with the true
+   *  text); the bootstrap diffs each frame against the buffer and,
+   *  when the changed region fits the cursor-anchored single-row
+   *  geometry we can compute without an offset→visual API, publishes
+   *  a display-only overlay segment app.tsx floats over the textarea.
+   *  null clears it. The BUFFER never holds a scrambled frame. */
+  onGlimmerOverlayChange?: (seg: GlimmerOverlaySegment | null) => void;
 }
 
 /** Where the overlay note line sits: viewport-relative visual row + cell col. */
@@ -237,10 +245,21 @@ export interface InlineNoteAnchor {
   col: number;
 }
 
+/** One glimmer frame's visible slice: scrambled glyphs floated at a
+ *  viewport-relative visual row + cell col, painted over the real
+ *  (final, unscrambled) buffer text underneath. */
+export interface GlimmerOverlaySegment {
+  text: string;
+  row: number;
+  col: number;
+}
+
 const sourceReclassifier = createSourceReclassifier();
 let bootResult: BootResult | undefined;
 /** Set from startOpenCues opts; called by triggerOpenCuesRender. */
 let _onInlineNoteChange: ((note: InlineNoteAnchor | null) => void) | undefined;
+let _onGlimmerOverlayChange: ((seg: GlimmerOverlaySegment | null) => void) | undefined;
+let _lastGlimmerOverlay: GlimmerOverlaySegment | null = null;
 /** Captured at boot so top-level triggerOpenCuesRender can trace note changes. */
 let _termLog: ((level: LogLevel, msg: string, data?: unknown) => void) | undefined;
 let _termLastNoteText: string | null = null;
@@ -354,6 +373,7 @@ export function getCleanBufferText(raw: string): string {
 export function startOpenCues(opts: TerminalBootOpts): BootResult {
   if (bootResult) return bootResult;
   _onInlineNoteChange = opts.onInlineNoteChange;
+  _onGlimmerOverlayChange = opts.onGlimmerOverlayChange;
 
   const log = (level: LogLevel, msg: string, data?: unknown): void => {
     try {
@@ -402,6 +422,10 @@ export function startOpenCues(opts: TerminalBootOpts): BootResult {
       const i = injMarkIndex(opts.textarea.plainText);
       opts.textarea.cursorOffset = (i !== -1 && offset > i - 1) ? offset + 2 : offset;
     },
+    // Threaded into BuildSharedRuntimeOptions.glimmerRealWrite (see
+    // boot.ts) so glimmer's real-write mode marks its own frames through
+    // the SAME reclassifier setText/pushText already use above.
+    markRuntimeWrite: (text) => sourceReclassifier.markRuntimeWrite(text),
     pushText: (text, cursor) => {
       sourceReclassifier.markRuntimeWrite(text);
       opts.textarea.setText(text);
@@ -750,6 +774,7 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
   // aware); COL = span column in cells.
   let noteAnchor: InlineNoteAnchor | null = null;
   let noteSpanEnd = 0;
+  let glimmerOverride: string | null = null;
   const directiveSets = bootResult.collectRenderDirectives(text, cursor);
   for (const directives of directiveSets) {
     if (noteAnchor === null && directives.inlineNote && directives.inlineNote.text) {
@@ -780,6 +805,51 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
         const hex = r.rgb.toLowerCase();
         desiredColored.set(`load:${hex}:${r.start}:${r.end}`, { hex, start: r.start, end: r.end });
       }
+    }
+    if (glimmerOverride === null && typeof directives.textOverride === 'string') {
+      glimmerOverride = directives.textOverride;
+    }
+  }
+
+  // ── Glimmer overlay (display-only) ────────────────────────────────
+  // Render-only glimmer emits a whole-buffer textOverride frame (1:1
+  // length with `text` — blink/scramble are strict char substitutions).
+  // We diff it against the true text and float the scrambled slice as
+  // an absolute overlay box; the buffer itself always holds the FINAL
+  // text. OpenTUI exposes no offset→visual-position API, so v1 places
+  // the overlay only when the geometry is provable from what we have:
+  //   - the changed region sits on ONE logical line,
+  //   - the cursor is on that same logical line (true at land time —
+  //     fills put the caret at/in the span; if the user moves away
+  //     mid-animation the overlay just stops painting: the real final
+  //     text shows, same graceful give-up chrome's engine uses),
+  //   - the line is unwrapped (its full cell width fits the textarea),
+  //     so cells-from-line-start (inlineNoteBoxColumn, the note's own
+  //     proven column math) IS the visual column.
+  // Row = the cursor's visualRow (wrap/scroll aware via OpenTUI).
+  let nextOverlay: GlimmerOverlaySegment | null = null;
+  if (glimmerOverride !== null && glimmerOverride !== text && glimmerOverride.length === text.length) {
+    let d0 = 0;
+    while (d0 < text.length && text[d0] === glimmerOverride[d0]) d0++;
+    let d1 = text.length;
+    while (d1 > d0 && text[d1 - 1] === glimmerOverride[d1 - 1]) d1--;
+    const lineStart = text.lastIndexOf('\n', d0 - 1) + 1;
+    const lineEndIdx = text.indexOf('\n', d0);
+    const lineEnd = lineEndIdx === -1 ? text.length : lineEndIdx;
+    const vc = (textarea as unknown as { visualCursor?: { visualRow: number } }).visualCursor;
+    const paneWidth = (textarea as unknown as { width?: number }).width ?? 0;
+    if (
+      d1 <= lineEnd &&                       // region on one logical line
+      cursor >= lineStart && cursor <= lineEnd && // caret on that line — anchors the row
+      vc && typeof vc.visualRow === 'number' &&
+      paneWidth > 0 &&
+      inlineNoteBoxColumn(text, lineEnd) < paneWidth // line unwrapped: col-from-line-start == visual col
+    ) {
+      nextOverlay = {
+        text: glimmerOverride.slice(d0, d1),
+        row: vc.visualRow,
+        col: inlineNoteBoxColumn(text, d0),
+      };
     }
   }
 
@@ -864,4 +934,18 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
     _termLastNoteText = nextNoteText;
   }
   try { _onInlineNoteChange?.(noteAnchor); } catch { /* swallow */ }
+
+  // Publish the glimmer overlay frame (or clear it). Dedup on value so
+  // quiet ticks (no override, or an identical frame) don't spam the
+  // Solid signal — each real frame change still requests a render via
+  // app.tsx's subscriber, giving the 70ms cadence its repaints.
+  const overlayChanged = (_lastGlimmerOverlay === null) !== (nextOverlay === null)
+    || (_lastGlimmerOverlay !== null && nextOverlay !== null && (
+      _lastGlimmerOverlay.text !== nextOverlay.text
+      || _lastGlimmerOverlay.row !== nextOverlay.row
+      || _lastGlimmerOverlay.col !== nextOverlay.col));
+  if (overlayChanged) {
+    _lastGlimmerOverlay = nextOverlay;
+    try { _onGlimmerOverlayChange?.(nextOverlay); } catch { /* swallow */ }
+  }
 }

@@ -93,6 +93,40 @@ describe('Shell v1 boot()', () => {
     expect(typeof result.resetBufferState).toBe('function');
   });
 
+  it('glimmer is RENDER-ONLY: frames arrive as textOverride directives, the buffer is NEVER written', async () => {
+    // The retired real-write mode committed every 70ms scramble frame
+    // via setText (reclassifier marking, extmark wipes, restore races).
+    // This band now delegates painting to the host's display overlay —
+    // the contract pinned here is the one real-write could never offer:
+    // no setText call EVER carries a frame, and the frames flow out as
+    // 1:1-length textOverride directives instead.
+    const setTextCalls: string[] = [];
+    const text = 'hello zephyr world';
+    const result = boot({
+      ...minimalHost,
+      getText: () => text,
+      setText: (s: string) => { setTextCalls.push(s); },
+    });
+    result.glimmer.start(6, 'zephyr'); // duration = registry default (900ms) — settings file absent in this harness
+    // Into the blink window: the override paints the span blanked.
+    await new Promise((r) => setTimeout(r, 40));
+    const frames = result.collectRenderDirectives(text, 12);
+    const override = frames.map((d) => d.textOverride).find((o): o is string => typeof o === 'string');
+    expect(override, 'render-only glimmer must emit a textOverride directive').toBeDefined();
+    expect(override).toHaveLength(text.length); // 1:1 — the invariant the host overlay diff relies on
+    expect(override).not.toBe(text);
+    expect(override!.startsWith('hello ')).toBe(true); // only the span animates
+    expect(override!.endsWith(' world')).toBe(true);
+    expect(setTextCalls, 'the buffer must never hold a scrambled frame').toEqual([]);
+
+    result.glimmer.cancel(false);
+    const after = result.collectRenderDirectives(text, 12)
+      .map((d) => d.textOverride).find((o): o is string => typeof o === 'string');
+    expect(after, 'cancel must stop the override — the true (final) text shows').toBeUndefined();
+    expect(setTextCalls).toEqual([]); // cancel writes nothing either — nothing was ever dirty
+    result.dispose();
+  });
+
   it('resetBufferState is idempotent on a cold boot (no prior state)', () => {
     const result = boot(minimalHost);
     expect(() => {

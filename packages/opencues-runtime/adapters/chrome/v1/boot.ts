@@ -73,6 +73,17 @@ export interface HostInfo extends CommonHostInfo {
    */
   httpAdapter?: unknown;
   /**
+   * Host-owned glimmer transition. The bootstrap supplies a CSS Custom
+   * Highlight API engine (integrations/chrome/src/highlight-glimmer.ts)
+   * that plays the whole scramble-settle animation by RESTYLING glyphs —
+   * zero text-DOM writes, so managed editors can't revert it and the
+   * undo stack is untouched (the property real-write mode lacked; it
+   * froze Gmail and stays disabled). Absent → no transition animation
+   * at all on chrome. `cancel()` must synchronously jump to the settled
+   * end state; `settled` resolves on natural completion.
+   */
+  playGlimmer?(spec: { startOffset: number; finalText: string; durationMs: number }): { cancel(): void; settled?: Promise<void> };
+  /**
    * Service-worker-routed GET for the contradiction world-data caches (bank
    * holidays, weather). A content-script fetch to those origins is blocked by
    * the host page's CSP, so the bootstrap supplies a fetch that hops through the
@@ -372,6 +383,19 @@ export function boot(host: HostInfo): BootResult {
     // NodeHttpAdapter (node:https) is stubbed in the browser bundle, so the
     // weaver needs the host's adapter explicitly (mirrors the Resolver below).
     httpAdapter: host.httpAdapter as import('@opencues/core').HttpAdapterShape | undefined,
+    // Glimmer on chrome: HOST-OWNED animation (CSS Custom Highlight API,
+    // via the bootstrap's playGlimmer binding). The retired real-write
+    // mode fired up to ~13 execCommand-driven writes in under a second
+    // per landed substitution — O(field) DOM walking per frame — and
+    // froze Gmail tabs (August 2026); that cost model was structural,
+    // not tunable, which is why the replacement delegates the ENTIRE
+    // animation to a restyling engine that never touches the text DOM
+    // (zero writes, zero undo entries, nothing for managed-editor
+    // reconcilers to revert). No playGlimmer binding → no transition
+    // animation at all (text just appears).
+    glimmerHostAnimation: host.playGlimmer
+      ? (spec) => host.playGlimmer!(spec)
+      : undefined,
   });
   configLoaderRef = shared.configLoader;
 
@@ -487,6 +511,11 @@ export function boot(host: HostInfo): BootResult {
     // Final two fields are inline because they're host-specific and
     // never change after boot.
     const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, Object.assign(resolverOpts, {
+      // Glimmer transition — real-write mode (see the buildSharedRuntime
+      // call above): the CSS Custom Highlight API can only restyle
+      // existing glyphs, not substitute them, so this animates via real
+      // adapter.setText calls here rather than a painted textOverride.
+      glimmer: shared.glimmer,
       // SW-routed GET for contradiction world-data (bank holidays, weather) —
       // page CSP blocks a content-script one. Absent → provider uses global fetch.
       worldDataFetch: host.worldDataFetch,

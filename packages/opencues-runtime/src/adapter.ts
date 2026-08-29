@@ -377,6 +377,16 @@ export interface CommonHostInfo {
   setText(text: string): void;
   setCursorOffset(offset: number): void;
   forceRender(): void;
+  /**
+   * Stashes `text` in the host's own source-reclassifier so a subsequent
+   * matching onTextChange event is classified 'runtime' — the SAME
+   * reclassifier instance `setText`/`pushText` above already use
+   * internally on most hosts (passing it here is then a harmless
+   * redundant mark, not a bug). Part of the host contract for any
+   * module that writes the buffer out-of-band. (Its one historical
+   * runtime consumer — glimmer's real-write mode — was retired
+   * 2026-08-29; glimmer is display-only on every host now.) */
+  markRuntimeWrite?(text: string): void;
   readFile?(path: string): Promise<string | null>;
   readDir?(path: string): Promise<readonly DirEntry[] | null>;
   writeFile?(path: string, content: string): Promise<void>;

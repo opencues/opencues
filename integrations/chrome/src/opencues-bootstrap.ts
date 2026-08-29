@@ -30,13 +30,14 @@ import { parseSingleCueMd, listProviders, buildCalendarContextSnapshot, pageClai
 import { ChromeUserBlank } from './user-blank-loader';
 import { createBlankInvoke } from '@opencues/runtime/dist/src/blanks';
 import { wordDiff } from '@opencues/runtime/dist/src/modules/word-diff';
-import { applyDirectives, clearDirectives, clearInlineNote } from './runtime-renderer';
+import { applyDirectives, clearDirectives, clearInlineNote, setGlimmerSuppression } from './runtime-renderer';
 import { applyStatuslinePayload } from './runtime-statusbar';
 import { WebSpeechAdapter } from './adapters/web-speech-adapter';
 import { FetchHttpAdapter } from './adapters/fetch-http-adapter';
 import { setCoreWarn } from '@opencues/core';
 import { createBlanks, type BrowserBlank } from './blanks';
 import { walkPlainText, plainOffsetOfPosition, domPositionOfPlainOffset } from './dom-walk';
+import { createHighlightGlimmer, supportsHighlightGlimmer, type HighlightGlimmer } from './highlight-glimmer';
 
 const STORAGE_PREFIX = 'opencues_runtime:';
 
@@ -216,6 +217,39 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 let bootResult: BootResult | undefined;
 let currentTarget: HTMLElement | null = null;
+
+// ---- Host-owned glimmer transition (CSS Custom Highlight API) — the
+// chrome replacement for real-write mode (which froze Gmail; see the
+// glimmerRealWrite comment in adapters/chrome/v1/boot.ts). One
+// controller per animation, in two phases:
+//   PENDING — the substitution just landed but managed editors (Gmail
+//   especially) normalize freshly-written DOM over the next few frames,
+//   detaching any Ranges built too early (dead ranges paint NOTHING —
+//   the live "no hide, no shadows" failure). The controller retries
+//   until the span's plain text matches what the runtime says landed.
+//   PLAYING — engine built against the settled DOM; `baseline` is the
+//   buffer's full plain text at that moment, so a late write-echo of
+//   identical text doesn't cancel the animation while any REAL change
+//   does.
+// The cue paint (oc-dim / oc-active gray) is suppressed for the whole
+// lifetime of the controller via setGlimmerSuppression.
+let _glimmer: {
+  cancelled: boolean;
+  retryTimer: ReturnType<typeof setTimeout> | null;
+  engine: HighlightGlimmer | null;
+  baseline: string | null;
+} | null = null;
+
+function cancelActiveHighlightGlimmer(): void {
+  const g = _glimmer;
+  if (!g) return;
+  _glimmer = null;
+  g.cancelled = true;
+  if (g.retryTimer !== null) clearTimeout(g.retryTimer);
+  try { g.engine?.destroy(); } catch { /* target mid-teardown — highlights die with the document */ }
+  setGlimmerSuppression(false);
+  try { runtimeRender(); } catch { /* no adapter yet / mid-teardown — next render restores the cue paint */ }
+}
 const speech = new WebSpeechAdapter();
 
 // Source reclassifier — shared helper from boot-common. Stashes the text
@@ -223,6 +257,26 @@ const speech = new WebSpeechAdapter();
 // contenteditable is reclassified as source='runtime'. Chrome calls
 // markRuntimeWrite AFTER the execCommand insertText so the post-DOM
 // (potentially whitespace-normalised) text is what gets compared.
+//
+// REVERTED (August 2026) — a shortened 400ms TTL was shipped here to
+// fix a swallowed-retry bug (bare `_` fill, clear, retype within 1.5s
+// silently dropped — see tests/e2e/reclassifier-poison-ce.e2e.test.ts
+// for the full writeup, still accurate for the BUG, not the fix). It
+// caused a WORSE regression on real Gmail: reported live as the whole
+// tab freezing. Leading hypothesis — untested against real Gmail load,
+// only a lightweight synthetic page: Gmail's real DOM reconciliation
+// is heavy enough that the runtime's OWN write echo can plausibly take
+// longer than 400ms to arrive, especially while glimmer's real-write
+// mode is also hammering the same contenteditable with rapid
+// execCommand calls. A late echo past a too-short TTL gets
+// misclassified 'user' and RE-TRIGGERS the resolver on the runtime's
+// own output — the original May 2026 runaway-loop bug this mechanism
+// exists to prevent, coming back from the opposite direction. Back to
+// the safe 1500ms default (shared with every other host) until a
+// count-based or generation-tagged reclassifier (not a blind timing
+// guess) replaces this, and glimmer's chrome write volume is load-
+// tested against a real managed editor. See boot-common.ts's
+// RUNTIME_WRITE_TTL_MS doc.
 const sourceReclassifier = createSourceReclassifier();
 
 /** Called by content.ts when the focused contenteditable changes.
@@ -276,6 +330,7 @@ export function publishTarget(el: HTMLElement | null): void {
     return;
   }
   _suspended = false;
+  cancelActiveHighlightGlimmer(); // animation Ranges belong to the OLD buffer — never carry across focus
   currentTarget = el;
   if (bootResult) bootResult.resetBufferState();
   // Genuine change to a DIFFERENT (or first) buffer. resetBufferState() wiped
@@ -2822,6 +2877,15 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
       // getCursorOffset), so it's always meaningful.
       if (cursor !== undefined && !_diffPreservedCursor) reapplyCursor(cursor);
     },
+    // Threaded into BuildSharedRuntimeOptions.glimmerRealWrite (see
+    // boot.ts) so glimmer's real-write mode marks its own frames through
+    // the SAME reclassifier diffWriteText already uses (see the comment
+    // on pushText above — "diffWriteText already calls
+    // sourceReclassifier.markRuntimeWrite"). Glimmer doesn't call
+    // diffWriteText directly, so it needs its own explicit mark; the
+    // reclassifier tolerates the harmless double-mark on paths that DO
+    // route through diffWriteText.
+    markRuntimeWrite: (text) => sourceReclassifier.markRuntimeWrite(text),
     forceRender: () => {
       runtimeRender();
     },
@@ -2902,6 +2966,110 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // for the read scope; see AmbientContext in @opencues/runtime for
     // the security contract.
     getAmbientContext: () => gatherAmbientContext(currentTarget),
+    // Host-owned glimmer transition — CSS Custom Highlight API engine
+    // (highlight-glimmer.ts). The runtime delegates the whole
+    // scramble-settle animation here and generates no frames of its
+    // own; this binding restyles glyphs and never writes the text DOM,
+    // which is what makes it safe where real-write mode wasn't (the
+    // Gmail freeze). A failed/unsupported animation returns a no-op —
+    // the substitution already landed, only the cosmetic is lost.
+    playGlimmer: (spec) => {
+      const noop = { cancel() { /* nothing started */ } };
+      cancelActiveHighlightGlimmer();
+      const target = currentTarget;
+      // Normal <input>/<textarea>: the value isn't DOM text nodes, so
+      // the Highlight API structurally can't reach it — same profile
+      // gap as cycling/dim (universal-integration). No animation.
+      if (!target || isNormalInput(target) || !supportsHighlightGlimmer()) return noop;
+
+      const ctl: NonNullable<typeof _glimmer> = { cancelled: false, retryTimer: null, engine: null, baseline: null };
+      _glimmer = ctl;
+      // Suppress the cue paint from frame one — the gray active
+      // background must not flash while we wait for the DOM to settle.
+      setGlimmerSuppression(true);
+      let settledResolve!: () => void;
+      const settled = new Promise<void>((res) => { settledResolve = res; });
+      const t0 = performance.now();
+      const MAX_WAIT_MS = 600;
+
+      const giveUp = (why: string) => {
+        log('debug', `glimmer: ${why} — skipping animation`);
+        if (_glimmer === ctl) cancelActiveHighlightGlimmer();
+        settledResolve();
+      };
+
+      // DEFERRED, VERIFIED start. The write that landed the text goes
+      // through synthetic paste / editor transactions, and Gmail-class
+      // editors then NORMALIZE the inserted DOM over the next frames —
+      // replacing the very nodes any too-early Range points at. Dead
+      // ranges paint nothing (the live "text never hides" failure). So:
+      // retry until the buffer's plain text actually carries finalText
+      // at the expected offset, THEN build the ranges, and play out
+      // whatever transition budget remains.
+      const tryStart = () => {
+        if (ctl.cancelled) return;
+        let live = '';
+        let at = -1;
+        try {
+          live = walkPlainText(target).text;
+          // Tolerant locate — MIRRORS the runtime's own glimmer-render
+          // locate(): exact position first, then search from 16 chars
+          // left of the expected spot. Chrome offsets drift (ZWS strips,
+          // block-boundary newline emission after editor normalization),
+          // and the runtime hosts animate through that drift every time;
+          // demanding an exact-offset match here silently skipped the
+          // animation for any drifted landing (fluid-blank answers were
+          // hitting this) — a parity break, not a safety feature.
+          at = live.startsWith(spec.finalText, Math.max(0, spec.startOffset))
+            ? Math.max(0, spec.startOffset)
+            : live.indexOf(spec.finalText, Math.max(0, spec.startOffset - 16));
+        } catch { at = -1; }
+        if (at === -1) {
+          if (performance.now() - t0 > MAX_WAIT_MS) { giveUp('span never stabilized in the DOM'); return; }
+          ctl.retryTimer = setTimeout(tryStart, 50);
+          return;
+        }
+        if (at !== spec.startOffset) log('debug', `glimmer: span drifted ${at - spec.startOffset} chars — animating at the located position`);
+        try {
+          // Span → Range via the img-aware dom-walk helpers (plain-text
+          // offsets count emoji-<img> alt chars; alt-backed chars have
+          // no text node and simply don't scramble — boundaries exact).
+          const startPos = domPositionOfPlainOffset(target, at);
+          const endPos = domPositionOfPlainOffset(target, at + spec.finalText.length);
+          const range = document.createRange();
+          range.setStart(startPos.node, startPos.offset);
+          range.setEnd(endPos.node, endPos.offset);
+          // ::highlight() rules only reach ranges in their own tree
+          // scope — a target inside a shadow root (Reddit's
+          // <reddit-rte>) needs the stylesheet inside that root.
+          const root = target.getRootNode();
+          const engine = createHighlightGlimmer({
+            target: range,
+            styleParent: root instanceof ShadowRoot ? root : undefined,
+          });
+          ctl.engine = engine;
+          ctl.baseline = live;
+          const remaining = Math.max(250, spec.durationMs - (performance.now() - t0));
+          log('debug', `glimmer: animating ${engine.charCount} chars / ${engine.wordCount} words over ${Math.round(remaining)}ms`);
+          void engine.play({ durationMs: remaining }).then(() => {
+            if (_glimmer === ctl) cancelActiveHighlightGlimmer();
+            settledResolve();
+          });
+        } catch (err) {
+          giveUp(`highlight animation failed: ${err}`);
+        }
+      };
+      tryStart();
+
+      return {
+        cancel: () => {
+          if (_glimmer === ctl) cancelActiveHighlightGlimmer();
+          else if (!ctl.cancelled) { ctl.cancelled = true; if (ctl.retryTimer !== null) clearTimeout(ctl.retryTimer); }
+          settledResolve();
+        },
+        settled,
+      };
+    },
     // CE.9 — spawnProcess routes through the native-messaging host
     // when installed (`opencues install chrome-host`). Without it,
     // the adapter returns exitCode 127. Content scripts can't talk
@@ -3247,6 +3415,17 @@ export function notifyOpenCuesTextChange(
   // error. Checked here rather than only at boot because the claim usually
   // lands AFTER us: we run at `document_end`, embedded plugins boot later.
   if (deferToEmbeddedHost()) { noteDeferralOnce(); return; }
+
+  // A PLAYING highlight-glimmer must die on any REAL text change — its
+  // per-character Ranges were built against the old text. Managed-editor
+  // write echoes re-notify the SAME text (that's the baseline compare),
+  // and those must NOT cancel or the animation would never survive its
+  // own landing on Lexical/PM/Quill. A PENDING controller (engine null)
+  // is deliberately spared: it exists precisely BECAUSE the editor is
+  // still churning the DOM toward the final text.
+  if (_glimmer?.engine && _glimmer.baseline !== null && text !== _glimmer.baseline) {
+    cancelActiveHighlightGlimmer();
+  }
 
   let actualSource = sourceReclassifier.reclassify(text, source);
 

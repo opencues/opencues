@@ -1,6 +1,6 @@
 {
   "name": "@opencues/opencode",
-  "version": "0.2.15",
+  "version": "0.2.17",
   "license": "Apache-2.0",
   "private": true,
   "description": "OpenCues for OpenCode — native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",

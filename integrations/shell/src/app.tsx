@@ -52,6 +52,10 @@ function App(props: AppOpts) {
   // NOT docked at the bottom. Cursor-gated by the runtime; { row, col } come
   // from the caret's visual row + the span's column. null when absent.
   const [note, setNote] = createSignal<{ text: string; row: number; col: number } | null>(null);
+  // Glimmer transition frame — the scrambled slice floated over the real
+  // (final) text while the arrival animation runs. Display-only: the
+  // textarea's buffer never holds a scrambled frame.
+  const [glimmerSeg, setGlimmerSeg] = createSignal<{ text: string; row: number; col: number } | null>(null);
   // Word-wrap the tip into up to 3 rows so long lines (kata coach,
   // completion recap, catalogue notices) GROW the bar instead of
   // clipping at the pane edge. Deterministic manual wrap — OpenTUI
@@ -126,6 +130,12 @@ function App(props: AppOpts) {
         // The note is painted in renderAfter (read outside JSX reactivity), so
         // a note change won't schedule a frame on its own — request one so the
         // inserted line appears/clears immediately, not on the next keystroke.
+        try { (renderer as unknown as { requestRender?: () => void }).requestRender?.(); } catch { /* swallow */ }
+      },
+      onGlimmerOverlayChange: (seg) => {
+        setGlimmerSeg(seg);
+        // Each glimmer frame needs its own repaint — the animation's
+        // forceRender kick computed the frame, this lands it on screen.
         try { (renderer as unknown as { requestRender?: () => void }).requestRender?.(); } catch { /* swallow */ }
       },
     });
@@ -298,6 +308,15 @@ function App(props: AppOpts) {
           {note() != null && (
             <box style={{ position: 'absolute', top: note()!.row, left: note()!.col, zIndex: 10 }}>
               <text attributes={TextAttributes.DIM}>{note()!.text}</text>
+            </box>
+          )}
+          {/* Scrambled arrival frame floated over the real text — normal
+              attributes (not DIM) so it reads as the text itself
+              mid-decode, not an annotation. zIndex above the note: an
+              animation is momentary and should win. */}
+          {glimmerSeg() != null && (
+            <box style={{ position: 'absolute', top: glimmerSeg()!.row, left: glimmerSeg()!.col, zIndex: 11 }}>
+              <text>{glimmerSeg()!.text}</text>
             </box>
           )}
         </box>
