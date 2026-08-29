@@ -1,0 +1,110 @@
+<title>Glimmer decoration picker</title>
+<style>
+  :root {
+    --bg: #EEF1EA; --surface: #FFFFFF; --grid: #D8DED2; --text: #202821;
+    --muted: #5C6B5F; --accent: #C97F1F;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1B2420; --surface: #223129; --grid: #2E4137; --text: #E9E4D8; --muted: #8FA398; --accent: #E3A23C; }
+  }
+  :root[data-theme="dark"] { --bg: #1B2420; --surface: #223129; --grid: #2E4137; --text: #E9E4D8; --muted: #8FA398; --accent: #E3A23C; }
+  :root[data-theme="light"] { --bg: #EEF1EA; --surface: #FFFFFF; --grid: #D8DED2; --text: #202821; --muted: #5C6B5F; --accent: #C97F1F; }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; padding: 24px 20px 64px; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  header { padding-bottom: 12px; margin-bottom: 18px; border-bottom: 1.5px solid var(--text); }
+  header h1 { font-family: var(--mono); font-size: clamp(18px, 4vw, 24px); margin: 0; }
+  header p { margin: 6px 0 0; font-size: 13.5px; color: var(--muted); }
+
+  .group { margin-bottom: 26px; }
+  .group > h2 { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 8px; }
+  .rows { background: var(--surface); border: 1px solid var(--grid); border-radius: 3px; overflow: hidden; }
+  .row { display: flex; align-items: baseline; gap: 16px; padding: 11px 16px; border-bottom: 1px solid var(--grid); }
+  .row:last-child { border-bottom: none; }
+  .row .name { font-family: var(--mono); font-size: 11.5px; color: var(--muted); min-width: 14ch; flex-shrink: 0; }
+  .row .name .shipped { color: var(--accent); }
+  .row .sample { font-size: 18px; }
+
+  /* Each variant as plain CSS text-decoration on the sample span.
+     Visually identical to the ::highlight() delivery — the allow-listed
+     text-decoration-line/-style/-color longhands paint the same either
+     way; the Highlight API only changes WHICH characters get it, and
+     here it's all of them. */
+  .u-solid   { text-decoration-line: underline;    text-decoration-style: solid;  text-decoration-color: var(--text); }
+  .u-double  { text-decoration-line: underline;    text-decoration-style: double; text-decoration-color: var(--text); }
+  .u-dotted  { text-decoration-line: underline;    text-decoration-style: dotted; text-decoration-color: var(--text); }
+  .u-dashed  { text-decoration-line: underline;    text-decoration-style: dashed; text-decoration-color: var(--text); }
+  .u-wavy    { text-decoration-line: underline;    text-decoration-style: wavy;   text-decoration-color: var(--text); }
+  .s-solid   { text-decoration-line: line-through; text-decoration-style: solid;  text-decoration-color: var(--text); }
+  .s-double  { text-decoration-line: line-through; text-decoration-style: double; text-decoration-color: var(--text); }
+  .s-dotted  { text-decoration-line: line-through; text-decoration-style: dotted; text-decoration-color: var(--text); }
+  .s-dashed  { text-decoration-line: line-through; text-decoration-style: dashed; text-decoration-color: var(--text); }
+  .s-wavy    { text-decoration-line: line-through; text-decoration-style: wavy;   text-decoration-color: var(--text); }
+  .o-solid   { text-decoration-line: overline;     text-decoration-style: solid;  text-decoration-color: var(--text); }
+  .o-double  { text-decoration-line: overline;     text-decoration-style: double; text-decoration-color: var(--text); }
+  .o-dotted  { text-decoration-line: overline;     text-decoration-style: dotted; text-decoration-color: var(--text); }
+  .o-dashed  { text-decoration-line: overline;     text-decoration-style: dashed; text-decoration-color: var(--text); }
+  .o-wavy    { text-decoration-line: overline;     text-decoration-style: wavy;   text-decoration-color: var(--text); }
+  .uo-solid  { text-decoration-line: underline overline;     text-decoration-style: solid; text-decoration-color: var(--text); }
+  .us-solid  { text-decoration-line: underline line-through; text-decoration-style: solid; text-decoration-color: var(--text); }
+  .uos-solid { text-decoration-line: underline overline line-through; text-decoration-style: solid; text-decoration-color: var(--text); }
+  .uo-wavy   { text-decoration-line: underline overline;     text-decoration-style: wavy;  text-decoration-color: var(--text); }
+
+  footer { margin-top: 26px; padding-top: 12px; border-top: 1px solid var(--grid); font-family: var(--mono); font-size: 11px; color: var(--muted); }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Decoration picker</h1>
+    <p>Every <code>text-decoration</code> variant the Highlight API can deliver, as plain static text. Names in <span style="color: var(--accent)">orange</span> are in the current shipped pool of 8.</p>
+  </header>
+
+  <div class="group">
+    <h2>Underline</h2>
+    <div class="rows">
+      <div class="row"><span class="name"><span class="shipped">u-solid ●</span></span><span class="sample u-solid">The quick brown fox jumps over the lazy dog</span></div>
+      <div class="row"><span class="name"><span class="shipped">u-double ●</span></span><span class="sample u-double">The quick brown fox jumps over the lazy dog</span></div>
+      <div class="row"><span class="name"><span class="shipped">u-dotted ●</span></span><span class="sample u-dotted">The quick brown fox jumps over the lazy dog</span></div>
+      <div class="row"><span class="name">u-dashed</span><span class="sample u-dashed">The quick brown fox jumps over the lazy dog</span></div>
+      <div class="row"><span class="name"><span class="shipped">u-wavy ●</span></span><span class="sample u-wavy">The quick brown fox jumps over the lazy dog</span></div>
+    </div>
+  </div>
+
+  <div class="group">
+    <h2>Strikethrough</h2>
+    <div class="rows">
+      <div class="row"><span class="name"><span class="shipped">s-solid ●</span></span><span class="sample s-solid">The quick brown fox jumps over the lazy dog</span></div>
+      <div class="row"><span class="name">s-double</span><span class="sample s-double">The quick brown fox jumps over the lazy dog</span></div>
+      <div class="row"><span class="name">s-dotted</span><span class="sample s-dotted">The quick brown fox jumps over the lazy dog</span></div>
+      <div class="row"><span class="name">s-dashed</span><span class="sample s-dashed">The quick brown fox jumps over the lazy dog</span></div>
+      <div class="row"><span class="name"><span class="shipped">s-wavy ●</span></span><span class="sample s-wavy">The quick brown fox jumps over the lazy dog</span></div>
+    </div>
+  </div>
+
+  <div class="group">
+    <h2>Overline</h2>
+    <div class="rows">
+      <div class="row"><span class="name"><span class="shipped">o-solid ●</span></span><span class="sample o-solid">The quick brown fox jumps over the lazy dog</span></div>
+      <div class="row"><span class="name">o-double</span><span class="sample o-double">The quick brown fox jumps over the lazy dog</span></div>
+      <div class="row"><span class="name">o-dotted</span><span class="sample o-dotted">The quick brown fox jumps over the lazy dog</span></div>
+      <div class="row"><span class="name"><span class="shipped">o-dashed ●</span></span><span class="sample o-dashed">The quick brown fox jumps over the lazy dog</span></div>
+      <div class="row"><span class="name">o-wavy</span><span class="sample o-wavy">The quick brown fox jumps over the lazy dog</span></div>
+    </div>
+  </div>
+
+  <div class="group">
+    <h2>Combined lines (one bucket can carry several)</h2>
+    <div class="rows">
+      <div class="row"><span class="name">uo-solid</span><span class="sample uo-solid">The quick brown fox jumps over the lazy dog</span></div>
+      <div class="row"><span class="name">us-solid</span><span class="sample us-solid">The quick brown fox jumps over the lazy dog</span></div>
+      <div class="row"><span class="name">uos-solid</span><span class="sample uos-solid">The quick brown fox jumps over the lazy dog</span></div>
+      <div class="row"><span class="name">uo-wavy</span><span class="sample uo-wavy">The quick brown fox jumps over the lazy dog</span></div>
+    </div>
+  </div>
+
+  <footer>Static plain-text render — no animation, no scramble, no Highlight API involved. The samples use the same text-decoration longhands the ::highlight() buckets use, so what you see per row is exactly what a character in that bucket looks like mid-flicker. Tell me the names to keep and I'll set the pool to exactly those.</footer>
+</div>
