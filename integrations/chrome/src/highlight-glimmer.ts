@@ -325,6 +325,30 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
     const group = wordGroups[wi];
     const activeCount = Math.min(group.length, Math.max(2, Math.round(group.length * pct / 100)));
     const active = partialShuffleSelect(group.slice(), activeCount);
+    applyWordPermutation(wi, active);
+  }
+
+  /** The family math: each character independently selected with
+   *  probability `p` — exactly the runtime's per-char density coin flip
+   *  (scrambleText's `rand() < density`), not a fraction-of-word count
+   *  with a floor. This is what lets short words genuinely CALM as the
+   *  density eases 0.45 → 0.30 → 0.15: frames with one or zero selected
+   *  characters show the word fully real (a displacement swap needs a
+   *  pair; the runtime's single-char case is a glyph substitution we
+   *  structurally can't do, and a calm frame is the honest analogue). */
+  function scrambleWordBernoulli(wi: number, p: number): void {
+    const group = wordGroups[wi];
+    const active: number[] = [];
+    for (const idx of group) if (Math.random() < p) active.push(idx);
+    if (active.length < 2) {
+      for (const idx of wordActive[wi]) releaseChar(idx);
+      wordActive[wi] = [];
+      return;
+    }
+    applyWordPermutation(wi, active);
+  }
+
+  function applyWordPermutation(wi: number, active: number[]): void {
     const targets = shuffleInPlace(active.slice()); // permutation of active onto itself — collision-free by bijection
     const newSet = new Set(active);
     for (const idx of wordActive[wi]) if (!newSet.has(idx)) releaseChar(idx);
@@ -446,7 +470,7 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
           hiddenChars = new Set();
         }
         const p = (elapsed - BLINK_MS) / durationMs;
-        const densityPct = p < 0.55 ? 45 : p < 0.75 ? 30 : 15;
+        const density = p < 0.55 ? 0.45 : p < 0.75 ? 0.30 : 0.15;
         // Phase 1 — layout reads only (all words, first churn tick
         // builds all geometry back-to-back; spans are small).
         const scrambling: number[] = [];
@@ -456,7 +480,7 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
           scrambling.push(wi);
         }
         // Phase 2 — style writes only.
-        for (const wi of scrambling) scrambleWord(wi, densityPct);
+        for (const wi of scrambling) scrambleWordBernoulli(wi, density);
         decorationPass();
       };
       loopRound();
