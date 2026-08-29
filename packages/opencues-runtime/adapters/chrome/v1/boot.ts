@@ -373,10 +373,25 @@ export function boot(host: HostInfo): BootResult {
     // weaver needs the host's adapter explicitly (mirrors the Resolver below).
     httpAdapter: host.httpAdapter as import('@opencues/core').HttpAdapterShape | undefined,
     // The CSS Custom Highlight API can't change WHICH glyphs are shown,
-    // only their style — switch glimmer to real-write mode so it
-    // actually paints here. See
-    // docs/architecture/glimmer-realwrite-extension-plan.md.
-    glimmerRealWrite: host.markRuntimeWrite ? { markRuntimeWrite: host.markRuntimeWrite } : undefined,
+    // only their style — real-write mode is how glimmer would actually
+    // paint here. See docs/architecture/glimmer-realwrite-extension-plan.md.
+    //
+    // DISABLED (August 2026) — shipped wired but was only ever verified
+    // against a lightweight synthetic test page, never a real managed
+    // editor under load. Live on Gmail it correlated with the whole tab
+    // freezing: real-write mode fires up to ~13 execCommand-driven
+    // writes in under a second per landed substitution; on Gmail's
+    // heavier DOM reconciliation, those writes' own echoes can plausibly
+    // arrive later than the reclassifier's TTL expects, misclassifying
+    // as fresh user edits and re-triggering the resolver on the
+    // runtime's own output — a feedback loop that compounds. Force
+    // `undefined` unconditionally until glimmer's chrome write volume is
+    // load-tested against a real managed editor (Gmail/Lexical/PM/Quill)
+    // with devtools performance profiling, not just the e2e fixture's
+    // synthetic contenteditable page. OpenCode and shell keep real-write
+    // mode — both are separately live-verified and don't share chrome's
+    // execCommand-driven write cost.
+    glimmerRealWrite: undefined,
   });
   configLoaderRef = shared.configLoader;
 

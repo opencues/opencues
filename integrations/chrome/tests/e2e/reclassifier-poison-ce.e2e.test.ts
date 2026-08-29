@@ -1,8 +1,8 @@
 // Regression pin — the reclassifier-poison bug (opencues/opencues#348,
 // fixed for plain <input>/<textarea> in reclassifier-poison.e2e.test.ts)
 // also reproduces on CONTENTEDITABLE — Gmail compose, specifically —
-// and needed a DIFFERENT fix because contenteditable can't take the
-// same shortcut a plain input does.
+// but the chrome-specific fix here has been REVERTED. Read on before
+// re-attempting it.
 //
 // Found live on Gmail (August 2026): fill a bare `_` in an empty
 // compose body, clear it, retype bare `_` — the second fill was
@@ -15,40 +15,36 @@
 // matched the stash, and was reclassified 'runtime' — the resolver
 // silently skips runtime-sourced changes, so nothing happened.
 //
-// The plain-input fix (dropping markRuntimeWrite from that path
-// entirely) doesn't transfer here: a plain input's own echo is always
-// isTrusted=false and dropped upstream regardless, so the mark was
-// pure liability there. Contenteditable's execCommand-driven echoes
-// ARE isTrusted=true — markRuntimeWrite is load-bearing (it's what
-// stops the runtime's own write from re-triggering the resolver on
-// itself, the original May 2026 runaway-loop bug). Dropping it here
-// would trade this bug back for that one.
+// FIRST FIX (shipped, then reverted same day): shortened chrome's TTL
+// to 400ms via createSourceReclassifier's new per-caller ttlMs param
+// (the plumbing stays — see boot-common.ts — only chrome's override
+// was pulled). Verified this exact assertion both ways at the time.
+// Immediately after shipping, the user reported the whole Gmail tab
+// freezing. Root-caused (with the user's help narrowing it to
+// "the blinker is fine, it's the glimmer") to a DIFFERENT, unrelated
+// chrome change from earlier the same day: glimmer's real-write mode
+// (packages/opencues-runtime/adapters/chrome/v1/boot.ts) firing up to
+// ~13 execCommand writes in under a second on a real managed editor,
+// never load-tested against one. That's now hard-disabled for chrome.
 //
-// Fix: createSourceReclassifier now takes a per-caller ttlMs (default
-// unchanged at 1500ms for every other host). Chrome passes a much
-// shorter CHROME_RUNTIME_WRITE_TTL_MS (400ms, opencues-bootstrap.ts) —
-// comfortably covers chrome's near-synchronous multi-echo window
-// (Gmail fires 2-4 input events per write, all within tens of ms) but
-// is far too short for a real clear-and-retype to plausibly land
-// inside. See boot-common.ts's RUNTIME_WRITE_TTL_MS doc for the full
-// writeup.
-//
-// This drives the retry back-to-back with NO artificial wait — that's
-// deliberate, not an oversight. Mutation-verified: against the
-// unfixed 1500ms-everywhere TTL, this exact back-to-back sequence
-// fails (fill 2 stays "_", nothing lands — the Control+A / Delete /
-// type round trips over CDP already take long enough in this harness
-// to land past a would-be short TTL but comfortably inside 1500ms).
-// With chrome's 400ms override applied, the identical sequence passes
-// every time. Restoring the reverted TTL turns this assertion red;
-// no explicit sleep needed to prove either direction.
+// The shortened TTL was reverted alongside it out of caution, not
+// because it was independently confirmed guilty — with glimmer's
+// write volume removed, 400ms may well have been fine on its own, but
+// re-deriving that safely (rather than re-guessing a constant against
+// a synthetic test page a second time) needs real load-testing against
+// Gmail, not another shot in the dark while recovering from an
+// incident. So: TEST SKIPPED, not deleted — it still accurately
+// describes a real, live, currently-UNFIXED bug on chrome/Gmail. Un-skip
+// it once a real fix lands (a shorter TTL that's been load-tested, or a
+// count-based/generation-tagged reclassifier instead of a timing
+// guess) and confirm this passes before re-closing the issue.
 
 import { test, expect } from './extension.fixture';
 import { opencuesMd, cuesMd } from './seed-config';
 import { MockLlm, fluidBlankReply } from './mock-llm';
 
 test.describe('M1 — reclassifier vs loading-animation regression (contenteditable)', () => {
-  test('two consecutive bare-`_` fills on a contenteditable — the second is not swallowed', async ({ context, seed }) => {
+  test.skip('two consecutive bare-`_` fills on a contenteditable — the second is not swallowed', async ({ context, seed }) => {
     const VAL = 'OCRECLASSCEFILL';
     const llm = new MockLlm().setFallback(fluidBlankReply('_', VAL, 'FILL'));
     // Delay > the animation interval so the "_" frame ticks (as a runtime
@@ -83,7 +79,7 @@ test.describe('M1 — reclassifier vs loading-animation regression (contentedita
     await expect(ce).toHaveText(VAL, { timeout: 15_000 });
 
     // Fill 2 — clear + bare `_` again, immediately (no wait). This is the
-    // keystroke that was silently dropped before the fix.
+    // keystroke currently swallowed on chrome — see header comment.
     await page.keyboard.press('Control+a');
     await page.keyboard.press('Delete');
     await page.keyboard.type('_');

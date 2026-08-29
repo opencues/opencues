@@ -46,7 +46,7 @@ landed keeps every untouched word rock-steady.
 entirely in the render pipeline (`RenderDirectives.textOverride`
 frames driven by `forceRender()` kicks; never `setText`).
 
-**Real-write** (OpenCode, shell, chrome — hosts whose renderer never
+**Real-write** (OpenCode, shell — hosts whose renderer never
 consumed `textOverride`): every frame is committed via a real
 `adapter.setText` call, marked through the host's own
 source-reclassifier so it's classified `'runtime'` — the same
@@ -78,7 +78,7 @@ Both modes give the same guarantees:
 | Gemini CLI | animates (render-only) |
 | OpenCode | animates (real-write) — live-verified via the agentic test harness |
 | shell | animates (real-write) — live-verified via the agentic test harness (`glimmer: start` firing correctly, including picking up a hot-reloaded duration change mid-session) |
-| chrome | wired, but **unverified** — chrome's write path is empirically fragile per its own integration docs (`integrations/chrome/CLAUDE.md` § "The biggest issue: writing into managed contenteditables"); needs the real-browser e2e suite + manual multi-site check before this row can say "animates" |
+| chrome | **disabled** — shipped wired, then hard-disabled (`adapters/chrome/v1/boot.ts` forces `glimmerRealWrite: undefined`) after it caused the whole Gmail tab to freeze in real use, never having been load-tested against a real managed editor. Chrome falls back to no animation (a landed substitution just swaps, matching pre-feature behaviour). Needs devtools performance profiling against Gmail/Lexical/ProseMirror/Quill under real load before re-enabling — the e2e fixture's synthetic contenteditable page is not sufficient, it's what "verified" wrongly meant before this incident. See `CHANGELOG.md` § "glimmer's real-write mode froze Gmail tabs" |
 
 Error substitutes (`[err] …` fills, missing-key fallbacks) never
 animate — feedback shouldn't get an arrival flourish.

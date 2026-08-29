@@ -224,24 +224,26 @@ const speech = new WebSpeechAdapter();
 // markRuntimeWrite AFTER the execCommand insertText so the post-DOM
 // (potentially whitespace-normalised) text is what gets compared.
 //
-// TTL is shortened from the 1500ms shared default — that figure is
-// tuned for opencode's SolidJS echo lag (issue #306), not for chrome.
-// Chrome's execCommand echoes are near-synchronous DOM events; the
-// ORIGINAL 250ms default already covered chrome's documented 50-200ms
-// Gmail/Lexical/PM echo window with margin. Left at the shared 1500ms,
-// this poisoned genuine retries: BlankLoadingAnimator's default bounce
-// frame is the literal string `_`, so on a short/empty field the
-// spinner's own frame write IS `_` — clearing and retyping a bare `_`
-// within that 1.5s window matched the stale stash and got silently
-// dropped by the resolver (found live on Gmail, August 2026; reproduced
-// in tests/e2e/reclassifier-poison-ce.e2e.test.ts). 400ms comfortably
-// covers chrome's multi-echo window (Gmail fires 2-4 input events per
-// write, all within tens of ms) while being far too short for a real
-// clear-and-retype to plausibly land inside. See boot-common.ts's
-// RUNTIME_WRITE_TTL_MS doc for the full writeup of why this couldn't
-// just drop markRuntimeWrite the way the normal-input fix did.
-const CHROME_RUNTIME_WRITE_TTL_MS = 400;
-const sourceReclassifier = createSourceReclassifier(Date.now, CHROME_RUNTIME_WRITE_TTL_MS);
+// REVERTED (August 2026) — a shortened 400ms TTL was shipped here to
+// fix a swallowed-retry bug (bare `_` fill, clear, retype within 1.5s
+// silently dropped — see tests/e2e/reclassifier-poison-ce.e2e.test.ts
+// for the full writeup, still accurate for the BUG, not the fix). It
+// caused a WORSE regression on real Gmail: reported live as the whole
+// tab freezing. Leading hypothesis — untested against real Gmail load,
+// only a lightweight synthetic page: Gmail's real DOM reconciliation
+// is heavy enough that the runtime's OWN write echo can plausibly take
+// longer than 400ms to arrive, especially while glimmer's real-write
+// mode is also hammering the same contenteditable with rapid
+// execCommand calls. A late echo past a too-short TTL gets
+// misclassified 'user' and RE-TRIGGERS the resolver on the runtime's
+// own output — the original May 2026 runaway-loop bug this mechanism
+// exists to prevent, coming back from the opposite direction. Back to
+// the safe 1500ms default (shared with every other host) until a
+// count-based or generation-tagged reclassifier (not a blind timing
+// guess) replaces this, and glimmer's chrome write volume is load-
+// tested against a real managed editor. See boot-common.ts's
+// RUNTIME_WRITE_TTL_MS doc.
+const sourceReclassifier = createSourceReclassifier();
 
 /** Called by content.ts when the focused contenteditable changes.
  *

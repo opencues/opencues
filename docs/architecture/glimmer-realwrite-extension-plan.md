@@ -1,5 +1,23 @@
 # Glimmer real-write extension — plan + per-host side effects
 
+⚠️ **POSTMORTEM (August 2026): chrome is now DISABLED, not just
+unverified.** This doc's own guidance below — "Don't treat chrome as
+done until the e2e suite AND a manual multi-site check both pass" —
+was only half-followed: the e2e suite (synthetic contenteditable
+fixture) passed, and that got treated as enough to leave the feature
+wired. The manual multi-site check against a real managed editor never
+happened before shipping. Real-write mode on Gmail caused the whole
+tab to freeze — glimmer's ~13 execCommand writes/second on a real
+editor's heavy DOM reconciliation is nothing like the synthetic
+fixture page's near-instant echo, and the reclassifier's timing
+assumptions broke under that load. `glimmerRealWrite` is now forced
+`undefined` for chrome (`adapters/chrome/v1/boot.ts`), unconditionally.
+Full incident writeup: `CHANGELOG.md` § "glimmer's real-write mode
+froze Gmail tabs". **Lesson for next time: an e2e suite against a
+synthetic page cannot stand in for the manual multi-site check this
+doc already told us we needed — treat that line as a hard gate, not
+optional follow-up.**
+
 ✅ **IMPLEMENTED and LIVE-VERIFIED for OpenCode and shell; wired but
 UNVERIFIED for chrome.** `GlimmerRender` now supports both modes
 (`GlimmerRenderOptions.realWrite`) — render-only (Claude Code, Gemini
