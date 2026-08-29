@@ -470,7 +470,19 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
           hiddenChars = new Set();
         }
         const p = (elapsed - BLINK_MS) / durationMs;
-        const density = p < 0.55 ? 0.45 : p < 0.75 ? 0.30 : 0.15;
+        // Smooth ease instead of the runtime's 45/30/15 step schedule
+        // (which holds full boil for 55% of the window then crams both
+        // step-downs into ~3 frames each — "long boil, quick fade", and
+        // chrome's pair-cliff amplified the quick fade into
+        // near-silence). Here: full 0.45 boil for the first quarter,
+        // then a cosine ease all the way to 0 across the remaining
+        // three quarters — activity tapers continuously through the
+        // whole window and lands softly at settle. Deliberate departure
+        // from the family schedule, same start intensity and endpoints.
+        const HOLD = 0.25;
+        const density = p < HOLD
+          ? 0.45
+          : 0.45 * 0.5 * (1 + Math.cos(Math.PI * (p - HOLD) / (1 - HOLD)));
         // Phase 1 — layout reads only (all words, first churn tick
         // builds all geometry back-to-back; spans are small).
         const scrambling: number[] = [];
