@@ -30,7 +30,7 @@ import { parseSingleCueMd, listProviders, buildCalendarContextSnapshot, pageClai
 import { ChromeUserBlank } from './user-blank-loader';
 import { createBlankInvoke } from '@opencues/runtime/dist/src/blanks';
 import { wordDiff } from '@opencues/runtime/dist/src/modules/word-diff';
-import { applyDirectives, clearDirectives, clearInlineNote } from './runtime-renderer';
+import { applyDirectives, clearDirectives, clearInlineNote, setGlimmerSuppression } from './runtime-renderer';
 import { applyStatuslinePayload } from './runtime-statusbar';
 import { WebSpeechAdapter } from './adapters/web-speech-adapter';
 import { FetchHttpAdapter } from './adapters/fetch-http-adapter';
@@ -220,21 +220,35 @@ let currentTarget: HTMLElement | null = null;
 
 // ---- Host-owned glimmer transition (CSS Custom Highlight API) — the
 // chrome replacement for real-write mode (which froze Gmail; see the
-// glimmerRealWrite comment in adapters/chrome/v1/boot.ts). One instance
-// per animation; `_activeGlimmerBaseline` is the buffer's full plain
-// text at animation start, so a managed editor's late write-echo (same
-// text re-notified) doesn't cancel the animation while any REAL text
-// change does — Ranges over mutated text are unreliable, the animation
-// must never outlive the text it was built against.
-let _activeHighlightGlimmer: HighlightGlimmer | null = null;
-let _activeGlimmerBaseline: string | null = null;
+// glimmerRealWrite comment in adapters/chrome/v1/boot.ts). One
+// controller per animation, in two phases:
+//   PENDING — the substitution just landed but managed editors (Gmail
+//   especially) normalize freshly-written DOM over the next few frames,
+//   detaching any Ranges built too early (dead ranges paint NOTHING —
+//   the live "no hide, no shadows" failure). The controller retries
+//   until the span's plain text matches what the runtime says landed.
+//   PLAYING — engine built against the settled DOM; `baseline` is the
+//   buffer's full plain text at that moment, so a late write-echo of
+//   identical text doesn't cancel the animation while any REAL change
+//   does.
+// The cue paint (oc-dim / oc-active gray) is suppressed for the whole
+// lifetime of the controller via setGlimmerSuppression.
+let _glimmer: {
+  cancelled: boolean;
+  retryTimer: ReturnType<typeof setTimeout> | null;
+  engine: HighlightGlimmer | null;
+  baseline: string | null;
+} | null = null;
 
 function cancelActiveHighlightGlimmer(): void {
-  const g = _activeHighlightGlimmer;
+  const g = _glimmer;
   if (!g) return;
-  _activeHighlightGlimmer = null;
-  _activeGlimmerBaseline = null;
-  try { g.destroy(); } catch { /* target mid-teardown — highlights die with the document */ }
+  _glimmer = null;
+  g.cancelled = true;
+  if (g.retryTimer !== null) clearTimeout(g.retryTimer);
+  try { g.engine?.destroy(); } catch { /* target mid-teardown — highlights die with the document */ }
+  setGlimmerSuppression(false);
+  try { runtimeRender(); } catch { /* no adapter yet / mid-teardown — next render restores the cue paint */ }
 }
 const speech = new WebSpeechAdapter();
 
@@ -2967,53 +2981,83 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
       // the Highlight API structurally can't reach it — same profile
       // gap as cycling/dim (universal-integration). No animation.
       if (!target || isNormalInput(target) || !supportsHighlightGlimmer()) return noop;
-      try {
-        // Span → Range via the img-aware dom-walk helpers (the runtime
-        // speaks plain-text offsets that count emoji-<img> alt chars;
-        // the engine's own walker would drift on those). Alt-backed
-        // chars have no text node, so they simply don't scramble —
-        // correct degradation, boundaries stay exact.
-        const startPos = domPositionOfPlainOffset(target, Math.max(0, spec.startOffset));
-        const endPos = domPositionOfPlainOffset(target, spec.startOffset + spec.finalText.length);
-        const range = document.createRange();
-        range.setStart(startPos.node, startPos.offset);
-        range.setEnd(endPos.node, endPos.offset);
-        if (range.toString() !== spec.finalText) {
-          log('debug', 'glimmer: span text differs from landed text (emoji/segments) — animating the range as-is');
+
+      const ctl: NonNullable<typeof _glimmer> = { cancelled: false, retryTimer: null, engine: null, baseline: null };
+      _glimmer = ctl;
+      // Suppress the cue paint from frame one — the gray active
+      // background must not flash while we wait for the DOM to settle.
+      setGlimmerSuppression(true);
+      let settledResolve!: () => void;
+      const settled = new Promise<void>((res) => { settledResolve = res; });
+      const t0 = performance.now();
+      const MAX_WAIT_MS = 600;
+
+      const giveUp = (why: string) => {
+        log('debug', `glimmer: ${why} — skipping animation`);
+        if (_glimmer === ctl) cancelActiveHighlightGlimmer();
+        settledResolve();
+      };
+
+      // DEFERRED, VERIFIED start. The write that landed the text goes
+      // through synthetic paste / editor transactions, and Gmail-class
+      // editors then NORMALIZE the inserted DOM over the next frames —
+      // replacing the very nodes any too-early Range points at. Dead
+      // ranges paint nothing (the live "text never hides" failure). So:
+      // retry until the buffer's plain text actually carries finalText
+      // at the expected offset, THEN build the ranges, and play out
+      // whatever transition budget remains.
+      const tryStart = () => {
+        if (ctl.cancelled) return;
+        let live = '';
+        let spanOk = false;
+        try {
+          live = walkPlainText(target).text;
+          spanOk = live.slice(spec.startOffset, spec.startOffset + spec.finalText.length) === spec.finalText;
+        } catch { spanOk = false; }
+        if (!spanOk) {
+          if (performance.now() - t0 > MAX_WAIT_MS) { giveUp('span never stabilized in the DOM'); return; }
+          ctl.retryTimer = setTimeout(tryStart, 50);
+          return;
         }
-        // ::highlight() rules only reach ranges in their own tree scope
-        // — a target inside a shadow root (Reddit's <reddit-rte>) needs
-        // the stylesheet inside that root.
-        const root = target.getRootNode();
-        const g = createHighlightGlimmer({
-          target: range,
-          styleParent: root instanceof ShadowRoot ? root : undefined,
-        });
-        _activeHighlightGlimmer = g;
-        _activeGlimmerBaseline = walkPlainText(target).text;
-        const settled = g
-          .play({ mode: 'appear', direction: 'fwd', durationMs: spec.durationMs })
-          .then(() => {
-            if (_activeHighlightGlimmer === g) {
-              _activeHighlightGlimmer = null;
-              _activeGlimmerBaseline = null;
-              g.destroy();
-            }
+        try {
+          // Span → Range via the img-aware dom-walk helpers (plain-text
+          // offsets count emoji-<img> alt chars; alt-backed chars have
+          // no text node and simply don't scramble — boundaries exact).
+          const startPos = domPositionOfPlainOffset(target, Math.max(0, spec.startOffset));
+          const endPos = domPositionOfPlainOffset(target, spec.startOffset + spec.finalText.length);
+          const range = document.createRange();
+          range.setStart(startPos.node, startPos.offset);
+          range.setEnd(endPos.node, endPos.offset);
+          // ::highlight() rules only reach ranges in their own tree
+          // scope — a target inside a shadow root (Reddit's
+          // <reddit-rte>) needs the stylesheet inside that root.
+          const root = target.getRootNode();
+          const engine = createHighlightGlimmer({
+            target: range,
+            styleParent: root instanceof ShadowRoot ? root : undefined,
           });
-        return {
-          cancel: () => {
-            if (_activeHighlightGlimmer === g) {
-              _activeHighlightGlimmer = null;
-              _activeGlimmerBaseline = null;
-            }
-            try { g.destroy(); } catch { /* mid-teardown */ }
-          },
-          settled,
-        };
-      } catch (err) {
-        log('debug', `glimmer: highlight animation skipped: ${err}`);
-        return noop;
-      }
+          ctl.engine = engine;
+          ctl.baseline = live;
+          const remaining = Math.max(250, spec.durationMs - (performance.now() - t0));
+          log('debug', `glimmer: animating ${engine.charCount} chars / ${engine.wordCount} words over ${Math.round(remaining)}ms`);
+          void engine.play({ mode: 'appear', direction: 'fwd', durationMs: remaining }).then(() => {
+            if (_glimmer === ctl) cancelActiveHighlightGlimmer();
+            settledResolve();
+          });
+        } catch (err) {
+          giveUp(`highlight animation failed: ${err}`);
+        }
+      };
+      tryStart();
+
+      return {
+        cancel: () => {
+          if (_glimmer === ctl) cancelActiveHighlightGlimmer();
+          else if (!ctl.cancelled) { ctl.cancelled = true; if (ctl.retryTimer !== null) clearTimeout(ctl.retryTimer); }
+          settledResolve();
+        },
+        settled,
+      };
     },
     // CE.9 — spawnProcess routes through the native-messaging host
     // when installed (`opencues install chrome-host`). Without it,
@@ -3361,12 +3405,14 @@ export function notifyOpenCuesTextChange(
   // lands AFTER us: we run at `document_end`, embedded plugins boot later.
   if (deferToEmbeddedHost()) { noteDeferralOnce(); return; }
 
-  // A running highlight-glimmer must die on any REAL text change — its
+  // A PLAYING highlight-glimmer must die on any REAL text change — its
   // per-character Ranges were built against the old text. Managed-editor
   // write echoes re-notify the SAME text (that's the baseline compare),
   // and those must NOT cancel or the animation would never survive its
-  // own landing on Lexical/PM/Quill.
-  if (_activeHighlightGlimmer !== null && text !== _activeGlimmerBaseline) {
+  // own landing on Lexical/PM/Quill. A PENDING controller (engine null)
+  // is deliberately spared: it exists precisely BECAUSE the editor is
+  // still churning the DOM toward the final text.
+  if (_glimmer?.engine && _glimmer.baseline !== null && text !== _glimmer.baseline) {
     cancelActiveHighlightGlimmer();
   }
 

@@ -446,6 +446,11 @@ export function createHighlightGlimmer(options: HighlightGlimmerOptions): Highli
         const settled = wordSettled!;
         const t = (performance.now() - startTs) / durationMs;
         if (t >= 1) { finishPlay(); return; }
+        // Liveness: if the editor rewrote the span's nodes after we
+        // built (a char range collapses when its text node leaves the
+        // document), the highlights paint nothing — finish immediately
+        // so the real text shows rather than a dead dark span.
+        if (charRanges[0].collapsed || charRanges[N - 1].collapsed) { finishPlay(); return; }
         const front = tail ? t * W : t * (W + bandW);
         // Phase 1 — layout reads only.
         const scrambling: number[] = [];

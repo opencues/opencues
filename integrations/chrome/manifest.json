@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OpenCues",
-  "version": "0.2.188",
+  "version": "0.2.189",
   "description": "OpenCues enables native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",
   "permissions": [
     "storage",
