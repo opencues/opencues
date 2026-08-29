@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.8] - 2026-08-29
+
 ### Removed — glimmer's real-write machinery deleted (`@opencues/runtime` 0.37.0 → 0.38.0, `@opencues/chrome` 0.2.199 → 0.2.200, `@opencues/dsh` 0.2.16 → 0.2.17 — inline bundle regenerated)
 
 With the OpenTUI overlay mode live-verified on both hosts (entry below), the write-mode code is gone rather than dormant: `GlimmerRenderOptions.realWrite`, `_writeFrame`, the restore-on-cancel branch, `ActiveGlimmer.bufferedText`, `BuildSharedRuntimeOptions.glimmerRealWrite`, and the 9 write-mode tests. `locate()` simplifies to anchoring on `finalText` (the buffer is never written, so the landed text is always the anchor). `HostAdapter.markRuntimeWrite` stays — it's the general host contract for out-of-band buffer writers (blank-loading still uses the host-side reclassifier path), only its glimmer consumer died. `glimmer-realwrite-extension-plan.md` carries a superseded banner as the design record. Chrome band's dead `glimmerRealWrite: undefined` line removed (bundle bytes change → lockstep bump).
