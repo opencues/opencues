@@ -1,7 +1,7 @@
 {
   "name": "@opencues/dsh",
-  "version": "0.2.18",
-  "description": "OpenCues for DeepSeek Harness — LLM word alternatives and `_`-gated blank fill-ins in the dsh composer.",
+  "version": "0.2.19",
+  "description": "OpenCues for DeepSeek Harness \u2014 LLM word alternatives and `_`-gated blank fill-ins in the dsh composer.",
   "license": "MIT",
   "homepage": "https://opencues.com",
   "repository": {
@@ -21,7 +21,7 @@
     "Both fields are load-bearing and neither is a default we can rely on.",
     "access: a SCOPED package publishes RESTRICTED unless told otherwise, so",
     "  omitting this would put @opencues/dsh on npm as a private package and",
-    "  `dsh plugin add @opencues/dsh` would 404 for everyone — the one install",
+    "  `dsh plugin add @opencues/dsh` would 404 for everyone \u2014 the one install",
     "  path this integration has.",
     "registry: every sibling @opencues/* integration points publishConfig at",
     "  npm.pkg.github.com, and an ambient .npmrc can set one too. Stating the",

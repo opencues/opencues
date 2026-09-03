@@ -975,6 +975,17 @@ const SHIPPED_MD_CONTRACT_FIELDS = new Set([
   // shell fallback path stays declared even though the .sh has been
   // removed from defaults/.
   'blankScript',
+  // `blankMultilineIsAnswer` decides whether a multi-line get() joins
+  // into one card or splits into cycleable alternatives — runtime
+  // semantics, and the SHIPPED blanks' setting is the product's call
+  // (location/model declare it in defaults; claude-status dropped it
+  // 2026-09-03 so its four alts cycle again). Without this line the
+  // September 2026 un-pinning never reaches an existing install: the
+  // seeded copy's stale `true` survives every merge as a "user-only"
+  // scalar, and the frontmatter flag BEATS the runtime's code-side set
+  // (isSingleAnswerBlank). User-AUTHORED script blanks are untouched —
+  // they have no defaults counterpart, so this merge never sees them.
+  'blankMultilineIsAnswer',
 ]);
 function mergeShippedMd(defaultsContent, userContent) {
   const split = (text) => {

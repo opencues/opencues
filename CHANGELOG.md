@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — `claude status _` cycles its four answers again instead of pasting a four-line card (`@opencues/runtime` 0.38.0 → 0.39.0)
+
+`ClaudeStatusBlank` synthesises four alternatives from one Statuspage fetch — yes/no + reason, the one-word indicator, the per-component breakdown, the incident context — precisely so `_` can surface progressively more detail. The #339 map-card fix swept `claude-status` into the joined-single-answer set alongside `location` and `model`, so the fill pasted all four lines into the buffer as one block and there was nothing to cycle. It leaves the set (and its `BLANK.md` drops `blankMultilineIsAnswer`): `claude status _` now lands `claude status No — all systems operational` with the note `5 | none | all 6 components operational | last incident …` and `_` walking the stops, dismissal slot included. Verified live on a headless opencode host through the agentic bridge, per press.
+
+The fix has to MIGRATE, not just ship: the seeded user copy of `BLANK.md` still declares the flag, the shipped-md refresh preserved unknown user scalars, and the frontmatter flag beats the runtime's code-side set — so on an existing install the new runtime alone changes nothing. `blankMultilineIsAnswer` is now a `SHIPPED_MD_CONTRACT_FIELDS` entry in seed-configs (the `blankScript` precedent: when defaults drops a policy field, the user copy must lose the line too), so the next `opencues seed-configs` / `install` drops the stale flag while `location`/`model` keep theirs from defaults. User-authored script blanks are untouched — they have no defaults counterpart, so the refresh never sees them. Chrome's bake-time `dist/configs/` snapshot carries the old flag until `opencues sync chrome` / `opencues install chrome` re-bakes it.
+
 ### Fixed — FluidBlank can WIPE a bare terminal lookup with no host field declaration (`@opencues/core` 0.55.2 → 0.56.0; `@opencues/dsh` 0.2.17 → 0.2.18 — inline bundle regenerated with this core)
 
 `ffmpeg command to convert a video to web-ready mp4 _` used to always FILL — the ask stayed on screen and only `_` was replaced — because WIPE (replacing the whole field with the answer) required a host to declare the field `singleLine`, and no native host adapter does that; it's a browser field shape. The README's hero video claimed WIPE for exactly this case and was wrong.

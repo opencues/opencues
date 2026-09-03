@@ -205,6 +205,52 @@ blankScript: ./brightness-blank.sh
     expect(merged).toContain('tip: my custom tip');
   });
 
+  it('drops a stale blankMultilineIsAnswer when defaults dropped it (claude-status un-pinning)', () => {
+    // Real case: claude-status left the joined-card set 2026-09-03 so its
+    // four alts cycle again. The seeded user copy still declares the flag,
+    // and the frontmatter flag BEATS the runtime's code-side set — so unless
+    // the refresh drops it, the fix never reaches an existing install.
+    const defaults = `---
+name: claude-status
+type: blank
+blankKeywords: is claude down, claude status
+tip: Claude / Anthropic service status
+---
+`;
+    const user = `---
+name: claude-status
+type: blank
+blankKeywords: is claude down, claude status
+tip: Claude / Anthropic service status
+# ── User-only fields (preserved by shipped-md refresh) ──
+blankMultilineIsAnswer: true
+---
+`;
+    const merged = mergeShippedMd(defaults, user);
+    expect(merged).not.toContain('blankMultilineIsAnswer');
+  });
+
+  it('keeps blankMultilineIsAnswer where defaults still declare it (location card)', () => {
+    const defaults = `---
+name: location
+type: blank
+blankMultilineIsAnswer: true
+tip: where am I
+---
+`;
+    const user = `---
+name: location
+type: blank
+blankMultilineIsAnswer: false
+tip: my tip
+---
+`;
+    const merged = mergeShippedMd(defaults, user);
+    // contract field: always the product's value, user drift corrected
+    expect(merged).toContain('blankMultilineIsAnswer: true');
+    expect(merged).toContain('tip: my tip');
+  });
+
   it('preserves non-contract user fields (priority, keywords, blankStep, tip)', () => {
     const defaults = `---
 name: foo
