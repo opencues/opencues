@@ -1,0 +1,108 @@
+[1mBASELINE prompt loaded from /home/wilfred/opencues/.claude/worktrees/merry-sniffing-lamport/packages/opencues-core/src/sources/config-intent-source.baseline.ts[0m
+[1mfluid-config PRODUCTION-prompt benchmark[0m
+Model: gpt-oss-120b   Suite: all   Cases: 65 settings + 26 undo
+
+[32mTP[0m  [1mhc-tips-off[0m  [2mturn off tips _[0m  
+[32mTP[0m  [1mhc-tips-on[0m  [2mshow tips again _[0m  
+[32mTP[0m  [1mhc-debug-off[0m  [2mturn off debug logging _[0m  
+[32mTP[0m  [1mhc-debug-on[0m  [2menable debug logging _[0m  
+[32mTP[0m  [1mhc-voice-on[0m  [2mturn on voice mode _[0m  
+[32mTP[0m  [1mhc-voice-off[0m  [2mturn off voice mode _[0m  
+[32mTP[0m  [1mhc-trigger-spaced[0m  [2muse spaced blank trigger mode _[0m  
+[32mTP[0m  [1mhc-trigger-immediate[0m  [2mset blank trigger to immediate _[0m  
+[32mTP[0m  [1mhc-cursor-off[0m  [2mdisable cursor navigate _[0m  
+[32mTP[0m  [1mhc-wordcues-on[0m  [2mturn word cues back on _[0m  
+[32mTP[0m  [1mhc-wordcues-off[0m  [2mturn off word cues _[0m  
+[32mTP[0m  [1mhc-cursor-on[0m  [2menable cursor navigate _[0m  
+[32mTP[0m  [1mhc-ambient-on[0m  [2menable ambient context _[0m  
+[32mTP[0m  [1mhc-ambient-off[0m  [2mdisable ambient context _[0m  
+[31mWRONG_SETTING[0m  [1mhc-user-safe[0m  [2menable user context in safe mode _[0m  — wrong setting: got identity-context-mode, expected user-context-mode
+      [2mRAW: INTENT: SETTING / SETTING: identity-context-mode / VALUE: safe[0m
+[31mWRONG_SETTING[0m  [1mhc-user-off[0m  [2mdisable user context _[0m  — wrong setting: got identity-context-mode, expected user-context-mode
+      [2mRAW: INTENT: SETTING / SETTING: identity-context-mode / VALUE: off / [0m
+[32mTP[0m  [1mhc-transform-on[0m  [2mturn transform blank back on _[0m  
+[32mTP[0m  [1mhc-transform-off[0m  [2mdisable transform blank _[0m  
+[32mTP[0m  [1mhf-voice-aloud[0m  [2mI want to hear the tips read aloud _[0m  
+[32mTP[0m  [1mhf-voice-quiet[0m  [2mstop reading the tips out loud _[0m  
+[32mTP[0m  [1mhf-tips-clutter[0m  [2mstop showing me the little tip boxes _[0m  
+[32mTP[0m  [1mhf-debug-too-noisy[0m  [2mtoo much console output, quiet it down _[0m  
+[32mTP[0m  [1mhf-debug-want-logs[0m  [2mI want to see what the runtime is doing _[0m  
+[32mTP[0m  [1mhf-trigger-markdown[0m  [2mI keep typing _italic_ and the blank fires before the closing one _[0m  
+[31mWRONG_SETTING[0m  [1mhf-user-personal[0m  [2mlet it use my personal info when answering _[0m  — wrong setting: got identity-context-mode, expected user-context-mode
+      [2mRAW: INTENT: SETTING / SETTING: identity-context-mode / VALUE: safe / SCOPE: / PROVIDER: / MODEL: / CONFIDENCE: [0m
+[32mTP[0m  [1mhf-cursor-still[0m  [2mdon't move the highlight as I move around _[0m  
+[32mTP[0m  [1mhf-cursor-follow[0m  [2mhighlight should auto-follow my cursor _[0m  
+[32mTP[0m  [1mhf-ambient-page[0m  [2mlet the model know which website I am on _[0m  
+[32mTP[0m  [1mhf-wordcues-noisy[0m  [2mI don't want word alternative suggestions on every word _[0m  
+[32mTN[0m  [1mru-volume-louder[0m  [2mmake it louder _[0m  
+[32mTN[0m  [1mru-brightness-down[0m  [2mscreen is too bright, lower it _[0m  
+[32mTN[0m  [1mru-volume-quieter[0m  [2mturn the volume down _[0m  
+[32mTN[0m  [1mru-stocks[0m  [2mwhat's TSLA trading at _[0m  
+[32mTN[0m  [1mru-weather[0m  [2mis it going to rain today _[0m  
+[32mTN[0m  [1mrf-capital[0m  [2mcapital of france _[0m  
+[32mTN[0m  [1mru-media[0m  [2mplay the next song _[0m  
+[32mTN[0m  [1mrf-atomic[0m  [2matomic number of oxygen _[0m  
+[32mTN[0m  [1mrf-hex[0m  [2mhex code for blue _[0m  
+[32mTN[0m  [1mrf-apollo[0m  [2mwhat year did apollo 11 land _[0m  
+[32mTN[0m  [1mrf-convert[0m  [2m100 celsius in fahrenheit _[0m  
+[32mTN[0m  [1mrf-spelling[0m  [2mhow do you spell accommodate _[0m  
+[32mTN[0m  [1mru-brightness-up[0m  [2mincrease brightness _[0m  
+[32mTN[0m  [1mrf-unicode[0m  [2municode for em dash _[0m  
+[32mTN[0m  [1mra-better[0m  [2mmake it better _[0m  
+[32mTN[0m  [1mra-turn-off[0m  [2mturn it off _[0m  
+[32mTN[0m  [1mra-enable[0m  [2menable that thing _[0m  
+[32mTN[0m  [1mra-other[0m  [2mswitch to the other one _[0m  
+[32mTN[0m  [1mra-fix[0m  [2mfix this _[0m  
+[32mTN[0m  [1mro-theme[0m  [2mswitch the theme to dark mode _[0m  
+[32mTN[0m  [1mro-language[0m  [2mswitch the interface language to french _[0m  
+[32mTN[0m  [1mro-font-size[0m  [2muse a bigger font size _[0m  
+[32mTN[0m  [1mro-provider[0m  [2muse a different llm provider _[0m  
+[31mFN[0m  [1mhf-keybind[0m  [2mrebind the cycle key to shift-arrow _[0m  — false-negative: hit case rejected; expected setting=nav-keymap value=ctrl-shift
+      [2mRAW: INTENT: NONE / SETTING: / VALUE: / SCOPE: / PROVIDER: / MODEL: / CONFIDENCE: 0.96[0m
+[32mTN[0m  [1mro-debounce[0m  [2mwait longer before the agent fires _[0m  
+[32mTN[0m  [1mro-animation[0m  [2muse the braille loading animation _[0m  
+[32mTN[0m  [1mro-export[0m  [2mexport my config to a file _[0m  
+[32mTN[0m  [1mro-reset[0m  [2mreset all my settings to defaults _[0m  
+[32mTN[0m  [1mrt-make-more-professional[0m  [2mmake more professional _[0m  
+[32mTN[0m  [1mrt-make-it-professional[0m  [2mmake it professional _[0m  
+[32mTN[0m  [1mrt-body-formal[0m  [2mhey team make more formal _[0m  
+[32mTN[0m  [1mrt-translate[0m  [2mthis draft is ok translate to spanish _[0m  
+[32mTN[0m  [1mrt-tone[0m  [2mnice work make the tone friendlier _[0m  
+[32mTP[0m  [1mhc-sentence-cues-on[0m  [2menable sentence cues _[0m  
+[32mTP[0m  [1mhc-sentence-cues-off[0m  [2mturn off the sentence cues _[0m  
+[32mTP[0m  [1mua-that[0m  [2mundo that _[0m  
+[32mTP[0m  [1mua-bare[0m  [2mundo _[0m  
+[32mTP[0m  [1mua-count-3[0m  [2mundo 3 _[0m  
+[32mTP[0m  [1mua-revert[0m  [2mrevert that last change _[0m  
+[32mTP[0m  [1mua-count-words[0m  [2mundo the last two changes _[0m  
+[32mTP[0m  [1mua-redo[0m  [2mredo _[0m  
+[31mFN[0m  [1mua-redo-that[0m  [2mredo that _[0m  — false-negative: expected redo
+      [2mRAW: INTENT: NONE / SETTING: / VALUE: / SCOPE: / PROVIDER: / MODEL: / CONFIDENCE: 0.93[0m
+[32mTP[0m  [1mua-ja[0m  [2m元に戻して _[0m  
+[32mTP[0m  [1mua-ja-count[0m  [2m3回元に戻して _[0m  
+[32mTP[0m  [1mua-es[0m  [2mdeshacer _[0m  
+[32mTP[0m  [1mua-zh[0m  [2m撤销 _[0m  
+[32mTP[0m  [1mua-de[0m  [2mrückgängig machen _[0m  
+[32mTP[0m  [1mua-fr[0m  [2mannuler ça _[0m  
+[32mTP[0m  [1mua-ru[0m  [2mотменить _[0m  
+[32mTP[0m  [1mua-fr-count[0m  [2mannuler les trois derniers _[0m  
+[32mTN[0m  [1mur-commit[0m  [2mundo my last commit _[0m  
+[32mTN[0m  [1mur-deploy[0m  [2mrevert the deploy _[0m  
+[32mTN[0m  [1mur-migration[0m  [2mundo the migration _[0m  
+[32mTN[0m  [1mur-redo-report[0m  [2mredo the report _[0m  
+[32mTN[0m  [1mur-redo-hw[0m  [2mredo my homework _[0m  
+[32mTN[0m  [1mur-prose[0m  [2mthe undo button in figma is broken _[0m  
+[32mTP[0m  [1mua-after-pair[0m  [2mdebug-mode on undo _[0m  
+[32mTP[0m  [1mua-after-pair-2[0m  [2mvoice-mode inactive undo _[0m  
+[32mTP[0m  [1mua-after-answer[0m  [2mParis undo _[0m  
+[32mTP[0m  [1mua-after-pair-ja[0m  [2mvoice-mode active 元に戻して _[0m  
+[31mFN[0m  [1mhf-user-no-pii[0m  [2mstop sharing anything personal with the model _[0m  — false-negative: hit case rejected; expected setting=user-context-mode value=off
+      [2mRAW: [0m
+[31mFN[0m  [1mua-after-pair-redo[0m  [2mtips-mode off redo _[0m  — false-negative: expected redo
+      [2mRAW: [0m
+
+[1m[settings][0m precision 32/32 = 100.0%   recall 28/33 = 84.8%   pass 60/65
+  fails: hc-user-safe(WRONG_SETTING), hc-user-off(WRONG_SETTING), hf-user-personal(WRONG_SETTING), hf-user-no-pii(FN), hf-keybind(FN)
+
+[1m[undo][0m precision 6/6 = 100.0%   recall 18/20 = 90.0%   pass 24/26
+  fails: ua-redo-that(FN), ua-after-pair-redo(FN)

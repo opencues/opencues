@@ -349,7 +349,10 @@ function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boo
   // ad-hoc bench, June 2026). See cerebras docs
   // https://inference-docs.cerebras.ai/capabilities/reasoning and
   // model-thinking.ts MODEL_THINKING['cerebras:zai-glm-4.7'].
-  const isReasoningModelName = /^(o\d|gpt-5|gpt-oss|qwen-3-thinking|zai-glm)/i.test(req.model);
+  // `qwen-3\.8` — cerebras qwen-3.8-27b (Sep 2026) is a hybrid reasoning
+  // model that thinks by DEFAULT when the field is absent; forwarding is
+  // what lets model-thinking.ts pin it to low/none (same shape as zai-glm).
+  const isReasoningModelName = /^(o\d|gpt-5|gpt-oss|qwen-3-thinking|qwen-3\.8|zai-glm)/i.test(req.model);
   const reasoningForwarded = opts?.includeReasoningEffort || isReasoningModelName;
   const reasoning = reasoningForwarded
     ? resolveReasoningEffort({
@@ -1104,18 +1107,25 @@ const CEREBRAS: ProviderAdapter = {
   displayName: 'Cerebras',
   defaultEndpoint: 'https://api.cerebras.ai/v1/chat/completions',
   defaultModel: 'gpt-oss-120b',
-  // Cerebras catalogue (Jun 2026): `gpt-oss-120b`, `zai-glm-4.7`,
-  // `gemma-4-31b`. `gpt-oss-120b` stays the default (fastest reasoning
-  // path + Predicted-Outputs + prefix-cache support). `gemma-4-31b` is a
-  // NON-reasoning model — handled by the model-name gates (no
-  // reasoning_effort, no prediction field, no reasoning_format); benches
-  // at parity with gpt-oss-120b on lookups + rewrites at ~2× the speed
-  // (tests/results/gemma-hackathon/FINDINGS.md). Other Cerebras names
-  // reachable via file edit.
+  // Cerebras catalogue (probed live 2026-09-03, /v1/models): `gpt-oss-120b`,
+  // `gemma-4-31b`, `qwen-3.8-27b`. `gpt-oss-120b` stays the default (fastest
+  // reasoning path + Predicted-Outputs + prefix-cache support).
+  // `qwen-3.8-27b` (Sep 2026) is the recommended small-model pick — hybrid
+  // reasoning (model-thinking.ts pins low/none), 400s on `prediction` like
+  // gemma (already excluded by the capabilities predicate); fluid-blank
+  // benches 137/137 at reasoning 'low', at parity with gpt-oss-120b.
+  // `gemma-4-31b` is DEPRECATED by Cerebras (moved to Public preview,
+  // Sep 2026) — still served, kept for back-compat, but advise
+  // `qwen-3.8-27b` instead. gemma is NON-reasoning — handled by the
+  // model-name gates (no reasoning_effort, no prediction field, no
+  // reasoning_format); benches at parity with gpt-oss-120b on lookups +
+  // rewrites at ~2× the speed (tests/results/gemma-hackathon/FINDINGS.md).
+  // Other Cerebras names reachable via file edit.
   knownModels: [
     'gpt-oss-120b',
     'zai-glm-4.7',
     'gemma-4-31b',
+    'qwen-3.8-27b',
   ],
   // qwen-3-235b-a22b-instruct-2507 was removed 2026-06: Cerebras's public
   // catalogue (/v1/models) returned only gpt-oss-120b + zai-glm-4.7 against

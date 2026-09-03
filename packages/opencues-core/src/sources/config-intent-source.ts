@@ -221,7 +221,7 @@ const LIKELY_INTENT_KEYWORDS: ReadonlySet<string> = (() => {
     'opus', 'haiku', 'sonnet', 'fable', 'claude',
     'cerebras', 'groq', 'openai', 'anthropic', 'gemini',
     'openrouter', 'nano', 'mini', 'flash', 'llama',
-    'gpt-oss', 'gpt-5', 'gemma',
+    'gpt-oss', 'gpt-5', 'gemma', 'qwen',
   ];
   for (const k of curated) addToken(k);
 
@@ -566,7 +566,16 @@ PROVIDER: gemini
 MODEL:
 CONFIDENCE: 0.8
 
-INPUT: switch model to gemma _
+INPUT: switch model to qwen _
+INTENT: PROVIDER
+SETTING:
+VALUE:
+SCOPE: blanks
+PROVIDER: cerebras
+MODEL: qwen-3.8-27b
+CONFIDENCE: 0.85
+
+INPUT: use gemma for blanks _
 INTENT: PROVIDER
 SETTING:
 VALUE:

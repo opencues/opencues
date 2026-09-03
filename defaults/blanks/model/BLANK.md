@@ -58,7 +58,7 @@ Output modes:
 - **`model for cues _`** / `auditors` / `blanks` → that bucket only,
   plus its source attribution as a cycling alt.
 - **`list models _`** / `models _` → one line per provider:
-  `cerebras (current): gpt-oss-120b*, zai-glm-4.7, gemma-4-31b`, then
+  `cerebras (current): gpt-oss-120b*, zai-glm-4.7, gemma-4-31b, qwen-3.8-27b`, then
   key-set providers, then keyless ones. `*` marks the model currently
   in effect; the curated lists are each provider's `knownModels` (the
   same set the config menu and fluid-config classifier offer — models
@@ -71,7 +71,7 @@ key is absent shows `(key missing)`; an unknown provider id shows
 in ~/.cues/OPENCUES.md`.
 
 Switching stays with the existing paths: natural language via
-fluid-config (`use gemma for blanks _`), cycling via
+fluid-config (`use qwen for blanks _`), cycling via
 `opencues blanks-llm-model _`, or the `opencues config` menu.
 
 Read-only: no cycling required, so the blank also runs on no-cycling

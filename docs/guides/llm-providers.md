@@ -41,22 +41,28 @@ inert until selected.
 ### Cerebras models
 
 `gpt-oss-120b` is the default and best all-rounder (fastest reasoning
-path, Predicted-Outputs + prefix-cache support). Two more are first-class:
+path, Predicted-Outputs + prefix-cache support). Three more are first-class:
 
 | Model | Reasoning | Best for |
 |---|---|---|
 | `gpt-oss-120b` *(default)* | yes (medium) | everything; reasoning-heavy cues |
 | `zai-glm-4.7` | binary (off) | non-reasoning alternative |
-| `gemma-4-31b` | no | lookups + rewrites at ~2× the speed |
+| `qwen-3.8-27b` | hybrid (low) | small-model pick: lookups at parity, top rewrite accuracy |
+| `gemma-4-31b` | no | DEPRECATED by Cerebras (Public preview) — use `qwen-3.8-27b` |
 
-`gemma-4-31b` is a non-reasoning model. On the hackathon bench it tied
-`gpt-oss-120b` on fluid-blank (98.5% vs 99.3%) and edged it on
-transform-blank (~88% vs ~84%) while running ~2× faster (~196ms vs
-~423ms/call). The runtime handles its quirks automatically: it never
-sends `reasoning_effort` (would empty the response), `reasoning_format`,
-or the Predicted-Outputs `prediction` field (which Gemma 400s on). Select
-it per surface, e.g. `blanks-llm-provider: cerebras` +
-`blanks-llm-model: gemma-4-31b`. Full data:
+`qwen-3.8-27b` (Sep 2026) is the recommended small-model pick, replacing
+`gemma-4-31b` (which Cerebras deprecated to Public preview — still served,
+still supported here for back-compat, but don't build on it). qwen is a
+hybrid reasoning model; the runtime pins it to `reasoning_effort: 'low'`
+(`'none'` with `max-thinking: off`). Same-session bench 2026-09-03:
+fluid-blank 137/137 (100%, ties gpt-oss-120b) at 274ms avg; transform-blank
+424/487 (87.1%, ties gemma for top accuracy, beats gpt-oss's 85.2%) — but
+at ~1150ms avg on long rewrites vs gemma's ~410ms, so if raw rewrite
+latency matters most, gpt-oss-120b remains the better all-rounder. Like
+gemma it 400s on the Predicted-Outputs `prediction` field; the runtime
+excludes it automatically. Select it per surface, e.g.
+`blanks-llm-provider: cerebras` + `blanks-llm-model: qwen-3.8-27b`, or in
+natural language: `use qwen for blanks _`. Historical gemma data:
 `tests/results/gemma-hackathon/FINDINGS.md`.
 
 ### DeepSeek models
