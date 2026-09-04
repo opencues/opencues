@@ -1,8 +1,8 @@
 ---
 name: claude-status
-# Multi-line get() output is ONE answer (a card), not a list of
-# cycleable alternatives - join the lines into the buffer (opencues #339).
-blankMultilineIsAnswer: true
+# The four get() lines are CYCLEABLE ALTERNATIVES (yes/no, indicator,
+# component breakdown, incident context - progressively more detail),
+# not one card. The #339 sweep briefly joined them; unpinned 2026-09-03.
 type: blank
 blankKeywords: is claude down, claude status, claude api status
 blankAutoPopulate: true

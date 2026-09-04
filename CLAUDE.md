@@ -733,15 +733,15 @@ done
 | `SPEC.md` (open-standard) | `cues-spec` | 0.11 (draft) | exported as `SPEC_VERSION` from `@opencues/core` |
 | `package.json` (monorepo root) | `opencues` | 0.1.0 | private |
 | `packages/opencues-core/` | `@opencues/core` | 0.57.0 | private |
-| `packages/opencues-runtime/` | `@opencues/runtime` | 0.38.5 | private |
-| `packages/opencues-cli/` | `opencues` (real CLI) | 0.7.10 | **PUBLISHED on npm** |
+| `packages/opencues-runtime/` | `@opencues/runtime` | 0.39.0 | private |
+| `packages/opencues-cli/` | `opencues` (real CLI) | 0.7.11 | **PUBLISHED on npm** |
 | `integrations/claude-code/` | `@opencues/claude-code` | 0.2.12 | private |
 | `integrations/opencode/` | `@opencues/opencode` | 0.2.17 | private |
-| `integrations/chrome/` | `@opencues/chrome` | 0.2.200 | private |
+| `integrations/chrome/` | `@opencues/chrome` | 0.2.201 | private |
 | `integrations/gemini-cli/` | `@opencues/gemini-cli` | 0.2.11 | private |
 | `integrations/shell/` | `@opencues/shell` | 0.2.23 | private |
 | `integrations/windows/` | `@opencues/windows` | 0.2.4 | private |
-| `integrations/dsh/` | `@opencues/dsh` | 0.2.18 | **PUBLISHABLE** — dsh installs plugins from npm |
+| `integrations/dsh/` | `@opencues/dsh` | 0.2.19 | **PUBLISHABLE** — dsh installs plugins from npm |
 
 The bare `opencues` name on npm is the real CLI (`packages/opencues-cli/`, **published** — v0.6.0 superseded the retired parking placeholder's v0.0.1; the old `packages/opencues-park/` source was deleted post-publish, July 2026). The npm org grants access via the `developers` team.
 
