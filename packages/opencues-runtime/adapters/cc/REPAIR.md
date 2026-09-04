@@ -353,6 +353,43 @@ which Node ≤22 can't parse). Then byte-compare the region against
 `native-claudejs-orig.js` — doubled backslashes in text far from any
 `__oc` marker means the corruption is tweakcc's, not ours.
 
+### 16. tweakcc 4.3.3-era gained a confirmation gate + a Node parse gate that rejects valid patches (2.1.236 bump)
+
+**What broke (Sep 2026, 2.1.206 → 2.1.236, tweakcc pin `1545ff8` →
+`371a5c4`):** two sequential install failures on a pristine isolated
+fork, both in tweakcc's apply path, neither a seam problem:
+
+1. `--apply` now **aborts without `--yes`** ("--apply requires
+   confirmation before rewriting Claude Code") — new interactive
+   confirmation gate; every headless install died at step 8.
+2. With `--yes` added, the apply then **rolled itself back** at
+   tweakcc's new `assertPatchedBundleParses` gate ("SyntaxError:
+   Unexpected identifier 'n'"). The gate `node --check`s the patched
+   bundle, but CC's embedded JS uses Bun-only `using` declarations
+   that Node cannot parse — the same reason OUR verification never
+   `node --check`s the native extract (see § 15's diagnostic note).
+   The gate false-positives on a byte-perfect patch and reports
+   "customizations were not applied". Upstream #978 tracks the
+   sibling false-positive (ESM entry chunks on 2.1.245+).
+
+**Fix:** setup.sh § 8 passes `--apply --yes`, and a new § 4f drops the
+`assertPatchedBundleParses(content);` call (anchor-verified, same
+mechanism as § 4e — install aborts if the pin moves the anchor).
+Nothing is lost: our § 9 verification EXECUTES the patched artifact
+with `--version` under Bun — the only parser with authority over this
+bundle — and hard-fails the install on any real corruption.
+`scripts/check-tweakcc-pin.sh` § 3b pins the 4f disable in place.
+
+**Also learned on this bump:** CC **2.1.243+ is un-patchable for now**
+— Bun code-split binaries (~1400 chunk modules, per-chunk stale
+bytecode); our S1/S2/S3 regexes still match inside one chunk on
+2.1.259, but upstream tweakcc's repack duplicates chunks (#979) and
+its parse gate hard-blocks the ESM entry (#978). Ceiling + re-entry
+checklist: `integrations/claude-code/compat.json://code-split-ceiling`
+and UPGRADING.md § "Code-split ceiling". S7 (RenderKick) is BACK on
+2.1.236 (it was missing on 2.1.206) — pushes use the clean kickRender
+path again instead of ZWS-toggle.
+
 ---
 
 ## Architecture in one paragraph

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — Claude Code pin 2.1.206 → 2.1.236 (Anthropic `stable`); 2.1.243+ documented as blocked (`@opencues/claude-code` 0.2.11 → 0.2.12)
+
+Both pins move together per the runbook: `current-pin` 2.1.236 + `tweakcc-pin` `371a5c46c` ("Prompts for 2.1.236"). All FOUR seams hit on 2.1.236 — including **S7 (RenderKick), which was missing on 2.1.206**, so `__oc_pushHostText` returns to the clean explicit-re-render path instead of the ZWS-toggle fallback (S6 remains gone since 2.1.150; statusline stays on interval polling). The § 4e system-prompt-pipeline disable anchor verified present at the new tweakcc commit.
+
+Why not latest (2.1.260): CC **2.1.243+ builds with Bun code splitting** — a ~19KB entry stub importing ~1400 bytecode-carrying chunk modules. Our seam regexes survive (S1/S2/S3 verified present in a single chunk on 2.1.259) but the patch pipeline doesn't yet: upstream tweakcc has code-split concat support (#969) with two OPEN blockers — #978 (parse gate rejects the ESM entry chunk, every apply rolls back) and #979 (repack bloats the binary ~2× with duplicated chunks, config not applied) — plus an unverified text-vs-stale-bytecode execution question. `2.1.242` is the last pre-split version; the ceiling + re-validation checklist is documented in `compat.json://code-split-ceiling` and UPGRADING.md. 2.1.236 is Anthropic's `stable` dist-tag.
+
 ### Added — Cerebras `qwen-3.8-27b` first-class; `gemma-4-31b` deprecated by Cerebras (`@opencues/core` 0.56.1 → 0.57.0, `@opencues/runtime` 0.38.0 → 0.38.1, `opencues` CLI 0.7.8 → 0.7.9)
 
 Cerebras shipped `qwen-3.8-27b` (probed live 2026-09-03 on `/v1/models`) and moved `gemma-4-31b` to Public preview (deprecated — still served, kept here for back-compat, no longer advised). qwen is now in cerebras's `knownModels`, selectable via the config menu, `blanks-llm-model: qwen-3.8-27b`, or natural language (`use qwen for blanks _` — new fluid-config alias at parity with `gemma`/`haiku`).

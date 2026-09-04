@@ -11,7 +11,7 @@
 | Field | Value |
 |---|---|
 | Version | 0.1.0 |
-| Compatible with | Claude Code 2.1.x — tested on 2.1.110 (cli.js shape) and 2.1.150 / 2.1.158 / 2.1.170 / 2.1.206 (native bun-binary shape, 2.1.113+ cutover). Patch source is the same for both; tweakcc 4.0.13+ handles `.bun` ELF extract/repack. |
+| Compatible with | Claude Code 2.1.x up to 2.1.242 — tested on 2.1.110 (cli.js shape) and 2.1.150 / 2.1.158 / 2.1.170 / 2.1.206 / 2.1.236 (native bun-binary shape, 2.1.113+ cutover; 2.1.236 is the current pin and Anthropic's `stable` tag). Patch source is the same for both; tweakcc 4.0.13+ handles `.bun` ELF extract/repack. 2.1.243+ (Bun code-split binaries) is blocked on upstream tweakcc issues #978/#979 — see `compat.json://code-split-ceiling`. |
 | Source | `integrations/claude-code/` |
 | Runtime | `@opencues/core`, `@opencues/runtime` (installed to `~/.opencues/forks/claude-code/node_modules/@opencues/`) |
 
