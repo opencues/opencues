@@ -428,8 +428,22 @@ export class BlankLoadingAnimator {
       if (/^[\u200B\u200C\uFEFF]+$/.test(m[0])) continue;
       const slot = this._active.get(idx);
       if (slot) {
-        const color = list[slot.frameIdx % list.length];
-        if (color) out.push({ start: m.index, end: m.index + m[0].length, color, wordIndex: idx });
+        // STALENESS GUARD (Sep 2026): only paint the slot while the word at
+        // its index is still OURS — the `_` or a current frame glyph. In the
+        // render(s) between a substitution landing and the owner's stop()
+        // arriving, the slot is still `_active` but its index now addresses
+        // the SUBSTITUTED text — in `config _` the slot (idx 1, the `_`)
+        // suddenly points at `on` of `word-cues-mode on`, and the frame
+        // colour flashed red on the LAST word at the moment of resolution,
+        // identically on every host (this emitter is shared; chrome painted
+        // #ef4444, CC painted ANSI red). Same staleness question BlankFill's
+        // applyAsyncFill asks — reuse the same predicate rather than a
+        // second hand-rolled check.
+        const word = m[0].replace(/[\u200B\u200C\uFEFF]/g, "");
+        if (this.isOurSlotChar(idx, word)) {
+          const color = list[slot.frameIdx % list.length];
+          if (color) out.push({ start: m.index, end: m.index + m[0].length, color, wordIndex: idx });
+        }
       }
       idx++;
     }

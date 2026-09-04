@@ -901,32 +901,71 @@ describe('BlankLoadingAnimator.isOurSlotChar — staleness-check helper', () => 
 });
 
 describe('getActiveColoredRanges — painted-vs-logical coordinate mapping', () => {
+  // Fixtures paint the slot word as `_` — what the buffer genuinely holds
+  // while a slot animates (the animator only ever cycles `_` ↔ frame
+  // glyphs). The old fixtures used ordinary words there, which the Sep
+  // 2026 staleness guard rightly refuses to colour.
   it('maps the colour range to PAINTED (ctx) coords when a wrap newline shifts it', () => {
     // Slot word index 2 is animating. The logical buffer the slot index is
     // relative to has no wrap; the painted ctx.text has a soft-wrap \n inserted
     // BEFORE word 2, shifting its position +1. The colour range must land on the
     // word in PAINTED coords, not logical (the "loading colour 1 char too early"
     // wrap misalignment).
-    const { adapter } = makeAdapter('aa bb cc dd');
+    const { adapter } = makeAdapter('aa bb _ dd');
     const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', ansiColors: () => ['red'] });
-    a.start(2); // word "cc"
-    const logical = 'aa bb cc dd';              // word2 "cc" at [6,8)
+    a.start(2); // the `_` slot
+    const logical = 'aa bb _ dd';               // word2 `_` at [6,7)
     const wrapAt = 5;
     const painted = logical.slice(0, wrapAt) + '\n' + logical.slice(wrapAt); // soft-wrap INSERT
     const ranges = a.getActiveColoredRanges(painted, 'ansi', logical);
     expect(ranges.length).toBe(1);
-    // "cc" shifted +1 in painted coords (one inserted \n before it).
-    const ccStart = painted.indexOf('cc');
-    expect(ccStart).toBe(7); // 6 logical + 1 wrap insert
-    expect(ranges[0]).toMatchObject({ start: ccStart, end: ccStart + 2, color: 'red', wordIndex: 2 });
+    // `_` shifted +1 in painted coords (one inserted \n before it).
+    const usStart = painted.indexOf('_');
+    expect(usStart).toBe(7); // 6 logical + 1 wrap insert
+    expect(ranges[0]).toMatchObject({ start: usStart, end: usStart + 1, color: 'red', wordIndex: 2 });
   });
 
   it('identity-maps when painted === logical (no host inserts)', () => {
-    const { adapter } = makeAdapter('aa bb cc');
+    const { adapter } = makeAdapter('aa _ cc');
     const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', ansiColors: () => ['red'] });
     a.start(1);
-    const ranges = a.getActiveColoredRanges('aa bb cc', 'ansi');
-    expect(ranges[0]).toMatchObject({ start: 3, end: 5, wordIndex: 1 });
+    const ranges = a.getActiveColoredRanges('aa _ cc', 'ansi');
+    expect(ranges[0]).toMatchObject({ start: 3, end: 4, wordIndex: 1 });
+  });
+
+  // ── Staleness guard (Sep 2026 — "last character flashes red at the
+  // moment of resolution"). Between a substitution landing and the
+  // owner's stop() arriving, the slot is still _active but its word
+  // index addresses the SUBSTITUTED text: `config _`'s slot (idx 1)
+  // suddenly pointed at `on` of `word-cues-mode on` and painted the
+  // last word frame-red for a render, identically on every host (the
+  // emitter in boot-common is shared). Only a word that is still OURS —
+  // `_` or a current frame glyph (isOurSlotChar, the same predicate the
+  // substitution paths use) — may be coloured.
+  it('does NOT colour a substituted word still holding a stale slot index', () => {
+    const { adapter } = makeAdapter('config _');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', ansiColors: () => ['red'] });
+    a.start(1); // the `_` of `config _`
+    // The substitution replaced the buffer; stop() hasn't arrived yet.
+    const ranges = a.getActiveColoredRanges('word-cues-mode on', 'ansi');
+    expect(ranges).toEqual([]); // `on` is not ours — no red flash
+  });
+
+  it('still colours the slot while it shows a frame glyph', () => {
+    const { adapter } = makeAdapter('config -');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', ansiColors: () => ['red'] });
+    a.start(1);
+    const ranges = a.getActiveColoredRanges('config -', 'ansi'); // `-` is a bounce frame
+    expect(ranges.length).toBe(1);
+    expect(ranges[0]).toMatchObject({ start: 7, end: 8, wordIndex: 1 });
+  });
+
+  it('a slot word carrying a ZWS render-kick still counts as ours', () => {
+    const { adapter } = makeAdapter('config _');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', ansiColors: () => ['red'] });
+    a.start(1);
+    const ranges = a.getActiveColoredRanges('config _​', 'ansi');
+    expect(ranges.length).toBe(1);
   });
 });
 
