@@ -58,7 +58,30 @@ text-level patch surface is identical; only the install pipeline differs.
 The compat manifest at `integrations/claude-code/compat.json` is the source of
 truth for what we've tested.
 
-## The seam inventory (current as of 2.1.206)
+## ⚠ Code-split ceiling — do not bump past 2.1.242 (Sep 2026)
+
+CC **2.1.243+** builds with Bun code splitting: the entry module is a
+~19KB stub importing ~1400 `chunk-<hash>.js` sibling modules, each
+carrying its own precompiled bytecode (`@bun @bytecode`). Our required
+seams survive the split (S1/S2/S3 all verified present in a single
+chunk on 2.1.259), but the PATCH PIPELINE doesn't yet:
+
+- tweakcc's code-split concat support landed (their #969), but as of
+  2026-09-04 two upstream blockers are OPEN: **#978** (the 4.3.3 parse
+  gate writes the bundle to `.cjs`, so the new ESM entry chunk always
+  fails `node --check` and every apply rolls back) and **#979** (repack
+  on a code-split binary bloats 392MB → 694MB with duplicated chunks
+  and applies no config).
+- Even with both fixed, a bump past 2.1.242 MUST verify that Bun
+  executes the patched module TEXT rather than the module's stale
+  bytecode — the repack keeps bytecode untouched, and a bytecode win
+  would make our patch silently inert (the worst failure class we have).
+
+`2.1.242` is the last pre-split version; `2.1.236` (current pin) is
+Anthropic's `stable` dist-tag. Track the two upstream issues; when they
+close, re-run this runbook end-to-end on an isolated fork.
+
+## The seam inventory (current as of 2.1.236)
 
 The patch is **anchored on five seams** in cli.js. Same-patch and same-minor
 bumps usually leave all five intact; cross-minor refactors can move any of
@@ -84,7 +107,7 @@ older behavior.
 - The CC fork at `~/.opencues/forks/claude-code/` (or `~/.opencues/forks/claude-code-150/` for the
   native-binary install). If neither exists, the install will create it.
 - tweakcc is pinned to an **exact commit** in `compat.json:tweakcc-pin`
-  (currently `1545ff8` — upstream's "Prompts for 2.1.206" commit);
+  (currently `371a5c4` — upstream's "Prompts for 2.1.236" commit);
   setup.sh clones + checks out that commit and refuses to run unpinned. Never "just `git pull`" a tweakcc
   clone into service — issue #276 (July 2026) was an unpinned clone
   pulling a tweakcc main whose system-prompt pipeline corrupted BOTH

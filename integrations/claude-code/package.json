@@ -1,11 +1,11 @@
 {
   "name": "@opencues/claude-code",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "license": "Apache-2.0",
   "private": true,
   "description": "OpenCues for Claude Code — native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",
   "compatibility": {
-    "claude-code": "2.1.110 - 2.1.x"
+    "claude-code": "2.1.110 - 2.1.242"
   },
   "bin": {
     "opencues-claude-code": "./bin/install.cjs"

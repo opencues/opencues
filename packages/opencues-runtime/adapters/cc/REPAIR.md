@@ -353,6 +353,81 @@ which Node ≤22 can't parse). Then byte-compare the region against
 `native-claudejs-orig.js` — doubled backslashes in text far from any
 `__oc` marker means the corruption is tweakcc's, not ours.
 
+### 16. tweakcc 4.3.3-era gained a confirmation gate + a Node parse gate that rejects valid patches (2.1.236 bump)
+
+**What broke (Sep 2026, 2.1.206 → 2.1.236, tweakcc pin `1545ff8` →
+`371a5c4`):** two sequential install failures on a pristine isolated
+fork, both in tweakcc's apply path, neither a seam problem:
+
+1. `--apply` now **aborts without `--yes`** ("--apply requires
+   confirmation before rewriting Claude Code") — new interactive
+   confirmation gate; every headless install died at step 8.
+2. With `--yes` added, the apply then **rolled itself back** at
+   tweakcc's new `assertPatchedBundleParses` gate ("SyntaxError:
+   Unexpected identifier 'n'"). The gate `node --check`s the patched
+   bundle, but CC's embedded JS uses Bun-only `using` declarations
+   that Node cannot parse — the same reason OUR verification never
+   `node --check`s the native extract (see § 15's diagnostic note).
+   The gate false-positives on a byte-perfect patch and reports
+   "customizations were not applied". Upstream #978 tracks the
+   sibling false-positive (ESM entry chunks on 2.1.245+).
+
+**Fix:** setup.sh § 8 passes `--apply --yes`, and a new § 4f drops the
+`assertPatchedBundleParses(content);` call (anchor-verified, same
+mechanism as § 4e — install aborts if the pin moves the anchor).
+Nothing is lost: our § 9 verification EXECUTES the patched artifact
+with `--version` under Bun — the only parser with authority over this
+bundle — and hard-fails the install on any real corruption.
+`scripts/check-tweakcc-pin.sh` § 3b pins the 4f disable in place.
+
+**Also learned on this bump:** CC **2.1.243+ is un-patchable for now**
+— Bun code-split binaries (~1400 chunk modules, per-chunk stale
+bytecode); our S1/S2/S3 regexes still match inside one chunk on
+2.1.259, but upstream tweakcc's repack duplicates chunks (#979) and
+its parse gate hard-blocks the ESM entry (#978). Ceiling + re-entry
+checklist: `integrations/claude-code/compat.json://code-split-ceiling`
+and UPGRADING.md § "Code-split ceiling". S7 (RenderKick) is BACK on
+2.1.236 (it was missing on 2.1.206) — pushes use the clean kickRender
+path again instead of ZWS-toggle.
+
+### 17. CC renders tall buffers through a SCROLLED VIEWPORT — the S3 render string is a WINDOW, span coords are absolute (Sep 2026)
+
+**What broke:** `draft email _`'s multi-line rewrite registered its
+DynDef correctly but never went grey and looked unselectable — on
+EVERY CC version (reproduced byte-identically on 2.1.206 and 2.1.236
+during the pin-bump field test; a runtime bug the new pin merely made
+visible). The S3 seam hands `applyRender` only the input zone's
+VISIBLE lines of a buffer taller than the zone (log signature:
+`textLen:144` vs `ctxLen:125`, first line absent from the preview),
+while DynDef/cue spans are full-buffer coordinates. The ctx was built
+from the slice, so `defSpanLive` read every scrolled span as stale —
+the guard doing its job against the wrong text — and dim + inline
+note + highlight silently dropped. Short buffers fit the viewport,
+so every unit test, harness scenario, and everyday transform looked
+fine, indefinitely.
+
+**Fix:** `adapters/cc/v2.1/viewport.ts` (opencues #432) — locate the
+rendered slice inside the full buffer (CC appends ONE cursor-cell pad
+space that isn't buffer content; ambiguity resolves toward the
+occurrence containing the caret), build the handler ctx from the FULL
+text, then translate every directive family back into slice
+coordinates and clip off-screen ranges. No contiguous match
+(soft-wrap inserts) → pre-fix behaviour byte-for-byte.
+
+**Detection net (opencues #433):** the bridge dump's `lastRender`
+block records the REAL render pipeline's last invocation — the
+bridge's `render` hook RECOMPUTES on the full buffer, a different
+code path that stayed green through this whole class — and DimRender
+debug-logs a live-def-painted-nothing invariant. Harness scenario 130
+(tall fix-typos fixture) pins `viewportOffset > 0` + `rangeCount > 0`
++ `painted`.
+
+**Rule of thumb:** any new range-bearing directive field MUST be
+added to `translateDirectivesToViewport`, or it paints at wrong
+offsets on scrolled buffers; and any "works everywhere except tall
+content" paint report starts with comparing `textLen` vs `ctxLen` in
+the applyRender log line.
+
 ---
 
 ## Architecture in one paragraph
