@@ -162,7 +162,7 @@ describe('DimRender + render pipeline (integration)', () => {
     expect(out).toBe(`alpha beta \x1b[97mgamma\x1b[39m`);
   });
 
-  it('dims the consume-all span as a single contiguous range', () => {
+  it('consume-all span: caret inside PROMOTES to highlight (Sep 2026 — parity with transform spans); caret-less ctx keeps the contiguous dim', () => {
     const adapter = new MockAdapter();
     adapter.pushText('Improved alpha bravo');
     const hlState = new HighlightState();
@@ -170,8 +170,18 @@ describe('DimRender + render pipeline (integration)', () => {
     const ca = new SpanFillState();
     ca.set({ index: 0, alternatives: ['Improved alpha bravo', 'Other'], currentAltIndex: 0, spanLength: 3 }, 'Improved alpha bravo');
     const dim = new DimRender(adapter, hlState, dynDefs, undefined, ca);
+    // Caret inside the (whole-buffer) span → auto-select, same as a
+    // transform-blank whole-buffer def has always behaved. This supersedes
+    // the pre-Sep-2026 pin that expected the span to stay dim under the
+    // caret — the note switched with the caret but the paint didn't.
     const out = dim.compute({ text: 'Improved alpha bravo', cursor: 0, externalHighlights: [] });
-    expect(out?.dimRanges).toEqual([{ start: 0, end: 20 }]);
+    expect(out?.highlight).toEqual({ start: 0, end: 20 });
+    expect(out?.dimRanges).toEqual([]);
+    // No caret signal (cursor < 0 — hosts that don't report one) → the
+    // consume-all dim stays the single contiguous range it always was.
+    const noCaret = dim.compute({ text: 'Improved alpha bravo', cursor: -1, externalHighlights: [] });
+    expect(noCaret?.dimRanges).toEqual([{ start: 0, end: 20 }]);
+    expect(noCaret?.highlight).toBeUndefined();
   });
 
   it('active word inside span expands highlight to whole span; no inner dim', () => {
@@ -905,6 +915,15 @@ blankScript: ./vol.sh
     // New model: list-blank note lists the cycle DESTINATIONS `N | v | v`
     // (the tip-label is dropped — the current value is in the buffer).
     expect(out?.inlineNote?.text).toBe('3 | 60% | 80%');
+    // Auto-select (Sep 2026): caret-in-span PROMOTES the filled span from dim
+    // to highlight — the same "you're on it" treatment transform/fluid spans
+    // have always had. Pre-fix the note switched but the span stayed dim.
+    expect(out?.highlight).toEqual({ start: 11, end: 14 });
+    expect(out?.dimRanges ?? []).not.toContainEqual({ start: 11, end: 14 });
+    // Caret OUTSIDE the span → no promotion, span stays dim.
+    const outFar = dim.compute({ text: buf, cursor: 1, externalHighlights: [] });
+    expect(outFar?.highlight).toBeUndefined();
+    expect(outFar?.dimRanges).toContainEqual({ start: 11, end: 14 });
   });
 
   it('SpanFillState with NO tip emits a note = its cycle options', async () => {
@@ -952,6 +971,12 @@ blankScript: ./vol.sh
     expect(onSel?.inlineNote?.text).toBe(def.tip);
     expect(onSel?.inlineNote?.spanStart).toBe(0);
     expect(onSel?.inlineNote?.spanEnd).toBe(selEnd);
+    // Auto-select (Sep 2026): the PART the caret is on promotes dim →
+    // highlight, mirroring the note's cursor-awareness. The other part
+    // (the satellite) stays dim.
+    expect(onSel?.highlight).toEqual({ start: 0, end: selEnd });
+    expect(onSel?.dimRanges ?? []).not.toContainEqual({ start: 0, end: selEnd });
+    expect(onSel?.dimRanges).toContainEqual({ start: selEnd + 1, end: buf.length });
     // Caret on the SATELLITE (the value) → note = the tip for THAT value (if the
     // registry defines one), anchored to the satellite part.
     const onSat = dim.compute({ text: buf, cursor: selEnd + 2, externalHighlights: [] });
@@ -959,6 +984,9 @@ blankScript: ./vol.sh
     if (valueTip) {
       expect(onSat?.inlineNote?.text).toBe(valueTip);
       expect(onSat?.inlineNote?.spanStart).toBe(selEnd + 1);
+      // …and the satellite part promotes while the selector stays dim.
+      expect(onSat?.highlight).toEqual({ start: selEnd + 1, end: buf.length });
+      expect(onSat?.dimRanges).toContainEqual({ start: 0, end: selEnd });
     }
   });
 
