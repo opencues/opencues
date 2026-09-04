@@ -456,7 +456,15 @@ export class DimRender {
         if (sw && ew && noteText) {
           const s = toCtx ? toCtx.start(sw.start) : sw.start;
           const e = toCtx ? toCtx.end(ew.end) : ew.end;
-          if (ctx.cursor >= s && ctx.cursor <= e) inlineNote = { spanStart: s, spanEnd: e, text: noteText, hint: isHintSuppressed(`sf:${span.tip ?? span.alternatives[0] ?? ''}`) ? undefined : '(underscore to cycle)' };
+          if (ctx.cursor >= s && ctx.cursor <= e) {
+            inlineNote = { spanStart: s, spanEnd: e, text: noteText, hint: isHintSuppressed(`sf:${span.tip ?? span.alternatives[0] ?? ''}`) ? undefined : '(underscore to cycle)' };
+            // Auto-select (Sep 2026): the caret-in-span promotion the DynDefs
+            // branch has always had — the note switched with the caret but the
+            // span stayed DIM, so a filled list/script blank (claude-status,
+            // volume) never read as "you're on it". LOGICAL coords: the shared
+            // promotion below handles the dim-splice + ctx remap.
+            cursorSpanLogical = { start: sw.start, end: ew.end };
+          }
         }
       }
       // Selector-satellite: the note is CURSOR-POSITION-AWARE, exactly like the
@@ -485,6 +493,12 @@ export class DimRender {
               spanEnd: toCtx ? toCtx.end(ne) : ne,
               text: ssTip,
             };
+            // Auto-select (Sep 2026): promote the PART the caret is on —
+            // selector or satellite, matching the note's own cursor-awareness
+            // — from dim to highlight. Each part's dim range was pushed with
+            // exactly these bounds, so the shared promotion's exact-match
+            // splice removes just that part; the other part stays dim.
+            cursorSpanLogical = { start: ns, end: ne };
           }
         }
       }
