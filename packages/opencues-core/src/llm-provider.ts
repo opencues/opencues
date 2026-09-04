@@ -2113,7 +2113,19 @@ export function describeLLMCall(
   reqReasoning?: 'none' | 'low' | 'medium' | 'high',
   overrides?: { maxTokens?: number; temperature?: number },
 ): string {
-  const resolved = reqReasoning ?? provider.defaultReasoningEffort ?? 'off';
+  // Mirror the wire's actual resolution (model-thinking ceiling table),
+  // not just the provider default — otherwise the line lies for any
+  // model whose ceiling diverges from the default (cerebras
+  // qwen-3.8-27b logged "medium" while the wire sent "low"; found via
+  // the Sep 2026 agentic run). `maxThinking` isn't threaded here, so
+  // the displayed value assumes the default `on` tier — the common case
+  // this line exists to verify.
+  const resolved = resolveReasoningEffort({
+    providerId: provider.id,
+    model,
+    explicit: reqReasoning,
+    providerDefault: provider.defaultReasoningEffort,
+  }) ?? 'off';
   // Surface per-source / per-feature overrides in the log line so
   // operators can SEE that a custom budget or temperature is in
   // effect — otherwise the override fires silently and a misconfig

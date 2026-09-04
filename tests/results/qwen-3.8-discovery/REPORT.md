@@ -81,6 +81,36 @@ blanks AND cues scopes; `use/switch gemma` → cerebras/gemma-4-31b
 the ollama misroute — a deprecated alias must degrade safely, not
 reroute to a provider the user doesn't run.
 
+## Live-host validation (2026-09-04, headless opencode, isolated home pinned to qwen)
+
+23 scenarios driven against the real runtime with every bucket on
+cerebras/qwen-3.8-27b. **16 passed** — including the full transform /
+fluid / replace-parse / config-intent / selector-satellite / sentence-cue
+(passive+cycle+cede) / session-contradiction / bill-split contracts, and
+the three-trigger chain with no double-fire. Cerebras prefix caching
+confirmed live on qwen: 96.5% cached tokens on the fluid prompt.
+
+Failure triage (2 env, 2 qwen, 0 runtime bugs):
+
+| Scenario | Verdict |
+|---|---|
+| 15/16 sentence-cue (first run) | ENV — shipped `more-formal` now carries `not-on-host: claude-code, gemini-cli, opencode`; the cue never builds on opencode for ANY model. Unscoping it in the test home → 3/3 pass on qwen (incl. `ALT: NONE` cede discipline). Scenarios predate the host-scoping. |
+| 119 fluid-blank WIPE | ENV — `reddit com _` is claimed by the STOCKS blank (`reddit` → RDDT via deterministic shape match, 0 LLM); fluid-blank never runs, on any model. Deleting the home's `blanks/stocks/` did NOT remove the blank (baked defaults keep it — blank count stayed 99), so the scenario is un-runnable in a stocks-enabled home. |
+| 112 contradiction weekday-date | **QWEN** — the contradiction EXTRACT (cues bucket) returns no typed claim for the weekday-date sentence; Tier-0 verify is deterministic so a correct parse must flag. Control: pass in 2.4s on groq/gpt-oss. Reproduced twice on qwen. Consistent with the wrapper pinning gpt-oss as the validation model. |
+| 121 ask-cues | **QWEN latency** — the cue EMITTED correctly (sensible question, 3 options) but ~36s after inject, 1.6s past the 30s budget; gpt-oss lands it in 6.9s. Content fine, throughput isn't. |
+
+Also found + fixed during triage: `describeLLMCall` logged
+`reasoning=medium` for qwen (it read the provider default, not the
+model-thinking ceiling) while the wire correctly sent `low` — the debug
+line now runs the same resolution as the wire.
+
+**Net:** no runtime bugs; qwen holds every interactive contract. Its weak
+spots agentically match the bench: background whole-buffer analysis calls
+(contradiction extract, session-cue/ask) are where its parse quality and
+throughput lag gpt-oss — and those ride the cues bucket. A config that
+keeps `cues` on gpt-oss-120b and puts blanks on qwen gets the best of
+both.
+
 ## Raw logs
 
 `fluid-*.txt` (fluid-blank), `transform-*.txt` (transform-blank),
