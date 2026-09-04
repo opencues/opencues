@@ -850,6 +850,7 @@ describe('hasLikelyIntent — model-alias parity (gemma ↔ haiku)', () => {
     assert.strictEqual(hasLikelyIntent('use gemma for blanks _'), true);
     assert.strictEqual(hasLikelyIntent('use gemma for cues _'), true);
     assert.strictEqual(hasLikelyIntent('use haiku for blanks _'), true);
+    assert.strictEqual(hasLikelyIntent('use qwen for blanks _'), true);
   });
 
   it('trips on BARE model-name phrasings (no bucket word) — gemma at parity with haiku', () => {
@@ -859,6 +860,8 @@ describe('hasLikelyIntent — model-alias parity (gemma ↔ haiku)', () => {
     assert.strictEqual(hasLikelyIntent('use gemma _'), true);
     assert.strictEqual(hasLikelyIntent('use haiku _'), true);
     assert.strictEqual(hasLikelyIntent('switch to gemma _'), true);
+    assert.strictEqual(hasLikelyIntent('use qwen _'), true);
+    assert.strictEqual(hasLikelyIntent('switch to qwen _'), true);
   });
 
   it('does NOT trip on ordinary lookup/transform buffers with no model/setting token', () => {

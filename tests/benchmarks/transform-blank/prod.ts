@@ -134,6 +134,10 @@ function buildSource(providerId: string): TransformBlankSource {
     endpoint: p.endpoint,
     apiKey: p.key,
     model: p.model,
+    // OPENCUES_BENCH_MAX_THINKING=off mirrors `max-thinking: off` — lets a
+    // sweep measure a hybrid-reasoning model's reduced tier (e.g. cerebras
+    // qwen-3.8-27b low vs none) through the production resolution path.
+    maxThinking: process.env.OPENCUES_BENCH_MAX_THINKING !== 'off',
   });
 }
 

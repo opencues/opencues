@@ -1,6 +1,6 @@
 {
   "name": "opencues",
-  "version": "0.7.8",
+  "version": "0.7.9",
   "license": "Apache-2.0",
   "description": "OpenCues enables native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",
   "keywords": [

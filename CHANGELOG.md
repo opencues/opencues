@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Cerebras `qwen-3.8-27b` first-class; `gemma-4-31b` deprecated by Cerebras (`@opencues/core` 0.56.1 → 0.57.0, `@opencues/runtime` 0.38.0 → 0.38.1, `opencues` CLI 0.7.8 → 0.7.9)
+
+Cerebras shipped `qwen-3.8-27b` (probed live 2026-09-03 on `/v1/models`) and moved `gemma-4-31b` to Public preview (deprecated — still served, kept here for back-compat, no longer advised). qwen is now in cerebras's `knownModels`, selectable via the config menu, `blanks-llm-model: qwen-3.8-27b`, or natural language (`use qwen for blanks _` — new fluid-config alias at parity with `gemma`/`haiku`).
+
+Wire shape: qwen is a **hybrid reasoning model** — it thinks by default when `reasoning_effort` is absent, so the `isReasoningModelName` gate now matches `qwen-3.8` and `model-thinking.ts` pins it to `low` (ceiling) / `none` (`max-thinking: off`) — the same forward-to-control trap zai-glm-4.7 taught us. Like gemma it 400s on the Predicted-Outputs `prediction` field; the existing capabilities allowlist already excludes it. Pinned by `llm-provider.qwen.test.ts`.
+
+Same-session bench, 2026-09-03 (judge pinned groq gpt-oss-120b, parallel 4): **fluid-blank 137/137 (100%) at `low`, 274ms avg** — ties gpt-oss-120b (137/137 @ 288ms), beats gemma (136/137 @ 245ms); `none` drops to 135/137. **transform-blank 424/487 (87.1%) at `low`, 1153ms avg** — ties gemma (424/487 @ 413ms) for top accuracy, beats gpt-oss-120b (415/487 @ 531ms), but ~2× gpt-oss's latency on long rewrites. Verdict: recommended small-model pick (lookup-heavy configs especially); `gpt-oss-120b` stays the cerebras default. Raw runs: `tests/results/qwen-3.8-discovery/`.
+
+Docs switched from gemma advice to qwen: `docs/guides/llm-providers.md`, `docs/architecture/{llm-routing,cerebras,max-thinking}.md`, `docs/features/max-thinking.md`, `defaults/blanks/model/BLANK.md`, `opencues models` hint (CLI 0.7.9). Runtime 0.38.1 is a test-only pin update (the `list models` line now includes qwen).
+
 ### Fixed — FluidBlank can WIPE a bare terminal lookup with no host field declaration (`@opencues/core` 0.55.2 → 0.56.0; `@opencues/dsh` 0.2.17 → 0.2.18 — inline bundle regenerated with this core)
 
 `ffmpeg command to convert a video to web-ready mp4 _` used to always FILL — the ask stayed on screen and only `_` was replaced — because WIPE (replacing the whole field with the answer) required a host to declare the field `singleLine`, and no native host adapter does that; it's a browser field shape. The README's hero video claimed WIPE for exactly this case and was wrong.

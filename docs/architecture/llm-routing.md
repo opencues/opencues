@@ -148,18 +148,21 @@ use claude opus for auditors _        → auditors-llm-provider: anthropic
 route everything to gemini _          → blanks-llm-provider: gemini (blanks = default scope)
 switch to anthropic _                 → blanks-llm-provider: anthropic
 use cerebras _                        → blanks-llm-provider: cerebras
-use gemma for blanks _                → blanks-llm-provider: cerebras
-                                        blanks-llm-model: gemma-4-31b
+use qwen for blanks _                 → blanks-llm-provider: cerebras
+                                        blanks-llm-model: qwen-3.8-27b
 ```
 
-> **Gemma on Cerebras (private preview).** `gemma-4-31b` is in cerebras's
-> `knownModels`, so it's selectable by name — via the `opencues config`
-> menu (`blanks-llm-model`) or natural language (`use gemma for blanks _`,
-> `use gemma for cues _`) — exactly like `haiku` on anthropic. It is
-> **NOT** the cerebras default (`gpt-oss-120b` stays the default) while it
-> is in preview. It benches faster than gpt-oss-120b with comparable
-> accuracy on lookups/rewrites, but trails on multilingual transforms
-> (`tests/results/gemma-benchmark-2026-07-01/FINDINGS.md`).
+> **Qwen / Gemma on Cerebras.** `qwen-3.8-27b` and `gemma-4-31b` are in
+> cerebras's `knownModels`, so they're selectable by name — via the
+> `opencues config` menu (`blanks-llm-model`) or natural language
+> (`use qwen for blanks _`, `use gemma for cues _`) — exactly like
+> `haiku` on anthropic. Neither is the cerebras default (`gpt-oss-120b`
+> stays the default). `gemma-4-31b` was DEPRECATED by Cerebras (moved to
+> Public preview, Sep 2026): the alias keeps working for back-compat,
+> but the recommended small-model pick is now `qwen-3.8-27b` — it ties
+> gemma on transform accuracy (87.1%, same-session bench 2026-09-03) and
+> hits 137/137 on fluid-blank, though it's slower than gemma on long
+> rewrites (~1150ms vs ~410ms avg).
 
 ### What the classifier may emit
 

@@ -96,6 +96,26 @@ generative work (conditional, code, creative / tone, multilingual,
 context-referring). Usable as a private default for the common case; not the
 model for complex transforms.
 
+**Cerebras `qwen-3.8-27b` — 2026-09-03 discovery sweep (487-case transform suite + 137-case fluid suite):**
+
+```
+                                    fluid fused (acc / ms)   transform fused (acc / ms)
+──────────────────────────────────────────────────────────────────────────────────────────
+cerebras gpt-oss-120b (baseline)    100.0% / 288             85.2% /  531
+cerebras gemma-4-31b  · none        99.3%  / 245             87.1% /  413
+cerebras qwen-3.8-27b · low         100.0% / 274 ★           87.1% / 1153
+cerebras qwen-3.8-27b · none        98.5%  / 279             83.2% / 1080
+```
+
+Same-session, pinned-Groq judge, parallel 4. `qwen-3.8-27b` (hybrid
+reasoning; MODEL_THINKING pins `low`/`none`) is the small-model pick
+replacing `gemma-4-31b` (DEPRECATED by Cerebras — Public preview): it ties
+gemma for top transform accuracy and gpt-oss for fluid, but streams ~2×
+slower than gpt-oss on long rewrites — so `gpt-oss-120b` stays the default.
+The latency is throughput, not thinking (`none` saves only ~73ms and costs
+3.9pp on transform). Full report:
+[`../results/qwen-3.8-discovery/REPORT.md`](../results/qwen-3.8-discovery/REPORT.md).
+
 **Fluid-blank (137 cases) — accuracy / per-case ms / $-per-correct:**
 
 ```

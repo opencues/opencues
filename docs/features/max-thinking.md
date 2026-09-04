@@ -20,6 +20,7 @@ ever think) and a reduced **off** level:
 | Cerebras gpt-oss-120b       | medium         | low             |
 | Cerebras zai-glm-4.7        | none           | none            |
 | Cerebras gemma-4-31b        | none           | none            |
+| Cerebras qwen-3.8-27b       | low            | none            |
 | Groq gpt-oss-120b / 20b     | low            | low             |
 | OpenAI gpt-5.4 / mini / nano| low            | none            |
 | OpenRouter gpt-oss          | low            | low             |
@@ -29,7 +30,10 @@ ever think) and a reduced **off** level:
 `zai-glm-4.7`'s reasoning knob is binary in practice (`none` cleanly
 disables it; any other value burns extra reasoning tokens regardless
 of level), so both tiers pin `none`. `gemma-4-31b` is non-reasoning
-entirely. Groq/OpenRouter/OpenCode Zen's gpt-oss models reject
+entirely. `qwen-3.8-27b` is hybrid — it thinks by default, `low`
+benches at 100% on fluid-blank with negligible latency cost, and
+`none` cleanly disables thinking for `off`.
+Groq/OpenRouter/OpenCode Zen's gpt-oss models reject
 `reasoning_effort: 'none'` outright (HTTP 400) — their floor is `low`,
 not `none`.
 

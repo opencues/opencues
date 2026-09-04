@@ -111,7 +111,7 @@ describe('ModelBlank — list models', () => {
   it('keyword "models" lists the current provider first with the active model starred', async () => {
     const blank = makeBlank('llm-provider: cerebras', { CEREBRAS_API_KEY: 'k' });
     const lines = (await blank.get('models')).split('\n');
-    expect(lines[0]).toBe('cerebras (current): gpt-oss-120b*, zai-glm-4.7, gemma-4-31b');
+    expect(lines[0]).toBe('cerebras (current): gpt-oss-120b*, zai-glm-4.7, gemma-4-31b, qwen-3.8-27b');
     // Keyless env-key providers land after usable ones and are tagged.
     const gemini = lines.find((l) => l.startsWith('gemini'));
     expect(gemini).toContain('(no key)');
