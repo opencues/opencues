@@ -196,6 +196,59 @@ function disable(scope, opts = {}) {
   return { ok: true, action: 'cleared', message: `Cleared statusLine from ${info.file} (was: ${info.currentCmd}; backup at ${info.file}.bak.cues-statusline)` };
 }
 
+// Does the script a statusLine.command points at actually exist?
+// The command is a shell string ("bash /path/x.sh", "/path/x.sh --flag"),
+// so we stat every absolute-path token. Tri-state:
+//   'exists'  — at least one absolute-path token resolves
+//   'missing' — absolute-path token(s) present, none resolve (the
+//               dead-script class: a retired fork layout like
+//               ~/claude-code-cues left settings pointing at nothing,
+//               and CC silently paints NO statusline — Sep 2026)
+//   'unknown' — no absolute-path token (bare command on $PATH); not ours
+//               to judge, never flag.
+function commandScriptExists(cmd) {
+  if (typeof cmd !== 'string' || !cmd.trim()) return 'unknown';
+  const home = os.homedir();
+  const tokens = cmd.split(/\s+/).map((t) => t.replace(/^["']|["']$/g, ''));
+  const pathTokens = tokens
+    .map((t) => (t.startsWith('~/') ? path.join(home, t.slice(2)) : t))
+    .filter((t) => path.isAbsolute(t));
+  if (pathTokens.length === 0) return 'unknown';
+  return pathTokens.some((t) => fs.existsSync(t)) ? 'exists' : 'missing';
+}
+
+// Machine-wide sweep for dead statusLine commands. CC registers every
+// project dir it has run in under ~/.claude.json `projects`; each may
+// carry its own .claude/settings.json whose statusLine SHADOWS the
+// user-level one for sessions launched there. A stale entry (e.g. the
+// retired ~/claude-code-cues layout) means "no statusline, only in this
+// one directory" — invisible to a cwd-scoped doctor run. Returns only
+// the broken rows: { dir, file, cmd, opencues } with cmd's script missing.
+function auditProjectStatuslines() {
+  const out = [];
+  let reg;
+  try {
+    reg = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude.json'), 'utf8'));
+  } catch {
+    return out; // no registry / unreadable — nothing to sweep
+  }
+  for (const dir of Object.keys(reg?.projects ?? {})) {
+    const file = path.join(dir, '.claude', 'settings.json');
+    let data;
+    try {
+      data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch {
+      continue; // no project settings / unreadable — the cwd-scoped row covers parse errors
+    }
+    const cmd = data?.statusLine?.command;
+    if (typeof cmd !== 'string' || !cmd) continue;
+    if (commandScriptExists(cmd) === 'missing') {
+      out.push({ dir, file, cmd, opencues: isOpenCuesPath(cmd) });
+    }
+  }
+  return out;
+}
+
 module.exports = {
   resolveStatuslineScript,
   isOpenCuesPath,
@@ -203,4 +256,6 @@ module.exports = {
   inspect,
   enable,
   disable,
+  commandScriptExists,
+  auditProjectStatuslines,
 };
