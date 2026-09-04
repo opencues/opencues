@@ -9,7 +9,7 @@
 
 import type { ColoredRange, Range, RenderDirectives } from './adapter';
 import { ansiColorToOpenEscape, ANSI_FG_RESET } from './modules/blank-loading';
-import { codeUnitsToCells } from './util/cell-width';
+import { codeUnitsToCells, cellWidthForCodePoint } from './util/cell-width';
 
 /**
  * Sort + merge overlapping or touching ranges. Empty ranges (start >= end)
@@ -141,10 +141,49 @@ export function inlineNoteBoxColumn(text: string, spanStart: number): number {
  *   buffer column — added back so the note stays under the span. Hosts with a
  *   uniform left margin pass 0 (the default).
  */
+/**
+ * Cell-aware truncation: longest prefix of `text` fitting `maxCells` cells
+ * INCLUDING a trailing `…` when anything was cut. CJK/wide glyphs count 2
+ * cells (same table as codeUnitsToCells), so the clamp never overshoots on
+ * mixed-width text. maxCells <= 1 → just the ellipsis.
+ */
+export function truncateToCells(text: string, maxCells: number): string {
+  const total = codeUnitsToCells(text, text.length);
+  if (total <= maxCells) return text;
+  if (maxCells <= 1) return '…';
+  const budget = maxCells - 1; // reserve the ellipsis cell
+  let cells = 0;
+  let i = 0;
+  while (i < text.length) {
+    const cp = text.codePointAt(i)!;
+    const w = cellWidthForCodePoint(cp);
+    if (cells + w > budget) break;
+    cells += w;
+    i += cp > 0xffff ? 2 : 1;
+  }
+  return text.slice(0, i) + '…';
+}
+
+/** Minimum note-body cells worth painting: below this, shift the note LEFT
+ *  (break span alignment) rather than paint a useless sliver — a readable
+ *  note beats a perfectly aligned ellipsis. */
+const INLINE_NOTE_MIN_BODY_CELLS = 12;
+
 export function applyDirectives(
   rendered: string,
   directives: RenderDirectives | null | undefined,
   firstLineIndent = 0,
+  /**
+   * Terminal cells available to an injected note LINE (pad + connector +
+   * body). Hosts whose renderer TRUNCATES over-wide lines (Claude Code's
+   * Ink box collapses them to a bare `…` — the Sep 2026 "config _ note is
+   * clipped" report) pass their box width here so the note is clamped
+   * upstream: the `(underscore to cycle)` hint is dropped first, then the
+   * text is cell-aware ellipsized, and a span column too deep to leave
+   * INLINE_NOTE_MIN_BODY_CELLS shifts the pad left. Omitted → no clamping
+   * (buffer-space consumers like the bridge's renderedText stay unclipped).
+   */
+  maxNoteCols?: number,
 ): string {
   if (!directives) return rendered;
   if (directives.textOverride !== undefined) return directives.textOverride;
@@ -244,10 +283,30 @@ export function applyDirectives(
     // First-line span → add back the host prompt indent the note line (a
     // continuation line) doesn't inherit. lineStart === 0 ⟺ span on line 1.
     const promptPad = lineStart === 0 ? Math.max(0, firstLineIndent) : 0;
-    const pad = ' '.repeat(Math.max(0, col + promptPad));
+    let padCols = Math.max(0, col + promptPad);
     // Trailing `(underscore to cycle)` affordance — present until the user's
     // first cycle this session (dim-render drops the hint via hasCycledEver()).
-    const noteBody = padTerminalWideEmoji(formatInlineNoteText(note.text)) + (note.hint ? `   ${note.hint}` : '');
+    let noteText = padTerminalWideEmoji(formatInlineNoteText(note.text));
+    let hintPart = note.hint ? `   ${note.hint}` : '';
+    // Width clamp (see the maxNoteCols param doc): the host's renderer owns
+    // the box and truncates over-wide lines badly, so fit the WHOLE line —
+    // pad + connector + body — into the given cells before splicing.
+    if (maxNoteCols !== undefined && maxNoteCols > 0) {
+      const prefixCells = codeUnitsToCells(prefix, prefix.length);
+      // A span column too deep to leave a readable body loses alignment
+      // rather than the message: shift the pad left until the minimum
+      // body width fits (or the pad hits 0).
+      const maxPad = Math.max(0, maxNoteCols - prefixCells - INLINE_NOTE_MIN_BODY_CELLS);
+      if (padCols > maxPad) padCols = maxPad;
+      const available = Math.max(0, maxNoteCols - padCols - prefixCells);
+      // Hint is expendable — drop it before touching the message.
+      if (hintPart && codeUnitsToCells(noteText + hintPart, (noteText + hintPart).length) > available) {
+        hintPart = '';
+      }
+      noteText = truncateToCells(noteText, available);
+    }
+    const pad = ' '.repeat(padCols);
+    const noteBody = noteText + hintPart;
     const body = ANSI_DIM_ON + prefix + noteBody + ANSI_DIM_OFF;
     // order 2 → fires after any dim/highlight close-codes at this boundary.
     insertions.push({ visibleAt: at, ansi: '\n' + pad + body, order: 2 });

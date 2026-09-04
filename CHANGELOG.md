@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — inline note wider than the terminal vanished to a bare `…` (`@opencues/runtime` 0.38.3 → 0.38.4)
+
+`config _` → the satellite's inline note (a 78-char setting description at span column 15 needs ~97 cells) painted as nothing but `…` on narrower terminals — on every CC version (A/B'd on 2.1.206 and 2.1.236): the runtime spliced the note line with no width awareness and CC's Ink box truncates over-wide lines degenerately. `applyDirectives` gains an optional `maxNoteCols`: the `(underscore to cycle)` hint is dropped first, the text gets a cell-aware ellipsis (`truncateToCells` — CJK counts double), and a span column too deep to leave 12 readable cells loses alignment (pad shifts left) rather than the message. CC passes its live `stdout.columns − 3` per render (resize-safe); omitted → prior behaviour byte-for-byte (the bridge's buffer-space `renderedText` stays unclipped). Verified by tmux capture at 80 and 60 columns and pinned by the new `maxNoteCols` describe block in `render-directives.test.ts`.
+
 ### Changed — Claude Code pin 2.1.206 → 2.1.236 (Anthropic `stable`); 2.1.243+ documented as blocked (`@opencues/claude-code` 0.2.11 → 0.2.12)
 
 Both pins move together per the runbook: `current-pin` 2.1.236 + `tweakcc-pin` `371a5c46c` ("Prompts for 2.1.236"). All FOUR seams hit on 2.1.236 — including **S7 (RenderKick), which was missing on 2.1.206**, so `__oc_pushHostText` returns to the clean explicit-re-render path instead of the ZWS-toggle fallback (S6 remains gone since 2.1.150; statusline stays on interval polling). The § 4e system-prompt-pipeline disable anchor verified present at the new tweakcc commit.

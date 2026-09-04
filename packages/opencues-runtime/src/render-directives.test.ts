@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyDirectives, inlineNoteBoxColumn } from './render-directives';
+import { applyDirectives, inlineNoteBoxColumn, truncateToCells } from './render-directives';
 
 const INV_ON = '\x1b[97m';
 const INV_OFF = '\x1b[39m';
@@ -233,5 +233,82 @@ describe('applyDirectives — inlineNote splice (per-line, gemini/CC)', () => {
 
   it('no inlineNote → line unchanged (no spurious newline)', () => {
     expect(applyDirectives('plain line', { dimRanges: [] })).toBe('plain line');
+  });
+});
+
+// ── maxNoteCols width clamp (Sep 2026 — "config _ note is clipped") ─────
+// CC's Ink box TRUNCATES over-wide lines to a bare `…`, so an unclamped
+// note line (span-column pad + connector + a 78-char setting description)
+// vanished entirely on narrow terminals. The clamp fits the WHOLE line
+// into the host-supplied width: hint dropped first, then a cell-aware
+// ellipsis on the text, and a too-deep span column loses alignment (pad
+// shifts left) rather than painting an unreadable sliver. Fixtures are
+// synthetic shapes per CLAUDE.md — the pins are widths and structure.
+describe('applyDirectives — maxNoteCols clamp', () => {
+  const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, '');
+  const noteLine = (out: string): string => stripAnsi(out).split('\n')[1] ?? '';
+  const buffer = 'aaaa ZZ';
+  const base = { spanStart: 5, spanEnd: 7 };
+
+  it('fits → byte-identical to the unclamped splice', () => {
+    const d = { inlineNote: { ...base, text: 'ALT-ONE note', hint: '(underscore to cycle)' } };
+    expect(applyDirectives(buffer, d, 0, 120)).toBe(applyDirectives(buffer, d, 0));
+  });
+
+  it('no maxNoteCols → never clamps (bridge renderedText contract)', () => {
+    const long = 'x'.repeat(200);
+    const out = applyDirectives(buffer, { inlineNote: { ...base, text: long } }, 0);
+    expect(noteLine(out)).toContain(long);
+  });
+
+  it('hint is dropped before the message is touched', () => {
+    const d = { inlineNote: { ...base, text: 'ALT-ONE note', hint: '(underscore to cycle)' } };
+    // pad 5 + "↳ " 2 + text 12 = 19 fits in 25; with the 24-cell hint it wouldn't.
+    const line = noteLine(applyDirectives(buffer, d, 0, 25));
+    expect(line).toContain('ALT-ONE note');
+    expect(line).not.toContain('underscore');
+  });
+
+  it('over-long text gets OUR ellipsis and the line never exceeds the budget', () => {
+    const d = { inlineNote: { ...base, text: 'A'.repeat(100) } };
+    const line = noteLine(applyDirectives(buffer, d, 0, 40));
+    expect(line.endsWith('…')).toBe(true);
+    expect(line.length).toBeLessThanOrEqual(40);
+    expect(line).toContain('A'); // a readable prefix survives — not Ink's bare `…`
+  });
+
+  it('clamp is cell-aware: CJK counts double so wide text never overshoots', () => {
+    const d = { inlineNote: { ...base, text: '設定'.repeat(40) } };
+    const line = noteLine(applyDirectives(buffer, d, 0, 30));
+    // pad(5) + connector(2) + body ≤ 30 CELLS; each 設/定 is 2 cells.
+    const cells = [...line].reduce((n, ch) => n + (/[　-鿿]/.test(ch) ? 2 : 1), 0);
+    expect(cells).toBeLessThanOrEqual(30);
+    expect(line.endsWith('…')).toBe(true);
+  });
+
+  it('span column too deep → pad shifts LEFT to keep a readable body', () => {
+    const deep = ' '.repeat(70) + 'ZZ';
+    const d = { inlineNote: { spanStart: 70, spanEnd: 72, text: 'ALT-FIX body here' } };
+    const line = noteLine(applyDirectives(deep, d, 0, 40));
+    // Alignment sacrificed: pad shrank below the span column…
+    expect(line.indexOf('↳')).toBeLessThan(70);
+    // …to preserve at least the minimum readable body.
+    expect(line.length).toBeLessThanOrEqual(40);
+    expect(line).toMatch(/↳ ALT-FIX/);
+  });
+});
+
+describe('truncateToCells', () => {
+  it('returns text unchanged when it fits', () => {
+    expect(truncateToCells('short', 10)).toBe('short');
+  });
+  it('reserves a cell for the ellipsis', () => {
+    expect(truncateToCells('abcdef', 4)).toBe('abc…');
+  });
+  it('CJK is 2 cells wide', () => {
+    expect(truncateToCells('設定設定', 5)).toBe('設定…'); // 2+2 then no room for a third
+  });
+  it('degenerate budget → bare ellipsis', () => {
+    expect(truncateToCells('abc', 1)).toBe('…');
   });
 });

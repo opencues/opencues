@@ -1079,7 +1079,17 @@ export function boot(host: HostInfo): BootResult {
           }
           if (directives) {
             debugDirectives.push(directives);
-            out = applyDirectives(out, directives, CC_INPUT_FIRST_LINE_INDENT);
+            // maxNoteCols: CC's Ink box TRUNCATES over-wide lines to a bare
+            // `…` (the "config _ note is clipped" report — a 78-char setting
+            // description at span column 15 needs ~97 cells; an 80-col
+            // terminal showed only the ellipsis). Clamp the injected note to
+            // the live terminal width minus the box's 3-cell inset so OUR
+            // ellipsis (a readable prefix) paints instead of Ink's. Read per
+            // render — the terminal can resize mid-session. Unknown width
+            // (no TTY / tests) → undefined → no clamping, prior behaviour.
+            const cols = typeof process !== 'undefined' ? process.stdout?.columns : undefined;
+            const maxNoteCols = typeof cols === 'number' && cols > 0 ? Math.max(20, cols - 3) : undefined;
+            out = applyDirectives(out, directives, CC_INPUT_FIRST_LINE_INDENT, maxNoteCols);
           }
         } catch (err) {
           log('error', 'render handler error', err);
