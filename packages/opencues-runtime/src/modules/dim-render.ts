@@ -506,7 +506,26 @@ export class DimRender {
       highlight = { start: cursorSpanLogical.start, end: cursorSpanLogical.end };
     }
 
-    if (!highlight && dimRanges.length === 0 && !inlineNote) return null;
+    if (!highlight && dimRanges.length === 0 && !inlineNote) {
+      // Self-diagnosing invariant (Sep 2026, the viewport-slice bug class):
+      // a managed def whose span is LIVE in this ctx should have produced
+      // SOMETHING above — a def that is live yet paints nothing usually
+      // means a coordinate-space mismatch between the def's span and the
+      // text the host handed us (CC's scrolled viewport was the first
+      // instance: full-buffer spans vs visible-lines ctx read as stale and
+      // silently unpainted). Debug-level: free when debug-mode is off, and
+      // turns "why isn't it grey?" into a one-line log answer when on.
+      for (const [idx, def] of this.dynDefs.entries()) {
+        if (typeof def.blankName === 'string'
+          && typeof def.spanStart === 'number' && typeof def.spanEnd === 'number'
+          && def.spanEnd > def.spanStart && defSpanLive(def, text)) {
+          this.adapter.log('debug',
+            `DimRender: live def painted NOTHING — span [${def.spanStart},${def.spanEnd}) (${def.blankName}@${idx}) is live in a ${text.length}-char ctx yet produced no dim/highlight/note. If ctx is a window onto a larger buffer, this is the viewport coordinate-space mismatch class.`);
+          break;
+        }
+      }
+      return null;
+    }
 
     // Coordinate remap: all ranges above were computed in LOGICAL coordinates
     // (`text` === logicalText when we chose it for correct word/def logic), but
