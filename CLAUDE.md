@@ -733,8 +733,8 @@ done
 | `SPEC.md` (open-standard) | `cues-spec` | 0.11 (draft) | exported as `SPEC_VERSION` from `@opencues/core` |
 | `package.json` (monorepo root) | `opencues` | 0.1.0 | private |
 | `packages/opencues-core/` | `@opencues/core` | 0.57.0 | private |
-| `packages/opencues-runtime/` | `@opencues/runtime` | 0.38.1 | private |
-| `packages/opencues-cli/` | `opencues` (real CLI) | 0.7.9 | **PUBLISHED on npm** |
+| `packages/opencues-runtime/` | `@opencues/runtime` | 0.38.3 | private |
+| `packages/opencues-cli/` | `opencues` (real CLI) | 0.7.10 | **PUBLISHED on npm** |
 | `integrations/claude-code/` | `@opencues/claude-code` | 0.2.12 | private |
 | `integrations/opencode/` | `@opencues/opencode` | 0.2.17 | private |
 | `integrations/chrome/` | `@opencues/chrome` | 0.2.200 | private |

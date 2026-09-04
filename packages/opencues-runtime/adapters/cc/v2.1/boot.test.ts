@@ -219,4 +219,77 @@ describe('boot()', () => {
     expect(result.dynDefs.size).toBe(0);
     expect(result.hlState.active).toBe(false);
   });
+
+  // ── Viewport-slice rendering (the "draft email _ doesn't go grey" bug,
+  // Sep 2026). CC hands applyRender only the VISIBLE lines of a tall
+  // buffer; spans are full-buffer coords. Pre-fix, the ctx was built from
+  // the slice, DimRender's stale-def guard rejected every scrolled span,
+  // and a tall transform-blank rewrite lost its dim + inline note. These
+  // pin the SCENARIO at the boot-result level (fake host, real modules).
+  describe('viewport-slice rendering', () => {
+    // A transform-blank-shaped rewrite taller than the input zone: the
+    // host scrolls, S3 hands applyRender only the tail lines.
+    const FULL = 'AAA first line\n\nBBB middle line\n\nCCC last line';
+    const SLICE = FULL.slice(FULL.indexOf('BBB')); // first line scrolled off
+
+    function bootWithSpanDef(text: string) {
+      const host = fakeHost(text);
+      const result = boot(host);
+      result.dynDefs.set(0, {
+        originalWord: text,
+        blankName: 'transform-blank',
+        alternatives: [text, 'draft email _'],
+        currentIndex: 0,
+        spanStart: 0,
+        spanEnd: text.length,
+        clearOnEdit: true,
+      });
+      return { host, result };
+    }
+
+    it('scrolled slice still paints the span dim (ranges translated to slice coords)', () => {
+      const { result } = bootWithSpanDef(FULL);
+      const out = result.applyRender(SLICE, FULL, FULL.length) as string;
+      // The span [0, FULL.length) covers the whole slice → dim codes present,
+      // and never beyond the slice's own length.
+      expect(out).not.toBe(SLICE);
+      expect(out).toContain('\x1b[2m'); // ANSI dim on
+    });
+
+    it('scrolled slice with the CC cursor-cell pad space still translates', () => {
+      const { result } = bootWithSpanDef(FULL);
+      const out = result.applyRender(SLICE + ' ', FULL, FULL.length) as string;
+      expect(out).toContain('\x1b[2m');
+    });
+
+    it('unscrolled buffer behaves exactly as before (span dims at full coords)', () => {
+      const { result } = bootWithSpanDef('short span');
+      const out = result.applyRender('short span', 'short span', 0) as string;
+      expect(out).toContain('\x1b[2m');
+    });
+
+    it('non-contiguous slice falls back to pre-fix behaviour (no crash, no phantom dim)', () => {
+      const { result } = bootWithSpanDef(FULL);
+      // Simulate soft-wrap: the rendered text has an inserted newline the
+      // buffer doesn't contain → slice can't be located → legacy ctx.
+      const wrapped = 'CCC last\nline';
+      expect(() => result.applyRender(wrapped, FULL, 0)).not.toThrow();
+    });
+
+    it('span entirely above the viewport paints nothing into the slice', () => {
+      const host = fakeHost(FULL);
+      const result = boot(host);
+      result.dynDefs.set(0, {
+        originalWord: 'AAA',
+        blankName: 'transform-blank',
+        alternatives: ['AAA', 'ZZZ'],
+        currentIndex: 0,
+        spanStart: 0,
+        spanEnd: 3, // covers only the scrolled-off first line
+        clearOnEdit: true,
+      });
+      const out = result.applyRender(SLICE, FULL, FULL.length) as string;
+      expect(out).toBe(SLICE); // off-screen span → no codes injected into the slice
+    });
+  });
 });

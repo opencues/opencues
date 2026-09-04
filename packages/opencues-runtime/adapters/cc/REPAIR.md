@@ -390,6 +390,44 @@ and UPGRADING.md § "Code-split ceiling". S7 (RenderKick) is BACK on
 2.1.236 (it was missing on 2.1.206) — pushes use the clean kickRender
 path again instead of ZWS-toggle.
 
+### 17. CC renders tall buffers through a SCROLLED VIEWPORT — the S3 render string is a WINDOW, span coords are absolute (Sep 2026)
+
+**What broke:** `draft email _`'s multi-line rewrite registered its
+DynDef correctly but never went grey and looked unselectable — on
+EVERY CC version (reproduced byte-identically on 2.1.206 and 2.1.236
+during the pin-bump field test; a runtime bug the new pin merely made
+visible). The S3 seam hands `applyRender` only the input zone's
+VISIBLE lines of a buffer taller than the zone (log signature:
+`textLen:144` vs `ctxLen:125`, first line absent from the preview),
+while DynDef/cue spans are full-buffer coordinates. The ctx was built
+from the slice, so `defSpanLive` read every scrolled span as stale —
+the guard doing its job against the wrong text — and dim + inline
+note + highlight silently dropped. Short buffers fit the viewport,
+so every unit test, harness scenario, and everyday transform looked
+fine, indefinitely.
+
+**Fix:** `adapters/cc/v2.1/viewport.ts` (opencues #432) — locate the
+rendered slice inside the full buffer (CC appends ONE cursor-cell pad
+space that isn't buffer content; ambiguity resolves toward the
+occurrence containing the caret), build the handler ctx from the FULL
+text, then translate every directive family back into slice
+coordinates and clip off-screen ranges. No contiguous match
+(soft-wrap inserts) → pre-fix behaviour byte-for-byte.
+
+**Detection net (opencues #433):** the bridge dump's `lastRender`
+block records the REAL render pipeline's last invocation — the
+bridge's `render` hook RECOMPUTES on the full buffer, a different
+code path that stayed green through this whole class — and DimRender
+debug-logs a live-def-painted-nothing invariant. Harness scenario 130
+(tall fix-typos fixture) pins `viewportOffset > 0` + `rangeCount > 0`
++ `painted`.
+
+**Rule of thumb:** any new range-bearing directive field MUST be
+added to `translateDirectivesToViewport`, or it paints at wrong
+offsets on scrolled buffers; and any "works everywhere except tall
+content" paint report starts with comparing `textLen` vs `ctxLen` in
+the applyRender log line.
+
 ---
 
 ## Architecture in one paragraph

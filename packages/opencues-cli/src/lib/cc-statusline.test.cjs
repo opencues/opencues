@@ -267,3 +267,72 @@ test('enable: refuses to touch broken JSON file', () => {
     assert.strictEqual(fs.readFileSync(settings, 'utf8'), 'not json {{{');
   });
 });
+
+// ── commandScriptExists + auditProjectStatuslines (Sep 2026) ─────────
+// The dead-script class: a project-level statusLine pointing at a script
+// from a retired install layout renders NO statusline for CC sessions in
+// exactly that directory, silently. These pin the tri-state existence
+// check and the ~/.claude.json machine-wide sweep.
+
+test('commandScriptExists: tri-state over shell command strings', () => {
+  const home = tmpdir('cse');
+  const script = path.join(home, 'x.sh');
+  fs.writeFileSync(script, '#!/bin/sh\n');
+  // bare absolute path
+  assert.strictEqual(lib.commandScriptExists(script), 'exists');
+  assert.strictEqual(lib.commandScriptExists(path.join(home, 'nope.sh')), 'missing');
+  // interpreter-prefixed + args
+  assert.strictEqual(lib.commandScriptExists(`bash ${script} --flag`), 'exists');
+  assert.strictEqual(lib.commandScriptExists(`bash ${home}/nope.sh --flag`), 'missing');
+  // quoted path
+  assert.strictEqual(lib.commandScriptExists(`"${script}"`), 'exists');
+  // ~/ expansion
+  withHome(home, () => {
+    assert.strictEqual(lib.commandScriptExists('~/x.sh'), 'exists');
+    assert.strictEqual(lib.commandScriptExists('~/nope.sh'), 'missing');
+  });
+  // bare $PATH command — not ours to judge
+  assert.strictEqual(lib.commandScriptExists('starship prompt'), 'unknown');
+  assert.strictEqual(lib.commandScriptExists(''), 'unknown');
+  assert.strictEqual(lib.commandScriptExists(undefined), 'unknown');
+});
+
+test('auditProjectStatuslines: flags only dead scripts across the registry', () => {
+  const home = tmpdir('audit');
+  const liveDir = path.join(home, 'proj-live');
+  const deadDir = path.join(home, 'proj-dead');
+  const bareDir = path.join(home, 'proj-bare');
+  const noneDir = path.join(home, 'proj-none');
+  const liveScript = path.join(home, 'live.sh');
+  fs.writeFileSync(liveScript, '#!/bin/sh\n');
+  const mkSettings = (dir, statusLine) => {
+    fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.json'),
+      JSON.stringify(statusLine ? { statusLine } : {}));
+  };
+  mkSettings(liveDir, { type: 'command', command: liveScript });
+  // The exact Sep 2026 shape — retired ~/claude-code-cues layout:
+  mkSettings(deadDir, { type: 'command', command: path.join(home, 'claude-code-cues', '.cues', 'statusline.sh') });
+  mkSettings(bareDir, { type: 'command', command: 'starship prompt' });
+  mkSettings(noneDir, null);
+  fs.writeFileSync(path.join(home, '.claude.json'), JSON.stringify({
+    projects: {
+      [liveDir]: {}, [deadDir]: {}, [bareDir]: {}, [noneDir]: {},
+      [path.join(home, 'gone-dir')]: {}, // registered dir that no longer exists
+    },
+  }));
+  withHome(home, () => {
+    const rows = lib.auditProjectStatuslines();
+    assert.strictEqual(rows.length, 1);
+    assert.strictEqual(rows[0].dir, deadDir);
+    assert.ok(rows[0].cmd.endsWith('/.cues/statusline.sh'));
+    assert.strictEqual(rows[0].opencues, true);
+  });
+});
+
+test('auditProjectStatuslines: no registry → empty, never throws', () => {
+  const home = tmpdir('noreg');
+  withHome(home, () => {
+    assert.deepStrictEqual(lib.auditProjectStatuslines(), []);
+  });
+});
