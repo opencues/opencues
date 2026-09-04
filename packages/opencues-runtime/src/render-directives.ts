@@ -169,19 +169,71 @@ export function truncateToCells(text: string, maxCells: number): string {
  *  note beats a perfectly aligned ellipsis. */
 const INLINE_NOTE_MIN_BODY_CELLS = 12;
 
+/**
+ * Greedy cell-aware word wrap: split `text` into lines of at most
+ * `maxCells` terminal cells, breaking at spaces where possible and
+ * hard-breaking any single token wider than the budget (the terminal
+ * analogue of chrome's `pre-wrap` + `overflow-wrap` note styling —
+ * spaceless CJK runs wrap mid-token instead of overflowing).
+ */
+export function wrapToCellLines(text: string, maxCells: number): string[] {
+  if (maxCells <= 0) return [text];
+  const cellsOf = (s: string): number => codeUnitsToCells(s, s.length);
+  const hardBreak = (token: string): string[] => {
+    const parts: string[] = [];
+    let cur = '';
+    let cells = 0;
+    let i = 0;
+    while (i < token.length) {
+      const cp = token.codePointAt(i)!;
+      const w = cellWidthForCodePoint(cp);
+      const ch = token.slice(i, i + (cp > 0xffff ? 2 : 1));
+      if (cells + w > maxCells && cur) { parts.push(cur); cur = ''; cells = 0; }
+      cur += ch;
+      cells += w;
+      i += ch.length;
+    }
+    if (cur) parts.push(cur);
+    return parts;
+  };
+  const lines: string[] = [];
+  let line = '';
+  let lineCells = 0;
+  for (const word of text.split(' ')) {
+    const pieces = cellsOf(word) > maxCells ? hardBreak(word) : [word];
+    for (const piece of pieces) {
+      const pieceCells = cellsOf(piece);
+      const sep = line ? 1 : 0;
+      if (line && lineCells + sep + pieceCells > maxCells) {
+        lines.push(line);
+        line = piece;
+        lineCells = pieceCells;
+      } else {
+        line = line ? line + ' ' + piece : piece;
+        lineCells += sep + pieceCells;
+      }
+    }
+  }
+  if (line || lines.length === 0) lines.push(line);
+  return lines;
+}
+
 export function applyDirectives(
   rendered: string,
   directives: RenderDirectives | null | undefined,
   firstLineIndent = 0,
   /**
-   * Terminal cells available to an injected note LINE (pad + connector +
+   * Terminal cells available to an injected note line (pad + connector +
    * body). Hosts whose renderer TRUNCATES over-wide lines (Claude Code's
    * Ink box collapses them to a bare `…` — the Sep 2026 "config _ note is
-   * clipped" report) pass their box width here so the note is clamped
-   * upstream: the `(underscore to cycle)` hint is dropped first, then the
-   * text is cell-aware ellipsized, and a span column too deep to leave
-   * INLINE_NOTE_MIN_BODY_CELLS shifts the pad left. Omitted → no clamping
-   * (buffer-space consumers like the bridge's renderedText stay unclipped).
+   * clipped" report) pass their box width here, and the note WRAPS into
+   * hang-indented continuation lines — the same behaviour the other hosts
+   * already have (chrome: `pre-wrap` in a max-width; OpenTUI hosts: a flow
+   * <text> that wraps and grows the input). Cell-aware (CJK counts 2,
+   * spaceless runs hard-break like `overflow-wrap`); a span column too
+   * deep to leave INLINE_NOTE_MIN_BODY_CELLS shifts the pad left rather
+   * than squeeze the measure. Omitted → single unclamped line
+   * (buffer-space consumers like the bridge's renderedText).
    */
   maxNoteCols?: number,
 ): string {
@@ -286,30 +338,37 @@ export function applyDirectives(
     let padCols = Math.max(0, col + promptPad);
     // Trailing `(underscore to cycle)` affordance — present until the user's
     // first cycle this session (dim-render drops the hint via hasCycledEver()).
-    let noteText = padTerminalWideEmoji(formatInlineNoteText(note.text));
-    let hintPart = note.hint ? `   ${note.hint}` : '';
-    // Width clamp (see the maxNoteCols param doc): the host's renderer owns
-    // the box and truncates over-wide lines badly, so fit the WHOLE line —
-    // pad + connector + body — into the given cells before splicing.
+    const noteBody = padTerminalWideEmoji(formatInlineNoteText(note.text)) + (note.hint ? `   ${note.hint}` : '');
+    // Width handling (see the maxNoteCols param doc): the note WRAPS into
+    // continuation lines, exactly like the other hosts — chrome lays the
+    // same text out `pre-wrap` in a max-width box, and the OpenTUI hosts
+    // render it as a flow <text> that wraps and grows the input. The
+    // splice hosts (CC/gemini) were the outlier: a single over-wide line
+    // that Ink truncated to a bare `…`. Continuation lines hang-indent
+    // under the message (pad + connector width); the hint wraps with the
+    // text like any other word (chrome keeps it inline too).
+    const prefixCells = codeUnitsToCells(prefix, prefix.length);
+    let lines: string[];
     if (maxNoteCols !== undefined && maxNoteCols > 0) {
-      const prefixCells = codeUnitsToCells(prefix, prefix.length);
-      // A span column too deep to leave a readable body loses alignment
-      // rather than the message: shift the pad left until the minimum
-      // body width fits (or the pad hits 0).
+      // A span column too deep to leave a readable measure loses alignment
+      // rather than readability: shift the pad left until the minimum body
+      // width fits (or the pad hits 0).
       const maxPad = Math.max(0, maxNoteCols - prefixCells - INLINE_NOTE_MIN_BODY_CELLS);
       if (padCols > maxPad) padCols = maxPad;
-      const available = Math.max(0, maxNoteCols - padCols - prefixCells);
-      // Hint is expendable — drop it before touching the message.
-      if (hintPart && codeUnitsToCells(noteText + hintPart, (noteText + hintPart).length) > available) {
-        hintPart = '';
-      }
-      noteText = truncateToCells(noteText, available);
+      const available = Math.max(INLINE_NOTE_MIN_BODY_CELLS, maxNoteCols - padCols - prefixCells);
+      lines = wrapToCellLines(noteBody, available);
+    } else {
+      lines = [noteBody]; // no width supplied → single line, prior behaviour
     }
     const pad = ' '.repeat(padCols);
-    const noteBody = noteText + hintPart;
-    const body = ANSI_DIM_ON + prefix + noteBody + ANSI_DIM_OFF;
+    const contIndent = pad + ' '.repeat(prefixCells);
+    const body = lines
+      .map((l, i) => (i === 0
+        ? '\n' + pad + ANSI_DIM_ON + prefix + l + ANSI_DIM_OFF
+        : '\n' + contIndent + ANSI_DIM_ON + l + ANSI_DIM_OFF))
+      .join('');
     // order 2 → fires after any dim/highlight close-codes at this boundary.
-    insertions.push({ visibleAt: at, ansi: '\n' + pad + body, order: 2 });
+    insertions.push({ visibleAt: at, ansi: body, order: 2 });
   }
 
   if (insertions.length === 0) return rendered;
