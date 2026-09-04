@@ -273,6 +273,12 @@ export function boot(host: HostInfo): BootResult {
   // Handler arrays + render state owned by this boot.
   const keyHandlers: Array<(e: KeyEvent) => boolean> = [];
   const renderHandlers: Array<(c: RenderContext) => RenderDirectives | null> = [];
+  // Summary of the most recent REAL applyRender invocation (the host's actual
+  // rendered slice, the actual translation, the actual directive output) —
+  // exposed to the event bridge so scenarios can assert on the production
+  // render path rather than the bridge's own full-buffer recompute. See the
+  // assignment in applyRender for why the distinction is load-bearing.
+  let lastRenderSnapshot: Record<string, unknown> | null = null;
   const textHandlers: Array<(e: TextChangeEvent) => void> = [];
   // Cursor-change subscribers. CC's cli.js doesn't surface cursor-only
   // moves natively (the parent React tree has no onCursorChange path),
@@ -843,6 +849,11 @@ export function boot(host: HostInfo): BootResult {
   if (process.env.OPENCUES_BRIDGE === '1') {
     startEventBridge({
       adapter,
+      // The REAL render pipeline's last invocation (slice lengths, viewport
+      // offset, directive counts). renderDirectives() below RECOMPUTES against
+      // the full buffer — a different code path that stayed green through the
+      // viewport-slice bug; lastRender is what production actually painted.
+      lastRender: () => lastRenderSnapshot,
       // Compute the render directives (dim / highlight / inlineNote) for the
       // live text + cursor so the dump exposes what would be painted now —
       // makes the inline cue note observable to agentic scenarios. Mirrors
@@ -1074,6 +1085,30 @@ export function boot(host: HostInfo): BootResult {
           log('error', 'render handler error', err);
         }
       }
+      // Production-truth snapshot for the event bridge's dump. The bridge's
+      // renderDirectives() hook RECOMPUTES directives against the full buffer
+      // — a different code path from this one, which receives the host's real
+      // (possibly viewport-sliced) rendered string. The viewport bug hid for
+      // months precisely because scenarios could only observe the recompute
+      // path; this records what the REAL render pipeline just did.
+      lastRenderSnapshot = {
+        at: Date.now(),
+        textLen: text.length,
+        sliceLen: sliceText.length,
+        ctxLen: ctxText.length,
+        viewportOffset: match ? match.offset : null,
+        translated: match !== null,
+        handlerHits: debugDirectives.length,
+        rangeCount: debugDirectives.reduce<number>((n, d) => {
+          const dd = d as RenderDirectives;
+          return n
+            + (dd.dimRanges?.length ?? 0)
+            + (dd.coloredRanges?.length ?? 0)
+            + (dd.highlight ? 1 : 0)
+            + (dd.inlineNote ? 1 : 0);
+        }, 0),
+        painted: out !== rendered,
+      };
       if (isDebugEnabled()) {
         const zwsStripped = visibleText.length - sliceText.length;
         log('debug', 'applyRender', {
