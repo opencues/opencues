@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — CC viewport scroll silently unpainted every span taller than the input zone (`@opencues/runtime` 0.38.1 → 0.38.2)
+
+`draft email _` produced a correct multi-line rewrite whose span never went grey and looked unselectable. Root cause (reproduced identically on CC 2.1.206 and 2.1.236 — a runtime bug, not a host-version one): CC renders tall buffers through a **scrolled viewport**, and the S3 seam hands `applyRender` only the visible lines, while DynDef spans, highlight state and cue spans are all in full-buffer coordinates. The render ctx was built from the slice, so every scrolled span failed DimRender's stale-def guard (`defSpanLive` — the guard that stops dim leaking onto new text) and dropped its dim, inline note, and highlight. Short buffers fit the viewport, which is why every harness scenario and everyday transform looked fine.
+
+Fix in the CC band (`adapters/cc/v2.1/viewport.ts` + `boot.ts:applyRender`): locate the rendered slice inside the full buffer (handles CC's one-space cursor-cell pad; ambiguity resolves toward the occurrence containing the caret), hand handlers the FULL text so spans validate, then translate every directive family (dim/markdown/colored ranges, highlight, inlineNote, the glimmer whole-buffer `textOverride`) back into slice coordinates, clipping off-screen ranges. No contiguous match (soft-wrap inserts, mid-render mutation) → pre-fix behaviour byte-for-byte. Pinned by `viewport.test.ts` + boot-level scenario tests (scrolled slice paints dim; pad-space handled; fully off-screen span paints nothing; fallback never throws); verified live on an isolated fork against the original `draft an email _` repro.
+
+### Added — `opencues doctor` sweeps every CC project for dead statusLine scripts (`opencues` CLI 0.7.9 → 0.7.10)
+
+A project-level `.claude/settings.json` statusLine SHADOWS the user-level one for CC sessions launched from that directory — and a stale entry (e.g. the retired `~/claude-code-cues` layout from before the compact-footprint move) means "no statusline, only in this one project", invisible to a cwd-scoped doctor run (Sep 2026: `~/testing` carried exactly this for three months). `cc-statusline.cjs` gains `commandScriptExists` (tri-state over shell command strings — absolute-path tokens stat'd, bare `$PATH` commands never judged) and `auditProjectStatuslines` (walks CC's own `~/.claude.json` project registry); doctor surfaces each dead entry as a warn row naming the directory, with the rewrite-vs-edit fix per whether the dead path is ours.
+
 ### Added — Cerebras `qwen-3.8-27b` first-class; `gemma-4-31b` deprecated by Cerebras (`@opencues/core` 0.56.1 → 0.57.0, `@opencues/runtime` 0.38.0 → 0.38.1, `opencues` CLI 0.7.8 → 0.7.9)
 
 Cerebras shipped `qwen-3.8-27b` (probed live 2026-09-03 on `/v1/models`) and moved `gemma-4-31b` to Public preview (deprecated — still served, kept here for back-compat, no longer advised). qwen is now in cerebras's `knownModels`, selectable via the config menu, `blanks-llm-model: qwen-3.8-27b`, or natural language (`use qwen for blanks _` — new fluid-config alias at parity with `gemma`/`haiku`).

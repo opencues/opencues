@@ -14,6 +14,7 @@ import { Runtime } from '../../../src/runtime';
 import { buildBootApiKeys, pickAutoProvider } from '@opencues/core';
 import { ClaudeCodeV21Adapter, type HostBindings, normaliseKeyEvent, toggleZeroWidth } from './adapter';
 import { installMacDoubleEscStdinRewrite } from '../../../src/modules/mac-keyboard';
+import { locateViewportSlice, translateDirectivesToViewport } from './viewport';
 import { Navigation } from '../../../src/modules/navigation';
 import { DimRender } from '../../../src/modules/dim-render';
 import { Cycling } from '../../../src/modules/cycling';
@@ -1037,7 +1038,21 @@ export function boot(host: HostInfo): BootResult {
       // text-change side; this is the symmetric strip for the render
       // side. Keep the two boundaries in sync.
       const visibleText = rendered.replace(/\x1b\[[0-9;]*m/g, '');
-      const ctxText = visible(visibleText);
+      const sliceText = visible(visibleText);
+      // VIEWPORT translation (Sep 2026): CC renders tall buffers through a
+      // scrolled viewport — `rendered` is only the visible lines, while
+      // every span (DynDefs, cues, highlight) is in FULL-buffer coords.
+      // Building ctx from the slice made scrolled spans fail DimRender's
+      // stale-def guard and lose their dim/note ("draft email _ doesn't go
+      // grey"). Locate the slice inside the full buffer, hand handlers the
+      // FULL text, and translate directive ranges back into slice coords.
+      // No contiguous match (soft-wrap inserts, mid-render mutation) →
+      // pre-fix behaviour unchanged. See viewport.ts.
+      const fullText = visible(text);
+      const match = sliceText === fullText
+        ? { offset: 0, length: fullText.length }
+        : locateViewportSlice(fullText, sliceText, cursorOffset);
+      const ctxText = match ? fullText : sliceText;
       const ctx: RenderContext = {
         text: ctxText,
         cursor: cursorOffset,
@@ -1047,7 +1062,10 @@ export function boot(host: HostInfo): BootResult {
       const debugDirectives: unknown[] = [];
       for (const handler of renderHandlers) {
         try {
-          const directives = handler(ctx);
+          let directives = handler(ctx);
+          if (directives && match) {
+            directives = translateDirectivesToViewport(directives, match.offset, match.length, fullText.length);
+          }
           if (directives) {
             debugDirectives.push(directives);
             out = applyDirectives(out, directives, CC_INPUT_FIRST_LINE_INDENT);
@@ -1057,13 +1075,15 @@ export function boot(host: HostInfo): BootResult {
         }
       }
       if (isDebugEnabled()) {
-        const zwsStripped = visibleText.length - ctxText.length;
+        const zwsStripped = visibleText.length - sliceText.length;
         log('debug', 'applyRender', {
           textLen: text.length,
           visibleLen: visibleText.length,
           ctxLen: ctxText.length,
+          sliceLen: sliceText.length,
+          viewportOffset: match ? match.offset : null,
           zwsStripped,
-          visiblePreview: ctxText.slice(0, 60),
+          visiblePreview: sliceText.slice(0, 60),
           hlActive: hlState.active,
           hlWordIdx: hlState.wordIndex,
           directives: debugDirectives,
