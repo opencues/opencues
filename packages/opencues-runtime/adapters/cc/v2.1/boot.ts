@@ -14,6 +14,7 @@ import { Runtime } from '../../../src/runtime';
 import { buildBootApiKeys, pickAutoProvider } from '@opencues/core';
 import { ClaudeCodeV21Adapter, type HostBindings, normaliseKeyEvent, toggleZeroWidth } from './adapter';
 import { installMacDoubleEscStdinRewrite } from '../../../src/modules/mac-keyboard';
+import { locateViewportSlice, translateDirectivesToViewport } from './viewport';
 import { Navigation } from '../../../src/modules/navigation';
 import { DimRender } from '../../../src/modules/dim-render';
 import { Cycling } from '../../../src/modules/cycling';
@@ -272,6 +273,12 @@ export function boot(host: HostInfo): BootResult {
   // Handler arrays + render state owned by this boot.
   const keyHandlers: Array<(e: KeyEvent) => boolean> = [];
   const renderHandlers: Array<(c: RenderContext) => RenderDirectives | null> = [];
+  // Summary of the most recent REAL applyRender invocation (the host's actual
+  // rendered slice, the actual translation, the actual directive output) —
+  // exposed to the event bridge so scenarios can assert on the production
+  // render path rather than the bridge's own full-buffer recompute. See the
+  // assignment in applyRender for why the distinction is load-bearing.
+  let lastRenderSnapshot: Record<string, unknown> | null = null;
   const textHandlers: Array<(e: TextChangeEvent) => void> = [];
   // Cursor-change subscribers. CC's cli.js doesn't surface cursor-only
   // moves natively (the parent React tree has no onCursorChange path),
@@ -842,6 +849,11 @@ export function boot(host: HostInfo): BootResult {
   if (process.env.OPENCUES_BRIDGE === '1') {
     startEventBridge({
       adapter,
+      // The REAL render pipeline's last invocation (slice lengths, viewport
+      // offset, directive counts). renderDirectives() below RECOMPUTES against
+      // the full buffer — a different code path that stayed green through the
+      // viewport-slice bug; lastRender is what production actually painted.
+      lastRender: () => lastRenderSnapshot,
       // Compute the render directives (dim / highlight / inlineNote) for the
       // live text + cursor so the dump exposes what would be painted now —
       // makes the inline cue note observable to agentic scenarios. Mirrors
@@ -1037,7 +1049,21 @@ export function boot(host: HostInfo): BootResult {
       // text-change side; this is the symmetric strip for the render
       // side. Keep the two boundaries in sync.
       const visibleText = rendered.replace(/\x1b\[[0-9;]*m/g, '');
-      const ctxText = visible(visibleText);
+      const sliceText = visible(visibleText);
+      // VIEWPORT translation (Sep 2026): CC renders tall buffers through a
+      // scrolled viewport — `rendered` is only the visible lines, while
+      // every span (DynDefs, cues, highlight) is in FULL-buffer coords.
+      // Building ctx from the slice made scrolled spans fail DimRender's
+      // stale-def guard and lose their dim/note ("draft email _ doesn't go
+      // grey"). Locate the slice inside the full buffer, hand handlers the
+      // FULL text, and translate directive ranges back into slice coords.
+      // No contiguous match (soft-wrap inserts, mid-render mutation) →
+      // pre-fix behaviour unchanged. See viewport.ts.
+      const fullText = visible(text);
+      const match = sliceText === fullText
+        ? { offset: 0, length: fullText.length }
+        : locateViewportSlice(fullText, sliceText, cursorOffset);
+      const ctxText = match ? fullText : sliceText;
       const ctx: RenderContext = {
         text: ctxText,
         cursor: cursorOffset,
@@ -1047,23 +1073,62 @@ export function boot(host: HostInfo): BootResult {
       const debugDirectives: unknown[] = [];
       for (const handler of renderHandlers) {
         try {
-          const directives = handler(ctx);
+          let directives = handler(ctx);
+          if (directives && match) {
+            directives = translateDirectivesToViewport(directives, match.offset, match.length, fullText.length);
+          }
           if (directives) {
             debugDirectives.push(directives);
-            out = applyDirectives(out, directives, CC_INPUT_FIRST_LINE_INDENT);
+            // maxNoteCols: CC's Ink box TRUNCATES over-wide lines to a bare
+            // `…` (the "config _ note is clipped" report — a 78-char setting
+            // description at span column 15 needs ~97 cells; an 80-col
+            // terminal showed only the ellipsis). Clamp the injected note to
+            // the live terminal width minus the box's 3-cell inset so OUR
+            // ellipsis (a readable prefix) paints instead of Ink's. Read per
+            // render — the terminal can resize mid-session. Unknown width
+            // (no TTY / tests) → undefined → no clamping, prior behaviour.
+            const cols = typeof process !== 'undefined' ? process.stdout?.columns : undefined;
+            const maxNoteCols = typeof cols === 'number' && cols > 0 ? Math.max(20, cols - 3) : undefined;
+            out = applyDirectives(out, directives, CC_INPUT_FIRST_LINE_INDENT, maxNoteCols);
           }
         } catch (err) {
           log('error', 'render handler error', err);
         }
       }
+      // Production-truth snapshot for the event bridge's dump. The bridge's
+      // renderDirectives() hook RECOMPUTES directives against the full buffer
+      // — a different code path from this one, which receives the host's real
+      // (possibly viewport-sliced) rendered string. The viewport bug hid for
+      // months precisely because scenarios could only observe the recompute
+      // path; this records what the REAL render pipeline just did.
+      lastRenderSnapshot = {
+        at: Date.now(),
+        textLen: text.length,
+        sliceLen: sliceText.length,
+        ctxLen: ctxText.length,
+        viewportOffset: match ? match.offset : null,
+        translated: match !== null,
+        handlerHits: debugDirectives.length,
+        rangeCount: debugDirectives.reduce<number>((n, d) => {
+          const dd = d as RenderDirectives;
+          return n
+            + (dd.dimRanges?.length ?? 0)
+            + (dd.coloredRanges?.length ?? 0)
+            + (dd.highlight ? 1 : 0)
+            + (dd.inlineNote ? 1 : 0);
+        }, 0),
+        painted: out !== rendered,
+      };
       if (isDebugEnabled()) {
-        const zwsStripped = visibleText.length - ctxText.length;
+        const zwsStripped = visibleText.length - sliceText.length;
         log('debug', 'applyRender', {
           textLen: text.length,
           visibleLen: visibleText.length,
           ctxLen: ctxText.length,
+          sliceLen: sliceText.length,
+          viewportOffset: match ? match.offset : null,
           zwsStripped,
-          visiblePreview: ctxText.slice(0, 60),
+          visiblePreview: sliceText.slice(0, 60),
           hlActive: hlState.active,
           hlWordIdx: hlState.wordIndex,
           directives: debugDirectives,

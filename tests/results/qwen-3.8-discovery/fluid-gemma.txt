@@ -1,0 +1,1111 @@
+[1mfluid-blank benchmark — FUSED segment+answer (1 call, structured output)[0m
+Model: gemma-4-31b
+Suite: main
+Cases: 137/137
+
+──────────────────────────────────────────────────────────────────────────────
+[1mr-unicode-emdash[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m writing docs unicode for em dash _
+  [2mSPAN    :[0m unicode for em dash _
+  [2mANSWER  :[0m U+2014
+  [2mEXP ANS :[0m U+2014 [2m(or: 2014, —, &mdash;, 0x2014)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=265ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-unicode-copyright[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m wedding invite design unicode for copyright symbol _
+  [2mSPAN    :[0m unicode for copyright symbol _
+  [2mANSWER  :[0m U+00A9
+  [2mEXP ANS :[0m U+00A9 [2m(or: 00A9, ©, &copy;, 0xA9)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=283ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-unicode-ampersand[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m html cleanup unicode for ampersand _
+  [2mSPAN    :[0m unicode for ampersand _
+  [2mANSWER  :[0m U+0026
+  [2mEXP ANS :[0m U+0026 [2m(or: 0026, &, &amp;, 0x26)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=295ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-unicode-underscore[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m writing my doc unicode for underscore _
+  [2mSPAN    :[0m unicode for underscore _
+  [2mANSWER  :[0m U+005F
+  [2mEXP ANS :[0m U+005F [2m(or: 005F, 0x5F, 5F)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=358ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-unicode-euro[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m recipe blog unicode for euro sign _
+  [2mSPAN    :[0m unicode for euro sign _
+  [2mANSWER  :[0m U+20AC
+  [2mEXP ANS :[0m U+20AC [2m(or: 20AC, €, &euro;, 0x20AC)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=204ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-unicode-nbsp[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m html email layout unicode for non-breaking space _
+  [2mSPAN    :[0m unicode for non-breaking space _
+  [2mANSWER  :[0m U+00A0
+  [2mEXP ANS :[0m U+00A0 [2m(or: 00A0, &nbsp;, 0xA0, NBSP)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=200ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-unicode-backslash[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m writing docs unicode for backslash _
+  [2mSPAN    :[0m unicode for backslash _
+  [2mANSWER  :[0m U+005C
+  [2mEXP ANS :[0m U+005C [2m(or: 005C, \\, 0x5C)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=251ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-unicode-heart[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m card design unicode for heart symbol _
+  [2mSPAN    :[0m unicode for heart symbol _
+  [2mANSWER  :[0m U+2665
+  [2mEXP ANS :[0m U+2764 [2m(or: 2764, ♥, &hearts;, U+2665, 2665)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=325ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-unicode-tilde[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m config file unicode for tilde _
+  [2mSPAN    :[0m unicode for tilde _
+  [2mANSWER  :[0m U+007E
+  [2mEXP ANS :[0m U+007E [2m(or: 007E, ~, 0x7E)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=207ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-unicode-at[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m email parser unicode for at sign _
+  [2mSPAN    :[0m unicode for at sign _
+  [2mANSWER  :[0m U+0040
+  [2mEXP ANS :[0m U+0040 [2m(or: 0040, @, 0x40)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=255ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-unicode-degree[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m weather doc unicode for degree symbol _
+  [2mSPAN    :[0m unicode for degree symbol _
+  [2mANSWER  :[0m U+00B0
+  [2mEXP ANS :[0m U+00B0 [2m(or: 00B0, °, &deg;, 0xB0)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=343ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-hex-tomato[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m css project hex for tomato red _
+  [2mSPAN    :[0m hex for tomato red _
+  [2mANSWER  :[0m ff6347
+  [2mEXP ANS :[0m #FF6347 [2m(or: #ff6347, FF6347, tomato)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=263ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-hex-hot-pink[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m valentines card draft hex for hot pink _
+  [2mSPAN    :[0m hex for hot pink _
+  [2mANSWER  :[0m ff69b4
+  [2mEXP ANS :[0m #FF69B4 [2m(or: #ff69b4, FF69B4, ff69b4, HotPink)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=288ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-hex-red[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m css project hex for red _
+  [2mSPAN    :[0m hex for red _
+  [2mANSWER  :[0m ff0000
+  [2mEXP ANS :[0m #FF0000 [2m(or: #ff0000, #f00, FF0000)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=399ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-hex-slate[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m dashboard mockup hex for slate gray _
+  [2mSPAN    :[0m hex for slate gray _
+  [2mANSWER  :[0m 708090
+  [2mEXP ANS :[0m #708090 [2m(or: #708090, 708090, slategray, SlateGray)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=285ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-rgb-sky[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m design moodboard rgb for sky blue _
+  [2mSPAN    :[0m rgb for sky blue _
+  [2mANSWER  :[0m 135, 206, 235
+  [2mEXP ANS :[0m 135,206,235 [2m(or: #87CEEB, rgb(135,206,235), 135 206 235)[0m
+  [2mJUDGE   :[0m Exact RGB values match the expected answer.
+  [2mTIMING  :[0m fused=213ms  judge=183ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-rgb-forest-green[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m logo redesign rgb for forest green _
+  [2mSPAN    :[0m rgb for forest green _
+  [2mANSWER  :[0m 34, 139, 34
+  [2mEXP ANS :[0m 34,139,34 [2m(or: #228B22, rgb(34,139,34), 34 139 34)[0m
+  [2mJUDGE   :[0m Exact RGB components match the expected value.
+  [2mTIMING  :[0m fused=229ms  judge=177ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-rgb-navy[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m logo work rgb for navy blue _
+  [2mSPAN    :[0m rgb for navy blue _
+  [2mANSWER  :[0m 0, 0, 128
+  [2mEXP ANS :[0m 0,0,128 [2m(or: #000080, rgb(0,0,128), 0 0 128)[0m
+  [2mJUDGE   :[0m Exact match to the expected RGB values.
+  [2mTIMING  :[0m fused=392ms  judge=113ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-http-404[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m debugging today http status for not found _
+  [2mSPAN    :[0m http status for not found _
+  [2mANSWER  :[0m 404
+  [2mEXP ANS :[0m 404
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=196ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-rgb-goldenrod[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m autumn theme css rgb for goldenrod _
+  [2mSPAN    :[0m rgb for goldenrod _
+  [2mANSWER  :[0m 218, 165, 32
+  [2mEXP ANS :[0m 218,165,32 [2m(or: #DAA520, rgb(218,165,32), DAA520)[0m
+  [2mJUDGE   :[0m Provides the exact RGB components matching the expected value.
+  [2mTIMING  :[0m fused=336ms  judge=141ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-rgb-cornflower[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m css palette rgb for cornflower blue _
+  [2mSPAN    :[0m rgb for cornflower blue _
+  [2mANSWER  :[0m 100, 149, 237
+  [2mEXP ANS :[0m 100,149,237 [2m(or: #6495ED, rgb(100,149,237), 100 149 237)[0m
+  [2mJUDGE   :[0m Exact RGB values match the expected answer.
+  [2mTIMING  :[0m fused=251ms  judge=154ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-http-401[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m auth flow bug http status for unauthorized _
+  [2mSPAN    :[0m http status for unauthorized _
+  [2mANSWER  :[0m 401
+  [2mEXP ANS :[0m 401
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=252ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-http-403[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m auth bug fixing http status for forbidden _
+  [2mSPAN    :[0m http status for forbidden _
+  [2mANSWER  :[0m 403
+  [2mEXP ANS :[0m 403
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=182ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-http-429[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m rate limiter docs http status for too many requests _
+  [2mSPAN    :[0m http status for too many requests _
+  [2mANSWER  :[0m 429
+  [2mEXP ANS :[0m 429
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=180ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-http-500[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m on-call rotation http status for internal server error _
+  [2mSPAN    :[0m http status for internal server error _
+  [2mANSWER  :[0m 500
+  [2mEXP ANS :[0m 500
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=194ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-http-503[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m monitoring alert http status for service unavailable _
+  [2mSPAN    :[0m http status for service unavailable _
+  [2mANSWER  :[0m 503
+  [2mEXP ANS :[0m 503
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=192ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-http-301[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m site migration http status for moved permanently _
+  [2mSPAN    :[0m http status for moved permanently _
+  [2mANSWER  :[0m 301
+  [2mEXP ANS :[0m 301
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=193ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-http-502[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m outage triage http status for bad gateway _
+  [2mSPAN    :[0m http status for bad gateway _
+  [2mANSWER  :[0m 502
+  [2mEXP ANS :[0m 502
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=270ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-http-201[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m rest api spec http status for created _
+  [2mSPAN    :[0m http status for created _
+  [2mANSWER  :[0m 201
+  [2mEXP ANS :[0m 201
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=290ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-mime-css[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m content type lookup mime type for css _
+  [2mSPAN    :[0m mime type for css _
+  [2mANSWER  :[0m text/css
+  [2mEXP ANS :[0m text/css
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=259ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-mime-json[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m api headers what's mime type for json _
+  [2mSPAN    :[0m what's mime type for json _
+  [2mANSWER  :[0m application/json
+  [2mEXP ANS :[0m application/json [2m(or: application/json; charset=utf-8)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=239ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-mime-png[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m api docs mime type for png _
+  [2mSPAN    :[0m mime type for png _
+  [2mANSWER  :[0m image/png
+  [2mEXP ANS :[0m image/png
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=263ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-port-postgres[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m config review default port for postgres _
+  [2mSPAN    :[0m default port for postgres _
+  [2mANSWER  :[0m 5432
+  [2mEXP ANS :[0m 5432
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=197ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-port-mysql[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m docker compose what's default port for mysql _
+  [2mSPAN    :[0m what's default port for mysql _
+  [2mANSWER  :[0m 3306
+  [2mEXP ANS :[0m 3306
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=194ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-port-ssh[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m firewall rules default ssh port _
+  [2mSPAN    :[0m default ssh port _
+  [2mANSWER  :[0m 22
+  [2mEXP ANS :[0m 22
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=250ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-port-redis[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m cache layer setup default port for redis _
+  [2mSPAN    :[0m default port for redis _
+  [2mANSWER  :[0m 6379
+  [2mEXP ANS :[0m 6379
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=273ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-port-https[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m firewall rules default port for https _
+  [2mSPAN    :[0m default port for https _
+  [2mANSWER  :[0m 443
+  [2mEXP ANS :[0m 443
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=202ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-escape-newline[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m string parsing what's escape sequence for newline character _
+  [2mSPAN    :[0m what's escape sequence for newline character _
+  [2mANSWER  :[0m \n
+  [2mEXP ANS :[0m \n [2m(or: \\n, 0x0A, LF, line feed)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=194ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-html-lt[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m blog post escaping html entity for less than _
+  [2mSPAN    :[0m escaping html entity for less than _
+  [2mANSWER  :[0m &lt;
+  [2mEXP ANS :[0m &lt; [2m(or: lt, &lt, &#60;)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=243ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-html-br[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m newsletter cleanup html element for line break _
+  [2mSPAN    :[0m html element for line break _
+  [2mANSWER  :[0m <br>
+  [2mEXP ANS :[0m <br> [2m(or: <br/>, <br />, br)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=213ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-regex-digit[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m form validation regex for matching a single digit _
+  [2mSPAN    :[0m form validation regex for matching a single digit _
+  [2mANSWER  :[0m ^\d$
+  [2mEXP ANS :[0m \d [2m(or: [0-9], \d{1}, /\d/)[0m
+  [2mJUDGE   :[0m "^\\d$" correctly matches exactly one digit, matching the expected patterns.
+  [2mTIMING  :[0m fused=348ms  judge=171ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-css-bold[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m stylesheet refactor css property for making text bold _
+  [2mSPAN    :[0m css property for making text bold _
+  [2mANSWER  :[0m font-weight
+  [2mEXP ANS :[0m font-weight [2m(or: font-weight: bold, font-weight:bold, font-weight: 700)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=323ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-bytes-kb[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m storage planning how many bytes in a kilobyte _
+  [2mSPAN    :[0m how many bytes in a kilobyte _
+  [2mANSWER  :[0m 1024
+  [2mEXP ANS :[0m 1024 [2m(or: 1000, 1024 (binary), 2^10)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=220ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-html-alt[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m a11y audit html attribute for image alt text _
+  [2mSPAN    :[0m html attribute for image alt text _
+  [2mANSWER  :[0m alt
+  [2mEXP ANS :[0m alt [2m(or: alt attribute, alt="")[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=296ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-ms-second[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m animation timing how many milliseconds in a second _
+  [2mSPAN    :[0m how many milliseconds in a second _
+  [2mANSWER  :[0m 1000
+  [2mEXP ANS :[0m 1000
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=190ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-feet-mile[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m trail map prep how many feet in a mile _
+  [2mSPAN    :[0m how many feet in a mile _
+  [2mANSWER  :[0m 5280
+  [2mEXP ANS :[0m 5280 [2m(or: 5,280)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=180ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-cups-pint[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m recipe scaling how many cups in a pint _
+  [2mSPAN    :[0m how many cups in a pint _
+  [2mANSWER  :[0m 2
+  [2mEXP ANS :[0m 2
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=210ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-secs-hour[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m schedule math how many seconds in an hour _
+  [2mSPAN    :[0m how many seconds in an hour _
+  [2mANSWER  :[0m 3600
+  [2mEXP ANS :[0m 3600 [2m(or: 3,600)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=256ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-100c-f[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m recipe testing 100 celsius in fahrenheit _
+  [2mSPAN    :[0m 100 celsius in fahrenheit _
+  [2mANSWER  :[0m 212
+  [2mEXP ANS :[0m 212 [2m(or: 212 F, 212°F)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=191ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-cm-inch[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m tailor notes how many centimeters in an inch _
+  [2mSPAN    :[0m how many centimeters in an inch _
+  [2mANSWER  :[0m 2.54
+  [2mEXP ANS :[0m 2.54
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=338ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-350f-c[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m oven temp what's 350 fahrenheit in celsius _
+  [2mSPAN    :[0m what's 350 fahrenheit in celsius _
+  [2mANSWER  :[0m 176.67
+  [2mEXP ANS :[0m 177 [2m(or: 176.67, 177°C, 180, 175)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=240ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-grams-pound[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m shipping calc how many grams in a pound _
+  [2mSPAN    :[0m how many grams in a pound _
+  [2mANSWER  :[0m 453.592
+  [2mEXP ANS :[0m 453.59 [2m(or: 454, 453.6, ~454)[0m
+  [2mJUDGE   :[0m Actual value 453.592 g matches the expected approximate gram count for a pound.
+  [2mTIMING  :[0m fused=214ms  judge=170ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-tbsp-cup[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m baking project how many tablespoons in a cup _
+  [2mSPAN    :[0m how many tablespoons in a cup _
+  [2mANSWER  :[0m 16
+  [2mEXP ANS :[0m 16
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=182ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-french-love[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m anniversary card french word for love _
+  [2mSPAN    :[0m french word for love _
+  [2mANSWER  :[0m amour
+  [2mEXP ANS :[0m amour [2m(or: l'amour)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=185ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-spanish-dog[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m flash cards for kids spanish word for dog _
+  [2mSPAN    :[0m spanish word for dog _
+  [2mANSWER  :[0m perro
+  [2mEXP ANS :[0m perro
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=235ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-5mi-km[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m running tracker 5 miles in km _
+  [2mSPAN    :[0m 5 miles in km _
+  [2mANSWER  :[0m 8.04672
+  [2mEXP ANS :[0m 8.05 [2m(or: 8.0467, 8.04, 8 km, ~8)[0m
+  [2mJUDGE   :[0m Provides a numeric conversion within the acceptable range.
+  [2mTIMING  :[0m fused=253ms  judge=109ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-german-water[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m trip phrasebook german word for water _
+  [2mSPAN    :[0m german word for water _
+  [2mANSWER  :[0m Wasser
+  [2mEXP ANS :[0m wasser [2m(or: Wasser)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=235ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-japanese-cat[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m sushi menu illustration japanese word for cat _
+  [2mSPAN    :[0m japanese word for cat _
+  [2mANSWER  :[0m neko
+  [2mEXP ANS :[0m neko [2m(or: 猫, ネコ)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=196ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-hello-french[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m email signoff how do you say hello in french _
+  [2mSPAN    :[0m how do you say hello in french _
+  [2mANSWER  :[0m bonjour
+  [2mEXP ANS :[0m bonjour [2m(or: Bonjour, salut)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=200ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-arabic-peace[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m interfaith poster arabic word for peace _
+  [2mSPAN    :[0m arabic word for peace _
+  [2mANSWER  :[0m Salam
+  [2mEXP ANS :[0m salam [2m(or: salaam, السلام)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=252ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-water-spanish[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m spanish class water in spanish _
+  [2mSPAN    :[0m water in spanish _
+  [2mANSWER  :[0m agua
+  [2mEXP ANS :[0m agua [2m(or: el agua)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=205ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-thank-japanese[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m subtitling project thank you in japanese romaji _
+  [2mSPAN    :[0m thank you in japanese romaji _
+  [2mANSWER  :[0m arigatou
+  [2mEXP ANS :[0m arigatou [2m(or: arigato, arigatou gozaimasu)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=203ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-formal-german[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m german homework formal you in german _
+  [2mSPAN    :[0m formal you in german _
+  [2mANSWER  :[0m Sie
+  [2mEXP ANS :[0m Sie
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=184ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-cheers-italian[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m trip prep cheers in italian _
+  [2mSPAN    :[0m cheers in italian _
+  [2mANSWER  :[0m Salute
+  [2mEXP ANS :[0m salute [2m(or: cin cin, alla salute)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=242ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-atomic-oxygen[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m chem homework atomic number of oxygen _
+  [2mSPAN    :[0m atomic number of oxygen _
+  [2mANSWER  :[0m 8
+  [2mEXP ANS :[0m 8
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=205ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-atomic-nitrogen[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m chem study guide atomic mass of nitrogen _
+  [2mSPAN    :[0m atomic mass of nitrogen _
+  [2mANSWER  :[0m 14.007
+  [2mEXP ANS :[0m 14.007 [2m(or: 14, 14.01)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=258ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-atomic-gold[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m chem homework atomic number of gold _
+  [2mSPAN    :[0m atomic number of gold _
+  [2mANSWER  :[0m 79
+  [2mEXP ANS :[0m 79
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=287ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-water-ph[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m chem class quiz ph of pure water _
+  [2mSPAN    :[0m ph of pure water _
+  [2mANSWER  :[0m 7
+  [2mEXP ANS :[0m 7
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=291ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-helium-boil[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m cryogenics paper boiling point of helium in celsius _
+  [2mSPAN    :[0m boiling point of helium in celsius _
+  [2mANSWER  :[0m -268.93
+  [2mEXP ANS :[0m -269 [2m(or: -268.93, minus 269)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=214ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-iron-melt[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m metallurgy notes melting point of iron in celsius _
+  [2mSPAN    :[0m melting point of iron in celsius _
+  [2mANSWER  :[0m 1538
+  [2mEXP ANS :[0m 1538 [2m(or: 1535, 1500-1538)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=223ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-stomach-ph[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m med school prep ph of stomach acid _
+  [2mSPAN    :[0m ph of stomach acid _
+  [2mANSWER  :[0m 1.5 to 3.5
+  [2mEXP ANS :[0m 1.5-2 [2m(or: 2, 1.5, 1.5-3.5)[0m
+  [2mJUDGE   :[0m Matches an acceptable range variation.
+  [2mTIMING  :[0m fused=211ms  judge=213ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-water-boil[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m kettle science boiling point of water in celsius _
+  [2mSPAN    :[0m boiling point of water in celsius _
+  [2mANSWER  :[0m 100
+  [2mEXP ANS :[0m 100
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=241ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-teeth-adult[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m dental chart number of teeth in adult human _
+  [2mSPAN    :[0m number of teeth in adult human _
+  [2mANSWER  :[0m 32
+  [2mEXP ANS :[0m 32
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=209ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-2-plus-2[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m kids homework 2 plus 2 _
+  [2mSPAN    :[0m 2 plus 2 _
+  [2mANSWER  :[0m 4
+  [2mEXP ANS :[0m 4 [2m(or: four)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=223ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-sqrt-144[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m math homework square root of 144 _
+  [2mSPAN    :[0m square root of 144 _
+  [2mANSWER  :[0m 12
+  [2mEXP ANS :[0m 12
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=196ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-pi-5dp[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m worksheet pi to 5 decimals _
+  [2mSPAN    :[0m pi to 5 decimals _
+  [2mANSWER  :[0m 3.14159
+  [2mEXP ANS :[0m 3.14159
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=240ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-shakespeare-died[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m lecture notes year shakespeare died _
+  [2mSPAN    :[0m year shakespeare died _
+  [2mANSWER  :[0m 1616
+  [2mEXP ANS :[0m 1616
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=199ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-einstein-nobel[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m physics paper year einstein won nobel _
+  [2mSPAN    :[0m year einstein won nobel _
+  [2mANSWER  :[0m 1921
+  [2mEXP ANS :[0m 1921
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=204ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-apollo-1969[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m trivia tonight year apollo 11 landed on the moon _
+  [2mSPAN    :[0m year apollo 11 landed on the moon _
+  [2mANSWER  :[0m 1969
+  [2mEXP ANS :[0m 1969
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=214ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-iphone-launch[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m tech timeline year the first iphone launched _
+  [2mSPAN    :[0m year the first iphone launched _
+  [2mANSWER  :[0m 2007
+  [2mEXP ANS :[0m 2007
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=197ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-penicillin[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m biology paper inventor of penicillin _
+  [2mSPAN    :[0m inventor of penicillin _
+  [2mANSWER  :[0m Alexander Fleming
+  [2mEXP ANS :[0m Alexander Fleming [2m(or: Fleming)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=186ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-berlin-wall[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m history podcast year the berlin wall fell _
+  [2mSPAN    :[0m year the berlin wall fell _
+  [2mANSWER  :[0m 1989
+  [2mEXP ANS :[0m 1989
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=260ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-america-indep[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m july 4 essay year america declared independence _
+  [2mSPAN    :[0m year america declared independence _
+  [2mANSWER  :[0m 1776
+  [2mEXP ANS :[0m 1776
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=215ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-japan-cap[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m asia trip planning capital of japan _
+  [2mSPAN    :[0m capital of japan _
+  [2mANSWER  :[0m Tokyo
+  [2mEXP ANS :[0m Tokyo
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=183ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-france-cap[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m trivia tonight capital of france _
+  [2mSPAN    :[0m capital of france _
+  [2mANSWER  :[0m Paris
+  [2mEXP ANS :[0m Paris
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=233ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-canada-cap[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m geography quiz capital of canada _
+  [2mSPAN    :[0m capital of canada _
+  [2mANSWER  :[0m Ottawa
+  [2mEXP ANS :[0m Ottawa
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=269ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-fb-founder[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m tech bio entry founder of facebook _
+  [2mSPAN    :[0m founder of facebook _
+  [2mANSWER  :[0m Mark Zuckerberg
+  [2mEXP ANS :[0m Mark Zuckerberg [2m(or: Zuckerberg, Zuck)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=385ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-everest-m[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m geography quiz height of mount everest in meters _
+  [2mSPAN    :[0m height of mount everest in meters _
+  [2mANSWER  :[0m 8848.86
+  [2mEXP ANS :[0m 8848 [2m(or: 8849, 8848.86)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=267ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-amazon-river[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m south america trip longest river in south america _
+  [2mSPAN    :[0m longest river in south america _
+  [2mANSWER  :[0m Amazon River
+  [2mEXP ANS :[0m Amazon [2m(or: Amazon River)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=202ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-denali[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m alaska trip planning tallest mountain in north america _
+  [2mSPAN    :[0m tallest mountain in north america _
+  [2mANSWER  :[0m Denali
+  [2mEXP ANS :[0m Denali [2m(or: Mount McKinley, Mt. McKinley)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=289ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-largest-country[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m atlas trivia largest country by area _
+  [2mSPAN    :[0m largest country by area _
+  [2mANSWER  :[0m Russia
+  [2mEXP ANS :[0m Russia
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=186ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-vatican[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m europe trip planning smallest country in europe _
+  [2mSPAN    :[0m smallest country in europe _
+  [2mANSWER  :[0m Vatican City
+  [2mEXP ANS :[0m Vatican City [2m(or: Vatican)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=194ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-jurassic-dir[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m movie marathon weekend ahead with the family thinking we will go through some classics director of jurassic park _
+  [2mSPAN    :[0m director of jurassic park _
+  [2mANSWER  :[0m Steven Spielberg
+  [2mEXP ANS :[0m Steven Spielberg [2m(or: Spielberg)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=200ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-jagger[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m tribute band setlist work researching the originals lead singer of the rolling stones _
+  [2mSPAN    :[0m lead singer of the rolling stones _
+  [2mANSWER  :[0m Mick Jagger
+  [2mEXP ANS :[0m Mick Jagger [2m(or: Jagger)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=261ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-best-actor[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m oscars rewatch and trivia game tonight winner of best actor 2023 oscars _
+  [2mSPAN    :[0m winner of best actor 2023 oscars _
+  [2mANSWER  :[0m Brendan Fraser
+  [2mEXP ANS :[0m Brendan Fraser [2m(or: Fraser)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=259ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-hp-protag[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m kids party theme planning superhero versus wizard battles main character in harry potter _
+  [2mSPAN    :[0m main character in harry potter _
+  [2mANSWER  :[0m Harry Potter
+  [2mEXP ANS :[0m Harry Potter [2m(or: Harry, Harry James Potter)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=185ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-friends-eps[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m writing a tribute piece for sitcom history magazine number of episodes in friends _
+  [2mSPAN    :[0m number of episodes in friends _
+  [2mANSWER  :[0m 236
+  [2mEXP ANS :[0m 236
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=206ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-st-jude[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m religious studies homework on saints and their domains patron saint of lost causes _
+  [2mSPAN    :[0m patron saint of lost causes _
+  [2mANSWER  :[0m Saint Jude
+  [2mEXP ANS :[0m Saint Jude [2m(or: St. Jude, Jude)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=209ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-greyhound[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m dog show planning weekend for the speed event fastest dog breed _
+  [2mSPAN    :[0m fastest dog breed _
+  [2mANSWER  :[0m Greyhound
+  [2mEXP ANS :[0m Greyhound [2m(or: greyhound)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=180ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-spider-legs[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m halloween decorations buying plastic spiders for the porch number of legs on a spider _
+  [2mSPAN    :[0m number of legs on a spider _
+  [2mANSWER  :[0m 8
+  [2mEXP ANS :[0m 8 [2m(or: eight)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=274ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-india-flower[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m cultural studies project on national symbols around the world national flower of india _
+  [2mSPAN    :[0m national flower of india _
+  [2mANSWER  :[0m Lotus
+  [2mEXP ANS :[0m Lotus [2m(or: lotus)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=204ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-edison[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m elementary school science fair on inventors and their famous works inventor of the lightbulb _
+  [2mSPAN    :[0m inventor of the lightbulb _
+  [2mANSWER  :[0m Thomas Edison
+  [2mEXP ANS :[0m Thomas Edison [2m(or: Edison)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=217ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-max-pacific[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m writing a travel blog post about my recent trip to australia and how the flight from san francisco took ages and the weather there was honestly amazing for that time of year largest ocean on earth _
+  [2mSPAN    :[0m largest ocean on earth _
+  [2mANSWER  :[0m Pacific Ocean
+  [2mEXP ANS :[0m Pacific [2m(or: Pacific Ocean, the Pacific)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=198ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-max-hand-bones[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m anatomy class for nursing students this semester is heavy and the lab work has been intense with cadaver dissections every other tuesday morning number of bones in human hand _
+  [2mSPAN    :[0m number of bones in human hand _
+  [2mANSWER  :[0m 27
+  [2mEXP ANS :[0m 27
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=215ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-max-ny-london[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m summer travel planning thinking about a london trip but the price keeps fluctuating and i need to figure out the budget for the flight and hotel and a few extra excursions distance from new york to london in km _
+  [2mSPAN    :[0m distance from new york to london in km _
+  [2mANSWER  :[0m 5570
+  [2mEXP ANS :[0m 5570 [2m(or: ~5500, 5585, 5,570)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=283ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-max-mongolia[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m geography club world capitals quiz prep marathon all weekend trying to memorize the more obscure ones for the regional competition next saturday capital of mongolia _
+  [2mSPAN    :[0m capital of mongolia _
+  [2mANSWER  :[0m Ulaanbaatar
+  [2mEXP ANS :[0m Ulaanbaatar [2m(or: Ulan Bator)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=184ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mmulti-clause-silver[0m  [2m[multi-clause/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m the chemical symbol for gold is au and the symbol for silver is _
+  [2mSPAN    :[0m the symbol for silver is _
+  [2mANSWER  :[0m Ag
+  [2mEXP ANS :[0m Ag
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=186ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-q-france-cap[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m geography club what's the capital of france? _
+  [2mSPAN    :[0m what's the capital of france? _
+  [2mANSWER  :[0m Paris
+  [2mEXP ANS :[0m Paris
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=191ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mambiguous-river[0m  [2m[ambiguous/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m the capital of france is paris and the largest river is _
+  [2mSPAN    :[0m the largest river is _
+  [2mANSWER  :[0m the largest river is the Loire
+  [2mEXP ANS :[0m Loire [2m(or: the Loire, Loire River)[0m
+  [2mJUDGE   :[0m Provides the same answer, identifying the Loire as the largest river.
+  [2mTIMING  :[0m fused=196ms  judge=191ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-q-planets[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m astronomy worksheet how many planets in our solar system? _
+  [2mSPAN    :[0m how many planets in our solar system? _
+  [2mANSWER  :[0m 8
+  [2mEXP ANS :[0m 8 [2m(or: eight)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=192ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mmulti-lookup-sad[0m  [2m[multi-clause/r][0m  [31mFAIL[0m
+  [2mINPUT   :[0m looking up better word for happy and better word for sad _
+  [2mSPAN    :[0m better word for happy and better word for sad _
+  [2mANSWER  :[0m joyful and miserable
+  [2mEXP ANS :[0m melancholy [2m(or: sorrowful, gloomy, downcast, blue, unhappy)[0m
+  [2mJUDGE   :[0m Includes an incorrect opposite term and does not match any acceptable synonym.
+  [2mTIMING  :[0m fused=243ms  judge=324ms
+  [33mRAW     :[0m SPAN: better word for happy and better word for sad _
+           ANSWER: joyful and miserable
+──────────────────────────────────────────────────────────────────────────────
+[1mr-q-mona-lisa[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m writing trivia who painted the mona lisa? _
+  [2mSPAN    :[0m who painted the mona lisa? _
+  [2mANSWER  :[0m Leonardo da Vinci
+  [2mEXP ANS :[0m Leonardo da Vinci [2m(or: da Vinci, Leonardo)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=217ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-q-eiffel[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m paris trip planning when was the eiffel tower built? _
+  [2mSPAN    :[0m when was the eiffel tower built? _
+  [2mANSWER  :[0m 1889
+  [2mEXP ANS :[0m 1889
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=193ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-q-light-speed[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m physics class what's the speed of light in m/s? _
+  [2mSPAN    :[0m what's the speed of light in m/s? _
+  [2mANSWER  :[0m 299792458
+  [2mEXP ANS :[0m 299792458 [2m(or: 299,792,458, 3×10^8, 3 × 10^8)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=208ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-max-goldfish[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m kids pet store trip after school today they want to bring home a fish and the husband is finally on board after months of negotiating lifespan of a goldfish in years _
+  [2mSPAN    :[0m lifespan of a goldfish in years _
+  [2mANSWER  :[0m 10-30
+  [2mEXP ANS :[0m 10-15 [2m(or: 10, 15, 10 to 15)[0m
+  [2mJUDGE   :[0m 10-30 years is a commonly cited lifespan range for goldfish, making it a defensible alternative.
+  [2mTIMING  :[0m fused=571ms  judge=365ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-q-everest-ft[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m geography quiz how tall is mount everest in feet? _
+  [2mSPAN    :[0m how tall is mount everest in feet? _
+  [2mANSWER  :[0m 29032
+  [2mEXP ANS :[0m 29,032 [2m(or: 29032, 29029, 29031.69)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=234ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-q-canberra[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m geo trivia capital of australia? _
+  [2mSPAN    :[0m capital of australia? _
+  [2mANSWER  :[0m Canberra
+  [2mEXP ANS :[0m Canberra
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=181ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-q-wwii-end[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m history homework when did wwii end? _
+  [2mSPAN    :[0m when did wwii end? _
+  [2mANSWER  :[0m 1945
+  [2mEXP ANS :[0m 1945
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=258ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-q-carbon-atomic[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m chem quiz atomic number of carbon? _
+  [2mSPAN    :[0m atomic number of carbon? _
+  [2mANSWER  :[0m 6
+  [2mEXP ANS :[0m 6
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=255ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-q-moon-landing[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m history homework year of moon landing? _
+  [2mSPAN    :[0m year of moon landing? _
+  [2mANSWER  :[0m 1969
+  [2mEXP ANS :[0m 1969
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=187ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-q-sound-speed[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m physics class speed of sound in m/s? _
+  [2mSPAN    :[0m speed of sound in m/s? _
+  [2mANSWER  :[0m 343
+  [2mEXP ANS :[0m 343 [2m(or: ~343, 340, 343 m/s)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=243ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-q-burj[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m skyline article tallest building in the world? _
+  [2mSPAN    :[0m tallest building in the world? _
+  [2mANSWER  :[0m Burj Khalifa
+  [2mEXP ANS :[0m Burj Khalifa [2m(or: Burj, the Burj)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=197ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-q-beethoven-key[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m music quiz key of beethoven's 5th? _
+  [2mSPAN    :[0m key of beethoven's 5th? _
+  [2mANSWER  :[0m C minor
+  [2mEXP ANS :[0m C minor [2m(or: Cm, C-minor)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=235ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-q-purple-hex[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m css palette hex for purple? _
+  [2mSPAN    :[0m hex for purple? _
+  [2mANSWER  :[0m 800080
+  [2mEXP ANS :[0m #800080 [2m(or: #800080, 800080, purple)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=198ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-q-zeus-wife[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m mythology trivia name of zeus's wife? _
+  [2mSPAN    :[0m name of zeus's wife? _
+  [2mANSWER  :[0m Hera
+  [2mEXP ANS :[0m Hera
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=241ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-q-mercury-boil[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m lab notes boiling point of mercury celsius? _
+  [2mSPAN    :[0m boiling point of mercury celsius? _
+  [2mANSWER  :[0m 356.7
+  [2mEXP ANS :[0m 357 [2m(or: 356.7, 356.73, ~357)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=231ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-q-brazil-cap[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m world capitals capital of brazil? _
+  [2mSPAN    :[0m capital of brazil? _
+  [2mANSWER  :[0m Brasília
+  [2mEXP ANS :[0m Brasília [2m(or: Brasilia)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=238ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-q-french-rev[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m history class french revolution year? _
+  [2mSPAN    :[0m french revolution year? _
+  [2mANSWER  :[0m 1789
+  [2mEXP ANS :[0m 1789
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=540ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-q-richter-max[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m earthquake article richter scale max value? _
+  [2mSPAN    :[0m richter scale max value? _
+  [2mANSWER  :[0m 10
+  [2mEXP ANS :[0m 10 [2m(or: 9-10, 9.5 (highest recorded), no theoretical max, 9.5)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=403ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-e-light-speed[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m let me think... speed of light in m/s _
+  [2mSPAN    :[0m speed of light in m/s _
+  [2mANSWER  :[0m 299792458
+  [2mEXP ANS :[0m 299792458 [2m(or: 299,792,458, 3×10^8)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=197ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-e-france-cap[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m hmm... capital of france _
+  [2mSPAN    :[0m capital of france _
+  [2mANSWER  :[0m Paris
+  [2mEXP ANS :[0m Paris
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=296ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-e-largest-desert[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m ugh blanking... largest desert in the world _
+  [2mSPAN    :[0m largest desert in the world _
+  [2mANSWER  :[0m Antarctic Desert
+  [2mEXP ANS :[0m Sahara [2m(or: Antarctic, Antarctic Desert, Sahara Desert)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=197ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-e-wwii[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m ok so... year wwii ended _
+  [2mSPAN    :[0m year wwii ended _
+  [2mANSWER  :[0m 1945
+  [2mEXP ANS :[0m 1945
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=385ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-e-planets[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m wait... how many planets in our solar system _
+  [2mSPAN    :[0m how many planets in our solar system _
+  [2mANSWER  :[0m 8
+  [2mEXP ANS :[0m 8 [2m(or: eight)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=504ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-e-usa-bird[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m blanking on this... national bird of usa _
+  [2mSPAN    :[0m national bird of usa _
+  [2mANSWER  :[0m Bald Eagle
+  [2mEXP ANS :[0m Bald Eagle [2m(or: bald eagle)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=221ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-e-gold-atomic[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m thinking... atomic number of gold _
+  [2mSPAN    :[0m atomic number of gold _
+  [2mANSWER  :[0m 79
+  [2mEXP ANS :[0m 79
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=435ms  judge=0ms
+──────────────────────────────────────────────────────────────────────────────
+[1mr-e-q-elephant[0m  [2m[inline/r][0m  [32mPASS[0m
+  [2mINPUT   :[0m hmm... what's the gestation period of elephants? _
+  [2mSPAN    :[0m what's the gestation period of elephants? _
+  [2mANSWER  :[0m 22 months
+  [2mEXP ANS :[0m 22 months [2m(or: ~22 months, 21-22 months, ~22, 22)[0m
+  [2mJUDGE   :[0m (exact match)
+  [2mTIMING  :[0m fused=203ms  judge=0ms
+══════════════════════════════════════════════════════════════════════════════
+[1mRealistic:[0m  136/137 pass (99.3%)  [2m— _ at end, primary user path[0m
+[1mSynthetic:[0m  0/0 pass (n/a)  [2m— text after _, robustness check[0m
+[1mTotal:[0m      136/137 pass (99.3%)
+Avg P1: 245ms  Avg judge: 17ms
+Avg model (per case): 245ms  Avg judge: 17ms
+Wall-clock total: 9.1s  (parallel=4, 137 cases)
+Throughput: 15.07 cases/sec

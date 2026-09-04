@@ -109,6 +109,18 @@ const MODEL_THINKING: Readonly<Record<string, ModelThinking>> = {
   // is harmless. Added for the Cerebras hackathon model eval.
   'cerebras:gemma-4-31b': { max: 'none', off: 'none' },
 
+  // Cerebras qwen-3.8-27b — hybrid reasoning model (thinks by DEFAULT
+  // when the field is absent; separate `reasoning` response field).
+  // Accepts none|low|medium|high; 'none' cleanly disables thinking
+  // (0 reasoning tokens, content populated — verified live 2026-09-03).
+  // `low` is the ceiling: fluid-blank bench 2026-09-03 scored 137/137
+  // at 'low' vs 135/137 at 'none' with ~equal latency (274ms vs 279ms
+  // avg — low burns only ~15-60 reasoning tokens on our short calls).
+  // The isReasoningModelName regex in buildOpenAIBody matches
+  // `qwen-3.8` so the field actually reaches the wire — without it the
+  // model defaults to unbounded thinking.
+  'cerebras:qwen-3.8-27b': { max: 'low', off: 'none' },
+
   // Groq `openai/gpt-oss-*` — REQUIRES the field. Accepts ONLY
   // 'low' | 'medium' | 'high'; `'none'` returns HTTP 400
   // (`"reasoning_effort must be one of `low`, `medium`, or `high`"`).

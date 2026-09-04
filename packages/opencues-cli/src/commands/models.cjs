@@ -129,7 +129,7 @@ module.exports = function models(argv, ctx) {
   }
   console.log('');
   console.log(dim('  * = model in effect (blanks bucket). Switch: `opencues config`, or in-editor'));
-  console.log(dim('  natural language (`use gemma for blanks _`) / cycling (`opencues blanks-llm-model _`).'));
+  console.log(dim('  natural language (`use qwen for blanks _`) / cycling (`opencues blanks-llm-model _`).'));
   return 0;
 };
 

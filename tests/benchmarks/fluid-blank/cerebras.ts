@@ -31,11 +31,18 @@ export interface ChatResult { text: string; latencyMs: number; }
  *  - zai-glm-4.7: 'none' is the only useful value (any other burns
  *    500-700 reasoning tokens for no quality gain) */
 function defaultReasoningFor(model: string): 'none' | 'low' | 'medium' | 'high' {
+  const override = process.env.OPENCUES_CEREBRAS_REASONING;
+  if (override === 'none' || override === 'low' || override === 'medium' || override === 'high') return override;
   if (model === 'zai-glm-4.7') return 'none';
   // gemma-4-31b is non-reasoning: any non-'none' value routes the answer
   // into the `reasoning` field and leaves `content` empty (the parser
   // reads `content` → every case would score 0). Force 'none'.
   if (model === 'gemma-4-31b') return 'none';
+  // qwen-3.8-27b is a hybrid reasoning model: accepts none|low|medium|high;
+  // 'none' fully disables thinking. Production pins 'low' (MODEL_THINKING
+  // ceiling — 137/137 fluid at 'low' vs 135/137 at 'none', ~equal latency).
+  // Sweep alternatives via OPENCUES_CEREBRAS_REASONING.
+  if (model === 'qwen-3.8-27b') return 'low';
   return 'low';
 }
 

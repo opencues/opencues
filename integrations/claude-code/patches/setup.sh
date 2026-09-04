@@ -4,14 +4,14 @@
 #
 # Scope: handles BOTH install shapes structurally — the npm **cli.js**
 # shape (Claude Code 2.1.111 and earlier) and the **native bun-binary**
-# shape (2.1.113+, including today's pinned 2.1.206). Same script,
+# shape (2.1.113+, including today's pinned 2.1.236). Same script,
 # same patch source; `setup.sh` auto-detects which artifact is present
 # under the fork's `node_modules/@anthropic-ai/claude-code/` and hands
 # the right path to tweakcc — tweakcc patches cli.js directly, or for
 # native binaries extracts cli.js from the `.bun` section (ELF on
 # Linux, Mach-O on macOS, PE on Windows), patches the text, and
 # repacks. The CC version pin lives in
-# `integrations/claude-code/compat.json:current-pin` (today 2.1.206)
+# `integrations/claude-code/compat.json:current-pin` (today 2.1.236)
 # and the tweakcc commit pin in `compat.json:tweakcc-pin`; see
 # `integrations/claude-code/UPGRADING.md` for the version-bump runbook.
 #
@@ -31,7 +31,7 @@
 # State that gets nuked + rebuilt every install (default):
 #   ~/claude-code-cues/.cues/                            recreated (incl. tweakcc clone)
 #   ~/claude-code-cues/node_modules/@opencues/{core,runtime}/  rebuilt + recopied
-#   ~/claude-code-cues/node_modules/@anthropic-ai/       reinstalled (pin from compat.json:current-pin, today 2.1.206 native bun-binary)
+#   ~/claude-code-cues/node_modules/@anthropic-ai/       reinstalled (pin from compat.json:current-pin, today 2.1.236 native bun-binary)
 #
 # State that survives every install:
 #   ~/.cues/  (incl. OPENCUES.md)                        user content (your CUE.md / BLANK.md edits etc.)
@@ -173,7 +173,7 @@ fi
 # invocation against a side fork doesn't hard-fail.
 COMPAT_JSON="$(dirname "$0")/../compat.json"
 CC_PIN=$(node -e "try{process.stdout.write(JSON.parse(require('fs').readFileSync('$COMPAT_JSON','utf8'))['current-pin']||'')}catch{}" 2>/dev/null || true)
-[ -z "$CC_PIN" ] && CC_PIN="2.1.206"
+[ -z "$CC_PIN" ] && CC_PIN="2.1.236"
 # tweakcc is pinned to an exact commit (compat.json:tweakcc-pin) — an
 # unpinned clone means every install gets whatever tweakcc main is that
 # day. Issue #276 (July 2026): an unpinned clone pulled a main whose
@@ -426,6 +426,33 @@ content = content.replace(anchor,
 fs.writeFileSync('$INDEX_FILE', content);
 console.log('Disabled tweakcc system-prompt pipeline');
 "
+
+# 4f. Disable tweakcc's PARSE GATE (4.3.3+, pin 371a5c4+). The gate runs
+# \`node --check\` on the patched bundle before writing it — but CC's
+# embedded JS uses Bun-only syntax (\`using\` declarations, first seen
+# 2.1.170) that Node's parser rejects even on a PRISTINE extract, so on
+# affected versions the gate rejects a perfectly good patch and rolls
+# everything back ("SyntaxError: Unexpected identifier 'n'" — hit live
+# on 2.1.236, Sep 2026; upstream #978 tracks the sibling ESM-entry
+# false-positive). Our own § 9 verification is strictly stronger: it
+# EXECUTES the patched artifact with --version under the only parser
+# that matters (Bun itself, per shape), so dropping tweakcc's Node-based
+# pre-check loses nothing. Anchor on the call site; abort loudly if the
+# pin moves it.
+node -e "
+const fs = require('fs');
+let content = fs.readFileSync('$INDEX_FILE', 'utf8');
+const anchor = 'assertPatchedBundleParses(content);';
+if (!content.includes(anchor)) {
+  console.error('Error: could not find the assertPatchedBundleParses call in index.ts.');
+  console.error('tweakcc pin may have moved — re-verify section 4f against the pinned commit.');
+  process.exit(1);
+}
+content = content.replace(anchor,
+  '/* OpenCues: parse gate disabled — node --check cannot parse Bun-only syntax (using declarations) so it false-positives on valid patches; our installer runtime-smokes the patched artifact under Bun instead. */');
+fs.writeFileSync('$INDEX_FILE', content);
+console.log('Disabled tweakcc parse gate');
+"
 end_step
 
 # ─── 5. Build @opencues/{core,runtime} + install into fork ────────────
@@ -540,7 +567,10 @@ end_step
 
 # ─── 8. Apply tweakcc to cli.js / native binary + verify v2 boot ─────
 begin_step "Applying patches to $CC_SHAPE"
-(cd "$TWEAKCC_DIR" && TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply 2>&1 | tail -10)
+# --yes: tweakcc 4.3.3-era (pin 371a5c4+) added a confirmation gate on
+# --apply; without it the non-interactive install aborts with
+# "--apply requires confirmation before rewriting Claude Code."
+(cd "$TWEAKCC_DIR" && TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply --yes 2>&1 | tail -10)
 # VERIFICATION (fatal): the patched cli.js must still parse. Issue #276
 # shipped a cli.js with double-escaped template literals because this
 # used to be a WARNING — the user's install said "Done." and cli.js

@@ -97,14 +97,14 @@ If we ever ship per-tab / per-textbox routing hints, the place to compute them w
 Cerebras supports [Predicted Outputs](https://inference-docs.cerebras.ai/capabilities/predicted-outputs) — a client-side speculative-decoding hint where you pre-supply the expected output. The server validates token-by-token against the actual generation; matching tokens come from cache (billed at the input rate), mismatches regenerate (billed at the output rate).
 
 Model support: `gpt-oss-120b` (the model we route to) + `zai-glm-4.7`.
-**`gemma-4-31b` does NOT support it** — it returns `400 "prediction" is
-not currently supported`. The `capabilities.prediction` predicate gates
-the field to `^gpt-oss` / `^zai-glm` only, so it's never sent to Gemma
-(new Cerebras models default OFF — safe). A dispatch-level retry-without-
-prediction is the receive-side belt if any model rejects it anyway (the
-detector matches both `unsupported` and `not currently supported`
-phrasings). Verified live 2026-06-28; see
-`tests/results/gemma-hackathon/FINDINGS.md`.
+**`gemma-4-31b` and `qwen-3.8-27b` do NOT support it** — both return
+`400 "prediction" is not currently supported` (gemma verified live
+2026-06-28, qwen 2026-09-03). The `capabilities.prediction` predicate
+gates the field to `^gpt-oss` / `^zai-glm` only, so it's never sent to
+either (new Cerebras models default OFF — safe). A dispatch-level
+retry-without-prediction is the receive-side belt if any model rejects
+it anyway (the detector matches both `unsupported` and `not currently
+supported` phrasings). See `tests/results/gemma-hackathon/FINDINGS.md`.
 
 > **gemma-4-31b is non-reasoning.** It's not in the prefix-cache or
 > Predicted-Outputs support sets above, and the runtime never forwards
@@ -112,6 +112,19 @@ phrasings). Verified live 2026-06-28; see
 > gate excludes it; any effort value empties its `content`). It still
 > benches at parity-or-better vs `gpt-oss-120b` at ~2× the speed because
 > the task doesn't need reasoning. `gpt-oss-120b` remains the default.
+> **DEPRECATED by Cerebras (Public preview, Sep 2026)** — kept for
+> back-compat; advise `qwen-3.8-27b` instead.
+
+> **qwen-3.8-27b is hybrid-reasoning** (Sep 2026). It thinks by DEFAULT
+> when `reasoning_effort` is absent (answer in `content`, trace in a
+> separate `reasoning` field), so the `isReasoningModelName` gate
+> matches `qwen-3.8` to keep the field on the wire and under
+> model-thinking control (`low` ceiling / `none` off — same trap shape
+> as zai-glm-4.7). Same-session bench 2026-09-03: fluid-blank 137/137
+> at 'low' (274ms avg, ties gpt-oss-120b); transform-blank 424/487
+> (87.1%, ties gemma for top accuracy) but ~1150ms avg on long rewrites
+> (~2× gpt-oss) — the small-model pick for lookup-heavy configs, not a
+> latency win on rewrites.
 
 ### When OpenCues uses it
 

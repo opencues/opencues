@@ -233,6 +233,14 @@ export interface BridgeBindings {
    *  applied (that's a display artifact absent from the buffer), so this shows
    *  logical alignment. Optional. */
   renderedText?(): string | null;
+  /** Summary of the host's most recent REAL render invocation (e.g. CC's
+   *  applyRender: slice length, viewport offset, directive counts, whether
+   *  anything painted). `renderDirectives()` above RECOMPUTES against the
+   *  full buffer — a different code path that stayed green through the
+   *  Sep 2026 viewport-slice bug while the real pipeline painted nothing.
+   *  This hook exposes production truth so scenarios can assert on it.
+   *  Optional; hosts that don't wire it leave `lastRender` null. */
+  lastRender?(): unknown;
   /** Runtime state classes — observed each tick for transition events,
    *  serialized into the dump on demand. */
   readonly state: BridgeState;
@@ -878,6 +886,7 @@ export function startEventBridge(b: BridgeBindings): EventBridgeHandle {
         agentTask: serializeOpaque(b.state.agentTaskState),
         render: safeCall(() => (b.renderDirectives ? b.renderDirectives() : null)),
         renderedText: safeCall(() => (b.renderedText ? b.renderedText() : null)),
+        lastRender: safeCall(() => (b.lastRender ? b.lastRender() : null)),
         capabilities: b.adapter.capabilities,
         pid,
         host: b.adapter.hostName,

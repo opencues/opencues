@@ -348,4 +348,30 @@ agentic harness is the standing gate for this context class.
 
 ---
 
-*Last updated: 2026-07-15.*
+## Experiment — `qwen` model alias (2026-09-04)
+
+Cerebras shipped `qwen-3.8-27b` and deprecated `gemma-4-31b` (Public
+preview). One few-shot added (`switch model to qwen _` → cerebras /
+qwen-3.8-27b) + `qwen` in the `hasLikelyIntent` curated keywords.
+
+**Variants benched (cerebras gpt-oss, --suite all --parallel 4,
+same-session baseline via `--prompt-module` on the HEAD prompt):**
+
+| Prompt | settings P/R | undo P/R | total |
+|---|---|---|---|
+| baseline | 100% / 84.8% | 100% / 90% | 84/91 |
+| qwen ADDED (shipped) | 100% / 81.8% | 100% / 95% | 84/91 |
+| qwen REPLACING gemma | 100% / 84.8% | 100% / 90% | 84/91 |
+
+The replacement variant looked like a free win but was rejected by an
+alias probe: without its few-shot, `use gemma for blanks _` misroutes to
+**ollama/gemma4:e2b** (the model's world knowledge grabs the nearest
+in-prompt gemma-shaped id) — a deprecated alias must degrade safely, not
+reroute to a provider the user doesn't run. Both examples kept. Shipped
+prompt probes: qwen → cerebras/qwen-3.8-27b (.94-.96), gemma →
+cerebras/gemma-4-31b (.93-.94). Full sweep:
+`tests/results/qwen-3.8-discovery/REPORT.md`.
+
+---
+
+*Last updated: 2026-09-04.*

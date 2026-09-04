@@ -47,6 +47,7 @@ Behaviour rules baked into the command (and pinned by tests in `packages/opencue
 - Refuse to clear a non-opencues `statusLine.command` (never touch what's not ours).
 - Auto-rewrite stale opencues paths (e.g. legacy `~/.claude/opencues/statusline.sh`) to the current install root on `enable`.
 - Project-level (`<cwd>/.claude/settings.json`) wins over user-level when CC reads it. `opencues doctor` flags the shadow case prominently when project-level suppresses user-level.
+- **"There's no statusline, but only in one directory"** — that directory's project-level `statusLine.command` points at a script that no longer exists (classically: a settings.json written against a retired install layout like `~/claude-code-cues`). Since Sep 2026 `opencues doctor` sweeps EVERY project CC has registered (`~/.claude.json`) for dead statusline scripts and names the directory + fix (`opencues statusline enable --project --force` from that directory when the dead path is ours). Existing custom commands that resolve are never flagged.
 
 ## Data Flow
 

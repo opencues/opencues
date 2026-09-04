@@ -570,6 +570,29 @@ module.exports = async function doctor(argv, ctx) {
           s.bad(`statusLine (project) — settings.json unreadable`, false);
         }
       }
+
+      // ── Dead statusLine scripts, machine-wide ─────────────────────
+      // A project-level statusLine SHADOWS the user-level one for any CC
+      // session launched from that directory — and doctor only inspects
+      // the cwd, so a stale entry elsewhere is invisible until the user
+      // wonders why "there is no statusline" in exactly one project
+      // (Sep 2026: ~/testing/.claude/settings.json still pointed at the
+      // retired ~/claude-code-cues layout, months after the compact-
+      // footprint move). Sweep every project CC has registered in
+      // ~/.claude.json and flag commands whose script no longer exists.
+      // Existence-only check: custom (non-opencues) commands that exist
+      // are respected and never flagged.
+      const dead = ccsl.auditProjectStatuslines();
+      for (const row of dead) {
+        s.bad(`statusLine (${row.dir}) — script missing`, false);
+        findings.push({
+          sev: 'warn',
+          msg: `statusLine.command in ${row.file} points at a script that no longer exists (${row.cmd})${row.opencues ? ' — a retired opencues install path' : ''}. CC sessions launched from ${row.dir} render NO statusline.`,
+          fix: row.opencues
+            ? `cd ${row.dir} && opencues statusline enable --project --force   # rewrite to the current install`
+            : `edit ${row.file} — fix or remove the statusLine block`,
+        });
+      }
     } catch { /* cc-statusline lib unavailable — non-fatal */ }
     // (No statusline-dependency warning for session-contradiction / ask-cues:
     // the CC boot band now kicks the producer itself via a transcript poller —

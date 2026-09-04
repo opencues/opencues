@@ -50,6 +50,12 @@ grep -q 'ACTUAL_HEAD.*!=.*TWEAKCC_PIN\|"\$ACTUAL_HEAD" != "\$TWEAKCC_PIN"' "$SET
 grep -q 'systemPromptsResult.newContent' "$SETUP" \
   || err "setup.sh no longer disables tweakcc's system-prompt pipeline (section 4e) — the #276 corruption vector is live again."
 
+# 3b. The 4.3.3+ parse gate is disabled (section 4f) — node --check can't
+# parse Bun-only syntax (`using`), so the gate rejects VALID patches and
+# rolls them back; our § 9 runtime smoke supersedes it under Bun.
+grep -q 'assertPatchedBundleParses' "$SETUP" \
+  || err "setup.sh no longer disables tweakcc's parse gate (section 4f) — valid patches roll back on CC versions using Bun-only syntax."
+
 # 4. Post-patch syntax check must be fatal — never a warning.
 if grep -q 'node --check.*||.*Warning' "$SETUP"; then
   err "setup.sh's post-patch node --check is a warning again — corruption would ship as 'Done.' (issue #276)."
