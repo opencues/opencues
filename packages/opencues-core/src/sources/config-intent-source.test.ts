@@ -1229,3 +1229,83 @@ describe('hasLikelyIntent — multilingual undo/redo aliases', () => {
     assert.strictEqual(hasLikelyIntent('the quick brown fox _'), false);
   });
 });
+
+// ── MENU_TUNABLES in the choice space + provider aliases (Sep 2026) ──
+import {
+  normalizeProviderAlias as _normalizeProviderAlias,
+  hasLikelyIntent as _hasLikelyIntent,
+  SYSTEM_PROMPT as _SYSTEM_PROMPT,
+} from './config-intent-source';
+import { MENU_TUNABLES as _MENU_TUNABLES } from '../feature-registry';
+
+describe('fluid-config: MENU_TUNABLES are classifier-reachable at their preset lists', () => {
+  it('every universal tunable is enumerated in the shipped SYSTEM_PROMPT', () => {
+    for (const t of _MENU_TUNABLES.filter(t => !t.hostScope)) {
+      assert.ok(_SYSTEM_PROMPT.includes(`* ${t.scalar} (`), `${t.scalar} missing from the prompt`);
+      for (const v of t.values) assert.ok(_SYSTEM_PROMPT.includes(`- ${v.id}:`), `${t.scalar}=${v.id} missing`);
+    }
+  });
+  it('a host-scoped tunable (dim-mix) stays out of the universal prompt', () => {
+    assert.ok(!_SYSTEM_PROMPT.includes('* dim-mix ('));
+  });
+  it('validator accepts a listed preset and rejects an unlisted number', () => {
+    assert.strictEqual(validateAgainstRegistry({ kind: 'setting', setting: 'blank-loading-animation', value: 'braille-rotate', confidence: 0.9 }).ok, true);
+    assert.strictEqual(validateAgainstRegistry({ kind: 'setting', setting: 'agent-debounce-ms', value: '500', confidence: 0.9 }).ok, true);
+    const r = validateAgainstRegistry({ kind: 'setting', setting: 'agent-debounce-ms', value: '7000', confidence: 0.9 });
+    assert.strictEqual(r.ok, false);
+    assert.match(r.reason ?? '', /not cyclable/);
+  });
+  it('validator host-scopes dim-mix exactly like a scoped feature', () => {
+    assert.strictEqual(validateAgainstRegistry({ kind: 'setting', setting: 'dim-mix', value: '25', confidence: 0.9 }, 'claude-code').ok, false);
+    assert.strictEqual(validateAgainstRegistry({ kind: 'setting', setting: 'dim-mix', value: '25', confidence: 0.9 }, 'chrome').ok, true);
+    assert.strictEqual(validateAgainstRegistry({ kind: 'setting', setting: 'dim-mix', value: '25', confidence: 0.9 }).ok, false);
+  });
+  it('recall prefilter admits tunable phrasings so the classifier call fires at all', () => {
+    assert.strictEqual(_hasLikelyIntent('use the braille loading animation _'), true);
+    assert.strictEqual(_hasLikelyIntent('turn off the glimmer transition _'), true);
+    assert.strictEqual(_hasLikelyIntent('set the agent debounce to 500ms _'), true);
+  });
+});
+
+describe('fluid-config: provider aliases normalise before validation', () => {
+  it('claude → anthropic, google → gemini, registry ids pass through', () => {
+    assert.strictEqual(_normalizeProviderAlias('claude'), 'anthropic');
+    assert.strictEqual(_normalizeProviderAlias('google'), 'gemini');
+    assert.strictEqual(_normalizeProviderAlias('cerebras'), 'cerebras');
+  });
+  it('a PROVIDER: claude verdict validates as anthropic', () => {
+    const v = parseConfigIntentOutput('INTENT: PROVIDER\nSETTING:\nVALUE:\nSCOPE: blanks\nPROVIDER: claude\nMODEL:\nCONFIDENCE: 0.9');
+    assert.strictEqual(v.kind, 'provider');
+    if (v.kind === 'provider') assert.strictEqual(v.provider, 'anthropic');
+    assert.strictEqual(validateAgainstRegistry(v).ok, true);
+  });
+});
+
+describe('matchDeterministicAction — trailing demonstrative is still the bare command', () => {
+  it('undo that / redo it / revert this', () => {
+    assert.deepStrictEqual(matchDeterministicAction('redo that'), { action: 'redo', count: 1, commandStart: 0 });
+    assert.deepStrictEqual(matchDeterministicAction('undo it'), { action: 'undo', count: 1, commandStart: 0 });
+    assert.strictEqual(matchDeterministicAction('Paris revert this ')?.commandStart, 6);
+  });
+  it('a demonstrative after a NON-alias is not a command', () => {
+    assert.strictEqual(matchDeterministicAction('redo the report that'), null);
+    assert.strictEqual(matchDeterministicAction('fix that'), null);
+  });
+  it('count still parses after the demonstrative', () => {
+    assert.deepStrictEqual(matchDeterministicAction('undo that 2'), { action: 'undo', count: 2, commandStart: 0 });
+  });
+});
+
+describe('matchDeterministicAction — a settings verb or question stem before the alias cedes to the LLM', () => {
+  it('enable undo / disable undo / turn on undo are NOT actions', () => {
+    assert.strictEqual(matchDeterministicAction('enable undo'), null);
+    assert.strictEqual(matchDeterministicAction('disable undo '), null);
+    assert.strictEqual(matchDeterministicAction('turn on undo'), null);
+    assert.strictEqual(matchDeterministicAction('how do i undo'), null);
+    assert.strictEqual(matchDeterministicAction("can't undo"), null);
+  });
+  it('a settings PAIR before the alias is still the post-confirmation command', () => {
+    assert.strictEqual(matchDeterministicAction('tips-mode off redo')?.action, 'redo');
+    assert.strictEqual(matchDeterministicAction('Paris undo')?.action, 'undo');
+  });
+});

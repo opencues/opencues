@@ -8,11 +8,11 @@
  *  - Hits map to `{ setting: <kebab-case scalar>, value: <allowed id> }`.
  *  - Rejects (anything that's NOT a settings change) map to `setting: null`.
  *
- * Scope (v1): FEATURES only — enum scalars with bounded codomains.
- * MENU_TUNABLES (numeric debounce/interval, animation glyph) and user
- * blanks (volume/brightness/weather/stocks/etc.) are deliberately out
- * of scope; the classifier MUST reject them. See feedback memory
- * "Fluid-config classifier is settings-only" for why.
+ * Scope: the settings registry — FEATURES plus MENU_TUNABLES (since Sep
+ * 2026; every tunable is a closed preset list, so the codomain stays
+ * bounded). User blanks (volume/brightness/weather/stocks/etc.) are
+ * deliberately out of scope; the classifier MUST reject them. See
+ * feedback memory "Fluid-config classifier is settings-only" for why.
  *
  * Six buckets, each pinning a different part of the trust boundary:
  *
@@ -149,13 +149,13 @@ export const CASES: FluidConfigCase[] = [
     id: 'hc-user-safe',
     category: 'hit-clean',
     input: 'enable user context in safe mode _',
-    expected: { setting: 'user-context-mode', value: 'safe' },
+    expected: { setting: 'identity-context-mode', value: 'safe' },
   },
   {
     id: 'hc-user-off',
     category: 'hit-clean',
     input: 'disable user context _',
-    expected: { setting: 'user-context-mode', value: 'off' },
+    expected: { setting: 'identity-context-mode', value: 'off' },
   },
   {
     id: 'hc-transform-off',
@@ -223,13 +223,13 @@ export const CASES: FluidConfigCase[] = [
     id: 'hf-user-personal',
     category: 'hit-fuzzy',
     input: 'let it use my personal info when answering _',
-    expected: { setting: 'user-context-mode', value: 'safe' },
+    expected: { setting: 'identity-context-mode', value: 'safe' },
   },
   {
     id: 'hf-user-no-pii',
     category: 'hit-fuzzy',
     input: 'stop sharing anything personal with the model _',
-    expected: { setting: 'user-context-mode', value: 'off' },
+    expected: { setting: 'identity-context-mode', value: 'off' },
   },
   {
     id: 'hf-ambient-page',
@@ -408,16 +408,55 @@ export const CASES: FluidConfigCase[] = [
   {
     id: 'ro-debounce',
     category: 'reject-out-of-scope',
-    // agent-debounce-ms is a MENU_TUNABLE, NOT in FEATURES → out of v1 scope.
+    // agent-debounce-ms IS classifier-reachable since Sep 2026, but only at
+    // a listed preset — a vague "longer" names no preset, so NONE.
     input: 'wait longer before the agent fires _',
     expected: { setting: null, value: null },
   },
   {
-    id: 'ro-animation',
-    category: 'reject-out-of-scope',
-    // blank-loading-animation is a MENU_TUNABLE, NOT in FEATURES.
+    id: 'hc-animation',
+    category: 'hit-clean',
+    // MENU_TUNABLES joined the classifier's choice space Sep 2026 (closed preset lists).
     input: 'use the braille loading animation _',
-    expected: { setting: null, value: null },
+    expected: { setting: 'blank-loading-animation', value: 'braille-rotate' },
+  },
+  {
+    id: 'hc-glimmer-off',
+    category: 'hit-clean',
+    input: 'turn off the glimmer transition _',
+    expected: { setting: 'glimmer-transition-ms', value: 'off' },
+  },
+  {
+    id: 'hf-glimmer-quickest',
+    category: 'hit-fuzzy',
+    // A SUPERLATIVE names the end of the preset list (quickest → smallest
+    // ms, 300). A bare comparative ("faster") stays NONE — see ro-debounce.
+    input: 'the answer decode animation is too slow, make it the quickest _',
+    expected: { setting: 'glimmer-transition-ms', value: '300' },
+  },
+  {
+    id: 'hc-loading-off',
+    category: 'hit-clean',
+    input: 'disable the loading animation at the blank _',
+    expected: { setting: 'blank-loading-animation', value: 'off' },
+  },
+  {
+    id: 'hc-debounce-500',
+    category: 'hit-clean',
+    input: 'set the agent debounce to 500ms _',
+    expected: { setting: 'agent-debounce-ms', value: '500' },
+  },
+  {
+    id: 'hc-auditors-cap-3',
+    category: 'hit-clean',
+    input: 'cap concurrent auditors at 3 _',
+    expected: { setting: 'max-concurrent-auditors', value: '3' },
+  },
+  {
+    id: 'hc-prewarm-off',
+    category: 'hit-clean',
+    input: 'turn off the blank context prewarm _',
+    expected: { setting: 'blank-context-prewarm-ms', value: 'off' },
   },
   {
     id: 'ro-export',

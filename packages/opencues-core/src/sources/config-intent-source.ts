@@ -15,10 +15,12 @@
  *
  * ## Trust boundary
  *
- * The classifier targets ONLY scalars in the FEATURES registry
- * (packages/opencues-core/src/feature-registry.ts) — never user blanks.
- * The codomain is fully bounded (kebab-case scalar from a closed set,
- * enum value from that scalar's `values:` list). User blanks (volume,
+ * The classifier targets ONLY scalars in the settings registry
+ * (packages/opencues-core/src/feature-registry.ts: FEATURES plus the
+ * MENU_TUNABLES since Sep 2026) — never user blanks. The codomain is
+ * fully bounded (kebab-case scalar from a closed set, enum value from
+ * that scalar's `values:` list — a tunable's list is the same closed
+ * preset list the settings menu cycles, never a free number). User blanks (volume,
  * brightness, weather, stocks, …) can shell out / fetch / exec, so
  * auto-applying them from semantic-only intent (no keyword gate) would
  * widen the prompt-injection blast radius unacceptably. FEATURES
@@ -67,6 +69,7 @@ import { getDehydrator, type CompiledDehydrator } from '../dehydrate';
 import { postProcessContext } from '../identity-context';
 import {
   FEATURES,
+  MENU_TUNABLES,
   getCyclableValues,
 } from '../feature-registry';
 
@@ -102,10 +105,17 @@ function renderFeatureLine(scalar: string, values: { id: string; description: st
 // features EXCLUDED), which is what the exported default SYSTEM_PROMPT
 // uses; each ConfigIntentSource then swaps in its own host's block.
 function buildFeatureBlock(hostName?: string): string {
-  return FEATURES
+  const features = FEATURES
     .filter(f => !f.hostScope || (hostName != null && f.hostScope.includes(hostName)))
-    .map(f => renderFeatureLine(f.scalar, [...getCyclableValues(f)], f.menuTip ?? f.description))
-    .join('\n');
+    .map(f => renderFeatureLine(f.scalar, [...getCyclableValues(f)], f.menuTip ?? f.description));
+  // MENU_TUNABLES ride along (Sep 2026): every tunable declares the same
+  // closed preset list the settings menu cycles, so the codomain stays
+  // bounded — the classifier may only name a listed preset, never a
+  // free number. Same host-scope rule as features (dim-mix is chrome/dsh).
+  const tunables = MENU_TUNABLES
+    .filter(t => !t.hostScope || (hostName != null && t.hostScope.includes(hostName)))
+    .map(t => renderFeatureLine(t.scalar, [...t.values], t.menuTip));
+  return [...features, ...tunables].join('\n');
 }
 
 const FEATURE_REGISTRY_BLOCK: string = buildFeatureBlock();
@@ -189,6 +199,17 @@ const LIKELY_INTENT_KEYWORDS: ReadonlySet<string> = (() => {
     }
   }
 
+  // MENU_TUNABLES scalar names + distinctive preset values (glyph mode
+  // names like "braille-rotate"; numeric presets are too generic alone —
+  // the curated words below carry those).
+  for (const t of MENU_TUNABLES) {
+    addToken(t.scalar);
+    addToken(t.scalar.replace(/-/g, ' '));
+    for (const v of t.values) {
+      if (/[a-z]{3,}/i.test(v.id) && !['off', 'on'].includes(v.id.toLowerCase())) addToken(v.id);
+    }
+  }
+
   // Provider IDs + their display names ("anthropic" / "Anthropic",
   // "groq" / "Groq", etc.). knownModels caught below via the curated
   // alias-key list.
@@ -216,6 +237,9 @@ const LIKELY_INTENT_KEYWORDS: ReadonlySet<string> = (() => {
     'tip', 'tips', 'popup', 'popups',
     'voice', 'debug', 'cursor', 'thinking',
     'ambient', 'identity', 'sentinel',
+    // tunable symptom words (loading glyph, glimmer, debounce, dim)
+    'animation', 'glimmer', 'debounce', 'loading', 'glyph', 'spinner',
+    'auditors', 'prewarm', 'dim',
     // curated model/provider alias keys — add a new alias here to
     // extend this gate.
     'opus', 'haiku', 'sonnet', 'fable', 'claude',
@@ -325,6 +349,14 @@ const DETERMINISTIC_ACTION_ALIASES: Record<string, 'undo' | 'redo'> = {
   urungkan: 'undo', ulangi: 'redo',            // id
 };
 
+/** Words that turn a trailing undo/redo alias into an OBJECT rather than a command. */
+const ACTION_ALIAS_BLOCKED_PRECEDERS: ReadonlySet<string> = new Set([
+  'enable', 'disable', 'toggle', 'activate', 'deactivate', 'allow', 'disallow', 'turn',
+  'to', 'how', 'i', 'we', 'you', 'can', 'cant', 'cannot', 'why', 'no', 'without', 'about',
+]);
+
+const ACTION_ALIAS_SETTING_VERBS: ReadonlySet<string> = new Set(['turn', 'switch', 'set', 'flip', 'toggle']);
+
 export interface DeterministicActionMatch {
   action: 'undo' | 'redo';
   /** Repeat count; 1 when no explicit integer count was given. */
@@ -342,10 +374,30 @@ export function matchDeterministicAction(before: string): DeterministicActionMat
   // Anchored at end: an alias word, then an OPTIONAL integer count.
   // `\p{L}+` stops at the earlier `_` (underscore is not a letter), so a
   // preceding `capital of france _ ` query never bleeds into the match.
-  const m = /(?:^|\s)(\p{L}+)(?:[ \t]+(\d+))?[ \t]*$/u.exec(before);
+  // An optional trailing demonstrative ("undo that", "redo it") is still
+  // the bare command — the object is the runtime's own last change, not
+  // a task object (Sep 2026: "redo that _" was ceding to the LLM, which
+  // read it as NONE once the prompt grew).
+  const m = /(?:^|\s)(\p{L}+)(?:[ \t]+(?:that|this|it))?(?:[ \t]+(\d+))?[ \t]*$/u.exec(before);
   if (!m) return null;
   const action = DETERMINISTIC_ACTION_ALIASES[m[1].toLowerCase()];
   if (!action) return null;
+  // The alias must be the COMMAND, not the object of a settings verb or a
+  // question ("enable undo _" is undo-mode on; "how do i undo _" is a
+  // lookup). A blocked preceding word cedes to the LLM classifier, which
+  // has the SETTING / NONE context this string match cannot. (Sep 2026:
+  // the coverage sweep caught "enable undo _" performing an undo.)
+  const head = before.slice(0, m.index + (m[0].length - m[0].replace(/^\s+/, '').length));
+  const prev = /(?:([\p{L}'’]+)[ \t]+)?([\p{L}'’]+)[ \t]+$/u.exec(head);
+  if (prev) {
+    const p1 = prev[2].toLowerCase().replace(/['’]/g, '');
+    const p2 = prev[1]?.toLowerCase().replace(/['’]/g, '');
+    if (ACTION_ALIAS_BLOCKED_PRECEDERS.has(p1)) return null;
+    // "turn on undo" / "switch off redo": on/off is the object marker of a
+    // settings verb two words back. A bare "<setting> off redo" (the
+    // post-confirmation shape) has a scalar there, not a verb, and stays.
+    if ((p1 === 'on' || p1 === 'off') && p2 !== undefined && ACTION_ALIAS_SETTING_VERBS.has(p2)) return null;
+  }
   const count = m[2] ? parseInt(m[2], 10) : 1;
   if (count < 1) return null;
   // Skip any leading whitespace the `(?:^|\s)` group consumed so the span
@@ -375,7 +427,9 @@ ROUTE TO A SETTING when:
   - The user names a setting either directly ("debug mode", "tips", "voice mode", "cursor navigate") or describes the SYMPTOM/BEHAVIOR clearly enough to identify exactly ONE setting from the list above.
   - The direction is clear from polarity words ("enable", "turn on", "stop", "disable", "quiet down", "noisy") OR from sentence shape ("I want to hear …" → on-flavoured value).
 
-NEVER drop the -mode suffix ('voice-mode' NOT 'voice'; 'debug-mode' NOT 'debug'; etc.). The only setting without '-mode' is 'cursor-navigate'.
+NEVER drop the -mode suffix ('voice-mode' NOT 'voice'; 'debug-mode' NOT 'debug'; etc.). Settings without '-mode' are 'cursor-navigate', 'nav-keymap', 'max-thinking', 'sentinel-language' and the preset tunables ('*-ms', 'max-concurrent-auditors', 'blank-loading-animation', 'dim-mix').
+
+PRESET TUNABLES (the '-ms' timings, 'max-concurrent-auditors', 'blank-loading-animation', 'dim-mix') are routed ONLY when the user names a LISTED preset explicitly — an exact listed number ("500ms", "every 75ms", "cap at 3") or a listed mode name ("braille", "flipper", "off"). A SUPERLATIVE names an END of the listed presets and is routable: "the quickest" / "as fast as possible" → the smallest listed ms; "the slowest" / "the longest" → the largest listed ms — never "off", which is a different behaviour, not a speed. A COMPARATIVE or vague wish ("faster", "slower", "longer", "quicker", "a bit more", "wait longer") names NO preset → NONE, never the nearest one. An unlisted name ("spinner", "dots") → NONE. This preset rule is ONLY about the tunables: a comparative aimed at an on/off setting still routes normally ("make it faster, less reasoning" → max-thinking off).
 
 NEVER route a provider-or-model change here — those are INTENT B. Example: "use anthropic for cues _" is INTENT B (PROVIDER), not a SETTING change.
 
@@ -520,6 +574,33 @@ SCOPE:
 PROVIDER:
 MODEL:
 CONFIDENCE: 0.85
+
+INPUT: tips on _
+INTENT: SETTING
+SETTING: tips-mode
+VALUE: on
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.9
+
+INPUT: use the braille loading animation _
+INTENT: SETTING
+SETTING: blank-loading-animation
+VALUE: braille-rotate
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.93
+
+INPUT: wait longer before the agent fires _
+INTENT: NONE
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.9
 
 INPUT: use anthropic for cues _
 INTENT: PROVIDER
@@ -721,6 +802,17 @@ SCOPE:
 PROVIDER:
 MODEL:
 CONFIDENCE: 0.96
+
+INPUT: tips-mode off redo _
+INTENT: ACTION
+ACTION: redo
+COUNT: 1
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.93
 
 INPUT: debug-mode on undo _
 INTENT: ACTION
@@ -989,6 +1081,17 @@ export type ConfigIntentVerdict = SettingVerdict | ProviderVerdict | ActionVerdi
  * Always returns SOMETHING — uncertain inputs collapse to NoneVerdict
  * rather than throwing, so the caller can cede gracefully.
  */
+const PROVIDER_ALIASES: Readonly<Record<string, string>> = {
+  claude: 'anthropic',
+  google: 'gemini',
+  'open-ai': 'openai',
+};
+
+/** Map a provider name the model emitted to its registry id. Exported for tests. */
+export function normalizeProviderAlias(providerRaw: string): string {
+  return PROVIDER_ALIASES[providerRaw] ?? providerRaw;
+}
+
 export function parseConfigIntentOutput(raw: string): ConfigIntentVerdict {
   const intentMatch = raw.match(/^INTENT:[ \t]*(.*?)[ \t]*$/im);
   const settingMatch = raw.match(/^SETTING:[ \t]*(.*?)[ \t]*$/im);
@@ -1004,7 +1107,10 @@ export function parseConfigIntentOutput(raw: string): ConfigIntentVerdict {
   const settingRaw = settingMatch ? settingMatch[1].trim() : '';
   const valueRaw = valueMatch ? valueMatch[1].trim() : '';
   const scopeRaw = scopeMatch ? scopeMatch[1].trim().toLowerCase() : '';
-  const providerRaw = providerMatch ? providerMatch[1].trim().toLowerCase() : '';
+  // Provider aliases the model emits for a provider it knows by another
+  // name ("claude" for anthropic, "google" for gemini). Normalised here
+  // so the validator sees a registry id; unknown ids still fail there.
+  const providerRaw = normalizeProviderAlias(providerMatch ? providerMatch[1].trim().toLowerCase() : '');
   const modelRaw = modelMatch ? modelMatch[1].trim() : '';
   const actionRaw = actionMatch ? actionMatch[1].trim().toLowerCase() : '';
   const confidence = confidenceMatch ? Number(confidenceMatch[1]) : null;
@@ -1090,14 +1196,18 @@ export function validateAgainstRegistry(verdict: ConfigIntentVerdict, hostName?:
 
   if (verdict.kind === 'setting') {
     const feature = FEATURES.find(f => f.scalar === verdict.setting);
-    if (!feature) return { ok: false, reason: `unknown setting '${verdict.setting}'` };
+    const tunable = feature ? undefined : MENU_TUNABLES.find(t => t.scalar === verdict.setting);
+    const entry = feature ?? tunable;
+    if (!entry) return { ok: false, reason: `unknown setting '${verdict.setting}'` };
     // Host-scope guard (defense in depth): a host-scoped setting must not
     // be applied on a host outside its scope — the classifier prompt
     // already omits it there, but reject it if the LLM emits it anyway.
-    if (feature.hostScope && (hostName == null || !feature.hostScope.includes(hostName))) {
-      return { ok: false, reason: `setting '${verdict.setting}' is scoped to [${feature.hostScope.join(', ')}], not host '${hostName ?? '?'}'` };
+    if (entry.hostScope && (hostName == null || !entry.hostScope.includes(hostName))) {
+      return { ok: false, reason: `setting '${verdict.setting}' is scoped to [${entry.hostScope.join(', ')}], not host '${hostName ?? '?'}'` };
     }
-    const allowed = [...getCyclableValues(feature)].map(v => v.id);
+    const allowed = feature
+      ? [...getCyclableValues(feature)].map(v => v.id)
+      : [...tunable!.values].map(v => v.id);
     if (!allowed.includes(verdict.value)) {
       return { ok: false, reason: `value '${verdict.value}' is not cyclable for '${verdict.setting}' (allowed: ${allowed.join(', ')})` };
     }
