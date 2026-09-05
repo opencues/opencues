@@ -21,8 +21,11 @@
 import { describe, expect, it } from 'vitest';
 import { Resolver } from './resolver';
 import { ConfigLoader } from './config-loader';
+import { Cycling } from './cycling';
+import { Navigation } from './navigation';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
+import { SpanFillState } from '../state/span-fill';
 import { MockAdapter } from '../../testing/mock-adapter';
 
 const TIPS = JSON.stringify({ concepts: [] });
@@ -848,5 +851,97 @@ describe('TransformBlank surgical splice — layout: replace-parse (small target
     });
     await resolver.resolveAndApply(adapter.getText());
     expect(adapter.getText()).toBe('oven at 220C\nfor the lamb');
+  });
+});
+
+// Regression: replace-parse bounded splice keys the transform DynDef at the
+// wrong word when the edited target is NOT the first word of the buffer.
+//
+// The transform def ALWAYS spans the whole rewritten body from char 0 (both
+// transformDef constructors hardcode spanStart:0). Its DynDefs map KEY is the
+// span-origin index that findSpanContaining / navigation / cycling redirect
+// through. The bounded-splice path (replace-parse, PR #420) set the key from
+// `spliceStart` — the EDITED word's offset — so a mid-buffer edit ("boy"→"girl"
+// at char 4) parked the def at word 1 while its span still began at word 0.
+// findSpanContaining then reported origin=1, the whole-span redirect never
+// fired, and Ctrl+Alt+Down spliced the entire original in place of the single
+// word "girl", corrupting the buffer to "the <original> ran fast".
+// (agentic scenario 44 / opencues-agentic#26).
+describe('TransformBlank replace-parse — DynDef keyed at span origin, revert restores whole buffer', () => {
+  function setup(s: ScriptedTransformResult) {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },
+    });
+    adapter.pushText(s.originalText);
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const spanFillState = new SpanFillState();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    const wordCount = s.originalText.split(/\s+/).filter(Boolean).length;
+    const blankWordIndex = Math.max(0, wordCount - 1);
+    const resolver = new Resolver(adapter, hlState, dynDefs, loader, {
+      endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 10, httpAdapter: {},
+    });
+    (resolver as unknown as { _resolver: { resolve(ctx: unknown): Promise<{ results: unknown[] }> } })._resolver = {
+      resolve: async () => ({
+        results: [{
+          wordIndex: blankWordIndex,
+          word: '_',
+          alternatives: [s.originalText, s.rewrittenText],
+          spanStart: 0,
+          spanEnd: s.originalText.length,
+          source: 'transform-blank',
+          metadata: { transformTarget: s.target, transformInstruction: s.instruction },
+        }],
+      }),
+    };
+    const cycling = new Cycling(adapter, hlState, dynDefs, loader, spanFillState);
+    cycling.subscribe();
+    const nav = new Navigation(adapter, hlState, dynDefs, loader, spanFillState);
+    nav.subscribe();
+    return { adapter, dynDefs, resolver };
+  }
+
+  it('keys the def at the span-origin word, not the edited word', async () => {
+    const { adapter, dynDefs, resolver } = setup({
+      originalText: 'the boy ran fast change boy to girl _',
+      rewrittenText: 'girl',
+      target: 'boy',
+      instruction: 'change boy to girl',
+    });
+    await resolver.resolveAndApply(adapter.getText());
+    expect(adapter.getText()).toBe('the girl ran fast');
+    expect(dynDefs.size).toBe(1);
+    const [key, def] = [...dynDefs.entries()][0]!;
+    // The def spans the whole body [0, 'the girl ran fast'.length). Its map key
+    // MUST be the word covering spanStart (char 0 = word 0 "the"), NOT the
+    // edited word "girl" (word 1). Before the fix this was 1.
+    expect(def.spanStart).toBe(0);
+    expect(key).toBe(0);
+    expect(def.alternatives[0]).toBe('the girl ran fast');
+    expect(def.alternatives[1]).toBe('the boy ran fast change boy to girl _');
+  });
+
+  it('Ctrl+Alt+Down reverts the whole buffer to the original, not a single word', async () => {
+    const { adapter, resolver } = setup({
+      originalText: 'the boy ran fast change boy to girl _',
+      rewrittenText: 'girl',
+      target: 'boy',
+      instruction: 'change boy to girl',
+    });
+    await resolver.resolveAndApply(adapter.getText());
+    expect(adapter.getText()).toBe('the girl ran fast');
+
+    // Navigate into the transform span, then revert (cycle Down → alt[1]).
+    adapter.fireKey('right', { ctrl: true, alt: true });
+    adapter.fireKey('down', { ctrl: true, alt: true });
+    // Whole span reverts as one unit — NOT a per-word splice that would produce
+    // "the the boy ran fast change boy to girl _ ran fast".
+    expect(adapter.getText()).toBe('the boy ran fast change boy to girl _');
+
+    // And cycle Up puts the rewrite back — full round-trip.
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(adapter.getText()).toBe('the girl ran fast');
   });
 });
