@@ -2571,13 +2571,29 @@ export class Resolver {
           }
         }
 
-        // Find which word the rewrite's first word lands at in the new
-        // text (for keying the def). Defaults to wherever the splice
-        // inserted (spliceStart), which becomes the first word position
-        // in the post-substitution text.
+        // Key the def at its SPAN ORIGIN word (the word covering char 0),
+        // NOT at the changed-region word. The transform def ALWAYS spans
+        // the whole body from char 0 (both transformDef constructors below
+        // hardcode spanStart:0, spanEnd:newSpanEnd), so its DynDefs map key
+        // must be the word at that origin — the key IS the origin index
+        // that findSpanContaining / navigation / cycling redirect through.
+        //
+        // The whole-buffer merge path sets spliceStart=0, so its origin
+        // word and its changed-region word coincide (word 0) — keying off
+        // spliceStart happened to be correct there. But the replace-parse
+        // bounded-splice path (PR #420) sets spliceStart to the EDITED
+        // word's offset (e.g. "boy"→"girl" at char 4), so keying off
+        // spliceStart parked the def at "girl" (word 1) while its span
+        // still started at "the" (word 0). findSpanContaining then reported
+        // origin=1, the whole-span redirect never fired, and a revert-cycle
+        // (Ctrl+Alt+Down) spliced the entire original in place of the one
+        // word "girl" — corrupting the buffer to "the <original> ran fast"
+        // (agentic scenario 44). Deriving the key from the span origin keeps
+        // the merge path byte-identical and fixes the bounded-splice path.
+        // Glimmer still points at the changed region via its own diff above.
         const newWords = splitWords(bufferText);
-        const firstSpliceWord = newWords.find(w => w.start >= spliceStart);
-        const newWordIndex = firstSpliceWord ? firstSpliceWord.index : 0;
+        const spanOriginWord = newWords.find(w => w.end > 0) ?? newWords[0];
+        const newWordIndex = spanOriginWord ? spanOriginWord.index : 0;
         // Trim TRAILING whitespace (the editor's empty tail lines) out of the
         // span. The rewrite is the CONTENT; the blank lines after it are not.
         // Keeping them inside the span (the old `spanEnd = bufferText.length`)
