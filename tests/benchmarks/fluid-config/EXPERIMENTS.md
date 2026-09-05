@@ -374,4 +374,70 @@ cerebras/gemma-4-31b (.93-.94). Full sweep:
 
 ---
 
-*Last updated: 2026-09-04.*
+## Experiment — full-registry coverage sweep + MENU_TUNABLES plugged in (2026-09-05)
+
+**Question:** does the classifier identify intent for EVERY `config _` menu
+entry under varied phrasing, and are all entries reachable at all?
+
+**Method:** `coverage.ts` (new, standalone) — every value of every
+Claude-Code-reachable setting × four phrasings (clean / colloquial /
+symptom-not-solution / terse `<setting> <value> _`), provider + model
+routing for all three buckets, undo/redo, and 31 reject controls
+(lookups, rewrites, user blanks, comparatives, ambiguous, out-of-scope,
+prose). 248 → 262 cases as the sweep grew. Cerebras gpt-oss-120b (the live
+blanks route), `--parallel 4`. Verified live on Claude Code through the
+bridge (harness home, real OPENCUES.md writes): 12 original phrasings +
+8 tunable/alias phrasings, 20/20.
+
+**Findings before any change:**
+
+1. **6 of the 35 menu entries were unreachable by sentence** (7 of 37 on
+   chrome): the MENU_TUNABLES. `buildFeatureBlock` read FEATURES only.
+2. Bench expectations were stale: six `user-context-mode` cases (renamed
+   June 2026) marked the model WRONG for answering the current name —
+   in-prompt recall read 84.8% when the classifier was at ~97%.
+3. The bench's 128-token cap truncated ~5% of gpt-oss verdicts mid-line
+   (`INTENT: PROVIDER` then nothing); the runtime floors that call at
+   2048. Raised to 512: coverage hits 88.9% → 94.5% with NO prompt edit.
+4. `blanks on claude please _` → "unknown provider 'claude'" (validator).
+5. A terse `tips on _` was rejected while `tips off _` passed.
+6. The bench never ran the runtime's deterministic undo/redo pre-pass, so
+   `tips-mode off redo _` graded as a miss the runtime never makes.
+   Mirroring it exposed the opposite bug: **`enable undo _` performed an
+   undo** (trailing-alias match) instead of flipping undo-mode.
+
+**Changes:** tunables enumerated (host-scoped alike) + validated at their
+preset lists; `claude`/`google` alias normalisation; a PRESET TUNABLES
+rule (listed number / mode name / superlative-as-endpoint routes;
+comparatives and unlisted names → NONE; scoped to tunables so
+`make it faster, less reasoning` stays max-thinking off) + three
+few-shots (`tips on _`, braille, `wait longer … _` → NONE) + a
+post-confirmation `redo` few-shot; deterministic matcher accepts a
+trailing demonstrative (`redo that _`) and cedes when a settings verb or
+question stem precedes the alias (`enable undo _`, `how do i undo _`).
+
+**Ablation (why the rule is negative):** a positive-only tunable rule
+routed every comparative to the nearest preset (`slow down the glimmer` →
+1500, `wait longer` → 2000, `spinner` → braille) — precision is the
+gate, so the explicit NONE clause stays; its collateral (`redo that _`
+→ NONE) was fixed in the deterministic matcher instead of the prompt.
+
+**Results (same session, cerebras gpt-oss-120b):**
+
+| Suite | before | after |
+|---|---|---|
+| in-prompt settings P / R | 100% / 84.8% (stale names) | **100% / 95.0%** (71 cases; misses: keybind "shift-arrow", "what the runtime is doing") |
+| undo | 100% / 95% | **100% / 100%** (deterministic pre-pass mirrored) |
+| holdout settings P / R | 100% / 78.9% | **100% / 89.5%** (misses: "hover hints" → inline-cues, "synonym suggestions") |
+| coverage hits / rejects | 88.9% / 100% (128-tok) | **95.7% / 100%** (262 cases) |
+| live CC | 12/12 | **20/20** (incl. all 6 tunables + `claude` alias) |
+
+Remaining coverage misses are phrasing-shaped and stable: the
+`fluid-config-mode` self-reference ("natural language settings" reads as
+sentence-cues), `sentinel-language` described without its name, a
+model-only pick without the provider named (`gemini flash lite` picks
+3.1 over 3.5 — both listed; `cerebras gpt-oss` drops the model).
+
+---
+
+*Last updated: 2026-09-05.*

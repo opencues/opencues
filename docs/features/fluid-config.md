@@ -87,10 +87,12 @@ space; no edit to the prompt needed.
   Auto-applying them from semantic intent (no keyword gate) widens
   the prompt-injection blast radius. So `make it louder _` routes to
   NONE and falls through to fluid-blank as a lookup.
-- **MENU_TUNABLES** (numeric / glyph settings like `agent-debounce-ms`,
-  `blank-loading-animation`). v1 is enum-only — adding numeric tunables
-  needs a per-pipeline threat-model review since the value codomain
-  widens.
+- **Free values.** MENU_TUNABLES (`blank-loading-animation`,
+  `glimmer-transition-ms`, `agent-debounce-ms`, ...) ARE reachable since
+  Sep 2026 — but only at a preset the settings menu itself lists. `use
+  the braille loading animation _` and `set the agent debounce to 500ms _`
+  work; `wait 7 seconds before the agent fires _` is NONE because 7000 is
+  not a preset. The value codomain never widens past the menu.
 - **Hidden values** (`exposeInMenu: false`) — currently just
   `identity-context-mode: raw`. Footgun modes require deliberate file
   edits, not a single-keystroke summon.

@@ -38,6 +38,7 @@ import {
   parseConfigIntentOutput,
   validateAgainstRegistry,
   type ConfigIntentVerdict,
+  matchDeterministicAction,
 } from '../../../packages/opencues-core/src/sources/config-intent-source';
 
 const RESET = '\x1b[0m';
@@ -66,7 +67,11 @@ function parseArgs(): Args {
 }
 
 async function classify(systemPrompt: string, input: string): Promise<{ verdict: ConfigIntentVerdict; raw: string; latencyMs: number }> {
-  const r = await chat(sysUser(systemPrompt, `INPUT: ${input}`), { maxTokens: 128 });
+  // Mirror the runtime: the deterministic undo/redo string matcher runs
+  // BEFORE any LLM call (`tips-mode off redo _` never reaches the model).
+  const det = matchDeterministicAction(input.replace(/_\s*$/, ''));
+  if (det) return { verdict: { kind: 'action', action: det.action, count: det.count, confidence: 1 }, raw: '(deterministic)', latencyMs: 0 };
+  const r = await chat(sysUser(systemPrompt, `INPUT: ${input}`), { maxTokens: 512 } /* the runtime floors gpt-oss at 2048 (reasoning + answer); 128 truncated ~5% of verdicts mid-line in the Sep 2026 sweep */);
   let verdict = parseConfigIntentOutput(r.text);
   // Mirror the runtime's defence-in-depth: an invalid verdict cedes.
   if (verdict.kind !== 'none' && !validateAgainstRegistry(verdict).ok) {

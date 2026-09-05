@@ -20,7 +20,7 @@ Read this before touching:
 
 ---
 
-## Threat model — why the scope is FEATURES-only
+## Threat model — why the scope is registry-only (FEATURES + MENU_TUNABLES)
 
 The classifier's job is to take a `_` that no keyword matched and decide
 whether the surrounding prose semantically asks for a settings change.
@@ -30,7 +30,7 @@ a single LLM call is a **deliberately narrow** capability:
 | Target class | Auto-applyable on semantic intent? | Reason |
 |---|---|---|
 | FEATURES scalars (`debug-mode`, `tips-mode`, ...) | **Yes** | Closed set; bounded enum codomains; flipping any of them has no exec / fetch / shell side effect. Recoverable visually + by re-summoning the inverse. |
-| MENU_TUNABLES (`agent-debounce-ms`, `blank-loading-animation`) | **No (v1)** | Numeric codomains widen the attack surface and the value space; need a per-pipeline threat-model review before opting in. Glyph-only tunables could land in v2. |
+| MENU_TUNABLES (`agent-debounce-ms`, `blank-loading-animation`, `glimmer-transition-ms`, ...) | **Yes (since Sep 2026, core 0.58.0)** | Every tunable declares the same closed PRESET list the settings menu cycles (`agent-debounce-ms` is `150 / 250 / 500 / 1000 / 2000`, never a free number), so the codomain is exactly as bounded as a feature's enum. The classifier may only name a listed preset; `validateAgainstRegistry` rejects anything else; the apply path is the same `applyOpenCuesScalar` write. The v1 deferral was about FREE numeric codomains, which these are not. |
 | Hidden values (`identity-context-mode: raw`) | **Never** | Footgun modes (PII inlined into LLM prompts) require deliberate file edits. The classifier prompt excludes them; the runtime validator rejects them even if a model regression emits one. |
 | User blanks (volume, brightness, weather, stocks, dictionary, any `impl:` / `blankScript:` entry) | **Never** | These are user-shipped capabilities that exec, fetch, run scripts. Auto-applying them from semantic intent bypasses the keyword gate that today protects them. Stays out of scope for fluid-config indefinitely — even widening "for symmetry" would be a security regression. |
 

@@ -35,7 +35,7 @@ export interface FusedConfigResult {
 }
 
 export async function runFused(input: string): Promise<FusedConfigResult> {
-  const r = await chat(sysUser(SYSTEM_PROMPT, `INPUT: ${input}`), { maxTokens: 128 });
+  const r = await chat(sysUser(SYSTEM_PROMPT, `INPUT: ${input}`), { maxTokens: 512 } /* the runtime floors gpt-oss at 2048 (reasoning + answer); 128 truncated ~5% of verdicts mid-line in the Sep 2026 sweep */);
   const v = parseConfigIntentOutput(r.text);
   if (v.kind === 'setting') {
     return { setting: v.setting, value: v.value, confidence: v.confidence ?? null, raw: r.text, latencyMs: r.latencyMs };

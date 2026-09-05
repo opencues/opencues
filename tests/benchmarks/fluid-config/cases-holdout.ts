@@ -145,18 +145,18 @@ export const CASES_HOLDOUT: FluidConfigCase[] = [
     expected: { setting: 'ambient-context-mode', value: 'off' },
   },
 
-  // user-context-mode
+  // identity-context-mode (was user-context-mode; renamed June 2026)
   {
     id: 'ho-user-safe',
     category: 'hit-fuzzy',
     input: 'personalize the answers using my saved profile _',
-    expected: { setting: 'user-context-mode', value: 'safe' },
+    expected: { setting: 'identity-context-mode', value: 'safe' },
   },
   {
     id: 'ho-user-off',
     category: 'hit-fuzzy',
     input: 'forget my saved profile when answering lookups _',
-    expected: { setting: 'user-context-mode', value: 'off' },
+    expected: { setting: 'identity-context-mode', value: 'off' },
   },
 
   // ── REJECT — USER-BLANK (3) ──────────────────────────────────────────
@@ -250,7 +250,8 @@ export const CASES_HOLDOUT: FluidConfigCase[] = [
   {
     id: 'ho-r-loading-glyph',
     category: 'reject-out-of-scope',
-    // blank-loading-animation is a MENU_TUNABLE, not a FEATURE.
+    // blank-loading-animation is classifier-reachable, but "spinner" is not
+    // a listed preset (bounce / braille-rotate / flipper / custom / off) → NONE.
     input: 'use the spinner instead of the bounce glyph at the blank _',
     expected: { setting: null, value: null },
   },
