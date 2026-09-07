@@ -26,10 +26,14 @@
 import type { CueContext, CueSource, CueSourceResult } from '../types';
 import { SessionContradictionSource, type SessionContradictionSourceConfig } from '../contradiction/session-contradiction-source';
 import { ToolPromptCueSource } from './tool-prompt-source';
+import { SemanticTipsSource } from './semantic-tips-source';
 
 export interface SessionCueSourceConfig extends SessionContradictionSourceConfig {
   readonly enableContradiction: boolean;
   readonly enableAsk: boolean;
+  /** the tips pack matched as a watchlist (`tips-mode: semantic`) — runs
+   *  after contradiction, before ask; its own call, never folded in. */
+  readonly enableSemanticTips?: boolean;
 }
 
 export class SessionCueSource implements CueSource {
@@ -39,14 +43,16 @@ export class SessionCueSource implements CueSource {
 
   private readonly contradiction?: SessionContradictionSource;
   private readonly ask?: ToolPromptCueSource;
+  private readonly tips?: SemanticTipsSource;
 
   constructor(cfg: SessionCueSourceConfig) {
     if (cfg.enableContradiction) this.contradiction = new SessionContradictionSource(cfg);
     if (cfg.enableAsk) this.ask = new ToolPromptCueSource(cfg);
+    if (cfg.enableSemanticTips) this.tips = new SemanticTipsSource(cfg);
   }
 
   supports(context: CueContext): boolean {
-    return (this.contradiction?.supports(context) ?? false) || (this.ask?.supports(context) ?? false);
+    return (this.contradiction?.supports(context) ?? false) || (this.tips?.supports(context) ?? false) || (this.ask?.supports(context) ?? false);
   }
 
   async getCues(context: CueContext): Promise<CueSourceResult> {
@@ -57,6 +63,10 @@ export class SessionCueSource implements CueSource {
       if (c.results.length > 0) return c;
     }
     // No contradiction → the ask cue is free to surface an open question.
+    if (this.tips?.supports(context)) {
+      const t = await this.tips.getCues(context);
+      if (t.results.length > 0) return t;
+    }
     if (this.ask?.supports(context)) return this.ask.getCues(context);
     return { results: [] };
   }

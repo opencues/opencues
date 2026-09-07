@@ -2,7 +2,7 @@
 name: example-project
 description: Cue-surface master for a project
 spec: opencues/0.1-alpha
-tips-mode: on
+tips-mode: semantic
 word-cues-mode: on
 ignore: [TODO, FIXME, XXX]
 disable: [concise]

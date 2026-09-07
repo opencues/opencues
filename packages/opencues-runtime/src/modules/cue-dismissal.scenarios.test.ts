@@ -67,7 +67,7 @@ describe('the note teaches the gesture', () => {
       blankName: 'sentence-cue:session-contradiction', cueTip: '⚠ you said Thursday was blocked',
     });
     expect(dim.compute({ text, cursor: 3, externalHighlights: [] })?.inlineNote?.hint)
-      .toBe('(underscore to cycle)');
+      .toBe('(underscore to fix)');   // a contradiction's toggle names the verb, not the key
   });
 
   it('the plain dismiss hint returns once a mute has lapsed', async () => {

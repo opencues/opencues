@@ -14,9 +14,9 @@ This is now the same mechanism [Deterministic Relocate](deterministic-relocate.m
 
 1. **Classify each existing `DynDef`** against the current word array: does the word (or, for multi-word alternatives, the word sequence) at its stored index still match? If yes → **keep**, untouched.
 2. **If not, look for a unique relocation** — does the def's current alternative appear at exactly one OTHER position in the buffer? If yes → **move** (this is what makes a cycled word survive a prefix insert elsewhere in the buffer; see deterministic-relocate.md for the collision rules).
-3. **Otherwise → drop.** The def is deleted. The word at that position becomes non-navigable until something re-establishes a def for it (a fresh LLM resolve, or an instant local-tip match if the word happens to match a loaded `CUE.md`'s `## Tips`).
+3. **Otherwise → drop.** The def is deleted. The word at that position becomes non-navigable until something re-establishes a def for it (a fresh LLM resolve).
 
-So editing "dog" to "do" drops dog's `DynDef` (no relocation match, "do" isn't one of dog's alternatives) — "do" is non-navigable until re-analyzed. Typing "dog" back doesn't instantly restore the OLD def (it was deleted, not cached) — it either waits for the next LLM resolve, or resolves immediately if "dog" is a local tip match (a `LocalCueSource` hit doesn't need history — it matches by word content, not by a preserved position).
+So editing "dog" to "do" drops dog's `DynDef` (no relocation match, "do" isn't one of dog's alternatives) — "do" is non-navigable until re-analyzed. Typing "dog" back doesn't instantly restore the OLD def (it was deleted, not cached) — it waits for the next LLM resolve.
 
 ---
 

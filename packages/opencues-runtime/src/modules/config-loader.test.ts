@@ -17,21 +17,15 @@ const SAMPLE_TIPS = wrapTipsAsCuesMd({
 });
 
 describe('ConfigLoader', () => {
-  it('loads tips from CUES.md ## Tips and builds a case-insensitive lookup', async () => {
+  it('loads tips from CUES.md ## Tips as the situation catalogue; `lookup` is blank tips only (no static word map since spec 0.12)', async () => {
     const adapter = new MockAdapter({ files: { '/mock/CUES.md': SAMPLE_TIPS } });
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
     await loader.load();
 
     expect(loader.loaded).toBe(true);
-    expect(loader.cueMap.size).toBeGreaterThan(0);
-
-    const hello = loader.lookup('hello');
-    expect(hello).not.toBeNull();
-    expect(hello!.alternatives).toContain('hi');
-
-    // Case-insensitive
-    expect(loader.lookup('HELLO')).not.toBeNull();
-    expect(loader.lookup('Fast')?.alternatives).toContain('quick');
+    expect(loader.config.tipsCatalog?.entries.map((e) => e.trigger)).toEqual(['hello', 'fast']);
+    expect(loader.lookup('hello')).toBeNull();
+    expect(loader.navigableWords.has('hello')).toBe(false);
   });
 
   it('resolves gracefully when CUES.md is missing', async () => {
@@ -39,24 +33,24 @@ describe('ConfigLoader', () => {
     const loader = new ConfigLoader(adapter);
     await loader.load();
     expect(loader.loaded).toBe(true);
-    expect(loader.cueMap.size).toBe(0);
+    expect(loader.config.tipsCatalog).toBeNull();
     expect(loader.lookup('hello')).toBeNull();
   });
 
-  it('leaves map empty when ## Tips JSON is malformed', async () => {
+  it('leaves the catalogue empty when ## Tips JSON is malformed', async () => {
     const malformedCuesMd = `# malformed\n\n## Tips\n\`\`\`json\nnot valid json{{{\n\`\`\`\n`;
     const adapter = new MockAdapter({ files: { '/mock/CUES.md': malformedCuesMd } });
     const loader = new ConfigLoader(adapter);
     await loader.load();
     expect(loader.loaded).toBe(true);
-    expect(loader.cueMap.size).toBe(0);
+    expect(loader.config.tipsCatalog).toBeNull();
   });
 
   it('returns null from lookup when file-read capability absent', async () => {
     const adapter = new MockAdapter({ capabilities: [] });
     const loader = new ConfigLoader(adapter);
     await loader.load();
-    expect(loader.cueMap.size).toBe(0);
+    expect(loader.config.tipsCatalog).toBeNull();
     expect(loader.lookup('hello')).toBeNull();
   });
 });
@@ -95,7 +89,7 @@ some prose
   it('returns defaults when no frontmatter', () => {
     const state = parseOpenCuesMd('# just markdown, no frontmatter');
     expect(state.voiceMode).toBe('active');
-    expect(state.tipsMode).toBe('on');
+    expect(state.tipsMode).toBe('semantic');
     expect(state.debugMode).toBe('off');
     expect(state.cursorNavigate).toBe('inactive');
     expect(state.ambientContextMode).toBe('off');
@@ -172,7 +166,7 @@ tips-mode: maybe
 ---`;
     const state = parseOpenCuesMd(md);
     expect(state.voiceMode).toBe('active'); // anything ≠ 'inactive' = active
-    expect(state.tipsMode).toBe('on');      // anything ≠ 'off' = on
+    expect(state.tipsMode).toBe('semantic');   // anything ≠ off/definitions = the default, semantic
   });
 
   it('parses nested settings: block into definitions', () => {
@@ -293,7 +287,7 @@ describe('ConfigLoader expanded — cwd .md files', () => {
     const loader = new ConfigLoader(adapter, { settingsFile: '/proj/.cues/OPENCUES.md' });
     await loader.load();
     expect(loader.opencuesState.voiceMode).toBe('active');
-    expect(loader.opencuesState.tipsMode).toBe('on');
+    expect(loader.opencuesState.tipsMode).toBe('semantic');
   });
 
   // Regression: when ConfigLoader._discoverFolders' pre-walk only matched
@@ -316,8 +310,7 @@ describe('ConfigLoader expanded — cwd .md files', () => {
     });
     const loader = new ConfigLoader(adapter, { configSearchPaths: ['/proj/.cues'] });
     await loader.load();
-    expect(loader.cueMap.size).toBeGreaterThan(0);
-    expect(loader.lookup('howdy')?.cueTip).toBe('a greeting');
+    expect(loader.config.tipsCatalog?.entries.map((e) => [e.trigger, e.tip])).toEqual([['howdy', 'a greeting']]);
   });
 
   it('continues loading other files when one .md file is malformed', async () => {
@@ -334,7 +327,7 @@ describe('ConfigLoader expanded — cwd .md files', () => {
     // cueMap is empty because CUES.md (the sole tips source post-refactor)
     // didn't yield a valid ## Tips block.
     expect(loader.blanksConfig?.frontmatter.name).toBe('ok');
-    expect(loader.cueMap.size).toBe(0);
+    expect(loader.config.tipsCatalog).toBeNull();
   });
 
 });
@@ -692,5 +685,71 @@ describe('background-poll hot reload (June 2026)', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// ── semantic tips: the mode and the catalogue (2026-09-06) ──────────────────
+describe('ConfigLoader — tips-mode and the tips catalogue', () => {
+  const PACK = `# zeta\n\n## Tips\n\`\`\`json\n[{ "id": "zeta", "words": { "/zap": { "tip": "ALT-ONE zap resets the zorb", "when": "wants to begin again", "emoji": "🧭", "alts": ["/zip"] }, "/zip": { "tip": "ALT-TWO zip folds", "alts": [] } } }]\n\`\`\`\n`;
+  const settings = (mode: string) => `---\ntips-mode: ${mode}\n---\n`;
+
+  it('parses semantic | off; legacy `on`, the retired `definitions` / `static`, and anything else read as semantic', async () => {
+    for (const [given, want] of [['semantic', 'semantic'], ['off', 'off'], ['on', 'semantic'], ['definitions', 'semantic'], ['static', 'semantic'], ['loud', 'semantic']] as const) {
+      const adapter = new MockAdapter({ files: { '/mock/CUES.md': PACK, '/p/OPENCUES.md': settings(given) } });
+      const loader = new ConfigLoader(adapter, { settingsFile: '/p/OPENCUES.md' });
+      await loader.load();
+      expect(loader.opencuesState.tipsMode, given).toBe(want);
+    }
+  });
+
+  it('builds the catalogue from the tips packs, with when: and emoji: passed through', async () => {
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': PACK, '/p/OPENCUES.md': settings('semantic') } });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/p/OPENCUES.md' });
+    await loader.load();
+    const cat = loader.config.tipsCatalog;
+    // only the entry WITH a when: line is a situation; /zip (definition only) stays out of the watchlist
+    expect(cat?.entries.map((e) => e.id)).toEqual(['t1']);
+    expect(cat?.entries[0]).toMatchObject({ trigger: '/zap', when: 'wants to begin again', emoji: '🧭', alts: ['/zip'] });
+    expect(cat?.text).toContain('- t1 [zeta] /zap — when: wants to begin again — tip: ALT-ONE zap resets the zorb');
+  });
+
+  it('a pack word is never a static entry: no lookup, no nav word — only the catalogue', async () => {
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': PACK } });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    expect(loader.opencuesState.tipsMode).toBe('semantic');
+    expect(loader.lookup('/zap')).toBeNull();
+    expect(loader.navigableWords.has('/zap')).toBe(false);
+    expect(loader.config.tipsCatalog?.entries.map((e) => e.id)).toEqual(['t1']);
+  });
+
+  it('tips-shard-size cuts the catalogue into shards; off = one shard; absent = the default size', async () => {
+    const big = `# z\n\n## Tips\n\`\`\`json\n${JSON.stringify([{ id: 'a', words: { z1: { tip: 'A', when: 'w' }, z2: { tip: 'B', when: 'w' } } }, { id: 'b', words: { z3: { tip: 'C', when: 'w' } } }])}\n\`\`\`\n`;
+    const load = async (mode: string) => {
+      const adapter = new MockAdapter({ files: { '/mock/CUES.md': big, '/p/OPENCUES.md': `---\ntips-mode: semantic\n${mode}\n---\n` } });
+      const loader = new ConfigLoader(adapter, { settingsFile: '/p/OPENCUES.md' }); await loader.load();
+      return loader.config.tipsCatalog!;
+    };
+    expect((await load('tips-shard-size: 2')).shards).toHaveLength(2);
+    expect((await load('tips-shard-size: off')).shards).toHaveLength(1);
+    expect((await load('tips-shard-size: nonsense')).shards).toHaveLength(1);   // the default (35) — everything fits
+    expect((await load('')).shards).toHaveLength(1);
+  });
+  it('is null when there are no tips', async () => {
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': '---\ndomain: test\n---\n' } });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    expect(loader.config.tipsCatalog).toBeNull();
+  });
+
+  it('hot-reloads: an edited when: line is in the catalogue after the next reload', async () => {
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': PACK } });
+    const loader = new ConfigLoader(adapter, { reloadDebounceMs: 0 });
+    await loader.load();
+    expect(loader.config.tipsCatalog?.text).toContain('when: wants to begin again');
+    await adapter.writeFile('/mock/CUES.md', PACK.replace('wants to begin again', 'says the zorb is a mess'));
+    await loader.maybeReload();
+    expect(loader.config.tipsCatalog?.text).toContain('when: says the zorb is a mess');
+    expect(loader.config.tipsCatalog?.text).not.toContain('wants to begin again');
   });
 });

@@ -76,7 +76,7 @@ OpenCues is configured via `.md` files in the project root. These files are the 
 
 **OPENCUES.md** — The runtime system-settings file (user-level only — projects can't override). Holds scalars like `voice-mode`, `word-cues-mode`, `tips-mode`, `debug-mode`, `cursor-navigate`, `blank-trigger-mode`, `llm-provider`, plus numeric tunables (`agent-debounce-ms`, `max-concurrent-auditors`, …) — all in YAML frontmatter. Schema declared in `@opencues/core`'s `FEATURES` + `MENU_TUNABLES` registry. Body is human-readable description, not parsed. Lives at `~/.cues/OPENCUES.md` (overridable with `$OPENCUES_HOME`). Canonical filename exported as `CORE_SETTINGS_FILE`. Seeded from `defaults/OPENCUES.md` by `opencues seed-configs` and re-seeded if 0 bytes. Cycled live by `OpenCuesSettingsBlank`. See `docs/features/selector-satellite.md` and `docs/architecture/feature-registry.md`.
 
-**CUES.md** — The cue master config (cue source declarations + project metadata). Frontmatter has `name` / `domain` / `version`. Body has `## Tips` (static word tips), `## Ignore` (words the runtime never suggests alts for), and `## Prompt` with `### <source-name>` LLM-backed cue sources. Lives at user-level (`~/.cues/CUES.md`) OR project-level (`<cwd>/.cues/CUES.md`); project wins on name conflicts. Parsed via `parseCuesMd` → wrapped in `RoutedWordSourceGroup`. **Does NOT carry runtime system settings** — those are in OPENCUES.md (despite the similar name). A pre-2026 design plan to merge the two files was abandoned.
+**CUES.md** — The cue master config (cue source declarations + project metadata). Frontmatter has `name` / `domain` / `version`. Body has `## Tips` (a legacy tips JSON block, read into the semantic-tips situation catalogue), `## Ignore` (words the runtime never suggests alts for), and `## Prompt` with `### <source-name>` LLM-backed cue sources. Lives at user-level (`~/.cues/CUES.md`) OR project-level (`<cwd>/.cues/CUES.md`); project wins on name conflicts. Parsed via `parseCuesMd` → wrapped in `RoutedWordSourceGroup`. **Does NOT carry runtime system settings** — those are in OPENCUES.md (despite the similar name). A pre-2026 design plan to merge the two files was abandoned.
 
 **BLANKS.md** — The blank master config, mirroring CUES.md's role for the blanks surface: project metadata + a top-level `disable: [<id>, ...]` list that subtracts blank ids from this layer's composition. Parsed via `parseBlanksSection`, populates `ConfigLoader`'s `result.blanks`.
 
@@ -100,7 +100,7 @@ OpenCues is configured via `.md` files in the project root. These files are the 
 
 A **cue source** is anything that provides alternatives for words. All cue sources implement the `CueSource` interface (`id`, `priority`, `supports()`, `getCues()`).
 
-**Local Cues** — Alternatives computed locally on your machine, returning near-instantly (~0ms). The tips file is a local cue source — it provides both alternatives and cue-tips. In code: `LocalCueSource`.
+**Local Cues** — Retired (spec 0.12, September 2026). Was the static per-word layer: a typed tips-pack word got instant alternatives and a cue-tip from an in-memory map (`LocalCueSource`, `ConfigLoader.cueMap`), no LLM. A pack word is a plain word now; the packs reach the buffer only through [Semantic Tips](features/semantic-tips.md).
 
 **Remote Cues** — Alternatives computed externally using an LLM (~200-500ms). Each `cues/<name>/CUE.md` (or `blanks/<name>/BLANK.md`) becomes a config-driven source that sends a prompt to the LLM and parses the response. In code: `ConfigSource`.
 
@@ -120,7 +120,7 @@ A **cue source** is anything that provides alternatives for words. All cue sourc
 - **Word cues**: Each `cues/<name>/CUE.md` becomes a `ConfigSource`; all of them wrap into ONE `RoutedWordSourceGroup` that dispatches per-word.
 - **Blanks**: Keyword-bound entries from `blanks/<name>/BLANK.md` register with `BlankSource` (priority 95). `FluidBlankSource` (priority 92) catches unbound `_`. The shipped `defaults/cues/spelling/CUE.md` cue (priority 10 — the lowest of any shipped source, deliberately, so other cues win first) flags misspelled words on plain text — same `ConfigSource` path as any word cue.
 
-> **Terminology note**: "cue source" is the general concept. `CueSource` is the TypeScript interface. `ConfigSource` and `LocalCueSource` are specific implementations.
+> **Terminology note**: "cue source" is the general concept. `CueSource` is the TypeScript interface. `ConfigSource` and `SemanticTipsSource` are specific implementations.
 
 ---
 
@@ -204,7 +204,7 @@ These names look similar but the files are unrelated. The distinction is the sou
 
 **`~/.cues/OPENCUES.md`** — runtime system settings (user-level only). Frontmatter holds scalars like `voice-mode`, `tips-mode`, `debug-mode`, `cursor-navigate`, `word-cues-mode`, `blank-trigger-mode`, `llm-provider`, plus numeric tunables (`agent-debounce-ms`, etc.). Schema owned by the runtime via the FEATURES + MENU_TUNABLES registry. A single value applies across every integration; projects can't override. `OpenCuesSettingsBlank` reads + writes this file.
 
-**`~/.cues/CUES.md`** (or `<project>/.cues/CUES.md`) — cue master config. Frontmatter has project metadata (`name`, `domain`, `version`). Body has `## Tips` (static word tips), `## Ignore` (words the runtime never suggests alts for), and `## Prompt` with `### <source-name>` LLM-backed cue source declarations. Parsed via `parseCuesMd` → `RoutedWordSourceGroup`. Lives at user-level OR project-level; project wins on name conflicts.
+**`~/.cues/CUES.md`** (or `<project>/.cues/CUES.md`) — cue master config. Frontmatter has project metadata (`name`, `domain`, `version`). Body has `## Tips` (legacy tips JSON block, read into the semantic-tips catalogue), `## Ignore` (words the runtime never suggests alts for), and `## Prompt` with `### <source-name>` LLM-backed cue source declarations. Parsed via `parseCuesMd` → `RoutedWordSourceGroup`. Lives at user-level OR project-level; project wins on name conflicts.
 
 ### Lifecycle
 

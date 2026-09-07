@@ -255,7 +255,7 @@ correct.
 
 ControlValuesCache also keeps stale values visible (instead of
 deleting on invalidate) so the statusline doesn't flash to the
-static cueMap default in the gap between cycle and refetch.
+blank's static `tip` default in the gap between cycle and refetch.
 
 ### 12. `script get` is the source of truth for the statusline tip
 

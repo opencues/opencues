@@ -31,6 +31,7 @@ import { threeWayMerge } from './word-diff';
 import { applyScalarAndPersist } from '../util/apply-scalar';
 import { diffSplice, fillSplice, type PendingTransaction, type UndoJournal } from '../state/undo-journal';
 import { UndoApplier } from './undo';
+import { matchDeterministicAction } from '@opencues/core';
 
 /** Minimal interface MarkdownRender exposes for rich-text injection.
  *  Keeps Resolver from importing MarkdownRender directly (would create
@@ -899,6 +900,9 @@ export class Resolver {
       // was never built. Change BOTH or neither.
       enableSessionContradiction: settings.get('session-contradiction-mode') !== 'off',
       enableAskCues: settings.get('ask-cues-mode') === 'on',
+      // Semantic tips: opt-in (`tips-mode: semantic`); the catalogue is forwarded
+      // below under the SAME read, so the source and its input can't drift.
+      enableSemanticTips: settings.get('tips-mode') !== 'off',
       worldDataFetch: this.options.worldDataFetch,
       pageLocation: this.options.pageLocation,
       weatherLocation: settings.get('weather-location'),
@@ -1525,6 +1529,10 @@ export class Resolver {
         // Sentinel grammar (bare default / typed opt-in). Threaded so the
         // catalog renderer + post-LLM resolver in TransformBlank/FluidBlank
         // pick the typed-sentinel engine path when enabled.
+        // The tips packs as a watchlist, for the semantic tips matcher.
+        tipsCatalog: this.configLoader.opencuesState.tipsMode !== 'off'
+          ? (this.configLoader.config.tipsCatalog ?? undefined)
+          : undefined,
         sentinelLanguage: this.configLoader.opencuesState.sentinelLanguage,
         // Phase 4 â ai-callable fn registry + capability-gated on-demand fetch.
         // Only populated when the gate is wired (a blank opted into ai-callable)
@@ -1731,10 +1739,21 @@ export class Resolver {
           const note = report.requested === 0
             ? `[OpenCues: nothing to ${undoAction.action}]`
             : `[OpenCues: could not ${undoAction.action}${why}]`;
-          // Note replaces only the command span (not the swallowed
-          // whitespace — the note keeps its separating space).
-          const noted = liveText.slice(0, start) + note + liveText.slice(end);
-          const noteStart = start;
+          // The note replaces the COMMAND, never the draft. The classifier's
+          // span can claim the whole buffer ("undo the change please make
+          // it formal _" → start 0, an ACTION verdict from the model), and
+          // splicing the note over that span wiped the user's prose and left
+          // only `[OpenCues: could not undo]` (Wilfred, 2026-09-07 — the
+          // logical-landmine class: a failed action must never eat the
+          // buffer). So: the deterministic command tail before the `_`
+          // (`undo`, `revert`, `undo twice`, …) is what goes; with no such
+          // tail only the `_` itself does, and every word stays put. The
+          // success path keeps its anchor-tightened wipe above. Not the
+          // swallowed whitespace either — the note keeps its separating space.
+          const usIdx = liveText.lastIndexOf('_', Math.max(0, end - 1));
+          const tail = usIdx >= 0 ? matchDeterministicAction(liveText.slice(0, usIdx)) : null;
+          const noteStart = usIdx < 0 ? start : (tail ? tail.commandStart : usIdx);
+          const noted = liveText.slice(0, noteStart) + note + liveText.slice(end);
           if (this.adapter.pushText) this.adapter.pushText(noted, noteStart + note.length);
           else { this.adapter.setText(noted); this.adapter.setCursorOffset(noteStart + note.length); this.adapter.forceRender(); }
           if (this.spanFillState) {
@@ -1829,30 +1848,16 @@ export class Resolver {
       // runs, and each write triggers a forceRender â repaint flash.
       // Only re-resolve if the word at this index actually changed
       // (user deleted/replaced the word).
-      if (existing && existing.originalWord === target.word) continue;
-      // Tip-having words own their own alternatives via the cueMap
-      // (the hand-curated `alts` array under CUES.md's `## Tips` JSON
-      // block). The LLM returning grammar synonyms for `ultrathink`
-      // etc. would silently override the curated list. Mirrors the
-      // legacy CC cue-engine's `skipFn: word => tipsMap.has(word)`
-      // filter on the LLM source.
-      // Tip-having words own their own alternatives via the cueMap (the
-      // hand-curated `alts` array under CUES.md's `## Tips` JSON block).
-      // The LLM returning grammar synonyms for `ultrathink` etc. would
-      // silently override the curated list. Mirrors the legacy CC
-      // cue-engine's `skipFn: word => tipsMap.has(word)` filter on the
-      // LLM source.
-      //
-      // â  LLM blank sources (transform-blank / fluid-blank /
-      // config-intent) are EXEMPT. They target `_`; if a user (or a
-      // shipped pack) has a tip entry for `_` â tips-shell/CUE.md once
-      // had `{ "_": { alts: ["blank","fill","underscore"] } }` â the
-      // tip-vs-LLM rule would silently block every blank substitution.
-      // Pinned by `transform-blank.scenarios.test.ts` Â§ "tip entry
-      // for `_` must not block substitution" (2026-05-28 regression).
-      const cueMapEntry = this.configLoader.lookup(target.word);
-      const isLlmBlankSource = r.source === 'fluid-blank' || r.source === 'transform-blank' || r.source === 'config-intent';
-      if (!isLlmBlankSource && cueMapEntry && cueMapEntry.alternatives && cueMapEntry.alternatives.length > 1) continue;
+      // A SENTENCE CUE is exempt: it is anchored at its span's first word,
+      // not about that word, so a word-cue def already sitting there is not
+      // "this result, already registered" — the sentence cue registers over
+      // it (semantic outranks a word cue; the sentence branch below owns the
+      // key). Visible once pack words stopped being static (spec 0.12): a
+      // word-cue def on the draft's first word silently dropped every
+      // whole-buffer tip.
+      if (existing && existing.originalWord === target.word && !isSentenceCue) continue;
+      // (The curated-list guard that skipped LLM alternatives for a typed
+      // pack word left with spec 0.12: there is no static word map to guard.)
       const alts = (r.alternatives ?? []).filter(a => a && a !== target.word);
       if (alts.length === 0) continue;
       // FluidBlankSource sets spanStart/spanEnd (character offsets) when
@@ -2195,6 +2200,33 @@ export class Resolver {
         // synthetic, collision-free index so BOTH survive (the long-second-
         // sentence "not highlighted" bug). Stable across re-resolves (same
         // span â same key), so it isn't duplicated.
+        // The SAME cue again (a re-resolve after a trailing space, a repaint)
+        // is a refresh, never a second def: same source, same solution,
+        // overlapping span → keep the def that is there. Two defs for one cue
+        // is how Wilfred's first live test lost its revert (2026-09-06): `_`
+        // cycled the duplicate, the post-swap prune dropped the original.
+        {
+          let refreshed = false;
+          for (const [key, def] of this.dynDefs.entries()) {
+            if (def.blankName !== r.source) continue;
+            if (typeof def.spanStart !== 'number' || typeof def.spanEnd !== 'number') continue;
+            const sameSolution = def.alternatives[def.alternatives.length - 1] === r.alternatives[r.alternatives.length - 1];
+            if (!(sameSolution && start < def.spanEnd && def.spanStart < end)) continue;
+            // A passive def follows the content it flags: typing MORE after
+            // the flagged draft grows the span (a whole-buffer solution must
+            // replace the whole buffer, and the caret's reach rides the span
+            // end). Mid-cycle it is left alone — its span is the solution's.
+            if (def.currentIndex === 0 && (def.spanStart !== start || def.spanEnd !== end)) {
+              this.dynDefs.set(key, { ...def, spanStart: start, spanEnd: end,
+                alternatives: [r.alternatives[0], ...def.alternatives.slice(1)], originalWord: r.alternatives[0] });
+              this.adapter.log('debug', `SentenceCue[${r.source}]: refreshed span → [${start},${end})`);
+            } else {
+              this.adapter.log('debug', `SentenceCue[${r.source}]: same cue already registered on an overlapping span — refresh, not a second def`);
+            }
+            refreshed = true; break;
+          }
+          if (refreshed) continue;
+        }
         const atNatural = this.dynDefs.get(r.wordIndex);
         const collides = !!atNatural && typeof atNatural.blankName === 'string'
           && atNatural.blankName.startsWith('sentence-cue:')

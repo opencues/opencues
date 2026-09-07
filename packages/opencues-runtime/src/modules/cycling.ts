@@ -5,7 +5,7 @@
 //
 //   1. List blank (e.g. affirmations): rotate through stepValues in-place.
 //   2. Blank-fill DynDef: cycle the originating blank's stepped value.
-//   3. Plain cue word: rotate through cueMap.alternatives.
+//   3. Plain word-cue def: rotate through its alternatives.
 //
 // Each path updates DynDefs as needed so subsequent cycles continue from
 // the right state.
@@ -472,7 +472,7 @@ export class Cycling {
       }
     }
 
-    // 3. Plain cue word — fall through to original static-alts cycling.
+    // 3. Plain word-cue def — rotate its alternatives.
     return this.cycleStaticAlts(event, target, wordIndex, direction);
   }
 
@@ -974,32 +974,12 @@ export class Cycling {
       }
     }
 
-    let def = this.dynDefs.get(wordIndex);
-    if (!def) {
-      const built = this.buildDefFrom(target);
-      if (!built) return false;
-      this.dynDefs.set(wordIndex, built);
-      def = built;
-    }
-    if (def.alternatives.length <= 1) return false;
+    // Only a registered def rotates (an LLM word-cue, a spelling fix, a
+    // sentence cue). The static cue-map fallback that used to materialise a
+    // def from a typed pack word left with spec 0.12.
+    const def = this.dynDefs.get(wordIndex);
+    if (!def || def.alternatives.length <= 1) return false;
     return this.applyAltCycle(event, def, direction, wordIndex, 'static-alts');
-  }
-
-  private buildDefFrom(target: { word: string; start: number; end: number; index: number }): WordDef | null {
-    const lookup = this.configLoader.lookup(target.word);
-    if (!lookup || !lookup.alternatives || lookup.alternatives.length === 0) return null;
-    const alternatives: string[] = [target.word];
-    for (const alt of lookup.alternatives) {
-      if (alt !== target.word && !alternatives.includes(alt)) alternatives.push(alt);
-    }
-    if (alternatives.length <= 1) return null;
-    return {
-      originalWord: target.word,
-      alternatives,
-      currentIndex: 0,
-      spanStart: target.start,
-      spanEnd: target.end,
-    };
   }
 
   // ─── Shared alt-cycling loop ───────────────────────────────────────────

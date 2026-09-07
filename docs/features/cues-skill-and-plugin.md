@@ -11,7 +11,7 @@ chat conversation with their AI assistant:
    model judgment in the loop.
 
 Both write the same `.cues/CUES.md` file format (frontmatter +
-`## Prompt` word-cue / sentence-cue sources + `## Tips` JSON block).
+`## Prompt` word-cue / sentence-cue sources + the legacy `## Tips` JSON block, read into the semantic-tips catalogue).
 The OpenCues runtime reads it the same way regardless of which one
 produced it.
 

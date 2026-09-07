@@ -124,15 +124,12 @@ export {
   parseRaw,
 } from './sources/parsers';
 
-// Local tips source
+// Local cue-file helpers (the static token-matching source and its lookups
+// left with spec 0.12 — the ```json block is a SITUATION catalogue now, see
+// tips-catalog.ts)
 export {
-  LocalCueSource,
-  lookupWord,
-  lookupWords,
   parseLocalCueFile,
   validateLocalCueData,
-  buildLookupMap,
-  lookupMultiple,
   formatAsWordDefs,
   mergeWordDefs,
   cleanAlternatives,
@@ -436,6 +433,11 @@ export type {
 // (AskUserQuestion first): question → tip, options → cyclable alternatives on
 // the selected span. A generic, pluggable primitive. See tool-prompt-source.ts.
 export { SessionCueSource } from './sources/session-cue-source';
+// Semantic tips — the tips pack as a watchlist (docs/architecture/semantic-tips.md)
+export { SemanticTipsSource, SEMANTIC_TIPS_MATCH_SYSTEM } from './sources/semantic-tips-source';
+export type { SemanticTipsSourceConfig } from './sources/semantic-tips-source';
+export { buildTipsCatalog, shardCatalog, TIPS_CATALOG_BUDGET_CHARS, TIPS_CATALOG_HEADER, TIPS_SHARD_SIZE_DEFAULT } from './tips-catalog';
+export type { TipsCatalog, TipsCatalogEntry } from './tips-catalog';
 export type { SessionCueSourceConfig } from './sources/session-cue-source';
 export {
   ToolPromptCueSource,

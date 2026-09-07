@@ -20,23 +20,8 @@ on-host: [shell]
     "words": {
       "improve prompt": {
         "tip": "Type your rough draft then `improve prompt _` — runtime rewrites inline",
-        "alts": ["enhance prompt", "refine prompt", "draft"]
-      },
-      "enhance prompt": {
-        "tip": "Same as `improve prompt _` — rewrites a draft into a structured prompt",
-        "alts": ["improve prompt", "refine prompt"]
-      },
-      "refine prompt": {
-        "tip": "Same as `improve prompt _` — rewrites a draft into a structured prompt",
-        "alts": ["improve prompt", "enhance prompt"]
-      },
-      "draft": {
-        "tip": "Drafting? Append `improve prompt _` and the runtime rewrites in place",
-        "alts": ["improve prompt", "enhance prompt", "rough"]
-      },
-      "rough": {
-        "tip": "Rough text → append `improve prompt _` to get a structured rewrite",
-        "alts": ["draft", "improve prompt"]
+        "when": "has a rough or messy draft and wants it cleaned up before sending",
+        "say": "Rough draft? Add improve prompt _ at the end and it rewrites in place"
       }
     }
   },
@@ -45,31 +30,18 @@ on-host: [shell]
     "words": {
       "translate": {
         "tip": "`[your text] translate to french _` — replaces with the translation",
-        "alts": ["translation", "french", "spanish"]
-      },
-      "translation": {
-        "tip": "`<text> translate to <language> _` — transform-blank does the rest",
-        "alts": ["translate", "french"]
-      },
-      "format as": {
-        "tip": "`<list> format as bullet points _` — also `as a table`, `as JSON`",
-        "alts": ["format", "bullets", "JSON"]
+        "when": "asks for their text put into another language",
+        "say": "Another language? <text> translate to french _ replaces it with the translation"
       },
       "format": {
         "tip": "`<list> format as bullet points _` formats; works for table/JSON too",
-        "alts": ["format as", "bullets", "JSON"]
-      },
-      "past tense": {
-        "tip": "`<sentence> make past tense _` rewrites the sentence in past tense",
-        "alts": ["make past tense", "future tense", "rewrite"]
+        "when": "asks for their text turned into bullet points, a numbered list, a table or JSON",
+        "say": "Want it as a list or table? <text> format as bullet points _ (or as a table, as JSON)"
       },
       "summarize": {
         "tip": "`<text> summarize _` collapses the text to a short summary",
-        "alts": ["summary", "tldr", "shorten"]
-      },
-      "shorten": {
-        "tip": "`<text> shorten _` shrinks text; pair with target length in body",
-        "alts": ["summarize", "tldr"]
+        "when": "asks for their text made shorter, condensed, trimmed or summed up",
+        "say": "Too long? <text> summarize _ or shorten _ does it in place"
       }
     }
   },
@@ -78,81 +50,28 @@ on-host: [shell]
     "words": {
       "_": {
         "tip": "The `_` is the universal trigger — runtime fills it from surrounding text",
-        "alts": ["blank", "fill", "underscore"]
-      },
-      "blank": {
-        "tip": "Type `_` after a phrase — the runtime fills it (LLM or local)",
-        "alts": ["_", "fill", "lookup"]
-      },
-      "what is the word for": {
-        "tip": "`what is the word for X _` → the runtime answers with the single word",
-        "alts": ["how to say", "answer", "vocabulary"]
-      },
-      "how to say": {
-        "tip": "`how to say X _` — same as `what is the word for`",
-        "alts": ["what is the word for", "answer"]
-      },
-      "define": {
-        "tip": "`define X _` — runtime looks up the dictionary definition",
-        "alts": ["definition of", "meaning of", "what is"]
-      },
-      "definition of": {
-        "tip": "`definition of X _` — dictionary lookup blank",
-        "alts": ["define", "meaning of"]
+        "when": "asks a factual question, or wants a word, a definition or an answer filled in",
+        "say": "Need an answer? Type the question and end it with _; the blank fills itself"
       }
     }
   },
   {
     "id": "input-box",
     "words": {
-      "Alt+Shift+Up": {
-        "tip": "Alt+Shift+↑ opens the slide-pane input box at the bottom of the shell",
-        "alts": ["F2", "input", "open"]
-      },
-      "Alt+Shift+Down": {
-        "tip": "Alt+Shift+↓ cancels the input box and restores any captured shell line",
-        "alts": ["Esc", "cancel", "restore"]
-      },
-      "Alt+Shift+Right": {
-        "tip": "Alt+Shift+→ submits the input-box buffer into the shell at the cursor",
-        "alts": ["Ctrl+S", "submit", "paste"]
-      },
-      "Alt+Shift+Left": {
-        "tip": "Alt+Shift+← exits oc-shell entirely (kills the tmux session)",
-        "alts": ["Ctrl+Alt+X", "exit", "quit"]
-      },
-      "F2": {
-        "tip": "F2 is an aliased opener — same as Alt+Shift+↑ (for emulators that swallow it)",
-        "alts": ["Alt+Shift+Up", "open", "input"]
-      },
       "input box": {
         "tip": "Alt+Shift+↑ slides up the input box; submit injects into your shell prompt",
-        "alts": ["Alt+Shift+Up", "F2", "slide-pane"]
-      },
-      "slide-pane": {
-        "tip": "The input box is a lazy-spawn tmux split — only there when open",
-        "alts": ["input box", "Alt+Shift+Up"]
+        "when": "asks how to open, close or submit the input box",
+        "say": "The input box: Alt+Shift+↑ opens it, Alt+Shift+→ submits to the shell, Alt+Shift+↓ cancels"
       }
     }
   },
   {
     "id": "shell-integration",
     "words": {
-      "capture": {
-        "tip": "Alt+Shift+↑ captures the line you were typing at the shell prompt",
-        "alts": ["Alt+Shift+Up", "shell-integration", "readline"]
-      },
       "shell-integration": {
         "tip": "Run `oc-install-shell-integration` once to wire capture-current-line",
-        "alts": ["capture", "readline", "rc"]
-      },
-      "readline": {
-        "tip": "Shell-integration binds an internal chord so opening pulls your buffer",
-        "alts": ["capture", "shell-integration"]
-      },
-      "oc-install-shell-integration": {
-        "tip": "One-time setup — appends a source line to ~/.bashrc / .zshrc / fish",
-        "alts": ["shell-integration", "rc", "capture"]
+        "when": "says the input box does not pick up the line they were typing at the prompt",
+        "say": "Line not captured? Run oc-install-shell-integration once and the box pulls your buffer"
       }
     }
   },
@@ -161,27 +80,8 @@ on-host: [shell]
     "words": {
       "opencues settings": {
         "tip": "`opencues settings _` slides out a selector/satellite for every setting",
-        "alts": ["config", "settings", "OPENCUES.md"]
-      },
-      "config": {
-        "tip": "`config _` — alias of `opencues settings _`; cycles runtime settings",
-        "alts": ["opencues settings", "OPENCUES.md", "settings"]
-      },
-      "settings": {
-        "tip": "Type `opencues settings _` then Ctrl+Alt+→/← to cycle a setting",
-        "alts": ["opencues settings", "config", "OPENCUES.md"]
-      },
-      "OPENCUES.md": {
-        "tip": "Settings live at ~/.cues/OPENCUES.md — edit directly or via the blank",
-        "alts": ["opencues settings", "config"]
-      },
-      "voice-mode": {
-        "tip": "`opencues settings _` then cycle to voice-mode to enable/disable TTS",
-        "alts": ["TTS", "speak", "opencues settings"]
-      },
-      "TTS": {
-        "tip": "TTS reads tips aloud — toggle via voice-mode in `opencues settings _`",
-        "alts": ["voice-mode", "speak"]
+        "when": "wants to change an OpenCues setting such as voice, tips or debug",
+        "say": "Changing a setting? opencues settings _ slides out every setting; Ctrl+Alt+→/← cycles it"
       }
     }
   },
@@ -190,106 +90,48 @@ on-host: [shell]
     "words": {
       "volume": {
         "tip": "`volume _` auto-fills with system volume; Ctrl+Alt+↑/↓ adjusts",
-        "alts": ["brightness", "system", "step"]
-      },
-      "brightness": {
-        "tip": "`brightness _` auto-fills with screen brightness; Up/Down steps it",
-        "alts": ["volume", "system"]
+        "when": "wants to change the system volume or the screen brightness",
+        "say": "Volume or brightness? volume _ fills the level; Ctrl+Alt+↑/↓ adjusts it"
       },
       "weather": {
         "tip": "`weather <city> _` — fetches current conditions and embeds them",
-        "alts": ["forecast", "temp", "temperature"]
-      },
-      "forecast": {
-        "tip": "`forecast <city> _` — alias of weather; uses open-meteo for free",
-        "alts": ["weather", "temp"]
+        "when": "asks about the weather or a forecast for a place",
+        "say": "Weather? weather <city> _ fills the current conditions"
       },
       "stocks": {
         "tip": "`nvda _`, `aapl _`, `tsla _` — fetches current price",
-        "alts": ["nvda", "aapl", "tsla"]
-      },
-      "btc": {
-        "tip": "`btc _` / `eth _` / `sol _` — crypto price lookup in USD",
-        "alts": ["bitcoin", "eth", "crypto"]
-      },
-      "hn": {
-        "tip": "`hn _` — top Hacker News story; auto-populates on type",
-        "alts": ["hackernews", "news"]
-      },
-      "gh-issues": {
-        "tip": "`gh-issues owner/repo _` — open-issue count for a GitHub repo",
-        "alts": ["github", "issues", "PR"]
-      },
-      "population of": {
-        "tip": "`population of <country> _`, also `capital of`, `currency of`",
-        "alts": ["capital of", "currency of", "country"]
+        "when": "asks for a stock or crypto price",
+        "say": "A price? nvda _ or btc _ fills the current one"
       }
     }
   },
   {
     "id": "word-cycling",
     "words": {
-      "Ctrl+Alt+Right": {
-        "tip": "Ctrl+Alt+→ moves the highlight to the next navigable word",
-        "alts": ["Ctrl+Alt+Left", "navigate", "cycle"]
-      },
-      "Ctrl+Alt+Left": {
-        "tip": "Ctrl+Alt+← moves the highlight to the previous navigable word",
-        "alts": ["Ctrl+Alt+Right", "navigate"]
-      },
-      "Ctrl+Alt+Up": {
-        "tip": "Ctrl+Alt+↑ cycles to the next alternative for the highlighted word",
-        "alts": ["Ctrl+Alt+Down", "cycle", "alternatives"]
-      },
-      "Ctrl+Alt+Down": {
-        "tip": "Ctrl+Alt+↓ cycles backwards through alternatives",
-        "alts": ["Ctrl+Alt+Up", "cycle"]
-      },
       "cycle": {
         "tip": "Ctrl+Alt+→/← navigates words; Ctrl+Alt+↑/↓ cycles alternatives",
-        "alts": ["Ctrl+Alt+Up", "Ctrl+Alt+Right", "navigate"]
-      },
-      "navigate": {
-        "tip": "Ctrl+Alt+→/← jump between cued words in the buffer",
-        "alts": ["Ctrl+Alt+Right", "cycle"]
+        "when": "asks how to move between cued words or pick an alternative",
+        "say": "Cued words: Ctrl+Alt+→/← moves between them, Ctrl+Alt+↑/↓ cycles the alternatives"
       }
     }
   },
   {
     "id": "tmux-shell",
     "words": {
-      "tmux": {
-        "tip": "oc-shell uses a PRIVATE tmux session — your existing tmux is untouched",
-        "alts": ["session", "oc-shell"]
-      },
       "oc-shell": {
         "tip": "`oc-shell` wraps $SHELL in a tmux session with the slide-pane input",
-        "alts": ["tmux", "session"]
-      },
-      "session": {
-        "tip": "Each `oc-shell` invocation is a fresh isolated tmux session",
-        "alts": ["tmux", "oc-shell"]
+        "when": "asks whether it touches their tmux or how the shell is wrapped",
+        "say": "Your tmux is safe: oc-shell runs in its own private session"
       }
     }
   },
   {
     "id": "shell-basics",
     "words": {
-      "cd": {
-        "tip": "Submit pastes into your shell — `cd` etc. run as if you typed them",
-        "alts": ["ls", "pwd", "shell"]
-      },
       "history": {
         "tip": "Ctrl+R reverse-searches your shell history (in the shell pane)",
-        "alts": ["Ctrl+R", "bash", "zsh"]
-      },
-      "Ctrl+R": {
-        "tip": "Ctrl+R searches shell history (works in the shell pane, not input box)",
-        "alts": ["history", "bash"]
-      },
-      "pipe": {
-        "tip": "Compose pipelines in the input box, submit pastes the whole line",
-        "alts": ["chain", "shell"]
+        "when": "wants to re-run or find an earlier command",
+        "say": "An earlier command? Ctrl+R searches shell history in the shell pane"
       }
     }
   },
@@ -298,23 +140,8 @@ on-host: [shell]
     "words": {
       "exit": {
         "tip": "Alt+Shift+← exits oc-shell (alternative: Ctrl+Alt+X)",
-        "alts": ["Alt+Shift+Left", "Ctrl+Alt+X", "quit"]
-      },
-      "quit": {
-        "tip": "Alt+Shift+← quits oc-shell; tmux session is killed",
-        "alts": ["exit", "Alt+Shift+Left"]
-      },
-      "Ctrl+Alt+X": {
-        "tip": "Ctrl+Alt+X is the keyboard alias for Alt+Shift+← (exit oc-shell)",
-        "alts": ["Alt+Shift+Left", "exit"]
-      },
-      "Esc": {
-        "tip": "Esc inside the input box cancels (same as Alt+Shift+↓)",
-        "alts": ["Alt+Shift+Down", "cancel", "Ctrl+Q"]
-      },
-      "cancel": {
-        "tip": "Esc / Ctrl+Q / Alt+Shift+↓ cancel the input box and restore the line",
-        "alts": ["Esc", "Alt+Shift+Down", "Ctrl+Q"]
+        "when": "asks how to quit oc-shell or cancel the input box",
+        "say": "Leaving? Alt+Shift+← exits oc-shell; Esc cancels the input box"
       }
     }
   }

@@ -18,7 +18,7 @@
     "tts-rate": { "type": ["string", "number"] },
     "tts-script": { "type": "string" },
     "debug-mode": { "type": "string", "enum": ["on", "off", "verbose"] },
-    "tips-mode": { "type": "string", "enum": ["on", "off"] },
+    "tips-mode": { "type": "string", "enum": ["semantic", "off", "on"] },
     "cursor-navigate": { "type": "string", "enum": ["active", "inactive", "on", "off"] },
     "cursor-preservation": { "type": "string", "enum": ["on", "off"] },
 

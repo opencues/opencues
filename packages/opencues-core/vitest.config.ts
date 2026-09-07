@@ -34,6 +34,7 @@ export default defineConfig({
       'src/session-commitments.test.ts',
       'src/dismissals.test.ts',
       'src/contradiction/session-contradiction-source.test.ts',
+      'src/sources/semantic-tips-source.test.ts',
       'src/sources/tool-prompt-source.test.ts',
       'src/sources/session-cue-source.test.ts',
       'src/usage-meter.test.ts',

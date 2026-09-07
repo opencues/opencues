@@ -137,11 +137,11 @@ export class Statusline {
     private hlState: HighlightState,
     private dynDefs: DynDefs,
     private options: StatuslineOptions,
-    /** Optional. When provided, cueTip + altCueTips are populated from the cue map. */
+    /** Optional. When provided, a blank keyword's tip is populated from the config. */
     private configLoader?: ConfigLoader,
     /**
      * Optional. When the highlight is on a span fill, the blank's
-     * tip wins over cueMap lookup (which would miss filled words
+     * tip wins over the blank-tip lookup (which would miss filled words
      * like "13.9°C" or "Reddit").
      */
     private spanFillState?: SpanFillState,
@@ -255,9 +255,14 @@ export class Statusline {
     // `agent-rewrite`) resolves to the originating def and goes through
     // the suppression branch below.
     let def = this.dynDefs.get(wordIndex);
-    if (!def) {
+    // Semantic outranks a word cue (ruled 2026-09-06): a plain word-cue def the
+    // user arrow-cycled on a word INSIDE a sentence-cue span (a semantic tip
+    // on the whole draft) must not hide that span's note while the caret is
+    // on the word — the containing sentence-cue def wins. Any other exact-
+    // index def (blank, satellite, cycled cue) stands as before.
+    if (!def || !def.blankName) {
       const span = this.dynDefs.findSpanContaining(wordIndex);
-      if (span) def = span.def;
+      if (span && (!def || (typeof span.def.blankName === 'string' && span.def.blankName.startsWith('sentence-cue:')))) def = span.def;
     }
     const words = splitWords(ctx.text);
     let highlightedWord: string;
@@ -359,6 +364,7 @@ export class Statusline {
     // heads-up) wins over the static word-cue tip map — it shows passively
     // whenever the cursor sits in the def's span, no cycling required.
     if (!tipsHidden && !inlinePassiveCues && def?.cueTip) cueTip = def.cueTip;
+    // `lookup` is blank tips only since 0.12 (the static word map is gone).
     const lookup = this.configLoader?.lookup(lookupKey) ?? null;
     if (lookup && !tipsHidden) {
       altCueTips = lookup.altCueTips ?? null;

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Navigation, splitWords } from './navigation';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
-import { MockAdapter, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
+import { MockAdapter, seedWordDefs, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
 
 function setup(text: string) {
   const adapter = new MockAdapter();
@@ -188,10 +188,11 @@ describe('Navigation', () => {
 });
 
 describe('Navigation cue filtering', () => {
-  const TIPS = wrapTipsAsCuesMd({
+  const TIPS_DATA = {
     domain: 't', version: 1,
     concepts: [{ id: 'a', words: { volume: { tip: 'V', alts: [] }, brightness: { tip: 'B', alts: [] } } }],
-  });
+  };
+  const TIPS = wrapTipsAsCuesMd(TIPS_DATA);
 
   async function setupWithCues(text: string) {
     const { ConfigLoader } = await import('./config-loader');
@@ -199,8 +200,9 @@ describe('Navigation cue filtering', () => {
     adapter.pushText(text);
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
     await loader.load();
+    seedWordDefs(dynDefs, text, TIPS_DATA);   // word-cue defs: the only nav targets besides blanks' fills
     const nav = new Navigation(adapter, hlState, dynDefs, loader);
     nav.subscribe();
     return { adapter, hlState, dynDefs, loader, nav };
@@ -266,17 +268,18 @@ blankScript: ./t.sh
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/proj/CUES.md': CUES, '/proj/blanks/translate/BLANK.md': TRANSLATE_BLANK },
+      files: { '/proj/CUES.md': CUES, '/proj/blanks/translate/BLANK.md': TRANSLATE_BLANK, '/mock/OPENCUES.md': '---\ntips-mode: semantic\n---\n' },
     });
     adapter.pushText('please translate the volume now');
     // words: please(0) translate(1) the(2) volume(3) now(4)
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/OPENCUES.md' });
     await loader.load();
-    // Sanity: translate IS a blank keyword but NOT a cue word.
+    // `volume` carries a word-cue def (what the resolver registers); `translate`
+    // is a bare blank keyword with no def.
+    dynDefs.set(3, { originalWord: 'volume', alternatives: ['volume', 'loudness'], currentIndex: 0, spanStart: 'please translate the '.length, spanEnd: 'please translate the volume'.length });
     expect(loader.blanksByWord.has('translate')).toBe(true);
-    expect(loader.cueMap.has('translate')).toBe(false);
     const nav = new Navigation(adapter, hlState, dynDefs, loader);
     nav.subscribe();
     adapter.fireKey('left', { ctrl: true, alt: true });
@@ -375,7 +378,7 @@ describe('Navigation span-fill filter', () => {
     adapter.pushText('foo bar baz qux');
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
     await loader.load();
     const span = new SpanFillState();
     span.set({ index: 1, alternatives: ['bar baz', 'other text'], currentAltIndex: 0, spanLength: 2 }, 'foo bar baz qux');

@@ -21,15 +21,8 @@ on-host: [opencode]
     "words": {
       "/compact": {
         "tip": "Use /compact to summarize history when context fills up",
-        "alts": ["/summarize", "/new", "context"]
-      },
-      "/summarize": {
-        "tip": "Alias for /compact - summarizes session history",
-        "alts": ["/compact", "/new"]
-      },
-      "compact": {
-        "tip": "Type /compact (Ctrl+X c) to compress session history",
-        "alts": ["/compact", "Ctrl+X c", "context"]
+        "when": "says the agent forgot what they were doing, or the session got long",
+        "say": "Losing the thread? /compact condenses the session; auto fires at 75%"
       }
     }
   },
@@ -38,23 +31,13 @@ on-host: [opencode]
     "words": {
       "/undo": {
         "tip": "Use /undo to revert last message AND file changes (needs git)",
-        "alts": ["/redo", "Ctrl+X u", "rollback"]
+        "when": "wants to undo or take back what the ASSISTANT just changed or did in this session (not an undo inside their own code, database or app)",
+        "say": "Undo what it just did? /undo reverts the last message and its edits; needs a git repo"
       },
       "/redo": {
         "tip": "Use /redo to reapply a previously undone message",
-        "alts": ["/undo", "Ctrl+X r"]
-      },
-      "undo": {
-        "tip": "Type /undo (Ctrl+X u) - reverts last turn AND file edits",
-        "alts": ["/undo", "/redo", "rollback"]
-      },
-      "rollback": {
-        "tip": "Use /undo to rollback - reverts files via git too",
-        "alts": ["/undo", "/redo", "revert"]
-      },
-      "revert": {
-        "tip": "Use /undo to revert last turn (uses git for file changes)",
-        "alts": ["/undo", "/redo", "rollback"]
+        "when": "wants back what an undo removed",
+        "say": "Want it back? /redo restores what /undo removed"
       }
     }
   },
@@ -63,19 +46,8 @@ on-host: [opencode]
     "words": {
       "Esc": {
         "tip": "Press Esc to interrupt the current generation",
-        "alts": ["stop", "cancel", "interrupt"]
-      },
-      "stop": {
-        "tip": "Press Esc to stop a running response",
-        "alts": ["Esc", "cancel", "interrupt"]
-      },
-      "cancel": {
-        "tip": "Press Esc to cancel an in-flight LLM call",
-        "alts": ["Esc", "stop", "interrupt"]
-      },
-      "interrupt": {
-        "tip": "Esc interrupts; Ctrl+C twice exits opencode",
-        "alts": ["Esc", "stop", "cancel"]
+        "when": "wants to stop the current response mid-way",
+        "say": "Want it to stop? Esc interrupts the response; Ctrl+C twice exits opencode"
       }
     }
   },
@@ -84,27 +56,18 @@ on-host: [opencode]
     "words": {
       "/sessions": {
         "tip": "Use /sessions (Ctrl+X l) to list and switch sessions",
-        "alts": ["/resume", "/continue", "/new"]
-      },
-      "/resume": {
-        "tip": "Alias for /sessions - resume any past session",
-        "alts": ["/sessions", "/continue", "--continue"]
-      },
-      "/continue": {
-        "tip": "Alias for /sessions - pick a session to continue",
-        "alts": ["/sessions", "/resume", "--continue"]
+        "when": "wants an earlier session back",
+        "say": "An earlier session? /sessions lists them; opencode -c resumes the last"
       },
       "/new": {
         "tip": "Use /new (Ctrl+X n) to start a fresh session",
-        "alts": ["/clear", "/sessions"]
+        "when": "wants to start over or clear the chat without quitting",
+        "say": "Starting over? /new (or /clear) begins a fresh session without quitting"
       },
       "--continue": {
         "tip": "opencode --continue (-c) resumes your last session",
-        "alts": ["--session", "--fork", "/sessions"]
-      },
-      "--fork": {
-        "tip": "Use --fork with --continue to branch off a session",
-        "alts": ["--continue", "--session"]
+        "when": "closed the terminal or wants yesterday's session back",
+        "say": "Closed it? opencode --continue reopens your last session; /sessions lists the rest"
       }
     }
   },
@@ -113,19 +76,13 @@ on-host: [opencode]
     "words": {
       "Tab": {
         "tip": "Press Tab to cycle to the next agent (Ctrl+X a opens list)",
-        "alts": ["Shift+Tab", "Ctrl+X a", "agent"]
-      },
-      "Shift+Tab": {
-        "tip": "Shift+Tab cycles agents in reverse",
-        "alts": ["Tab", "Ctrl+X a"]
-      },
-      "agent": {
-        "tip": "Tab cycles agents; Ctrl+X a opens the agent picker",
-        "alts": ["Tab", "Shift+Tab", "subagent"]
+        "when": "wants plan mode, or typed Shift+Tab from Claude Code",
+        "say": "Plan mode? Tab switches Plan and Build; Shift+Tab goes backwards"
       },
       "subagent": {
         "tip": "Subagents run in their own context — set mode in the agent .md",
-        "alts": ["agent", "Tab", "AGENTS.md"]
+        "when": "wants part of the work delegated or run in its own context",
+        "say": "Delegating? A subagent runs in its own context; set its mode in the agent .md"
       }
     }
   },
@@ -134,27 +91,13 @@ on-host: [opencode]
     "words": {
       "/models": {
         "tip": "Use /models (Ctrl+X m) to switch model mid-session",
-        "alts": ["F2", "Ctrl+T", "Ctrl+A"]
-      },
-      "F2": {
-        "tip": "Press F2 to cycle recently used models",
-        "alts": ["/models", "Ctrl+T", "Ctrl+A"]
+        "when": "asks which model this is, or typed /model from another tool",
+        "say": "Which model? /models picks one, and each agent keeps its own"
       },
       "Ctrl+T": {
         "tip": "Ctrl+T cycles model variants (provider reasoning effort)",
-        "alts": ["/models", "F2", "--variant"]
-      },
-      "Ctrl+A": {
-        "tip": "Ctrl+A opens the provider + model picker",
-        "alts": ["/models", "F2", "Ctrl+F"]
-      },
-      "Ctrl+F": {
-        "tip": "Ctrl+F toggles a model as a favorite",
-        "alts": ["/models", "Ctrl+A"]
-      },
-      "--variant": {
-        "tip": "Use --variant to set provider-specific reasoning effort",
-        "alts": ["--thinking", "Ctrl+T", "/models"]
+        "when": "wants a bigger thinking budget",
+        "say": "Bigger thinking budget? Ctrl+T cycles the variants"
       }
     }
   },
@@ -163,15 +106,8 @@ on-host: [opencode]
     "words": {
       "/thinking": {
         "tip": "Toggle visibility of reasoning blocks (does NOT enable thinking)",
-        "alts": ["Ctrl+T", "--thinking", "reasoning"]
-      },
-      "--thinking": {
-        "tip": "Pass --thinking to show thinking blocks in `opencode run`",
-        "alts": ["/thinking", "Ctrl+T", "reasoning"]
-      },
-      "reasoning": {
-        "tip": "Ctrl+T cycles reasoning effort; /thinking shows the blocks",
-        "alts": ["/thinking", "Ctrl+T", "--variant"]
+        "when": "asks how to turn thinking on; this only shows it",
+        "say": "Want more thinking? /thinking only shows it; Ctrl+T cycles the budget"
       }
     }
   },
@@ -180,40 +116,23 @@ on-host: [opencode]
     "words": {
       "/share": {
         "tip": "Use /share to publish a shareable session link",
-        "alts": ["/unshare", "OPENCODE_AUTO_SHARE", "--share"]
-      },
-      "/unshare": {
-        "tip": "Use /unshare to revoke the shared session link",
-        "alts": ["/share"]
-      },
-      "share": {
-        "tip": "/share creates a public link; OPENCODE_AUTO_SHARE=true auto-shares",
-        "alts": ["/share", "/unshare", "--share"]
-      },
-      "--share": {
-        "tip": "`opencode run --share` publishes the session as a URL",
-        "alts": ["/share", "OPENCODE_AUTO_SHARE"]
+        "when": "wants to show the session to someone, or worries a link is public",
+        "say": "Sharing this? /share makes a public link; /unshare removes it"
       }
     }
   },
   {
     "id": "leader-key",
     "words": {
-      "leader": {
-        "tip": "Default leader is Ctrl+X — chord with n=new, c=compact, m=models",
-        "alts": ["Ctrl+X", "tui.json", "keybinds"]
-      },
       "Ctrl+X": {
         "tip": "Ctrl+X is the leader key — pairs with letters for most actions",
-        "alts": ["leader", "tui.json"]
+        "when": "asks what the keybindings are or how to reach a command faster",
+        "say": "Looking for a shortcut? Ctrl+X is the leader: n new, c compact, m models, l sessions"
       },
       "tui.json": {
         "tip": "Customize keybinds in tui.json (separate from opencode.json)",
-        "alts": ["leader", "Ctrl+X", "keybinds"]
-      },
-      "keybinds": {
-        "tip": "Edit tui.json to rebind; built-in defaults are merged in",
-        "alts": ["leader", "Ctrl+X", "tui.json"]
+        "when": "says a theme or keybind setting is ignored",
+        "say": "Theme or keybind ignored? Those live in tui.json, not opencode.json"
       }
     }
   },
@@ -222,19 +141,13 @@ on-host: [opencode]
     "words": {
       "/init": {
         "tip": "Use /init to generate or update AGENTS.md for your project",
-        "alts": ["AGENTS.md", "rules"]
+        "when": "is in a new repo with no AGENTS.md yet",
+        "say": "New repo? /init writes AGENTS.md from what it finds; commit it"
       },
       "AGENTS.md": {
         "tip": "AGENTS.md holds project rules — run /init to scaffold it",
-        "alts": ["/init", "rules", "CLAUDE.md"]
-      },
-      "rules": {
-        "tip": "Put project rules in AGENTS.md (or .opencode/) — /init scaffolds it",
-        "alts": ["AGENTS.md", "/init", "remember"]
-      },
-      "remember": {
-        "tip": "Persistent instructions go in AGENTS.md — generated by /init",
-        "alts": ["AGENTS.md", "/init", "rules"]
+        "when": "asks where the project rules go, or typed CLAUDE.md",
+        "say": "Rules it should keep? Put them in AGENTS.md; /init scaffolds it"
       }
     }
   },
@@ -243,19 +156,8 @@ on-host: [opencode]
     "words": {
       "/connect": {
         "tip": "Use /connect to add a provider and store its API key",
-        "alts": ["auth", "login", "provider"]
-      },
-      "auth": {
-        "tip": "Run `opencode auth login` to add API keys for any Models.dev provider",
-        "alts": ["/connect", "provider", "login"]
-      },
-      "provider": {
-        "tip": "Providers come from Models.dev — /connect or `opencode auth login`",
-        "alts": ["/connect", "auth", "/models"]
-      },
-      "login": {
-        "tip": "`opencode auth login` — stored in ~/.local/share/opencode/auth.json",
-        "alts": ["/connect", "auth"]
+        "when": "asks how to log in or add a provider key",
+        "say": "Adding a provider? /connect stores the key; opencode models lists what you can use"
       }
     }
   },
@@ -264,15 +166,8 @@ on-host: [opencode]
     "words": {
       "@": {
         "tip": "Prefix a filename with @ to include its contents (e.g. @src/main.ts)",
-        "alts": ["file", "reference", "context"]
-      },
-      "file": {
-        "tip": "Use @path/to/file to attach file contents to the message",
-        "alts": ["@", "reference", "--file"]
-      },
-      "--file": {
-        "tip": "`opencode run --file` attaches files in non-interactive mode",
-        "alts": ["@", "file"]
+        "when": "wants to point the agent at a file",
+        "say": "Point it at a file: @ opens fuzzy search and attaches it"
       }
     }
   },
@@ -281,15 +176,8 @@ on-host: [opencode]
     "words": {
       "!": {
         "tip": "Start a message with ! to run a shell command (output added to chat)",
-        "alts": ["shell", "bash", "terminal"]
-      },
-      "shell": {
-        "tip": "Prefix message with ! to execute bash and include the output",
-        "alts": ["!", "bash", "terminal"]
-      },
-      "bash": {
-        "tip": "Prefix message with ! to run bash inside opencode",
-        "alts": ["!", "shell"]
+        "when": "wants to run a quick shell command without leaving the prompt",
+        "say": "A quick shell command? Start the message with ! and its output lands in the chat"
       }
     }
   },
@@ -298,74 +186,43 @@ on-host: [opencode]
     "words": {
       "/editor": {
         "tip": "Use /editor (Ctrl+X e) to compose in $EDITOR (set --wait for GUI)",
-        "alts": ["EDITOR", "multiline", "external"]
-      },
-      "editor": {
-        "tip": "/editor opens $EDITOR — `export EDITOR='code --wait'` for VS Code",
-        "alts": ["/editor", "EDITOR", "multiline"]
-      },
-      "multiline": {
-        "tip": "Shift+Enter for newline; /editor for full external editing",
-        "alts": ["/editor", "Shift+Enter", "newline"]
+        "when": "is writing a long prompt in the input box",
+        "say": "Long prompt? /editor opens it in $EDITOR (GUI editors need --wait)"
       },
       "Shift+Enter": {
         "tip": "Shift+Enter inserts a newline (terminal may need extra setup)",
-        "alts": ["/editor", "multiline"]
+        "when": "complains that Enter sends the message when they wanted a new line",
+        "say": "Enter sending too early? Shift+Enter inserts a newline; /editor for a full editor"
       }
     }
   },
   {
     "id": "non-interactive",
     "words": {
-      "headless": {
-        "tip": "`opencode serve` runs without a TUI; `opencode run` for one-shot",
-        "alts": ["opencode run", "serve", "web"]
-      },
       "ci": {
         "tip": "Use `opencode run` for CI; --format json for structured output",
-        "alts": ["opencode run", "--format", "headless"]
-      },
-      "--format": {
-        "tip": "`opencode run --format json` emits raw JSON events for scripting",
-        "alts": ["opencode run", "ci"]
+        "when": "wants to run it from a script, a CI job or a pipeline",
+        "say": "Scripting it? opencode run does one prompt; --format json for parseable output"
       }
     }
   },
   {
     "id": "remote-attach",
     "words": {
-      "attach": {
-        "tip": "`opencode attach <url>` connects TUI to a remote serve/web backend",
-        "alts": ["serve", "web", "remote"]
-      },
-      "serve": {
-        "tip": "`opencode serve` starts a headless API server (no TUI)",
-        "alts": ["web", "attach", "--port"]
-      },
-      "web": {
-        "tip": "`opencode web` starts the server AND opens a browser UI",
-        "alts": ["serve", "attach"]
-      },
       "remote": {
         "tip": "`opencode serve` on a host, then `opencode attach <url>` from anywhere",
-        "alts": ["attach", "serve", "web"]
+        "when": "wants to drive opencode on another machine or from a browser",
+        "say": "Another machine? opencode serve there, then opencode attach <url> here; opencode web for a browser"
       }
     }
   },
   {
     "id": "permissions",
     "words": {
-      "--dangerously-skip-permissions": {
-        "tip": "Auto-approves all permissions — prefer per-agent permissions instead",
-        "alts": ["permission", "dangerous"]
-      },
       "permission": {
         "tip": "Configure per-agent permissions in agent frontmatter, not --dangerously-skip",
-        "alts": ["--dangerously-skip-permissions", "dangerous", "agent"]
-      },
-      "dangerous": {
-        "tip": "Use agent-scoped permissions over --dangerously-skip-permissions",
-        "alts": ["--dangerously-skip-permissions", "permission"]
+        "when": "is tired of approving every tool call, or reaches for --dangerously-skip-permissions",
+        "say": "Tired of approving? Set per-agent permissions in the agent frontmatter instead of --dangerously-skip-permissions"
       }
     }
   },
@@ -374,11 +231,8 @@ on-host: [opencode]
     "words": {
       "custom command": {
         "tip": "Drop a .md in .opencode/commands/ — filename becomes the /command",
-        "alts": [".opencode/commands", "template"]
-      },
-      "$ARGUMENTS": {
-        "tip": "$ARGUMENTS (or $1, $2...) in a command template substitutes user args",
-        "alts": ["custom command", "template"]
+        "when": "does the same prompt every day and wants it as a command",
+        "say": "Same prompt daily? A .md in .opencode/commands/ becomes a /command; $ARGUMENTS passes the args"
       }
     }
   },
@@ -387,36 +241,18 @@ on-host: [opencode]
     "words": {
       "mcp": {
         "tip": "`opencode mcp add` to register an MCP server; `mcp list` to inspect",
-        "alts": ["plugin", "server", "extension"]
-      },
-      "plugin": {
-        "tip": "`opencode plugin <module>` installs a plugin and updates config",
-        "alts": ["mcp", "extension"]
-      },
-      "extension": {
-        "tip": "Extend via MCP servers (opencode mcp add) or plugins (opencode plugin)",
-        "alts": ["mcp", "plugin"]
+        "when": "wants to connect a tool, service or data source",
+        "say": "Connecting a tool? opencode mcp add registers an MCP server; opencode plugin for plugins"
       }
     }
   },
   {
     "id": "stats-cost",
     "words": {
-      "stats": {
-        "tip": "`opencode stats` shows token usage and cost across sessions",
-        "alts": ["cost", "tokens", "usage"]
-      },
-      "tokens": {
-        "tip": "`opencode stats --days 7` — token + cost breakdown",
-        "alts": ["stats", "cost", "usage"]
-      },
       "cost": {
         "tip": "`opencode stats` shows cost; --models for per-model breakdown",
-        "alts": ["stats", "tokens"]
-      },
-      "usage": {
-        "tip": "`opencode stats` prints usage; --project filters to current project",
-        "alts": ["stats", "tokens", "cost"]
+        "when": "asks what this is costing or how many tokens it has used",
+        "say": "Wondering about cost? opencode stats shows tokens and cost; --days 7 or --models breaks it down"
       }
     }
   },
@@ -425,23 +261,13 @@ on-host: [opencode]
     "words": {
       "Ctrl+Z": {
         "tip": "Ctrl+Z suspends opencode (POSIX); use fg to resume",
-        "alts": ["suspend", "resume"]
-      },
-      "suspend": {
-        "tip": "Ctrl+Z suspends; not supported on native Windows terminals",
-        "alts": ["Ctrl+Z", "resume"]
-      },
-      "Ctrl+R": {
-        "tip": "Ctrl+R renames the current session",
-        "alts": ["/sessions", "rename"]
+        "when": "wants to drop to the shell for a moment without losing the session",
+        "say": "Need the shell? Ctrl+Z suspends opencode, fg brings it back"
       },
       "rename": {
         "tip": "No /rename command — press Ctrl+R inside /sessions to rename",
-        "alts": ["Ctrl+R", "/sessions"]
-      },
-      "Ctrl+C": {
-        "tip": "Ctrl+C clears the input; press again (or Ctrl+D) to exit",
-        "alts": ["/exit", "/quit", "Ctrl+D"]
+        "when": "wants to name the session so they can find it later",
+        "say": "Want to find this later? Ctrl+R renames the session; /sessions lists them"
       }
     }
   },
@@ -450,15 +276,8 @@ on-host: [opencode]
     "words": {
       "/exit": {
         "tip": "Use /exit (Ctrl+X q) to quit cleanly",
-        "alts": ["/quit", "/q", "Ctrl+D"]
-      },
-      "/quit": {
-        "tip": "Alias for /exit — quit OpenCode",
-        "alts": ["/exit", "/q"]
-      },
-      "/q": {
-        "tip": "Shortest alias for /exit",
-        "alts": ["/exit", "/quit"]
+        "when": "asks how to quit or leave cleanly",
+        "say": "Leaving? /exit (Ctrl+X q) quits cleanly"
       }
     }
   },
@@ -467,15 +286,13 @@ on-host: [opencode]
     "words": {
       "/export": {
         "tip": "Use /export (Ctrl+X x) to export conversation to Markdown",
-        "alts": ["export", "import", "/share"]
-      },
-      "export": {
-        "tip": "`opencode export <sessionID>` — JSON; /export gives Markdown",
-        "alts": ["/export", "import"]
+        "when": "wants the conversation as markdown for a PR or a handoff",
+        "say": "Need the conversation as text? /export writes markdown"
       },
       "import": {
         "tip": "`opencode import <file-or-share-url>` to load a saved session",
-        "alts": ["export", "/export"]
+        "when": "wants to load a saved or shared session",
+        "say": "Bringing a session back? opencode import <file or share url> loads it"
       }
     }
   },
@@ -484,28 +301,18 @@ on-host: [opencode]
     "words": {
       "upgrade": {
         "tip": "`opencode upgrade` — or `opencode upgrade v0.1.48` for a pinned version",
-        "alts": ["update", "version"]
-      },
-      "update": {
-        "tip": "Run `opencode upgrade`; set OPENCODE_DISABLE_AUTOUPDATE=true to opt out",
-        "alts": ["upgrade", "version"]
+        "when": "asks about updating or a newer version",
+        "say": "Updating? opencode upgrade; pin a version with opencode upgrade v0.x.y"
       }
     }
   },
   {
     "id": "command-list",
     "words": {
-      "Ctrl+P": {
-        "tip": "Press Ctrl+P to open the searchable command palette",
-        "alts": ["/help", "palette"]
-      },
       "/help": {
         "tip": "Type /help for the help dialog; Ctrl+P for searchable palette",
-        "alts": ["Ctrl+P", "help"]
-      },
-      "help": {
-        "tip": "/help shows commands; `opencode --help` for CLI flags",
-        "alts": ["/help", "Ctrl+P", "--help"]
+        "when": "is not sure what commands exist",
+        "say": "Not sure what exists? /help lists the commands; Ctrl+P is the searchable palette"
       }
     }
   },
@@ -514,11 +321,8 @@ on-host: [opencode]
     "words": {
       "/themes": {
         "tip": "Use /themes (Ctrl+X t) to switch UI theme",
-        "alts": ["theme", "tui.json"]
-      },
-      "theme": {
-        "tip": "/themes to pick; set `theme` in tui.json to persist",
-        "alts": ["/themes", "tui.json"]
+        "when": "wants to change how the UI looks",
+        "say": "Changing the look? /themes picks one; theme in tui.json keeps it"
       }
     }
   },
@@ -527,11 +331,8 @@ on-host: [opencode]
     "words": {
       "pr": {
         "tip": "`opencode pr <num>` checks out a GitHub PR branch and starts opencode",
-        "alts": ["github", "review"]
-      },
-      "github": {
-        "tip": "`opencode github install` sets up GitHub Action automation",
-        "alts": ["pr", "review"]
+        "when": "wants to review or work on a GitHub pull request",
+        "say": "Working a PR? opencode pr <number> checks out its branch and starts there"
       }
     }
   }

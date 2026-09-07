@@ -616,8 +616,8 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     expect(out?.inlineNote).toEqual({
       spanStart: 11,
       spanEnd: 19,
-      text: "⚠ 2 | the 19th is a Friday, not Saturday",
-      hint: "(underscore to cycle)",
+      text: "⚠ the 19th is a Friday, not Saturday",   // a toggle: no count
+      hint: "(underscore to fix)",                     // the verb, not the key
     });
     // Auto-select: the span the caret is in renders in the selected/highlight
     // colour, not dim.
@@ -642,7 +642,7 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     });
     const directives = dimRender.compute({ text: buf, cursor: 5, externalHighlights: [] });
     const visible = applyDirectives(buf, directives).replace(/\x1b\[[0-9;]*m/g, '');
-    expect(visible).toContain('formal\n       ↳ 2 | Improve formality'); // 5 spaces (cells)
+    expect(visible).toContain('formal\n       ↳ Improve formality'); // 5 spaces (cells)
     expect(visible).not.toContain('formal\n     ↳'); // NOT the old message-aode-point pad
   });
 
@@ -685,7 +685,7 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     // New format: number-first improvement note previewing the DESTINATION
     // (the alternative you'd cycle TO — the history step 'thanks a lot'), not
     // the current buffer text.
-    expect(out?.inlineNote?.text).toBe('2 | thanks a…');
+    expect(out?.inlineNote?.text).toBe('was: thanks a lot');   // a toggle: the landed value is in, the note says what it was
     expect(out?.inlineNote?.spanStart).toBe(0);
   });
 
@@ -709,9 +709,9 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
       blankName: 'transform-blank',
     });
     const out = dimRender.compute({ text: buf, cursor: 2, externalHighlights: [] });
-    const snippet = out!.inlineNote!.text.split(' | ')[1];
+    const snippet = out!.inlineNote!.text.replace(/^was: /, '');   // a toggle: `was: <snippet>`
     // 24 code points and the ellipsis - short enough to sit on one line
-    expect([...snippet].length).toBe(25);
+    expect([...snippet].length).toBe(49)   // 48 code points + …;
     expect(snippet.endsWith('…')).toBe(true);
     expect(jp.startsWith(snippet.slice(0, -1))).toBe(true);
   });
@@ -719,7 +719,7 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
   it('does not cut a surrogate pair in half when it caps', () => {
     // `.length` counts UTF-16 units, so slicing by it can split an emoji.
     // The cap counts CODE POINTS.
-    const emoji = '🚀'.repeat(40);
+    const emoji = '🚀'.repeat(60);   // past NOTE_SNIPPET_CELLS, so the cap fires
     const buf = 'the result on screen';
     const { dynDefs, dimRender } = setup(buf);
     dynDefs.set(0, {
@@ -731,8 +731,8 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
       blankName: 'transform-blank',
     });
     const out = dimRender.compute({ text: buf, cursor: 2, externalHighlights: [] });
-    const snippet = out!.inlineNote!.text.split(' | ')[1];
-    expect(snippet).toBe('🚀'.repeat(24) + '…');
+    const snippet = out!.inlineNote!.text.replace(/^was: /, '');   // a toggle: `was: <snippet>`
+    expect(snippet).toBe('🚀'.repeat(48) + '…');                    // NOTE_SNIPPET_CELLS code points, then …
     expect(snippet).not.toContain('\uFFFD');
   });
 
@@ -831,7 +831,7 @@ blankScript: ./vol.sh
     const { dynDefs, dimRender } = setup(BUFFER);
     seedContradictionDef(dynDefs);
     const out = dimRender.compute({ text: BUFFER, cursor: 19, externalHighlights: [] });
-    expect(out?.inlineNote?.text).toBe("⚠ 2 | the 19th is a Friday, not Saturday");
+    expect(out?.inlineNote?.text).toBe("⚠ the 19th is a Friday, not Saturday");
   });
 
   it('does NOT emit the note when the cursor is outside the span', () => {
@@ -870,7 +870,7 @@ blankScript: ./vol.sh
       cueSource: 'spelling',
     });
     const out = dimRender.compute({ text: 'the zephyrr filed', cursor: 6, externalHighlights: [] });
-    expect(out?.inlineNote?.text).toBe('✍️ 2 | ALT-FIX');
+    expect(out?.inlineNote?.text).toBe('✍️ ALT-FIX');   // a toggle: the correction alone, no count
   });
 
   it('treats a word-cue with no recorded source as an improvement, not an error', () => {
@@ -885,7 +885,7 @@ blankScript: ./vol.sh
       spanEnd: 10,
     });
     const out = dimRender.compute({ text: 'the zephyr filed', cursor: 6, externalHighlights: [] });
-    expect(out?.inlineNote?.text).toBe('2 | ALT-ONE');
+    expect(out?.inlineNote?.text).toBe('ALT-ONE');   // a toggle: the destination alone, no count
   });
 
   it('does NOT emit a note for a single-alternative def (nothing to suggest)', () => {
@@ -1028,8 +1028,8 @@ blankScript: ./vol.sh
     expect(visible.startsWith(BUFFER)).toBe(true);
     // THE CONNECTOR aligns under the span (col 11): the line is padded to the
     // span's own column, so the arrow points at its first character.
-    expect(visible).toContain('\n' + ' '.repeat(11) + '↳ ⚠  2 | the 19th is a Friday, not Saturday');
-    expect(painted).toContain('\x1b[2m↳ ⚠  2 | the 19th is a Friday, not Saturday   (underscore to cycle)\x1b[22m');
+    expect(visible).toContain('\n' + ' '.repeat(11) + '↳ ⚠  the 19th is a Friday, not Saturday');
+    expect(painted).toContain('\x1b[2m↳ ⚠  the 19th is a Friday, not Saturday   (underscore to fix)\x1b[22m');
   });
 
   it('no leading indent when the span starts at column 0 (even with a first-line indent)', () => {
@@ -1047,7 +1047,7 @@ blankScript: ./vol.sh
     const directives = dimRender.compute({ text: buf0, cursor: 3, externalHighlights: [] });
     // col 0 + promptPad 2 → the arrow sits at the prompt's own column, no indent.
     const visible = applyDirectives(buf0, directives, 2).replace(/\x1b\[[0-9;]*m/g, '');
-    expect(visible).toContain('\n  ↳ ⚠  2 | the 19th is a Friday');
+    expect(visible).toContain('\n  ↳ ⚠  the 19th is a Friday');
     expect(visible).not.toContain('\n↳'); // the prompt's columns before the arrow
   });
 
@@ -1058,7 +1058,7 @@ blankScript: ./vol.sh
     // firstLineIndent = 4 → note pad = (col-2) + 4 = 9 + 4 = 13. The span is on
     // line 1 (lineStart 0), so the prompt offset applies.
     const visible = applyDirectives(BUFFER, directives, 4).replace(/\x1b\[[0-9;]*m/g, '');
-    expect(visible).toContain('\n' + ' '.repeat(15) + '↳ ⚠  2 | the 19th is a Friday, not Saturday');
+    expect(visible).toContain('\n' + ' '.repeat(15) + '↳ ⚠  the 19th is a Friday, not Saturday');
   });
 
   it('does NOT add the first-line indent when the span is on a later line', () => {
@@ -1078,7 +1078,7 @@ blankScript: ./vol.sh
     // Even with a large firstLineIndent, a line-2 span gets NO prompt pad:
     // col = 21 - 16 = 5 → pad = col = 5, and no prompt indent on a later line.
     const visible = applyDirectives(multiline, directives, 8).replace(/\x1b\[[0-9;]*m/g, '');
-    expect(visible).toContain('saturday now\n     ↳ ⚠  2 | the 19th is a Friday');
+    expect(visible).toContain('saturday now\n     ↳ ⚠  the 19th is a Friday');
   });
 
   it('places the pill under the SPAN\'s line, not below the whole buffer (long buffer)', () => {
@@ -1099,7 +1099,7 @@ blankScript: ./vol.sh
     const directives = dimRender.compute({ text: multiline, cursor: 8, externalHighlights: [] });
     const visible = applyDirectives(multiline, directives).replace(/\x1b\[[0-9;]*m/g, '');
     // span at col 5 → the connector sits ON col 5 → pad = 3.
-    expect(visible).toContain('saturday\n     ↳ ⚠  2 | the 19th is a Friday   (underscore to cycle)\nmore text');
+    expect(visible).toContain('saturday\n     ↳ ⚠  the 19th is a Friday   (underscore to fix)\nmore text');
     // Not dangling after the last line.
     expect(visible.endsWith('even more')).toBe(true);
   });
@@ -1130,7 +1130,7 @@ blankScript: ./vol.sh
     // Right-side text preserved on the line; note below, message under col 8.
     expect(visible.startsWith('meet on saturday at 6pm')).toBe(true);
     // col 8 → pad = 8; the connector lands ON col 8 (under 's').
-    expect(visible).toContain('at 6pm\n        ↳ ⚠  2 | the 19th is a Friday');
+    expect(visible).toContain('at 6pm\n        ↳ ⚠  the 19th is a Friday');
   });
 
   it('MID-LINE span with a following line — note inserts between, right-side text preserved', () => {
@@ -1141,7 +1141,7 @@ blankScript: ./vol.sh
     const visible = applyDirectives(buf, directives).replace(/\x1b\[[0-9;]*m/g, '');
     // Note lands between the span's line and the next; "at 6pm" stays on line 1,
     // "see you there" stays on its own line, connector aligned under col 8.
-    expect(visible).toContain('at 6pm\n        ↳ ⚠  2 | the 19th is a Friday   (underscore to cycle)\nsee you there');
+    expect(visible).toContain('at 6pm\n        ↳ ⚠  the 19th is a Friday   (underscore to fix)\nsee you there');
   });
 
   it('MID-LINE span on the prompted first line — prompt indent + column both apply', () => {
@@ -1151,6 +1151,28 @@ blankScript: ./vol.sh
     // firstLineIndent 2 (CC prompt) → pad = col 8 + 2 = 10, so the CONNECTOR
     // sits under the span's on-screen column (prompt 2 + col 8 = 10).
     const visible = applyDirectives(MIDLINE, directives, 2).replace(/\x1b\[[0-9;]*m/g, '');
-    expect(visible).toContain('at 6pm\n          ↳ ⚠  2 | the 19th is a Friday');
+    expect(visible).toContain('at 6pm\n          ↳ ⚠  the 19th is a Friday');
+  });
+});
+
+describe('inline note — a source STEERS the emoji (no double emoji)', () => {
+  // Wilfred, 2026-09-06: "no double emojis … a singular emoji, and you can
+  // steer it." A cueTip led by any pictographic glyph uses THAT glyph; before
+  // this a 💡-led tip fell through to the ⚠ default and painted "⚠ 2 | 💡 …".
+  it('a 💡-led cueTip paints one emoji, the count, then the message', () => {
+    const buf0 = 'zorb zorb zorb';
+    const { dynDefs, dimRender } = setup(buf0);
+    dynDefs.set(0, {
+      originalWord: 'zorb',
+      alternatives: [buf0, '/zap'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: buf0.length,
+      blankName: 'sentence-cue:tip',
+      cueTip: '💡 ALT-FIX zap resets the zorb — why',
+    });
+    const out = dimRender.compute({ text: buf0, cursor: 2, externalHighlights: [] });
+    expect(out?.inlineNote?.text).toBe('💡 ALT-FIX zap resets the zorb — why → /zap');   // the note names the command when its line does not
+    expect(out?.inlineNote?.text).not.toContain('⚠');
   });
 });

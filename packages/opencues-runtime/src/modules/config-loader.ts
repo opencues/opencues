@@ -11,7 +11,7 @@
 //     @opencues/core's discoverFolderConfigs)
 //
 // Exposes:
-//   - cueMap     — primary lookup, built from CUES.md ## Tips (project
+//   - tipsCatalog — the tips packs as a situation watchlist (project
 //                  wins on word conflicts via mergeConfigs)
 //   - cuesConfig / blanksConfig — frontmatter parses
 //   - opencuesState — voiceMode, tipsMode, debugMode, cursorNavigate, raw settings
@@ -21,9 +21,11 @@
 // hot-reload cadence.
 
 import type { HostAdapter, Unsubscribe } from '../adapter';
+import type { TipsCatalog } from '@opencues/core';
 import {
   FEATURES,
-  buildLookupMap,
+  buildTipsCatalog,
+  TIPS_SHARD_SIZE_DEFAULT,
   discoverFolderConfigs,
   mergeConfigs,
   parseCuesMd,
@@ -32,7 +34,6 @@ import {
   parseAuditorsMaster,
   parseIdentityMd,
   getMenuDefinitions,
-  type LocalCueLookupResult,
   type CuesMdConfig,
   type BlankConfig,
   type DiscoveredConfigs,
@@ -97,7 +98,9 @@ export interface OpenCuesSettingDef {
 export interface OpenCuesState {
   readonly voiceMode: 'active' | 'inactive';
   readonly debugMode: 'on' | 'off';
-  readonly tipsMode: 'on' | 'off';
+  /** `on` = static token matching (default); `semantic` = static PLUS the
+   *  tips pack matched as a watchlist by a fast model; `off` = neither. */
+  readonly tipsMode: 'semantic' | 'off';
   readonly cursorNavigate: 'active' | 'inactive';
   /**
    * Whether the host adapter is permitted to share AmbientContext —
@@ -278,10 +281,17 @@ export interface OpenCuesState {
 // field names — the test pins OpenCuesState keys against the FEATURES
 // registry to catch drift. Don't import this constant from runtime
 // modules; use ConfigLoader.opencuesState instead.
+/** `semantic` unless `off`. `on` (the pre-Sep-2026 static layer) and
+ *  `definitions` (its short-lived opt-in) both read as `semantic`; the
+ *  static token-matching layer left with spec 0.12. */
+function parseTipsMode(v: string | undefined): 'semantic' | 'off' {
+  return v === 'off' ? 'off' : 'semantic';
+}
+
 export const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   voiceMode: 'active',
   debugMode: 'off',
-  tipsMode: 'on',
+  tipsMode: 'semantic',
   cursorNavigate: 'inactive',
   ambientContextMode: 'off',
   identityContextMode: 'safe',
@@ -347,7 +357,7 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   const get = (k: string, def: string): string => settings.get(k) ?? def;
   const voiceMode = get('voice-mode', 'active') === 'inactive' ? 'inactive' : 'active';
   const debugMode = get('debug-mode', 'off') === 'on' ? 'on' : 'off';
-  const tipsMode = get('tips-mode', 'on') === 'off' ? 'off' : 'on';
+  const tipsMode = parseTipsMode(get('tips-mode', 'on'));
   const cursorNavigate = get('cursor-navigate', 'inactive') === 'active' ? 'active' : 'inactive';
   const ambientContextMode = get('ambient-context-mode', 'off') === 'on' ? 'on' : 'off';
   // Identity-context mode scalar. Only the canonical name is read at
@@ -623,8 +633,19 @@ function parseSettingsBlock(lines: readonly string[]): Map<string, OpenCuesSetti
   return out;
 }
 
+/** A blank's display tip, by keyword — what `ConfigLoader.lookup` returns. */
+export interface BlankTipLookup {
+  word: string;
+  cueTip: string;
+  alternatives: string[];
+  altCueTips?: Record<string, string>;
+  speak?: boolean;
+  source: 'tips';
+}
+
 export interface LoadedConfig {
-  readonly cueMap: ReadonlyMap<string, LocalCueLookupResult>;
+  /** the same packs as a watchlist for the semantic tips matcher (null when empty) */
+  readonly tipsCatalog: TipsCatalog | null;
   readonly opencuesState: OpenCuesState;
   readonly cuesConfig: CuesMdConfig | null;
   readonly blanksConfig: CuesMdConfig | null;
@@ -650,11 +671,11 @@ export interface LoadedConfig {
   };
   /**
    * All words known to be navigable, lowercased. Union of:
-   *   - cueMap keys (tip-having words)
+   *   - (word cues are not in here since 0.12 — defs are the nav targets)
    *   - blank names from folder discovery (`blanks/X/BLANK.md` → "X")
    *   - blankKeywords from each blank (synonyms that trigger the same blank)
    *
-   * Navigation's filter uses this. Bigger than cueMap because blanks
+   * Navigation's scaffold check uses this. Blanks
    * declared in folders aren't necessarily mirrored in the tips JSON.
    */
   readonly navigableWords: ReadonlySet<string>;
@@ -673,7 +694,7 @@ export interface BlankEntry {
 
 export class ConfigLoader {
   private _config: LoadedConfig = {
-    cueMap: new Map(),
+    tipsCatalog: null,
     opencuesState: DEFAULT_OPENCUES_STATE,
     cuesConfig: null,
     blanksConfig: null,
@@ -710,8 +731,7 @@ export class ConfigLoader {
 
   // ─── Read accessors ────────────────────────────────────────────────────
 
-  /** Primary cue map (case-insensitive, `word.toLowerCase()` keys). */
-  get cueMap(): ReadonlyMap<string, LocalCueLookupResult> { return this._config.cueMap; }
+  /** (The primary cue map lived here until 0.12; `lookup` serves blank tips.) */
   get opencuesState(): OpenCuesState { return this._config.opencuesState; }
   get cuesConfig(): CuesMdConfig | null { return this._config.cuesConfig; }
   get blanksConfig(): CuesMdConfig | null { return this._config.blanksConfig; }
@@ -827,7 +847,7 @@ export class ConfigLoader {
     const next = {
       voiceMode: (get('voice-mode', 'active') === 'inactive' ? 'inactive' : 'active') as 'inactive' | 'active',
       debugMode: (get('debug-mode', 'off') === 'on' ? 'on' : 'off') as 'on' | 'off',
-      tipsMode: (get('tips-mode', 'on') === 'off' ? 'off' : 'on') as 'off' | 'on',
+      tipsMode: parseTipsMode(get('tips-mode', 'on')),
       cursorNavigate: (get('cursor-navigate', 'inactive') === 'active' ? 'active' : 'inactive') as 'active' | 'inactive',
       ambientContextMode: (get('ambient-context-mode', 'off') === 'on' ? 'on' : 'off') as 'on' | 'off',
       identityContextMode,
@@ -873,13 +893,11 @@ export class ConfigLoader {
    * isn't a tip-having entry but IS a blank or blankKeyword — synthesises
    * a LocalCueLookupResult from the blank's `tip` so the
    * statusline shows e.g. "system volume" when the user highlights
-   * `volume`. The blank side wasn't in cueMap because BLANKS.md and
+   * `volume`. The blank side never lived in a word map because BLANKS.md and
    * folder CUE.md / BLANK.md don't go through the tips JSON path.
    */
-  lookup(word: string): LocalCueLookupResult | null {
+  lookup(word: string): BlankTipLookup | null {
     const lc = word.toLowerCase();
-    const fromTips = this._config.cueMap.get(lc);
-    if (fromTips) return fromTips;
     const ent = this._config.blanksByWord.get(lc);
     if (!ent) return null;
     const c = ent.blank as unknown as {
@@ -1073,9 +1091,6 @@ export class ConfigLoader {
       perPath.map(p => this._safeParseCuesMd(p.cuesMd, 'CUES.md')),
     );
 
-    // cueMap is built below after folder configs are merged in — tips
-    // live in folder CUE.md files (cues/<id>/CUE.md with type:tips).
-    const cueMap = new Map<string, LocalCueLookupResult>();
     const blanksConfig = this._mergeConfigsAcrossPaths(
       perPath.map(p => this._safeParseCuesMd(p.blanksMd, 'BLANKS.md')),
     );
@@ -1174,22 +1189,27 @@ export class ConfigLoader {
     const mergedCuesConfig = mergedDiscovered.cuesConfig ?? null;
     const mergedBlanksConfig = mergedDiscovered.blanksConfig ?? null;
 
-    // Build cueMap from the merged config's tips. Folder-based tips
-    // (cues/<id>/CUE.md with type:tips) flow through here. The legacy
-    // `## Tips` JSON in master CUES.md still works during migration.
+    // The same packs, rendered as a watchlist for the semantic tips matcher.
+    // Built here (not per resolve) so hot-reload of a pack's `when:` lines
+    // takes effect on the next keystroke like any other config change.
+    let tipsCatalog: TipsCatalog | null = null;
     if (mergedCuesConfig?.tips && mergedCuesConfig.tips.length > 0) {
       try {
-        for (const [k, v] of buildLookupMap(mergedCuesConfig.tips)) cueMap.set(k, v);
+        // `tips-shard-size`: situations per matcher call (off = one call).
+        const shardRaw = (opencuesState.settings.get('tips-shard-size') ?? '').trim().toLowerCase();
+        const shardSize = shardRaw === 'off' ? undefined : (Number.parseInt(shardRaw, 10) > 0 ? Number.parseInt(shardRaw, 10) : TIPS_SHARD_SIZE_DEFAULT);
+        const built = buildTipsCatalog(mergedCuesConfig.tips, { shardSize });
+        tipsCatalog = built.entries.length > 0 ? built : null;
+        if (built.dropped.length > 0) this.adapter.log('warn', `ConfigLoader: tips catalogue over budget — ${built.dropped.length} entries dropped (${built.dropped.slice(0, 5).join(', ')}…)`);
       } catch (err) {
-        this.adapter.log('error', 'ConfigLoader: tips buildLookupMap failed', err);
+        this.adapter.log('error', 'ConfigLoader: buildTipsCatalog failed', err);
       }
     }
 
-    // Build the navigable-words set + blanksByWord map from cueMap
-    // keys, folder blanks, and BLANKS.md frontmatter.
+    // Build the navigable-words set + blanksByWord map from folder blanks
+    // and BLANKS.md frontmatter (blank names + keywords only, since 0.12).
     const navigableWords = new Set<string>();
     const blanksByWord = new Map<string, BlankEntry>();
-    for (const k of cueMap.keys()) navigableWords.add(k);
 
     const addBlank = (name: string, blank: BlankConfig): void => {
       if (blank.enabled === false) return;
@@ -1223,7 +1243,7 @@ export class ConfigLoader {
     }
 
     this._config = {
-      cueMap,
+      tipsCatalog,
       opencuesState,
       cuesConfig,
       blanksConfig,
@@ -1234,7 +1254,7 @@ export class ConfigLoader {
       blanksByWord,
       identity,
     };
-    this.adapter.log('debug', `ConfigLoader: loaded ${cueMap.size} cue entries, opencuesState=${JSON.stringify({
+    this.adapter.log('debug', `ConfigLoader: loaded ${tipsCatalog?.entries.length ?? 0} tip situations, opencuesState=${JSON.stringify({
       voiceMode: opencuesState.voiceMode,
       tipsMode: opencuesState.tipsMode,
       debugMode: opencuesState.debugMode,
@@ -1247,10 +1267,10 @@ export class ConfigLoader {
     // so the user knows their save took effect, without needing to
     // turn on verbose debug logging.
     if (this._loaded) {
-      this.adapter.log('info', `ConfigLoader: reloaded (${cueMap.size} cue entries, ${blanksByWord.size} blanks)`);
+      this.adapter.log('info', `ConfigLoader: reloaded (${tipsCatalog?.entries.length ?? 0} tip situations, ${blanksByWord.size} blanks)`);
     }
     this.adapter.emitEvent?.('config.reloaded', {
-      cueEntries: cueMap.size,
+      cueEntries: tipsCatalog?.entries.length ?? 0,
       blankCount: blanksByWord.size,
       voiceMode: opencuesState.voiceMode,
       tipsMode: opencuesState.tipsMode,

@@ -424,3 +424,61 @@ export function wrapTipsAsCuesMd(
     : '';
   return `${fm}# tips fixture\n\n## Tips\n\`\`\`json\n${JSON.stringify(tipsData)}\n\`\`\`\n`;
 }
+
+/** The fixture shape `wrapTipsAsCuesMd` takes: sections of words (and synonym groups). */
+export interface TipsFixture {
+  concepts?: ReadonlyArray<{
+    words?: Record<string, { tip?: string; alts?: readonly string[]; speak?: boolean }>;
+    groups?: ReadonlyArray<{ synonyms: readonly string[]; tip?: string; alts?: readonly string[]; speak?: boolean }>;
+  }>;
+}
+
+/**
+ * Register a WordDef for every word of `text` that a tips fixture knows —
+ * `[word, ...alts]` at index 0, the fixture's tip as `cueTip`. This is what
+ * the resolver does for an LLM word-cue hit; the static cue map that used to
+ * make a typed pack word cycleable on its own left with spec 0.12, so the
+ * cycling / navigation / dim journeys seed their defs explicitly. Words are
+ * split on whitespace exactly as `splitWords` does for plain text. Returns
+ * the number of defs registered. Call again after the buffer changes when a
+ * journey expects a NEWLY typed word to become a def (the resolver would).
+ */
+export function seedWordDefs(
+  dynDefs: { set(index: number, def: SeededDef): boolean; get(index: number): SeededDef | undefined },
+  text: string,
+  fixture: TipsFixture,
+  opts: { speakOnly?: boolean } = {},
+): number {
+  const map = new Map<string, { tip?: string; alts: readonly string[]; speak?: boolean }>();
+  for (const c of fixture.concepts ?? []) {
+    for (const [w, e] of Object.entries(c.words ?? {})) map.set(w.toLowerCase(), { tip: e.tip, alts: e.alts ?? [], speak: e.speak });
+    for (const g of c.groups ?? []) for (const syn of g.synonyms) map.set(syn.toLowerCase(), { tip: g.tip, alts: g.alts ?? [], speak: g.speak });
+  }
+  let n = 0;
+  const re = /\S+/g;
+  let m: RegExpExecArray | null;
+  let index = 0;
+  while ((m = re.exec(text)) !== null) {
+    const word = m[0];
+    const e = map.get(word.toLowerCase().replace(/[\u200B\u200C]/g, ''));
+    const i = index++;
+    if (!e || dynDefs.get(i)) continue;
+    if (opts.speakOnly && !e.speak) continue;
+    const alternatives = [word, ...e.alts.filter((a) => a !== word)];
+    dynDefs.set(i, {
+      originalWord: word,
+      alternatives,
+      currentIndex: 0,
+      spanStart: m.index,
+      spanEnd: m.index + word.length,
+      cueSource: 'llm',
+      ...(e.tip ? { cueTip: e.tip } : {}),
+    });
+    n++;
+  }
+  return n;
+}
+interface SeededDef {
+  originalWord: string; alternatives: string[]; currentIndex: number; spanStart: number; spanEnd: number;
+  cueSource?: string; cueTip?: string;
+}

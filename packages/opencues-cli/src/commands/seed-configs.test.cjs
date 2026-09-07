@@ -176,6 +176,23 @@ test('RULES.md: seeded on first run with the nine benched defaults; an edited fi
   assert.strictEqual(fs.readFileSync(file, 'utf8'), '# mine\n- my only rule\n', 'an edited RULES.md was overwritten by re-seeding');
 });
 
+test('self-heal rewrites the legacy `tips-mode: on` / `definitions` to `semantic` (the static layer left in spec 0.12)', () => {
+  const cues = path.join(tmpHome, '.cues');
+  fs.mkdirSync(cues, { recursive: true });
+  fs.writeFileSync(path.join(cues, 'OPENCUES.md'), `---\nvoice-mode: active\ntips-mode: on   # tips\ndebug-mode: on\n---\n`);
+  silence(() => seedConfigs(['--silent'], { REPO_ROOT }));
+  const md = fs.readFileSync(path.join(cues, 'OPENCUES.md'), 'utf8');
+  assert.match(md, /^tips-mode: semantic   # tips$/m, 'the value is rewritten, the comment kept');
+  assert.match(md, /^debug-mode: on$/m, 'other `on` scalars are untouched');
+  // the retired opt-in is rewritten too; an explicit `off` is never touched
+  fs.writeFileSync(path.join(cues, 'OPENCUES.md'), `---\ntips-mode: definitions\n---\n`);   // LEGACY-NAME-ALLOW: rename migration test
+  silence(() => seedConfigs(['--silent'], { REPO_ROOT }));
+  assert.match(fs.readFileSync(path.join(cues, 'OPENCUES.md'), 'utf8'), /^tips-mode: semantic$/m);
+  fs.writeFileSync(path.join(cues, 'OPENCUES.md'), `---\ntips-mode: off\n---\n`);
+  silence(() => seedConfigs(['--silent'], { REPO_ROOT }));
+  assert.match(fs.readFileSync(path.join(cues, 'OPENCUES.md'), 'utf8'), /^tips-mode: off$/m);
+});
+
 test('self-heal migrates calendar-context legacy files + OPENCUES.md scalars (July 2026 rename)', () => {
   // Legacy names defined once (with markers) and referenced via variables so
   // the usage lines below don't trip lint-legacy-names.

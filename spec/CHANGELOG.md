@@ -16,6 +16,22 @@ breaking.
 
 ---
 
+## [0.12.0-alpha] — 2026-09-07
+
+### Removed — the static tips layer (`0.11-alpha → 0.12-alpha`)
+
+`cue-spec.md`'s "Mode 1: static (in-file alternatives)" is gone. The ```json block in a cue file is now a **situation catalogue**: entries carry `tip`, `when` (the situation), `say` (the advice line naming the command) and `emoji`; the `alts` field is removed and a runtime MUST ignore it. A runtime MUST NOT match an entry by the presence of its name as a token — no gray, no cycling, no definition on a typed word — and a runtime that supports the catalogue matches the *situation* with a model under three grounding rules (cited entry exists, quoted clause is verbatim, the solution is the entry's own command or a rewrite that keeps the person's words). A runtime without semantic matching treats the block as inert. "Combined mode" (static overrides + LLM fallback in one file) goes with it; a file may still carry both a catalogue and a prompt body, which never interact.
+
+### Changed (values of an existing flag)
+
+- `tips-mode` — `semantic` (default) | `off`. `on` (the static layer) and `definitions` (a short-lived opt-in on the `0.11` line, never released) are legacy aliases read as `semantic`. Schemas updated (`cues-master.schema.json`, `opencues.schema.json`).
+
+### Conformance
+
+- `valid/cue/minimal-static.md`, `combined.md`, `groups-synonyms.md` rewritten to the catalogue shape (`alts` dropped, `when` / `say` added); `valid/masters/CUES.md` + `OPENCUES.md` say `tips-mode: semantic`.
+
+---
+
 ## [0.11.0-alpha] — 2026-07-30
 
 ### Added — the trigger character inside a revealed span (`0.10-alpha → 0.11-alpha`)

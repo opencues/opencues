@@ -4,7 +4,7 @@ last_updated: 2026-04-22
 
 # Remote Cues
 
-Remote cues are alternatives computed externally via an LLM or other system, typically taking 200-500ms. For words not covered by local cues, remote cue sources generate alternatives by sending the input text to a language model and parsing the response.
+Remote cues are alternatives computed externally via an LLM or other system, typically taking 200-500ms. Remote cue sources generate alternatives by sending the input text to a language model and parsing the response. (Since spec 0.12 every word-cue is remote — the static local layer was retired.)
 
 ---
 

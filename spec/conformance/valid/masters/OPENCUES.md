@@ -1,6 +1,6 @@
 ---
 voice-mode: inactive
-tips-mode: on
+tips-mode: semantic
 debug-mode: off
 word-cues-mode: on
 blank-trigger-mode: immediate

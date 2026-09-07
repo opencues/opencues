@@ -342,15 +342,14 @@ no slot, so `cycleBlankStep` has nothing to step.
 
 ### "Lawyer doesn't activate cycling"
 
-`navigableWords` (config-loader.ts:586) is built from EXPLICIT word
-entries in cueMap. The shipped LLM cue source (`spelling`) uses a
-`match:` regex that routes words at cue time but doesn't enumerate
-them. `lawyer` isn't in any cueMap → not navigable.
+Navigation targets are DynDefs only (since spec 0.12 there is no static
+cue map of typed pack words). The shipped LLM cue source (`spelling`)
+uses a `match:` regex that routes words at cue time; a correctly spelled
+`lawyer` gets no def → not navigable.
 
-Test cycling with words that are explicitly in a tip group (e.g.
-`ci-cd` from `defaults/cues/tips-<host>/CUE.md`) or with a misspelled
-word that the `spelling` cue flags (e.g. `mispelled`). Or add a
-default-source (no `match:`) that catches everything.
+Test cycling with a misspelled word that the `spelling` cue flags (e.g.
+`mispelled`), or add a default-source (no `match:`) that catches
+everything.
 
 ## Debug
 
