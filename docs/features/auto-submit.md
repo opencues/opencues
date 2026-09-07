@@ -23,7 +23,7 @@ There is no separate "space typed" / "typing pause" / "mid-sentence edit" tier s
 
 ## Word Stability / Staleness
 
-Because dispatches are generation-tagged, a response that arrives after the buffer has moved on doesn't need a separate "did the text change since the timer was set" check the way a naive setTimeout would — the generation mismatch alone is enough to drop it. Local, non-LLM matches (a word that's already in a loaded `CUE.md`'s `## Tips`, or already covered by an existing `DynDef`) resolve without a network round-trip at all, so they're not subject to the debounce or generation dance in the first place.
+Because dispatches are generation-tagged, a response that arrives after the buffer has moved on doesn't need a separate "did the text change since the timer was set" check the way a naive setTimeout would — the generation mismatch alone is enough to drop it. Words already covered by an existing `DynDef` resolve without a network round-trip at all, so they're not subject to the debounce or generation dance in the first place.
 
 ---
 
@@ -41,4 +41,4 @@ Because dispatches are generation-tagged, a response that arrives after the buff
 - Supply a `HostAdapter` with `onTextChange` — the shared runtime's `Resolver` handles debounce, the `_`-trigger fast path, hot-reload detection, and generation-based cancellation for you
 - If implementing outside the shared runtime: debounce normal typing, bypass the debounce for an explicit `_` trigger, and tag in-flight requests so a stale response can't clobber newer text
 - Merge incremental results into the existing alternatives map
-- Decide when to skip remote cues (all words already have alternatives from local tips or existing `DynDef`s)
+- Decide when to skip remote cues (all words already have alternatives from existing `DynDef`s)

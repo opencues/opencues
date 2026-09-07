@@ -74,7 +74,7 @@ Type `affirmation _` → blank auto-populates with "I am strong", Up/Down cycles
 
 ### 3. Static alternatives
 
-**Condition**: none of the above matched, and the word has (or can be built into) a `DynDef` with more than one alternative — an LLM word-cue, or a fallback tip-only def built on the fly from cueMap.
+**Condition**: none of the above matched, and the word has a `DynDef` with more than one alternative — an LLM word-cue (including a spelling fix). A typed tips-pack word has no def and does not cycle; the on-the-fly def the static cue map used to build here left with spec 0.12.
 
 - `currentAltIndex` tracks position in the alternatives array (`alts[0]` is always the original word).
 - Cycling wraps in both directions: `(currentAltIndex + direction + alts.length) % alts.length`.

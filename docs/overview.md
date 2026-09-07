@@ -33,9 +33,9 @@ Integrations (Claude Code, OpenCode, Chrome, Gemini CLI, Shell) are thin per-hos
               ┌───────────────┼───────────────────────────┐
               ▼               ▼                           ▼
 ┌─────────────────┐ ┌─────────────────┐        ┌─────────────────────┐
-│ LocalCueSource  │ │ ConfigSource /  │  ...    │ BlankSource /       │
-│ (static tips)   │ │ RoutedWordGroup │        │ FluidBlankSource /   │
-│                 │ │ (LLM word-cues) │        │ TransformBlankSource │
+│ SemanticTips-   │ │ ConfigSource /  │  ...    │ BlankSource /       │
+│ Source (tips    │ │ RoutedWordGroup │        │ FluidBlankSource /   │
+│ packs matched)  │ │ (LLM word-cues) │        │ TransformBlankSource │
 └─────────────────┘ └─────────────────┘        └─────────────────────┘
                               │
                               ▼
@@ -86,7 +86,7 @@ See the top-level [README.md](../README.md) for the full quickstart.
 │   │   │   │                           # (checks.ts, session-contradiction-source.ts,
 │   │   │   │                           #  SessionCueSource — fuses session-contradiction
 │   │   │   │                           #  with ask-cues into one call)
-│   │   │   └── sources/                # 20+ source classes: LocalCueSource, ConfigSource,
+│   │   │   └── sources/                # 20+ source classes: SemanticTipsSource, ConfigSource,
 │   │   │                               # RoutedWordSourceGroup, BlankSource, FluidBlankSource,
 │   │   │                               # TransformBlankSource, ConfigIntentSource,
 │   │   │                               # SentenceCueSource, ToolPromptCueSource (ask-cues),
@@ -115,7 +115,7 @@ interface CueResult {
   alternatives: string[];   // Original word at [0], then alternatives
   cueTip?: string;          // Hint text for status line
   altCueTips?: Record<string, string>;  // Per-alternative tips
-  source: string;           // 'tips' | <cue/blank source name> | 'fluid-blank' | ...
+  source: string;           // <cue/blank source name> | 'fluid-blank' | 'sentence-cue:tip' | ...
   priority: number;         // Higher wins on merge
 }
 ```
@@ -158,12 +158,12 @@ interface CueSource {
 ### Basic Usage (Node.js)
 
 ```typescript
-import { CueResolver, LocalCueSource, discoverFolderConfigs } from '@opencues/core';
+import { createResolver, buildSourcesFromConfig, discoverFolderConfigs } from '@opencues/core';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-// Discover folder-based cue configs (cues/<name>/CUE.md — static tips + LLM sources)
+// Discover folder-based cue + blank configs (cues/<name>/CUE.md, blanks/<name>/BLANK.md)
 const cuesRoot = path.join(os.homedir(), '.cues');
 const discovered = discoverFolderConfigs({
   basePath: cuesRoot,
@@ -171,51 +171,13 @@ const discovered = discoverFolderConfigs({
   readDir: (p) => { try { return fs.readdirSync(p, { withFileTypes: true }).map(e => ({ name: e.name, isDirectory: e.isDirectory() })); } catch { return null; } },
 });
 
-// The static-mode words/groups map, if any cues/<name>/CUE.md shipped a JSON tips block
-const localCueData = discovered.cuesConfig?.tips ?? [];
-
-// Create resolver with the tips source
-const resolver = new CueResolver([
-  new LocalCueSource(localCueData, { priority: 100 })
-]);
-
-// Resolve cues for input text
-const result = await resolver.resolve({
-  text: 'Use ultrathink for better results',
-  words: ['Use', 'ultrathink', 'for', 'better', 'results']
-});
-
-console.log(result.results);
-// [
-//   {
-//     wordIndex: 1,
-//     word: 'ultrathink',
-//     alternatives: ['ultrathink', 'Tab', 'deep thinking'],
-//     cueTip: 'Add ultrathink to prompt for max reasoning',
-//     source: 'tips',
-//     priority: 100
-//   }
-// ]
-```
-
-### Multiple Sources
-
-```typescript
-import { createResolver, buildSourcesFromConfig, discoverFolderConfigs, LocalCueSource } from '@opencues/core';
-
-// Tips source (high priority, instant)
-const tipsSource = new LocalCueSource(tipsData, { priority: 100 });
-
-// Discover folder-based cue + blank configs under .cues/
-const discovered = discoverFolderConfigs({ basePath: '.cues', readFile, readDir });
-
 // buildSourcesFromConfig builds every LLM-backed CueSource (word-cues wrapped in one
 // RoutedWordSourceGroup, plus BlankSource/FluidBlankSource/TransformBlankSource/...) from the
-// discovered CuesMdConfig. `httpAdapter` is required; apiKeys/globalProvider/enable* flags are
+// discovered configs. `httpAdapter` is required; apiKeys/globalProvider/enable* flags are
 // optional — see BuildSourcesOptions in sources/build-sources.ts for the full (much larger)
 // options surface a production host actually threads through (per-bucket + per-feature LLM
 // routing, disable lists, event callbacks, ...).
-const configSources = buildSourcesFromConfig(discovered.cuesConfig, discovered.blanksConfig, {
+const sources = buildSourcesFromConfig(discovered.cuesConfig, discovered.blanksConfig, {
   httpAdapter,
   apiKeys: { GROQ_API_KEY: process.env.GROQ_API_KEY },
   globalProvider: 'groq',
@@ -223,12 +185,65 @@ const configSources = buildSourcesFromConfig(discovered.cuesConfig, discovered.b
   enableFluidBlank: true,
 });
 
-const resolver = createResolver([tipsSource, ...configSources]);
+const resolver = createResolver(sources);
 
-// Tips results come first (higher priority)
-// LLM fills in gaps for words not in tips
-const result = await resolver.resolve(context);
+// Resolve cues for input text
+const result = await resolver.resolve({
+  text: 'the report was mispelled',
+  words: ['the', 'report', 'was', 'mispelled'],
+});
+
+console.log(result.results);
+// [
+//   {
+//     wordIndex: 3,
+//     word: 'mispelled',
+//     alternatives: ['mispelled', 'misspelled'],
+//     cueTip: '...',                 // the cue's tip, if its CUE.md declares one
+//     source: 'spelling',            // the CUE.md folder name
+//     priority: 10
+//   }
+// ]
 ```
+
+Every word-cue is LLM-backed. There is no static per-word layer: the
+`LocalCueSource` / `buildLookupMap` / `lookupMultiple` path that once served a
+typed tips-pack word from an in-memory map was retired in spec 0.12
+(September 2026). A pack word is a plain word for word-cues.
+
+### Semantic tips
+
+The tips packs (`cues/tips-*/CUE.md`) are a SITUATION catalogue, not a word
+map. `buildTipsCatalog` renders them as a watchlist; `enableSemanticTips` adds
+the matcher (`SemanticTipsSource`, priority 86, one fast-model call per
+settled draft, sharded past `shardSize`) to the session-cue rail; the
+catalogue rides `CueContext.tipsCatalog`.
+
+```typescript
+import { createResolver, buildSourcesFromConfig, buildTipsCatalog } from '@opencues/core';
+
+const tipsCatalog = buildTipsCatalog(discovered.cuesConfig?.tips, { shardSize: 50 });
+
+const sources = buildSourcesFromConfig(discovered.cuesConfig, discovered.blanksConfig, {
+  httpAdapter, apiKeys, globalProvider,
+  enableSemanticTips: true,
+});
+const resolver = createResolver(sources);
+
+const result = await resolver.resolve({
+  text: 'ok this is a mess, lets start over on the auth stuff',
+  words: ['ok', 'this', 'is', 'a', 'mess,', 'lets', 'start', 'over', 'on', 'the', 'auth', 'stuff'],
+  tipsCatalog,
+});
+// One `sentence-cue:tip` result: a verbatim quote from the buffer as alternatives[0],
+// the cited entry's slash command (or a clause rewrite) as alternatives[1], the
+// entry's `say:` line as the 💡 cueTip, plus span offsets. The model may only cite
+// an entry that exists; the text is always the pack's own.
+```
+
+The runtime's `ConfigLoader` does all of this on every reload (`tips-mode`,
+`tips-shard-size`), so a host on `@opencues/runtime` never calls
+`buildTipsCatalog` itself. See `docs/architecture/semantic-tips.md`.
 
 ### Browser Usage (Chrome Extension)
 
@@ -236,16 +251,15 @@ In practice, chrome's actual integration goes through `@opencues/runtime`'s host
 
 ```typescript
 // Simplified — the real chrome bootstrap (opencues-bootstrap.ts) builds this via @opencues/runtime
-import { createResolver, buildSourcesFromConfig, parseLocalCueFile, LocalCueSource } from '@opencues/core';
+import { createResolver, buildSourcesFromConfig, discoverFolderConfigs } from '@opencues/core';
 
-// Load tips and config (chrome reads from the synced bundle in chrome.storage.local,
+// Load config (chrome reads from the synced bundle in chrome.storage.local,
 // not the filesystem — see docs/features/chrome-sync.md)
-const tipsData = parseLocalCueFile(tipsJson);
 const discovered = discoverFolderConfigs({ basePath: '.cues', readFile, readDir });
 const sources = buildSourcesFromConfig(discovered.cuesConfig, discovered.blanksConfig, {
   httpAdapter, apiKeys, globalProvider,
 });
-const resolver = createResolver([new LocalCueSource(tipsData), ...sources]);
+const resolver = createResolver(sources);
 
 // Use in content script
 document.addEventListener('input', async (e) => {
@@ -256,11 +270,14 @@ document.addEventListener('input', async (e) => {
 });
 ```
 
-## Cue Source File Format
+## Tips Pack File Format
 
-The cue source file supports two structures:
+The body of a tips pack (`cues/tips-<host>/CUE.md`) is a ```json block of
+situations. Each entry has a `tip` (one-line definition), a `when:` line (the
+situation the matcher looks for), a `say:` line (what the note says, naming
+the command) and an optional `emoji:`. Two structures:
 
-### Words Structure (per-word cue-tips)
+### Words Structure (one entry per trigger)
 
 ```json
 [
@@ -269,11 +286,13 @@ The cue source file supports two structures:
     "words": {
       "/compact": {
         "tip": "Summarize history when 'context limit' warning appears",
-        "alts": ["/clear", "/rewind"]
+        "when": "says the model forgot the plan or earlier instructions, or asks how to keep context from filling up",
+        "say": "Losing the thread? /compact summarises the session; add a focus to say what to keep"
       },
       "/clear": {
         "tip": "Fresh start - clears context but keeps CLAUDE.md",
-        "alts": ["/compact", "/rewind"]
+        "when": "wants to start over, begin an unrelated task, or says the model keeps circling",
+        "say": "Starting over? /clear wipes the conversation, CLAUDE.md stays"
       }
     }
   }
@@ -290,12 +309,7 @@ The cue source file supports two structures:
       {
         "synonyms": ["agents", "sub-agents", "subagents", "parallel agents"],
         "tip": "Spawn parallel workers via Task tool",
-        "alts": ["swarm", "background"]
-      },
-      {
-        "synonyms": ["swarm", "team"],
-        "tip": "Multiple coordinated agents working together",
-        "alts": ["agents", "background"]
+        "when": "has several independent jobs and is running them one after another"
       }
     ]
   }
@@ -303,59 +317,29 @@ The cue source file supports two structures:
 ```
 
 **Key Differences:**
-- `words`: Each word has its own entry and tip
-- `groups`: Synonyms share one entry; `alts` point to OTHER groups (different concepts)
+- `words`: Each trigger has its own entry
+- `groups`: Synonyms share one entry; the catalogue renders them as one line
 
-## Multi-Domain Support
+The trigger is the entry's solution when it is a slash command (`/clear`); a
+prose entry takes a rewrite of the flagged clause or stays advisory. The
+`alts` sibling lists earlier packs carried are gone (September 2026) — no
+entry cycles into another.
 
-Configure multiple cue source files for different domains:
+## Per-Host Packs
 
-```typescript
-const sources = [
-  new LocalCueSource(claudeCodeTips, {
-    id: 'claude-code-tips',
-    domain: 'claude-code',
-    priority: 100
-  }),
-  new LocalCueSource(opencodeTips, {
-    id: 'opencode-tips',
-    domain: 'opencode',
-    priority: 100
-  }),
-  // Config-driven sources from .md files
-  ...buildSourcesFromConfig(cuesCfg, blanksCfg, options)
-];
+A pack scopes itself with `on-host:` frontmatter (`tips-claude-code` →
+`on-host: [claude-code]`), and the folder loader's host-compat filter skips it
+everywhere else — so a Claude Code trigger never sits on the OpenCode
+catalogue. Project packs (`<project>/.cues/cues/`) join user packs the way
+`RULES.md` does, project first. See `docs/features/host-compat.md`.
 
-const resolver = createResolver(sources);
+## Hot Reload
 
-// Only claude-code tips will match
-const result = await resolver.resolve({
-  text: 'Use ultrathink',
-  words: ['Use', 'ultrathink'],
-  domain: 'claude-code'
-});
-```
-
-## Caching
-
-The `LocalCueSource` can be combined with file watching for hot reload:
-
-```typescript
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import { discoverFolderConfigs, LocalCueSource } from '@opencues/core';
-
-const cuesRoot = path.join(os.homedir(), '.cues');
-const opts = { basePath: cuesRoot, readFile, readDir };
-const source = new LocalCueSource(discoverFolderConfigs(opts).cuesConfig?.tips ?? []);
-
-// Watch for changes
-fs.watch(cuesRoot, { recursive: true }, () => {
-  source.updateData(discoverFolderConfigs(opts).cuesConfig?.tips ?? []);
-  console.log('Tips reloaded');
-});
-```
+`ConfigLoader` re-discovers the folder configs and rebuilds the tips catalogue
+on every reload, so a `when:` line edited in a pack is live within ~2s. A
+standalone host without the runtime does the same by re-running
+`discoverFolderConfigs` + `buildTipsCatalog` on a file watcher and passing
+the new catalogue on the next `resolve()`.
 
 > The runtime's `ConfigLoader` already does this — host integrations should subscribe to its hot-reload notifications instead of writing their own watcher.
 
@@ -428,23 +412,25 @@ class MyCustomSource implements CueSource {
 }
 ```
 
-## Pure Function: lookupWord
+## Pure Functions: parseLocalCueFile + buildTipsCatalog
 
-For simple use cases, use the pure function directly:
+To work with a pack's JSON outside the folder loader (a validator, a bench, a
+tool that lints `when:` lines), the two pure pieces are the parser and the
+catalogue renderer — no async, no I/O:
 
 ```typescript
-import { lookupWord, parseLocalCueFile, LocalCueData } from '@opencues/core';
+import { parseLocalCueFile, buildTipsCatalog, LocalCueData } from '@opencues/core';
 
-const data: LocalCueData = parseLocalCueFile(jsonContent);
+const data: LocalCueData = parseLocalCueFile(jsonContent);   // the ```json block of a pack
+const catalog = buildTipsCatalog(data, { shardSize: 50 });
 
-// Pure function lookup - no async, no I/O
-const result = lookupWord('ultrathink', data);
-if (result) {
-  console.log(result.cueTip);       // "Add ultrathink to prompt..."
-  console.log(result.alternatives); // ["ultrathink", "Tab", "deep thinking"]
-  console.log(result.altCueTips);      // { ultrathink: "...", Tab: "...", ... }
+for (const e of catalog.entries) {
+  console.log(e.id, e.trigger, e.when);   // t1 /clear "wants to start over, ..."
 }
 ```
+
+(`lookupWord` / `lookupWords` / `lookupMultiple` / `buildLookupMap`, the
+per-word static lookups, were removed with the static layer in spec 0.12.)
 
 ## Integration with `@opencues/runtime`
 

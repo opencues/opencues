@@ -95,7 +95,9 @@ gained notes they gained `_`-cycle for free:
 1. **Backward / precise stepping** — `_` only wraps forward. Always, every surface.
 2. **Note-less targets** — only the bare blank keyword before its `_` fires (a
    pure trigger, no note). Every other gray span now carries a note and so
-   `_`-cycles; arrows remain the backward/power path.
+   `_`-cycles; arrows remain the backward/power path. (A typed pack word is a
+   plain word since spec 0.12 — no gray, no note, `_` keeps its normal
+   meaning there.)
 3. **Note-less hosts** — OC/gemini/shell/windows until wired; and
    `inline-cues-mode: secondary` (note in statusline, not painted → `_` stays a
    blank).
@@ -130,6 +132,8 @@ mechanic is more than a convenience.
 The mechanic is no longer sentence-cue-specific. The gate mirrors DimRender's
 note computation EXACTLY — the note on screen IS the affordance, so `_`-cycle
 fires precisely where a note is painted. Two families:
+
+(Until spec 0.12 a typed pack word grayed from a static cue map and, for one day, carried a caret-entry note; that layer is gone — a pack word is a plain word, and the tips packs are situations for the semantic matcher.)
 
 **DynDef-backed** (the `stepUnderscore` loop) — `inlineNoteText(def)` in
 `state/dyn-defs.ts` is the SOLE predicate, shared with DimRender so they can't

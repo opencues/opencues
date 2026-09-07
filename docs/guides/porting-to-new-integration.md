@@ -17,7 +17,7 @@ opencues-core is pure TypeScript with no I/O dependencies. It provides:
 - **Config parsing** — `parseCuesMd()`, `parseSingleCueMd()`, `discoverFolderConfigs()`
 - **Source building** — `buildSourcesFromConfig()` returns `CueSource[]` from parsed configs
 - **Resolution** — `CueResolver.resolve()` queries sources and merges results
-- **Local lookup** — `lookupMultiple()`, `buildLookupMap()` for O(1) tips lookup
+- **Tips catalogue** — `buildTipsCatalog()` renders the tips packs as the semantic matcher's situation watchlist (no per-word static lookup since spec 0.12)
 - **Response parsing** — `parseAlternatives`, `parseRaw`
 
 The integration provides I/O adapters (HTTP, filesystem) and handles all rendering, navigation, and user interaction.
@@ -134,9 +134,9 @@ Sources are queried in priority order (highest first). When two sources return r
 
 Key priorities: `BlankSource` (95) > `ConfigIntentSource` (94) > `TransformBlankSource` (93) > `FluidBlankSource` (92) > `SentenceCueSource` (85) > other word-cue `ConfigSource` instances (50-75) > shipped spelling cue (10, `ConfigSource` — lowest by design, the catch-all fallback; see `defaults/cues/spelling/CUE.md`)
 
-### Tips protection
+### Blank protection
 
-When merging results, entries from `source: 'tips'` (local tips file) are NEVER overwritten by LLM results. Similarly, entries with `metadata.blankName` (blanks) are protected from grammar/LLM overwrite. The integration's merge logic must respect these protections.
+When merging results, entries with `metadata.blankName` (blanks) are protected from grammar/LLM overwrite. The integration's merge logic must respect this protection. (Before spec 0.12 `source: 'tips'` entries from the static tips layer were protected the same way; that layer is gone.)
 
 ### Multi-word spans
 

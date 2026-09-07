@@ -40,7 +40,7 @@ How a word gets alternatives. Sources are declared in `CUE.md` files and dispatc
 
 | # | Feature | Description |
 |---|---------|-------------|
-| 6 | [Local Cues](local-cues.md) | Alternatives computed locally (~0ms) |
+| 58 | [Semantic Tips](semantic-tips.md) | The per-host tips packs matched as a SITUATION catalogue: one fast-model call per settled draft flags the clause showing a situation a tip is for (its `when:` line), a 💡 note says the pack's `say:` line, and `_` swaps the draft for the entry's slash command. `tips-mode: semantic` (default) / `off`. The static per-word layer (gray + definition + sibling cycling on typed pack words) was retired in spec 0.12. |
 | 7 | [Remote Cues](remote-cues.md) | Alternatives computed via LLM (~200-500ms) |
 | 18 | [Tip Priority](tip-priority.md) | Which tip source wins when multiple sources match a word |
 | 22 | [Word-Cue Routing](word-cue-routing.md) | Per-word dispatch of folder-based cue sources via per-source match/keywords/priority |
@@ -145,3 +145,4 @@ Chrome's threat model (sandboxed content scripts, no filesystem) forces a differ
 ## Adding a new feature
 
 See [`docs/guides/adding-a-feature.md`](../guides/adding-a-feature.md).
+- [The note and its hint](note-hints.md) — the hint is a verb naming what the next press does; a two-stop note is a toggle (no count, `was:` after the press); what is too long

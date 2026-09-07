@@ -14,7 +14,7 @@ Tips come from several sources depending on the word type:
 | **Satellite word** | `CUES.md` `settings:` block (per-value line, falls back to setting-level) | `active` → "TTS reads tips aloud on navigation" |
 | **Cue-blank value** | `tip` in the blank's `BLANK.md` | `72` → "System volume" |
 | **Cue-blank keyword** | Live `blankInvoke get` output, falls back to `tip` in `BLANK.md` | `volume` → "85" |
-| **Local cue (folder-based)** | `cues/<name>/CUE.md` body JSON via instant `cueMap` lookup | `ultrathink` → "Add 'ultrathink' to prompt for max reasoning" |
+| **Semantic tip span** | The pack entry the matcher cited (`say:` line, else `tip`) via the def's `cueTip` — see [Semantic Tips](semantic-tips.md) | flagged clause → "💡 Starting over? /clear wipes the conversation, CLAUDE.md stays" |
 | **LLM-analyzed word** | LLM response via opencues-core resolver | `happy` → "glad, joyful, content" |
 
 See [Tip Priority](tip-priority.md) for the full resolution order and how the branches interact.
@@ -51,7 +51,7 @@ The JSON file (`_hlExport`) contains these fields:
 | `timestamp` | number | `Date.now()` when the export was written |
 | `_debug` | object | Debug info: word, isCA, tip, registered blank keys, cueValues |
 
-**Tip resolution priority:** See [Tip Priority](tip-priority.md) for the full resolution order across all word types (selector/satellite, cue-blank values, cue-blank keywords, local cues, LLM).
+**Tip resolution priority:** See [Tip Priority](tip-priority.md) for the full resolution order across all word types (selector/satellite, cue-blank values, cue-blank keywords, LLM word-cues, semantic tips).
 
 Provider failures (bad key, out of credit, rate-limited, model missing) can also ride this export via an optional `providerError` field — see [Provider Health](provider-health.md). **Note: as of this writing no shipping host wires the required `ProviderHealth` bus into `Statusline`, so this field is not populated in practice yet.**
 
@@ -98,6 +98,6 @@ The script suppresses output entirely for words that have neither alts nor a tip
 - Render the current word name, cycle position (e.g., "2/4"), and cue-tip text
 - Switch the displayed tip when cycling to show the per-alternative tip from `altCueTips`
 - Execute TTS when `speak` is true, using a platform-appropriate speech engine
-- Implement the tip resolution branches: blank-bound words (selector/satellite, then regular cue-blank values), cue-blank keywords, then general words (local cues, LLM) — see [Tip Priority](tip-priority.md)
+- Implement the tip resolution branches: blank-bound words (selector/satellite, then regular cue-blank values), cue-blank keywords, then general words (LLM word-cues) — see [Tip Priority](tip-priority.md)
 - For selector/satellite words, read tips from the backing config's `settings:` block and hot-reload them
 - Suppress the display when no tip resolves for a word

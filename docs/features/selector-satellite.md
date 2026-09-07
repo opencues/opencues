@@ -139,7 +139,7 @@ The frontmatter has **two sections**:
 version: 1
 voice-mode: active             # ← wired: gates TTS globally
 debug-mode: off                # ← unwired: persists but no consumer yet
-tips-mode: on
+tips-mode: semantic
 output-format: rich markdown   # ← multi-word value (satellite will be a span)
 display mode: focus            # ← multi-word key (selector will be a span)
 settings:
