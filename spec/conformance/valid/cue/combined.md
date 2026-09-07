@@ -1,6 +1,6 @@
 ---
 name: concise
-description: Curated overrides for common wordy phrases + LLM fallback for the long tail
+description: A situation catalogue for wordy drafts + an LLM prompt body for the matched words
 match: utilize|leverage|facilitate|aforementioned|hereto
 priority: 70
 spec: opencues/0.1-alpha
@@ -10,11 +10,11 @@ spec: opencues/0.1-alpha
 [{
   "id": "concise-overrides",
   "words": {
-    "utilize": { "tip": "Prefer the plain verb", "alts": ["use", "apply", "employ"] }
+    "utilize": { "tip": "Prefer the plain verb", "when": "reaches for a long word where a short one does the job", "say": "Wordy? Say use, apply or employ" }
   }
 }]
 ```
 
-For other matched terms, suggest 3 alternatives that preserve meaning.
+For the matched terms, suggest 3 alternatives that preserve meaning.
 
 Format: INDEX:alt1,alt2,alt3

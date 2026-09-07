@@ -20,8 +20,8 @@
     },
     "tips-mode": {
       "type": "string",
-      "enum": ["on", "off"],
-      "description": "Whether static tip-group cues fire."
+      "enum": ["semantic", "off", "on"],
+      "description": "Tip cues: semantic (a model matches the situation, the default) | off. `on` is a legacy alias of semantic (the static layer left in 0.12)."
     },
     "word-cues-mode": {
       "type": "string",

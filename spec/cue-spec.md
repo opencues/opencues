@@ -1,6 +1,6 @@
 # cue-spec — the Cue file format & runtime contract
 
-> **Status:** `0.11-alpha`. Expect changes.
+> **Status:** `0.12-alpha`. Expect changes.
 
 A **cue** is the LLM→user surface: while a user types plain text, a cue source proposes alternatives for words it recognises. The user can cycle through them with a keyboard input (or any runtime-defined trigger). This document specifies the `CUE.md` file format and what a conformant runtime MUST do with one.
 
@@ -23,8 +23,8 @@ Every cue is folder-shaped — there is no flat-file alternative. A source that 
 │   │   ├── description       (recommended)
 │   │   └── priority, parser, model, …  (optional)
 │   └── Markdown body         (required — at least one mode)
-│       ├── ```json``` block  (Mode 1: static — in-file alternatives)
-│       └── prompt text       (Mode 2: LLM — model generates alternatives)
+│       ├── ```json``` block  (situations — the tips catalogue a runtime matches semantically)
+│       └── prompt text       (LLM — the model generates alternatives for matched words)
 │
 └── scripts/, references/, assets/   (optional bundled resources — see core.md)
 ```
@@ -86,61 +86,48 @@ A source with neither `match` nor `keywords` is unreachable. Validators MUST err
 
 A cue source MUST declare a **behavior**. Trigger-only files (frontmatter, no body) are invalid; validators MUST error.
 
-A single `CUE.md` MAY use Mode 1, Mode 2, or **both combined**. In combined mode, matched words served by the static JSON block skip the LLM call; matched words NOT in the static block fall through to the prompt-body LLM call. Useful when a domain has a small set of curated overrides plus a long tail handled by the model — see § Examples for a worked example.
+A single `CUE.md` MAY carry a situation catalogue, a prompt body, or both. They serve different surfaces: the catalogue is matched against the whole draft by a fast model (a *situation* → one tip and one command); the prompt body produces alternatives for the words the trigger matched. Neither is consulted by token lookup. (Before `0.12` the ```json block was "Mode 1: static" — a word-keyed map served by O(1) token matching, combinable with the prompt body. That layer was removed: a typed word from the block no longer grays, cycles, or shows its definition on its own.)
 
-#### Mode 1 — Static (in-file data)
+#### The situation catalogue (in-file json)
 
-The body contains a fenced ` ```json ` code block holding an array of tip groups:
+The body contains a fenced ` ```json ` code block holding an array of sections; each section holds situations keyed by a name (the name is documentation and a stable id, never a match token):
 
 ```json
 [
   {
-    "id": "<group-id>",
+    "id": "<section-id>",
     "words": {
-      "<word>": {
-        "tip": "<display tip>",
-        "alts": ["<alt1>", "<alt2>"],
-        "speak": false
+      "<name>": {
+        "tip": "<definition — the line shown when the entry has no say:>",
+        "when": "<the situation this tip is for, as the person would show it in a draft>",
+        "say": "<the advice line the note says on a match; names the command>",
+        "emoji": "💡"
       }
     }
   }
 ]
 ```
 
-Per-word fields:
+Per-entry fields:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `tip` | string | yes | Short hint a runtime MAY display alongside the cycling. |
-| `alts` | string[] | yes | Cycling alternatives. The original word is **not** included here; runtimes prepend it as `alternatives[0]` (see § Alternatives invariant). |
-| `speak` | boolean | no | Per-word TTS hint. Runtimes that support TTS MAY honor it; the standard does not require TTS. |
+| `tip` | string | yes | The definition. Shown as the note when `say` is absent; the line a matcher reads alongside `when`. |
+| `when` | string | no | The situation, in the person's terms. An entry with no `when` has nothing to match and a runtime MAY leave it out of the catalogue it sends. |
+| `say` | string | no | What the note says on a match: advice addressed to the situation, naming the command. The command `_` applies is grounded here (or in the entry's name when that is a slash command) — never in the model's output. |
+| `emoji` | string | no | One glyph leading the note; runtimes default to 💡 and add none of their own. |
+| `speak` | boolean | no | TTS hint, reserved (see § What a runtime MAY do). |
 
-Or, equivalently, a `groups` shape for sets of synonyms sharing one tip:
+The `groups` shape (`synonyms` sharing one entry) remains valid and is read the same way; the synonyms are documentation, not match tokens. The `alts` field of `0.11` and earlier is removed: a runtime MUST ignore it if present and MUST NOT cycle a word through it.
 
-```json
-[
-  {
-    "id": "<group-id>",
-    "groups": [
-      {
-        "synonyms": ["<word1>", "<word2>"],
-        "tip": "<shared tip>",
-        "alts": ["<alt1>", "<alt2>"]
-      }
-    ]
-  }
-]
-```
+A runtime MUST NOT match a catalogue entry by the presence of its name as a token in the text. A runtime that supports the catalogue matches the situation: it sends the draft and the catalogue to a model, accepts only a cited entry that exists, a quoted clause that is a verbatim substring of the draft, and a solution that is the entry's own command or a rewrite that keeps the person's words; anything else is dropped. A runtime that does not support semantic matching MUST treat the block as inert.
 
-No LLM call is made for static-mode sources. Lookups are O(1) hash-map matches.
-
-#### Mode 2 — LLM (prompt body)
+#### The prompt body (LLM)
 
 The body is plain Markdown describing what alternatives the LLM should propose. The runtime appends the wire-format instruction (see below) and sends the user's text + matched indices to the model.
 
-A source MAY include both a JSON tip-group block AND prompt text — runtimes MUST prefer the static block for matched words and fall back to LLM for unmatched ones in the same source. Use this when a source has a small set of curated overrides plus a long tail handled by the LLM:
+A source MAY include both a catalogue block and prompt text; the two never interact (the catalogue is not a lookup for the prompt's matched words).
 
-```markdown
 ---
 name: concise
 description: Concise phrasing
@@ -232,7 +219,7 @@ For the `raw` parser, the response is opaque to the runtime; sources using `raw`
 
 - Display `cueTip` in a secondary surface (status line, tooltip, side pane).
 - Implement multi-word spans (`spanStart`/`spanEnd`).
-- Honor per-word `speak: true` hints to read alternatives via TTS. TTS itself is non-standard (see [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md)); the `speak` field is reserved here only so static-mode authors have a portable place to declare the intent.
+- Read a tip aloud via TTS. TTS itself is non-standard (see [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md)); the `speak` field is reserved so catalogue authors have a portable place to declare the intent.
 - Cache LLM responses.
 
 ---
@@ -272,15 +259,15 @@ meaning. Prefer plain, concise phrasing.
 Format: INDEX:alt1,alt2,alt3
 ```
 
-### Minimal static-mode source
+### Minimal catalogue source
 
 `cues/extended-thinking/CUE.md`:
 
 ```markdown
 ---
 name: extended-thinking
-description: Extended thinking shortcuts — ultrathink, Tab, deep thinking
-keywords: ultrathink, Tab, deep thinking, think harder
+description: Extended thinking — when a hard question deserves more reasoning
+keywords: ultrathink
 priority: 60
 ---
 
@@ -290,15 +277,17 @@ priority: 60
     "id": "extended-thinking",
     "words": {
       "ultrathink": {
-        "tip": "Add ultrathink to prompt for max reasoning",
-        "alts": ["Tab", "deep thinking", "think harder"],
-        "speak": true
+        "tip": "Add ultrathink to the prompt for max reasoning",
+        "when": "asks for deeper reasoning, says think harder, or calls the problem hard",
+        "say": "A hard one? Put ultrathink in the prompt for the deepest reasoning this turn"
       }
     }
   }
 ]
 \`\`\`
 ```
+
+---
 
 ### Full source with all optional fields
 

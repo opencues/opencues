@@ -1,6 +1,6 @@
 ---
 name: emphatic-verbs
-description: Group of synonymous emphasis verbs sharing one tip
+description: Group of synonymous emphasis verbs sharing one situation
 keywords: emphasise, stress, underline, highlight
 priority: 50
 spec: opencues/0.1-alpha
@@ -14,7 +14,8 @@ spec: opencues/0.1-alpha
       {
         "synonyms": ["emphasise", "stress", "underline", "highlight"],
         "tip": "Pick the strongest verb for the register",
-        "alts": ["accentuate", "spotlight", "foreground"]
+        "when": "leans on a weak emphasis verb where the register wants a strong one",
+        "say": "Want it stronger? accentuate, spotlight or foreground"
       }
     ]
   }

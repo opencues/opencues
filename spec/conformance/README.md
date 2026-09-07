@@ -62,7 +62,7 @@ No second implementation of OpenCues exists today. The spec is designed so one c
 4. **Run every `routing/*.json` scenario** through your router. For each scenario, the listed words MUST route to the listed sources in the order shown.
 
 You MAY skip:
-- LLM-mode cue fixtures if your runtime is static-only.
+- The prompt-body (LLM) cue fixtures if your runtime is catalogue-only, and the catalogue fixtures if it has no semantic matcher (the block is inert there).
 - `blankScript:` fixtures if your runtime is browser-only (host-compat auto-detects).
 - Auditor fixtures if your runtime doesn't implement the auditor surface.
 
@@ -281,7 +281,7 @@ The 0.8-alpha suite is **seed**, not exhaustive. Coverage:
 
 | Area | Fixtures | Notes |
 |---|---|---|
-| Valid CUE.md | 5 | Static, LLM, combined, full-frontmatter, groups-synonyms |
+| Valid CUE.md | 5 | Catalogue (`minimal-static.md`, the name predates 0.12), LLM, catalogue + prompt (`combined.md`), full-frontmatter, groups-synonyms |
 | Valid BLANK.md | 5 | stepValues, blankScript, impl, full-frontmatter, selector-satellite |
 | Valid AUDITOR.md | 2 | Minimal, full-frontmatter |
 | Valid KATA.md | 2 | Full-frontmatter, minimal (no frontmatter) |
