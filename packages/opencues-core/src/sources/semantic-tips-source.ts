@@ -107,6 +107,32 @@ export function entryCommand(entry: { trigger: string; say?: string; tip: string
 }
 
 /** lowercase, trailing punctuation stripped — the static path's token, as prose carries it */
+/**
+ * A command-tip solution is the entry's command, optionally with REAL
+ * arguments (`/compact focus on the plan`, `/chat save`). It is not the
+ * pack's own line with the command in front (`/mcp list|enable|disable
+ * manages MCP servers` — the gemini bench, 2026-09-07) and not a template
+ * with a `<placeholder>` (`/model set <name>`): either would paste a
+ * definition into the prompt. Those collapse to the bare command.
+ */
+export function isGroundedCommandLine(line: string, cmd: string, entry: { tip: string; say?: string }): boolean {
+  const l = line.trim();
+  if (!l.toLowerCase().startsWith(cmd.toLowerCase())) return false;
+  if (/<[^>]+>/.test(l)) return false;
+  const rest = l.slice(cmd.length).trim();
+  if (!rest) return true;
+  const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean).join(' ');
+  const r = norm(rest);
+  // a short argument (`/chat save`) is allowed even if the say line mentions
+  // it; a run of three or more words lifted from the pack's line is prose
+  if (r.split(' ').length < 3) return true;
+  for (const own of [entry.tip, entry.say ?? '']) {
+    const o = norm(own);
+    if (o && (o.includes(r) || r.includes(o))) return false;
+  }
+  return true;
+}
+
 /** A prose rewrite keeps ≥ half of the quote's words and is not the entry's own tip or say line. */
 export function isGroundedRewrite(quote: string, rewrite: string, entry: { tip: string; say?: string }): boolean {
   const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);
@@ -204,7 +230,7 @@ export class SemanticTipsSource implements CueSource {
       // The command line must START with the entry's command (the pack's,
       // not the model's); anything else — a paraphrase, the tip text, a
       // different command — collapses to the bare command.
-      if (cmd !== undefined) apply = applyRaw.toLowerCase().startsWith(cmd.toLowerCase()) ? applyRaw : cmd;
+      if (cmd !== undefined) apply = isGroundedCommandLine(applyRaw, cmd, entry) ? applyRaw : cmd;
       // Grounding 4, prose tips: the rewrite must be the PERSON's sentence
       // following the tip — it keeps at least half of the quote's words and
       // is not the pack's own line. qwen answered "apply" with the tip text

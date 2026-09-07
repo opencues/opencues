@@ -18,6 +18,12 @@
 // HOME so they're hermetic.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+// Every phase spawns the real seed-configs over the whole defaults tree (and
+// the .cs compile on WSL), which runs past vitest's 5 s default whenever the
+// machine is busy — a build or a bench beside the suite made this the one
+// flaky file. It is real work, not a hang: give it the time.
+vi.setConfig({ testTimeout: 30_000 });
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
