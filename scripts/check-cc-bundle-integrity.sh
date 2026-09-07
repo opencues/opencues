@@ -97,6 +97,15 @@ fi
 
 # Per-package.json: write the same as setup.sh does (main: index.js,
 # types: index.d.ts for core; runtime keeps dist/src/index.js).
+# The runtime's node deps setup.sh copies into the fork (acorn + acorn-walk,
+# lazy-required by the user-blank loader). Mirrored here so dropping the copy
+# from setup.sh fails this gate instead of disabling JS user blanks silently.
+for dep in acorn acorn-walk; do
+  dep_src="$(cd "$CUES_RUNTIME" && node -p "require('path').dirname(require.resolve('$dep/package.json'))" 2>/dev/null || true)"
+  if [ -n "$dep_src" ] && [ -d "$dep_src" ]; then
+    mkdir -p "$TMP/node_modules/$dep" && cp -RL "$dep_src/." "$TMP/node_modules/$dep/"
+  fi
+done
 node -e "
 const fs = require('fs');
 const corePkg = JSON.parse(fs.readFileSync('$CUES_CORE/package.json', 'utf8'));
@@ -123,6 +132,8 @@ fs.writeFileSync('$OC_NM_DIR/runtime/package.json', JSON.stringify(rtPkg, null, 
 # follow-up to either bundle acorn into runtime's dist or extend
 # setup.sh to npm-install runtime's deps.
 REQUIRED_SPECS=(
+  "acorn"
+  "acorn-walk"
   "@opencues/runtime"
   "@opencues/runtime/dist/adapters/cc/v2.1/boot.js"
   "@opencues/runtime/dist/src/blanks/index.js"

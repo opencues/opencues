@@ -735,11 +735,11 @@ done
 | `packages/opencues-core/` | `@opencues/core` | 0.58.0 | private |
 | `packages/opencues-runtime/` | `@opencues/runtime` | 0.39.2 | private |
 | `packages/opencues-cli/` | `opencues` (real CLI) | 0.7.11 | **PUBLISHED on npm** |
-| `integrations/claude-code/` | `@opencues/claude-code` | 0.2.12 | private |
-| `integrations/opencode/` | `@opencues/opencode` | 0.2.17 | private |
+| `integrations/claude-code/` | `@opencues/claude-code` | 0.2.13 | private |
+| `integrations/opencode/` | `@opencues/opencode` | 0.2.18 | private |
 | `integrations/chrome/` | `@opencues/chrome` | 0.2.201 | private |
 | `integrations/gemini-cli/` | `@opencues/gemini-cli` | 0.2.11 | private |
-| `integrations/shell/` | `@opencues/shell` | 0.2.23 | private |
+| `integrations/shell/` | `@opencues/shell` | 0.2.24 | private |
 | `integrations/windows/` | `@opencues/windows` | 0.2.4 | private |
 | `integrations/dsh/` | `@opencues/dsh` | 0.2.20 | **PUBLISHABLE** — dsh installs plugins from npm |
 

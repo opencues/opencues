@@ -497,6 +497,22 @@ else
   cp -r "$OC_RUNTIME/dist" "$OC_NM_DIR/runtime/dist"
 fi
 cp "$OC_RUNTIME/package.json" "$OC_NM_DIR/runtime/package.json"
+# Runtime deps a hot-copied dist can't carry: the user-blank loader lazy-
+# requires `acorn` + `acorn-walk` from the FORK's node_modules; without them
+# every JS user blank is disabled with "Cannot find package 'acorn'" (found
+# on opencode 2026-09-07; gemini's setup already installs both). Copied from
+# wherever the repo resolves them. check-cc-bundle-integrity.sh mirrors this
+# copy and requires both to load.
+for dep in acorn acorn-walk; do
+  dep_src="$(cd "$OC_RUNTIME" && node -p "require('path').dirname(require.resolve('$dep/package.json'))" 2>/dev/null || true)"
+  if [[ -n "$dep_src" && -d "$dep_src" ]]; then
+    rm -rf "$CC_FORK_DIR/node_modules/$dep"
+    mkdir -p "$CC_FORK_DIR/node_modules/$dep"
+    cp -RL "$dep_src/." "$CC_FORK_DIR/node_modules/$dep/"
+  else
+    echo "  ⚠ cannot resolve $dep from packages/opencues-runtime — JS user blanks will be disabled in this fork"
+  fi
+done
 end_step
 
 # ─── 6. Install CC-specific support files (statusline + settings.json) ─
