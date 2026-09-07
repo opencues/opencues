@@ -127,12 +127,15 @@ describe('SemanticTipsSource.getCues — grounding', () => {
     const withArgs = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter(
       `[{"quote":"zundo what it just did","tipId":"t1","apply":"/zrewind 2"}]`) });
     expect((await withArgs.getCues(ctx(TEXT, pack))).results[0].alternatives).toEqual([TEXT, '/zrewind 2']);   // starts with the command: kept
-    // a say: line with a KEY, not a command, stays a prose tip: the rewrite is the model's
+    // a say: line with a KEY, not a command, is a prose tip — and a "rewrite" that only adds the key is advice, not a prompt
     const key = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter(
       `[{"quote":"zkey please","tipId":"t2","apply":"zkey please (Ctrl+Z twice)"}]`) });
     const k = await key.getCues(ctx('zkey please now', pack));
-    expect(k.results[0].alternatives).toEqual(['zkey please', 'zkey please (Ctrl+Z twice)']);
+    expect(k.results[0].alternatives).toEqual(['zkey please']);   // advisory
     expect(k.results[0].spanStart).toBe(0); expect(k.results[0].spanEnd).toBe('zkey please'.length);
+    const keyProse = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter(
+      `[{"quote":"zkey please","tipId":"t2","apply":"zkey please, the zorb one"}]`) });
+    expect((await keyProse.getCues(ctx('zkey please now', pack))).results[0].alternatives).toEqual(['zkey please', 'zkey please, the zorb one']);
   });
   it('entryCommand: the trigger when it is one, else the first command the say: line names; a path is not a command', () => {
     expect(entryCommand({ trigger: '/zap', tip: 'x' })).toBe('/zap');
@@ -163,6 +166,14 @@ describe('SemanticTipsSource.getCues — grounding', () => {
     expect(isGroundedRewrite('think really hard about this', 'A hard one? Put ultrathink in the prompt', { tip: 'Add ultrathink', say: 'A hard one? Put ultrathink in the prompt' })).toBe(false);
     expect(isGroundedRewrite('think really hard about this', 'Add ultrathink to your prompt for max reasoning.', { tip: 'Add ultrathink to your prompt for max reasoning' })).toBe(false);
     expect(isGroundedRewrite('make it plan before it touches files', 'use plan mode first', { tip: 'x' })).toBe(false);
+    // a rewrite that adds a launch flag or a keybind the draft did not have is advice, not a prompt
+    expect(isGroundedRewrite('i do not want it wrecking my zorb', 'i do not want it wrecking my zorb --zbox', { tip: 'x' })).toBe(false);
+    expect(isGroundedRewrite('i do not want it wrecking my zorb', 'i do not want it wrecking my zorb -z', { tip: 'x' })).toBe(false);
+    expect(isGroundedRewrite('find the zorb i wrote yesterday', 'Press Ctrl+Z to search for the zorb i wrote yesterday', { tip: 'x' })).toBe(false);
+    expect(isGroundedRewrite('show me the zorb list', 'show me the zorb list (press Shift+Tab)', { tip: 'x' })).toBe(false);
+    expect(isGroundedRewrite('show me the zorb list', 'show me the zorb list (Esc twice)', { tip: 'x' })).toBe(false);
+    expect(isGroundedRewrite('run it with --zbox on the zorb', 'run it with --zbox on the zorb please', { tip: 'ALT-TIP' })).toBe(true);   // the draft already had the flag
+    expect(isGroundedRewrite('look at the zorb file', '@zorb/file.ts look at it', { tip: 'ALT-TIP' })).toBe(true);   // @path is typeable prompt syntax
     const tipText = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[{"quote":"so spendy","tipId":"t3","apply":"ALT-THREE quux is spendy"}]') });
     expect((await tipText.getCues(ctx('this is so spendy today'))).results[0].alternatives).toEqual(['so spendy']);   // advisory
   });

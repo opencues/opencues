@@ -133,11 +133,21 @@ export function isGroundedCommandLine(line: string, cmd: string, entry: { tip: s
   return true;
 }
 
-/** A prose rewrite keeps ≥ half of the quote's words and is not the entry's own tip or say line. */
+/** launch flags (`-p`, `--sandbox`) and keybinds (`Ctrl+R`, `Shift+Tab`, `Esc`, `F12`) — things a prompt cannot carry */
+const UNTYPEABLE = /(?:^|[\s(])(--?[a-z][\w-]*|(?:ctrl|shift|alt|cmd|meta|option)\+\S+|esc|f\d{1,2})(?=$|[\s).,;:])/giu;
+/**
+ * A prose rewrite keeps ≥ half of the quote's words, is not the entry's own
+ * tip or say line, and adds no launch flag or keybind the quote did not have —
+ * `<draft> --sandbox` and `Press Ctrl+R to search for <draft>` keep every word
+ * of the draft and are still advice to the person, not a prompt to send.
+ */
 export function isGroundedRewrite(quote: string, rewrite: string, entry: { tip: string; say?: string }): boolean {
   const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);
   const r = norm(rewrite);
   if (r.length === 0) return false;
+  const untypeable = (t: string) => new Set(Array.from(t.matchAll(UNTYPEABLE), (m) => m[1].toLowerCase()));
+  const had = untypeable(quote);
+  for (const u of untypeable(rewrite)) if (!had.has(u)) return false;
   const rj = r.join(' ');
   for (const own of [entry.tip, entry.say ?? '']) {
     const o = norm(own).join(' ');
