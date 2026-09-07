@@ -88,8 +88,12 @@ tests/benchmarks/
 │   ├── run.ts              # `--variant <X> --klass <Y> --holdout` (runs historical variants)
 │   └── fused-bench.ts      # drives production `FUSED_SYSTEM_PROMPT` across all 176 cases
 │
-└── agent-rewrite/          # in-place agent-rewrite cadence (separate bench)
-    └── run.ts + cases.ts + harness/
+├── agent-rewrite/          # in-place agent-rewrite cadence (separate bench)
+│   └── run.ts + cases.ts + harness/
+└── tips/                   # semantic tips (2026-09-06): the tips pack as a watchlist
+    └── semantic-tips-bench.mjs   # --pack <host>: drives the REAL SemanticTipsSource on each shipped
+                                  #   claude-code pack; deterministic (labelled trigger
+                                  #   or null); gate = 0 false alarms AND ≥90% cited right
 ```
 
 Raw run output lives in [`tests/results/`](../results/):
