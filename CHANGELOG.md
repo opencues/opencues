@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — JS user blanks were silently disabled on Claude Code and OpenCode forks; a failed shell bundle reported success (`@opencues/claude-code` 0.2.13, `@opencues/opencode` 0.2.18, `@opencues/shell` 0.2.24)
+- The user-blank loader lazy-requires `acorn` + `acorn-walk` from the FORK's `node_modules`, and only the gemini installer put them there. On Claude Code and OpenCode a fresh install logged `Cannot find package 'acorn'` on the first JS user blank (`gh-issues`) and disabled it. Both installers now copy the two packages from wherever the repo resolves them (never an `npm install` into a bun workspace). `scripts/check-cc-bundle-integrity.sh` mirrors the copy and requires both to load, so dropping the step fails CI instead of degrading a user's fork.
+- The shell installer's bundle step swallowed its exit status behind `| tee | grep || true`: a Babel-clash failure printed nothing, "Shell build done." followed, and the PREVIOUS `dist/app.js` stayed in place, which `oc-edit` prefers over `src/`. The step now reports the failure with the log tail and removes any stale bundle so the launch falls back to transpiling `src/app.tsx`.
+
 ### Changed — tips are semantic: the packs are situations, a fast model matches the draft, `_` applies the command; the static layer is removed (spec `0.12`; `@opencues/core` 0.60.0, `@opencues/runtime` 0.41.0, `opencues` CLI 0.7.13)
 
 The tips system was a static map — a typed pack word (`undo`, `plan`, `fix`, `/clear`) grayed, showed its definition and cycled through sibling words. Ruled noise (2026-09-07): it fires on ordinary words and its siblings swap words you meant for words you did not. It is replaced, not augmented.

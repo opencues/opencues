@@ -119,6 +119,29 @@ build_core() {
   ( cd "$OPENCUES_ROOT" && pnpm --filter @opencues/core build )
 }
 
+# Runtime deps that a hot-copied dist can't carry: the user-blank loader's
+# esm-rewrite lazy-requires `acorn` + `acorn-walk` (a JS user blank is
+# parsed + rewritten before it runs). They resolve from the FORK's
+# node_modules, not the repo's, so a fork that only received dist/ logs
+# "Cannot find package 'acorn'" on the first JS user blank and disables it
+# (opencode surfaced it on gh-issues, 2026-09-07; gemini's setup already
+# installs both). Copied from wherever the repo resolves them (pnpm's
+# store), never `npm install`ed into a bun workspace.
+install_runtime_node_deps() {
+  local dest_nm="$1"
+  local dep src
+  for dep in acorn acorn-walk; do
+    src="$(cd "$OPENCUES_ROOT/packages/opencues-runtime" && node -p "require('path').dirname(require.resolve('$dep/package.json'))" 2>/dev/null || true)"
+    if [[ -z "$src" || ! -d "$src" ]]; then
+      echo "setup.sh: WARN — cannot resolve $dep from packages/opencues-runtime; JS user blanks will be disabled in this fork" >&2
+      continue
+    fi
+    rm -rf "$dest_nm/$dep"
+    mkdir -p "$dest_nm/$dep"
+    cp -RL "$src/." "$dest_nm/$dep/"
+  done
+}
+
 install_into_fork() {
   # @opencues/runtime
   local rt_dest="$OPENCODE_DIR/node_modules/@opencues/runtime"
@@ -169,6 +192,7 @@ install_into_fork() {
   # in-process loader works — but it's harmless to install (no startup
   # cost; lazy-spawned on first need).
   install_user_blank_runner
+  install_runtime_node_deps "$OPENCODE_DIR/node_modules"
 }
 
 # Copy the subprocess runner into ~/.opencues/vendor/ and seed a

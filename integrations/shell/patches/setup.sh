@@ -102,10 +102,18 @@ fi
 # The earlier bytecode-segfault concern is in scripts/bundle.ts as
 # `bytecode: false` — bundle output is plain ESM and safe.
 echo "  ▸ bundling src/app.tsx → dist/app.js"
-(
-  cd "$TERM_DIR"
-  bun run bundle 2>&1 | tee -a "$LOG" | grep -E "bundle:|error" || true
-) || echo "    (bundle step failed — oc-edit will fall back to src/app.tsx transpile-on-load)"
+# The pipeline used to swallow the exit status (`| tee | grep || true`), so a
+# failed bundle printed nothing and "Shell build done." followed — with the
+# PREVIOUS dist/app.js left in place, which oc-edit prefers over src/. A
+# stale bundle is worse than none: say so, and remove it so the launch
+# falls back to src/app.tsx (correct, just ~2s slower to start).
+if (cd "$TERM_DIR" && bun run bundle >> "$LOG" 2>&1); then
+  echo "    ● dist/app.js"
+else
+  echo "    ⚠ bundle FAILED (see $LOG) — removing any stale dist/app.js; oc-edit will transpile src/app.tsx on launch"
+  tail -n 4 "$LOG" | sed 's/^/      /'
+  rm -f "$TERM_DIR/dist/app.js"
+fi
 
 # ─── Optional symlink ────────────────────────────────────────────────
 if [[ -n "$LINK_DIR" ]]; then
