@@ -234,6 +234,13 @@ export interface BuildSourcesOptions {
    *  on`. Ambient (fires on the current sentence; the source caches per
    *  sentence so it's one LLM call per new sentence). */
   enableAskCues?: boolean;
+  /** Enable the semantic tips layer — the host's tips packs rendered as a
+   *  watchlist and matched by the same fast model as session-contradiction;
+   *  flags a sentence that SHOWS the situation a tip is for even when the
+   *  trigger token is absent. The catalogue arrives per-resolve on
+   *  `CueContext.tipsCatalog`. Defaults to false; flip on via OPENCUES.md
+   *  `tips-mode: semantic`. */
+  enableSemanticTips?: boolean;
   /** Host-provided GET for the contradiction world-data caches (bank holidays,
    *  weather). Chrome passes a service-worker-routed fetch (a content-script
    *  fetch is blocked by the host page's CSP); native hosts omit it → global fetch. */
@@ -314,7 +321,7 @@ export interface BuildSourcesOptions {
   // its config interface. `BuildSourcesOptions` exposes one
   // `on<Name>Event` per source — each typed against the source's
   // own event union. Sources without meaningful pipeline phases
-  // (LocalCueSource, BlankSource) stay uninstrumented; add a
+  // (BlankSource) stay uninstrumented; add a
   // typed callback here when their lifecycle becomes worth observing.
   //
   // Runtime consumers namespace these events when adapting to their
@@ -585,10 +592,10 @@ export function buildSourcesFromConfig(
   // short-circuits (no ask call when a contradiction fires), so they no longer
   // overlap or evict each other. Per-type gating from the two scalars. Reuses
   // the sentence-cues LLM tier. If no LLM resolves, it simply doesn't run.
-  if (options.enableSessionContradiction || options.enableAskCues) {
+  if (options.enableSessionContradiction || options.enableAskCues || options.enableSemanticTips) {
     const scLlm = resolveFor(options.sentenceCues);
     if (scLlm) {
-      const which = [options.enableSessionContradiction && 'contradiction', options.enableAskCues && 'ask'].filter(Boolean).join('+');
+      const which = [options.enableSessionContradiction && 'contradiction', options.enableSemanticTips && 'tips', options.enableAskCues && 'ask'].filter(Boolean).join('+');
       options.log?.(`buildSources: session-cue [${which}] → LLM engine (${scLlm.provider.id}/${scLlm.model})`);
       sources.push(new SessionCueSource({
         httpAdapter: withFallback(options.httpAdapter, scLlm.fallback),
@@ -599,6 +606,7 @@ export function buildSourcesFromConfig(
         maxThinking: options.maxThinking,
         enableContradiction: !!options.enableSessionContradiction,
         enableAsk: !!options.enableAskCues,
+        enableSemanticTips: !!options.enableSemanticTips,
         log: (m) => options.log?.(m),
       }));
     } else {

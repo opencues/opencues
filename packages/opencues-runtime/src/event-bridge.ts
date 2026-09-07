@@ -148,7 +148,7 @@ export type BridgeEventBody =
   | { type: 'cycling.cycled'; wordIndex: number; direction: 1 | -1; path: 'static-alts' | 'list-blank' | 'span-fill' | 'blank-step' | 'selector' | 'satellite'; fromAltIndex?: number; toAltIndex?: number; fromText?: string; toText?: string }
   // ConfigLoader finished a (re)load. Fires from both the initial
   // `load()` and every hot-reload `maybeReload()` round. `cueEntries`
-  // is the size of the merged cueMap; `blankCount` is the configured
+  // is the size of the tips situation catalogue; `blankCount` is the configured
   // blank count.
   | { type: 'config.reloaded'; cueEntries: number; blankCount: number; voiceMode: string; tipsMode: string; debugMode: string; cursorNavigate: string }
   // TTS spoke a phrase. Fires once per (wordIndex, displayed) tuple,

@@ -42,7 +42,7 @@ export interface SpanFillEntry {
   readonly kind?: 'blank-fill' | 'static-alt';
   /**
    * Optional blank-side tip text. When set, Statusline shows this verbatim
-   * when the highlight lands on the span — bypasses cueMap lookup which
+   * when the highlight lands on the span — bypasses the blank-tip lookup which
    * would miss filled words like "13.9°C" or "Reddit".
    */
   readonly tip?: string;

@@ -111,6 +111,13 @@ function splitNoteEmoji(s: string): { emoji?: string; rest: string } {
   for (const e of NOTE_EMOJIS) {
     if (s.startsWith(e)) return { emoji: e === '⚠️' ? '⚠' : e, rest: s.slice(e.length).trimStart() };
   }
+  // Any other leading pictographic glyph (with an optional variation selector
+  // or skin tone) is the note's emoji too — a source STEERS the emoji by
+  // leading its cueTip with it. Before this, a 💡-led tip fell through to the
+  // ⚠ default and the note read "⚠ 1 | 💡 …" (Wilfred, 2026-09-06: "no double
+  // emojis — a singular emoji, and you can steer it").
+  const m = /^(\p{Extended_Pictographic}(?:\uFE0F|[\u{1F3FB}-\u{1F3FF}])?)\s*/u.exec(s);
+  if (m) return { emoji: m[1], rest: s.slice(m[0].length) };
   return { rest: s };
 }
 
@@ -163,17 +170,106 @@ export function inlineNoteCount(def: WordDef): number {
   return Math.max(1, def.alternatives.length - def.currentIndex);
 }
 
+/* ── The note names the state, the hint names what the next press does ──────
+   (Wilfred, 2026-09-06: "we should not just dumbly add 'underscore to cycle'
+   to everything ... after you do that it is 'underscore to revert', especially
+   if there are only two options" / "does '(underscore to Paris)' make sense?"
+   — no: the hint is a VERB from a fixed set; nouns live in the note.)
+
+   A def with exactly two stops is a TOGGLE: an action and its undo, not a
+   cycle. Its note drops the count; before the press it names the destination
+   (or the finding), after the press it reads `was: <snippet>`; its hint is a
+   verb — apply / correct / fix — and `revert` once the next press puts the
+   original back. No nouns after "to", not even a command: the command lives
+   in the note (the pack's advice line names it, or it follows an arrow). Three or more
+   stops keep the count and `cycle`, the only hint that still retires after
+   first use, because the note already lists the destinations. */
+
+/** A one-line recognition snippet of the user's own text: first NOTE_SNIPPET_WORDS
+ *  words or NOTE_SNIPPET_CELLS code points, then `…`. The whole text is one
+ *  press away, so the note never wraps it. */
+export const NOTE_SNIPPET_WORDS = 8;
+export const NOTE_SNIPPET_CELLS = 48;
+export function snippetLine(text: string): string {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  const head = words.slice(0, NOTE_SNIPPET_WORDS).join(' ');
+  const cut = words.length > NOTE_SNIPPET_WORDS;
+  const cp = [...head];
+  if (cp.length > NOTE_SNIPPET_CELLS) return `${cp.slice(0, NOTE_SNIPPET_CELLS).join('').trimEnd()}…`;
+  return cut ? `${head}…` : head;
+}
+
+export function isToggleDef(def: WordDef): boolean { return def.alternatives.length === 2; }
+/** Where the ORIGINAL text sits: index 0 for cues (the buffer starts on it),
+ *  the LAST stop for landed LLM blanks (transform / fluid keep the landed text
+ *  at 0 and the original ask last — "the wrap IS the revert"). */
+export function originalIndexOf(def: WordDef): number {
+  return (def.blankName === 'transform-blank' || def.blankName === 'fluid-blank') ? def.alternatives.length - 1 : 0;
+}
+export function nextStopIsOriginal(def: WordDef): boolean {
+  return def.alternatives.length > 1 && (def.currentIndex + 1) % def.alternatives.length === originalIndexOf(def);
+}
+/** The product's own note text (a tip, a finding) is capped where a third
+ *  wrapped line would start; the user's own text never wraps (snippetLine). */
+export const NOTE_MAX_CELLS = 120;
+function capCells(text: string): string {
+  const cp = [...text];
+  return cp.length > NOTE_MAX_CELLS ? `${cp.slice(0, NOTE_MAX_CELLS - 1).join('').trimEnd()}…` : text;
+}
+/** A command tip's solution: a slash command or a flag as the whole stop. */
+function commandHeadOf(def: WordDef): string | undefined {
+  if (def.blankName !== 'sentence-cue:tip') return undefined;
+  const sol = def.alternatives[1] ?? '';
+  const m = /^(\/[A-Za-z][\w:-]*|--[A-Za-z][\w-]*)/.exec(sol);
+  return m ? m[1] : undefined;
+}
+
+export interface NoteHintOpts {
+  actuator: boolean;
+  dismissable: boolean;
+  forgetOffer: boolean;
+  /** the per-note retirement flag — honoured only by the hints that TEACH a key */
+  suppressed: boolean;
+}
+/** The hint under a note: what the next press does. */
+export function inlineNoteHint(def: WordDef, o: NoteHintOpts): string | undefined {
+  if (o.forgetOffer) return '(muted · underscore again to forget)';
+  if (o.actuator) return o.suppressed ? undefined : '(ctrl+alt+up/down to adjust)';
+  const n = def.alternatives.length;
+  if (n <= 1) return o.dismissable && !o.suppressed ? '(underscore to dismiss)' : undefined;
+  if (nextStopIsOriginal(def)) return '(underscore to revert)';
+  if (n >= 3) return o.suppressed ? undefined : '(underscore to cycle)';
+  // a toggle, before the press. Verbs only — no exception for a command
+  // tip: its note names the command (the pack's say: line, or `→ /cmd`).
+  if (def.blankName && /contradiction/.test(def.blankName)) return '(underscore to fix)';
+  if (def.cueSource === 'spelling') return '(underscore to correct)';
+  return '(underscore to apply)';
+}
+
 export function inlineNoteText(def: WordDef): string | undefined {
   const n = inlineNoteCount(def);
 
-  // NOTIFICATION — carries a cueTip whose first glyph is the type emoji
-  // (contradiction/calendar ⚠/🧢, ask-cues ❓). A CYCLEABLE notification
-  // (contradiction's reconciled value, ask-cues options) gets the countdown;
-  // a pure ADVISORY with nothing to cycle to (calendar conflict, alternatives
-  // = [original]) shows just the emoji + message — no number, no pipe.
   if (def.cueTip) {
     const { emoji, rest } = splitNoteEmoji(def.cueTip);
     const em = emoji ?? '⚠';
+    // A TOGGLE notification: no count. Before the press the message (a tip
+    // also shows the rewrite it applies, unless the hint already names the
+    // command); after the press, what it was.
+    if (isToggleDef(def) && !(def.noteLabels && def.noteLabels.length === def.alternatives.length)) {
+      const msg0 = capCells(rest.replace(/\s*[·▸]\s*/g, ' | '));
+      const oi = originalIndexOf(def);
+      if (def.currentIndex !== oi) return `${em} was: ${snippetLine(def.alternatives[oi])}`;
+      const dest = def.alternatives[1 - oi];
+      if (def.blankName === 'sentence-cue:tip' && dest !== def.alternatives[oi]) {
+        // The note names the solution: a command tip's advice line usually
+        // does (the author's job); if it doesn't, the solution follows an
+        // arrow. A prose tip always shows the rewrite it applies.
+        const head = commandHeadOf(def);
+        if (head) return msg0.includes(head) ? `${em} ${msg0}` : `${em} ${msg0} → ${snippetLine(dest)}`;
+        return `${em} ${msg0} → ${snippetLine(dest)}`;
+      }
+      return `${em} ${msg0}`;
+    }
     // A cycleable notification whose destinations carry display labels
     // (ask-cues — a menu of rewrites) ROTATES like spelling/transform: it shows
     // where the next `_` lands, not a static question + full menu. One paradigm
@@ -185,7 +281,7 @@ export function inlineNoteText(def: WordDef): string | undefined {
       const labels = upcomingLabels(def, 3);
       return labels.length ? `${em} ${n} | ${labels.join(' | ')}` : `${em} ${n}`;
     }
-    const msg = rest.replace(/\s*[·▸]\s*/g, ' | ');
+    const msg = capCells(rest.replace(/\s*[·▸]\s*/g, ' | '));
     return def.alternatives.length > 1 ? `${em} ${n} | ${msg}` : `${em} ${msg}`;
   }
 
@@ -195,6 +291,18 @@ export function inlineNoteText(def: WordDef): string | undefined {
   // Like spelling: list EACH alternative you can cycle TO, pipe-separated, but
   // each snippeted (transform/fluid alternatives can be whole sentences) so a
   // couple words identify it. Rotates with currentIndex.
+  // A TOGGLE improvement: no count. After the press, what it was; before it,
+  // the destination alone (the hint says what the press does).
+  if (isToggleDef(def)) {
+    const oi = originalIndexOf(def);
+    if (def.currentIndex !== oi) return `was: ${snippetLine(def.alternatives[oi])}`;
+    if (isSentenceCueDef(def)) {
+      const name = def.blankName!.slice('sentence-cue:'.length);
+      return SENTENCE_CUE_LABELS[name] ?? snippetLine(def.alternatives[1 - oi]);
+    }
+    const dest = snippetLine(def.alternatives[1 - oi]);
+    return def.cueSource === 'spelling' ? `✍️ ${dest}` : dest;
+  }
   if (def.blankName === 'transform-blank' || def.blankName === 'fluid-blank') {
     const parts = upcomingAlternatives(def, 3).map(snippetWords).filter(Boolean);
     return parts.length ? `${n} | ${parts.join(' | ')}` : `${n}`;
@@ -285,6 +393,7 @@ const _dismissedHints = new Set<string>();
 export function noteHintKey(def: WordDef): string {
   return def.blankName ? `b:${def.blankName}` : `w:${def.alternatives[0] ?? ''}`;
 }
+
 /** True once the user has cycled ANY note this session (drives 'session' scope). */
 export function hasCycledEver(): boolean { return _hasCycledEver; }
 /** Record a cycle/adjust. Sets the session flag AND, given a key, retires that

@@ -2,7 +2,7 @@
 //
 // Handles Ctrl+Alt+Left and Ctrl+Alt+Right by walking the
 // whitespace-separated word list from the right-hand side and updating
-// HighlightState. Cue filtering uses DynDefs + the cueMap to restrict
+// HighlightState. Cue filtering uses DynDefs to restrict
 // targets to navigable words.
 
 import type { HostAdapter, KeyEvent, TextChangeEvent, CursorChangeEvent, Unsubscribe } from '../adapter';
@@ -38,7 +38,7 @@ export class Navigation {
     private hlState: HighlightState,
     private dynDefs: DynDefs,
     /**
-     * Optional. When provided, navigation prefers cueMap-mapped words; falls
+     * Optional. When provided, navigation reads blank keywords for the scaffold check; falls
      * back to all-words when no matches. Mirrors v1's nav filter from
      * the original CC patch.
      */
@@ -52,7 +52,7 @@ export class Navigation {
     /**
      * Optional. Selector + satellite indices are forced into the nav
      * target list so the user can step onto either word even if neither
-     * "voice-mode" nor "active" appears in cueMap.
+     * "voice-mode" nor "active" is a def.
      */
     private selectorSatelliteState?: SelectorSatelliteState,
   ) {}
@@ -310,7 +310,7 @@ export class Navigation {
    * Decide which word indices should be navigable.
    *
    * A word is navigable when something has an opinion about it:
-   *   1. Word lowercased is in cueMap (tip-having word).
+   *   1. (retired in 0.12: the word is a static cue-map entry)
    *   2. DynDefs has an entry for that index (cycling state — LLM alts,
    *      blank-fill substitution, selector/satellite, span fill).
    *
@@ -322,7 +322,7 @@ export class Navigation {
    *
    * Span layer: when a span fill is active, force-add the span origin
    * (so the span is always reachable even if its first word isn't in
-   * cueMap), and drop any inner span positions from the result so each
+   * DynDefs), and drop any inner span positions from the result so each
    * multi-word span counts as exactly one nav stop.
    *
    * Exposed for unit testing.
@@ -334,33 +334,33 @@ export class Navigation {
 
     const baseTargets: number[] = (() => {
       // Decision tree:
-      //   1. Some word matched cueMap or has a DynDef → target only those.
-      //   2. cueMap is loaded + non-empty but no word in this input matches
+      //   1. Some word has a DynDef → target only those.
+      //   2. Config has content (blanks or a tips catalogue) but no word in this input matches
       //      → return [] (silence). No cue source has an opinion on the
       //      word, so navigation should not hop between plain words.
-      //   3. cueMap missing or empty (test scaffold / fresh install with
+      //   3. No config content at all (test scaffold / fresh install with
       //      no tips) → fall back to all words so the system isn't dead
       //      out of the box and unit tests without a wired ConfigLoader
       //      still navigate.
-      // No-cycling profile: cueMap words are not nav targets when the
+      // No-cycling profile: defs are not nav targets when the
       // adapter reports supportsCycling() === false — same suppression
-      // as DimRender's cueMap dims (a target you can't cycle is dead
+      // as DimRender's dims (a target you can't cycle is dead
       // weight; hosts on this profile don't forward chords anyway, but
       // per-field hosts (windows) share one Navigation across cycling
       // and non-cycling fields). DynDef targets are unaffected.
       const cyclingOff = this.adapter.supportsCycling?.() === false;
-      // Nav targets are cueMap words (word-cues) + DynDefs — NOT bare blank
+      // Nav targets are DynDefs — NOT bare blank
       // keywords. A bare blank keyword (`volume`, `weather`, …) is a pure `_`
       // trigger: nothing to cycle and no statusline tip until `_` fires the
       // blank (which then registers a DynDef that IS navigable). Landing on one
       // was an invisible dead target (dim was removed for the same reason). We
-      // read `cueMap` directly rather than `navigableWords` (which unions in
-      // blank keywords) — matching this method's own "matched cueMap or has a
+      // read DynDefs rather than `navigableWords` (blank keywords) — matching this method's own "has a
       // DynDef" contract above.
-      const cueMap = cyclingOff ? undefined : this.configLoader?.cueMap;
-      // `navigableWords` (cueMap ∪ blank keywords) is used ONLY to detect a
-      // genuinely-empty config for the scaffold fallback below — NOT as targets
-      // (targets are cueMap words + DynDefs; a bare blank keyword is not one).
+      // Targets are DynDefs only (an LLM word-cue, a spelling fix, a
+      // sentence cue, a filled blank). The static cue map that made a typed
+      // pack word a stop left with spec 0.12. `navigableWords` (blank
+      // keywords) is used ONLY to detect a genuinely-empty config for the
+      // scaffold fallback below — a bare blank keyword is not a target.
       const navigable = cyclingOff ? undefined : this.configLoader?.navigableWords;
       const filtered: number[] = [];
       for (const w of words) {
@@ -377,22 +377,21 @@ export class Navigation {
         if (innerSpan && innerSpan.originIdx !== w.index) continue;
         const lc = w.word.toLowerCase().replace(/[\u200B\u200C]/g, '');
         if (lc.length === 0) continue;
-        if (cueMap?.has(lc)) {
-          filtered.push(w.index);
-        } else if (this.dynDefs.get(w.index)) {
-          filtered.push(w.index);
-        }
+        if (this.dynDefs.get(w.index)) filtered.push(w.index);
       }
       if (filtered.length > 0) return filtered;
       // Fall back to all words ONLY when the config is genuinely empty — no
       // word-cues AND no blanks (a fresh/scaffold install), so navigation isn't
       // dead out of the box. A config that HAS blanks (or cues) but no word-cue
       // match stays SILENT rather than hopping plain words. `navigable`
-      // (cueMap ∪ blank keywords) is the "is there any config content" signal;
-      // keying this on cueMap alone wrongly made every word navigable in the
+      // (blank keywords, plus the tips catalogue) is the "is there any config content" signal;
+      // keying it on word cues alone once made every word navigable in the
       // very common blanks-but-no-word-cues setup. Never fall back on the
       // no-cycling profile (target set suppressed by design, not missing).
-      const emptyConfig = !navigable || navigable.size === 0;
+      // "Any config content" = blank keywords OR a tips catalogue (the packs
+      // are situations for the matcher now, not nav targets, but a config
+      // that has them is not a scaffold).
+      const emptyConfig = (!navigable || navigable.size === 0) && !this.configLoader?.config.tipsCatalog;
       const noDynDefs = this.dynDefs.size === 0;
       if (emptyConfig && noDynDefs && !cyclingOff) return words.map(w => w.index);
       return [];

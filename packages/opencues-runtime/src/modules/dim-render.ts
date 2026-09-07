@@ -10,7 +10,7 @@
 import type { HostAdapter, InlineNote, Range, RenderContext, RenderDirectives, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs, WordDef } from '../state/dyn-defs';
-import { inlineNoteText, isHintSuppressed, noteHintKey } from '../state/dyn-defs';
+import { inlineNoteText, isHintSuppressed, noteHintKey, inlineNoteHint } from '../state/dyn-defs';
 import { dismissalTargetOf, forgetOfferRemainingMs, isCueDismissed } from '../state/cue-dismissals';
 import type { ConfigLoader } from './config-loader';
 import type { SpanFillState } from '../state/span-fill';
@@ -138,18 +138,17 @@ export class DimRender {
       ? this.dynDefs.findSpanContaining(activeIndex, words)
       : null;
     if (hasDimCap && this.configLoader) {
-      // No-cycling profile (universal-integration.md): a cueMap dim IS
+      // No-cycling profile (universal-integration.md): a def's dim IS
       // the offer that the word can be cycled — on a field whose adapter
       // reports supportsCycling() === false that offer is false
-      // advertising, so cueMap-derived dims are suppressed. This is the
+      // advertising, so cue-derived dims are suppressed. This is the
       // same path-2 class the doc records for BlankFill: the source-build
-      // prune never covered the cueMap/tips path, which the windows
+      // prune never covered the word-cue path, which the windows
       // per-field profile made visible (phase-2 wire e2e journey D).
       // Consulted per render pass — supportsCycling is DYNAMIC on hosts
       // with per-field capability (windows). DynDef-derived dims
       // (substitution spans) are unaffected.
       const cyclingOff = this.adapter.supportsCycling?.() === false;
-      const navigable = this.configLoader.navigableWords;
       const seenStaticAltSpans = new Set<number>();
       for (const w of words) {
         if (w.index === activeIndex) continue;
@@ -211,21 +210,11 @@ export class DimRender {
           }
           continue;
         }
-        // DynDefs entries (LLM-resolved alts) also count as
-        // navigable, so they should dim too.
-        if (
-          (!cyclingOff && navigable.has(lc)) ||
-          defAtIdx
-        ) {
-          // Blank-keyword arm: a word that is ONLY a blank keyword (`volume`,
-          // `weather`, \u2026) NEVER dims \u2014 dim means "cycle me" or "select me \u2192
-          // statusline", and a bare keyword is neither (removed 2026-07; see
-          // shouldGateBlankKeywordDim). Words that are ALSO word-cue entries
-          // (CUES.md ## Tips, folder/spelling cues) keep the unconditional dim \u2014
-          // those genuinely offer cycleable prose alternatives.
-          if (this.shouldGateBlankKeywordDim(lc)) continue;
-          dimRanges.push({ start: w.start, end: w.end });
-        }
+        // Only a DEF dims (an LLM word-cue, a spelling fix, a sentence cue).
+        // The static cue-map gray on a typed pack word left with spec 0.12,
+        // and a bare blank keyword never dimmed (removed 2026-07): dim means
+        // "cycle me" or "select me → statusline", and neither is that.
+        if (defAtIdx) dimRanges.push({ start: w.start, end: w.end });
       }
 
       // Dedicated sentence-cue pass. The word loop above dims sentence-cues
@@ -406,18 +395,13 @@ export class DimRender {
           // A pure advisory has nothing to cycle, so `_` is free there and means
           // DISMISS: once to mute, twice to forget. Same one-time-hint model as
           // the other two gestures — it teaches, then retires.
-          const cycleable = def.alternatives.length > 1;
+          // The hint names what the next press does (a verb; `revert` once the
+          // next press restores the original; the command itself for a command
+          // tip). Only the hints that TEACH a key (adjust / cycle / dismiss)
+          // honour per-note retirement; a verb that states an outcome is news
+          // every time. See dyn-defs.ts § inlineNoteHint.
           const suppressed = isHintSuppressed(noteHintKey(def));
-          // The offer hint ignores suppression: it is not teaching a gesture the
-          // user may already know, it is stating what the next press does to a
-          // cue that is already quiet. Without it the window is invisible.
-          const hint = forgetOffer
-            ? '(muted · underscore again to forget)'
-            : actuator
-              ? (suppressed ? undefined : '(ctrl+alt+up/down to adjust)')
-              : cycleable
-                ? (suppressed ? undefined : '(underscore to cycle)')
-                : ((dismissable && !suppressed) ? '(underscore to dismiss)' : undefined);
+          const hint = inlineNoteHint(def, { actuator, dismissable: !!dismissable, forgetOffer: !!forgetOffer, suppressed });
           inlineNote = { spanStart: s, spanEnd: e, text: noteText, hint };
           // Auto-select: the note-bearing span the caret is in promotes from dim
           // to the active highlight — the "you're on this, `_` engages it" state,
@@ -562,30 +546,5 @@ export class DimRender {
     return { highlight, dimRanges, ...(inlineNote ? { inlineNote } : {}) };
   }
 
-  /**
-   * Returns true when the dim for this word should be SUPPRESSED because
-   * it's a pure blank keyword (an action trigger that needs `_` to fire)
-   * and no `_` is in proximity. Words that are ALSO word-cue entries
-   * (live in `configLoader.cueMap`) bypass the gate and dim
-   * unconditionally — those offer real prose alternatives.
-   *
-   * See `docs/architecture/spans-and-cycling.md` § "Dim contract" for
-   * the rationale.
-   */
-  private shouldGateBlankKeywordDim(lc: string): boolean {
-    if (!this.configLoader) return false;
-    // Word-cue entries (CUES.md ## Tips, folder cues, spelling) keep the
-    // unconditional dim — their dim IS the offer that the user can cycle them.
-    if (this.configLoader.cueMap.has(lc)) return false;
-    const entry = this.configLoader.blanksByWord.get(lc);
-    if (!entry) return false;
-    // A word that is ONLY a blank keyword NEVER dims. Dim carries exactly two
-    // meanings: "cycle this (Ctrl+Alt)" and "select this → info in the
-    // statusline". A bare blank keyword (`volume`, `weather`, `translate`, …) is
-    // neither — it can't be cycled and shows no statusline tip until `_` fires
-    // the blank. Dimming it (previously when a `_` was within ~12 words) was a
-    // THIRD "you could trigger a blank here" meaning that overloaded dim; removed
-    // 2026-07. The `_` still triggers the blank regardless of the dim.
-    return true;
-  }
+
 }

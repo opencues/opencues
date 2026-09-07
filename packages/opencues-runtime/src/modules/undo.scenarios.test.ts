@@ -523,6 +523,37 @@ describe('undo — epochs, Tier-4, races, empty journal', () => {
     expect(s.journal.undoDepth).toBe(1);
   });
 
+  it('a model-classified ACTION over the WHOLE draft that finds nothing keeps the draft: only the `_` becomes the note', async () => {
+    // "undo the change please make it formal _" — the classifier's summon
+    // span is the whole buffer (start 0). Nothing to revert → the note must
+    // not replace the prose (the buffer-wiping landmine, 2026-09-07).
+    const TEXT = 'zorb the change please make it formal _';
+    const s = setup(TEXT);
+    s.script([undoResult('undo', 1, 0, TEXT.length)]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    expect(s.adapter.getText()).toBe('zorb the change please make it formal [OpenCues: nothing to undo]');
+    expect(s.spanFillState.current?.clearOnEdit).toBe(true);
+  });
+
+  it('…and with a stale anchor (not-found) the same: the draft survives, the note lands on the `_`', async () => {
+    const TEXT = 'Pris and please make it formal _';
+    const s = setup(TEXT);
+    // a same-epoch fill whose anchor ('Paris') is no longer in the buffer
+    s.journal.record({ label: 'fill', entries: [{ kind: 'buffer-splice', beforeSlice: 'q _', afterSlice: 'Paris', bufferEpoch: s.journal.currentEpoch }] });
+    s.script([undoResult('undo', 1, 0, TEXT.length)]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    expect(s.adapter.getText()).toBe('Pris and please make it formal [OpenCues: could not undo (not-found)]');
+    expect(s.journal.undoDepth).toBe(0);
+  });
+
+  it('a whole-buffer span with a deterministic tail still drops the command word with the note', async () => {
+    const TEXT = 'hello there undo _';
+    const s = setup(TEXT);
+    s.script([undoResult('undo', 1, 0, TEXT.length)]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    expect(s.adapter.getText()).toBe('hello there [OpenCues: nothing to undo]');
+  });
+
   it('empty journal → inline nothing-to-undo note with clearOnEdit span', async () => {
     const s = setup('hello. undo _');
     s.script([undoResult('undo', 1, 'hello. '.length, 'hello. undo _'.length)]);

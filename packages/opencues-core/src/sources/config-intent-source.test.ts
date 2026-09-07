@@ -448,12 +448,12 @@ describe('ConfigIntentSource', () => {
     const input = 'ฉันเขียนโน้ต turn on tips _';
     assert.strictEqual(summonPhraseStart(input), 0, 'regex cannot segment Thai — summon needed');
     const { adapter, count } = ciTwoCall(
-      'INTENT: SETTING\nSETTING: tips-mode\nVALUE: on\nCONFIDENCE: 0.95',
+      'INTENT: SETTING\nSETTING: tips-mode\nVALUE: semantic\nCONFIDENCE: 0.95',
       'SUMMON: turn on tips _',
     );
     const src = new ConfigIntentSource({ ...baseConfig, httpAdapter: adapter, applyScalar: apply.fn });
     const r = (await src.getCues(ctxFromText(input))).results[0]!;
-    assert.deepStrictEqual(apply.calls, [['tips-mode', 'on']]);
+    assert.deepStrictEqual(apply.calls, [['tips-mode', 'semantic']]);   // `on` left the registry in Sep 2026
     assert.strictEqual(count(), 2, 'classifier + concurrent summon both fired');
     assert.strictEqual(r.spanStart, input.indexOf('turn on tips _'));
     assert.strictEqual(input.slice(0, r.spanStart), 'ฉันเขียนโน้ต ');

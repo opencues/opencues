@@ -46,9 +46,9 @@ import { SpanFillState } from '../state/span-fill';
 import { SelectorSatelliteState, type SelectorSatelliteEntry } from '../state/selector-satellite';
 import { AgentTaskState } from '../state/agent-task';
 import { DismissedBlanks } from '../state/dismissed-blanks';
-import { MockAdapter, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
+import { MockAdapter, seedWordDefs, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
 
-const TIPS = wrapTipsAsCuesMd({
+const TIPS_DATA = {
   domain: 'test',
   version: 1,
   concepts: [
@@ -62,7 +62,8 @@ const TIPS = wrapTipsAsCuesMd({
       },
     },
   ],
-});
+};
+const TIPS = wrapTipsAsCuesMd(TIPS_DATA);
 
 interface Harness {
   adapter: MockAdapter;
@@ -86,8 +87,9 @@ async function setup(initialText: string): Promise<Harness> {
   const selectorSatelliteState = new SelectorSatelliteState();
   const agentTaskState = new AgentTaskState();
   const dismissedBlanks = new DismissedBlanks();
-  const loader = new ConfigLoader(adapter);
+  const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
   await loader.load();
+  seedWordDefs(dynDefs, initialText, TIPS_DATA);   // the word-cue defs the resolver would have registered
   const cycling = new Cycling(
     adapter, hlState, dynDefs, loader,
     spanFillState, dismissedBlanks, selectorSatelliteState,
@@ -250,14 +252,13 @@ describe('resetSharedBufferState — survival set (deliberate non-wipes)', () =>
     const { hlState, dynDefs, spanFillState, selectorSatelliteState, loader } =
       await setup('the attorney filed');
     expect(loader.loaded).toBe(true);
-    const cueMapSizeBefore = loader.cueMap.size;
+    const configBefore = loader.config;
     const opencuesStateBefore = loader.opencuesState;
-    expect(cueMapSizeBefore).toBeGreaterThan(0);
 
     resetSharedBufferState({ dynDefs, hlState, spanFillState, selectorSatelliteState });
 
     expect(loader.loaded).toBe(true);
-    expect(loader.cueMap.size).toBe(cueMapSizeBefore);
+    expect(loader.config).toBe(configBefore);   // the same loaded config object — untouched by the reset
     expect(loader.opencuesState).toBe(opencuesStateBefore);
   });
 });
@@ -294,6 +295,7 @@ describe('reset-buffer-state scenarios — multi-step journeys', () => {
     // Fresh activate on the new buffer — every cycle must operate on
     // the post-mutation text, not leftover anchors from "the legal eagle filed".
     expect(dynDefs.size).toBe(0);
+    seedWordDefs(dynDefs, 'big fast word', TIPS_DATA);   // the resolver re-registers defs on the new buffer
     hlState.activate(1, 'big fast word');
     adapter.fireKey('up', { ctrl: true, alt: true });
     expect(adapter.setTextCalls.at(-1)).toBe('big quick word');
@@ -335,6 +337,7 @@ describe('reset-buffer-state scenarios — multi-step journeys', () => {
     adapter.pushText('a fast car');
     resetSharedBufferState({ dynDefs, hlState, spanFillState, selectorSatelliteState });
 
+    seedWordDefs(dynDefs, 'a fast car', TIPS_DATA);   // the resolver re-registers defs on the new buffer
     hlState.activate(1, 'a fast car');
     adapter.fireKey('up', { ctrl: true, alt: true });
     expect(adapter.setTextCalls.at(-1)).toBe('a quick car');
@@ -415,6 +418,7 @@ describe('reset-buffer-state scenarios — multi-step journeys', () => {
 
     adapter.pushText('the big word');
     resetSharedBufferState({ dynDefs, hlState, spanFillState, selectorSatelliteState });
+    seedWordDefs(dynDefs, 'the big word', TIPS_DATA);   // the resolver re-registers defs on the new buffer
     hlState.activate(1, 'the big word');
     adapter.fireKey('up', { ctrl: true, alt: true });
     const lastCall = adapter.setTextCalls.at(-1);

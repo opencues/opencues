@@ -157,7 +157,11 @@ module.exports = function seedConfigs(argv, ctx) {
       .replace(/^(\s*)user-context-mode(\s*:)/gm, '$1identity-context-mode$2')
       // Calendar-context rename (July 2026): the gate scalar + its poll cadence.
       .replace(/^(\s*)life-context-mode(\s*:)/gm, '$1calendar-context-mode$2')          // LEGACY-NAME-ALLOW: rename migration source
-      .replace(/^(\s*)life-context-poll-minutes(\s*:)/gm, '$1calendar-poll-minutes$2'); // LEGACY-NAME-ALLOW: rename migration source
+      .replace(/^(\s*)life-context-poll-minutes(\s*:)/gm, '$1calendar-poll-minutes$2') // LEGACY-NAME-ALLOW: rename migration source
+      // tips-mode (Sep 2026): `on` meant the static layer alone, `definitions`
+      // its short-lived opt-in; both left with spec 0.12 — the runtime reads
+      // either as `semantic` (the default), so say so in the file.
+      .replace(/^(\s*tips-mode\s*:\s*)(?:on|definitions|static)(\s*(?:#.*)?)$/gm, '$1semantic$2');
     // Drop duplicate identity-context-mode lines, keeping the LAST
     // occurrence — matches the runtime's last-write-wins parse and
     // preserves whatever the user most recently set (an explicit

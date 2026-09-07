@@ -527,11 +527,11 @@ export const FEATURES: readonly FeatureSpec[] = [
     scalar: 'tips-mode',
     group: 'Voice & navigation',
     camelCase: 'tipsMode',
-    description: 'Static tip groups from defaults/cues/*/CUE.md',
-    menuTip: 'Toggles tip display',
+    description: 'Tips from defaults/cues/tips-*/CUE.md — a fast model matches the situation a tip is for and `_` applies its command',
+    menuTip: 'semantic = a fast model matches the SITUATION a tip is for ("start over" → the fresh-start tip) and `_` applies the command; off = no tips',
     values: [
-      { id: 'on',  description: 'All tips shown' },
-      { id: 'off', description: 'Tips hidden' },
+      { id: 'semantic', description: 'Default — the tips packs matched as a watchlist by a fast model (one cues-bucket call per settled draft)' },
+      { id: 'off',      description: 'Tips hidden' },
     ],
   },
   {
@@ -842,6 +842,17 @@ export const MENU_TUNABLES: readonly MenuTunableSpec[] = [
       { id: '15000',  description: 'Aggressive — 15s; cache always fresh, ~40 HTTP calls/min to upstream sources' },
       { id: '60000',  description: 'Conservative — 60s; cache may refresh once on the first call after a long pause' },
       { id: '120000', description: 'Minimal — 120s; only suitable when context tokens change rarely' },
+    ],
+  },
+  {
+    scalar: 'tips-shard-size',
+    group: 'Voice & navigation',
+    menuTip: 'Situations per semantic-tips call. The catalogue is cut on section boundaries and each shard is its own parallel call: a small model abstains as one list grows (qwen: 34 lines 19/20, 55 lines 16/20). off = one call with everything.',
+    values: [
+      { id: '50',  description: 'Default — one call for any shipped pack; shards start once a project pack stacks on it' },
+      { id: '35',  description: 'Smaller — for a weak model or several packs; more calls, each easier' },
+      { id: '20',  description: 'Smallest — many parallel calls; costs latency on a rate-limited key' },
+      { id: 'off', description: 'No sharding — one call with the whole catalogue, however large' },
     ],
   },
   {

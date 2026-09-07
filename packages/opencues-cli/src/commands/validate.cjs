@@ -107,7 +107,7 @@ function walkConfigDir(dir, label, tools, seen, lint, wordCueSources) {
     inferHostCompat, unknownHostNames, validateEndpoint,
   } = tools;
 
-  // Static-alts cues (LocalCueSource) classify per-word against their
+  // Catalogue cues (the ```json block) classify per-word against their
   // JSON words map; they don't need match/keywords. Detect by JSON body.
   const STATIC_ALTS_BODY_RE = /```json\b/;
   const noteWordCue = (name, src, file, content) => {
