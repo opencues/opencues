@@ -77,6 +77,7 @@
 
 import * as fs from 'node:fs';
 import type { HostAdapter, KeyEvent, AmbientContext } from './adapter';
+import type { WordDef } from './state/dyn-defs';
 
 // ─── Public API types ────────────────────────────────────────────────────
 
@@ -98,6 +99,7 @@ export type BridgeEventBody =
   | { type: 'command.unknown'; line: string }
   | { type: 'text.injected'; text: string; source: 'user' | 'runtime'; cursor: number }
   | { type: 'cursor.injected'; cursor: number }
+  | { type: 'def.seeded'; wordIndex: number; word: string; alternatives: readonly string[] }
   | { type: 'ambient.injected'; ambient: AmbientContext | null }
   | { type: 'cleared' }
   | { type: 'key.dispatched'; key: string; modifiers: KeyEvent['modifiers']; consumed: boolean }
@@ -628,6 +630,46 @@ class CommandRunner {
       }
       case 'dump': {
         this.writeDump();
+        return;
+      }
+      case 'def': {
+        // `def:<wordIndex>:<json WordDef>` — register a word def at a
+        // whitespace-word index, straight into the band's DynDefs (every
+        // band hands the bridge its state). What the resolver does for a
+        // word-cue hit, exposed so an off-process driver can put a
+        // DETERMINISTIC cycleable def on a word without any model — the
+        // only other sources of word defs are LLM sources, which no
+        // scenario should depend on for a runtime contract. The JSON needs
+        // at least `alternatives`; originalWord / currentIndex / span
+        // default from the live buffer (span = the word's char range,
+        // index 0 = the word itself).
+        const sep = arg.indexOf(':');
+        if (sep < 0) throw new Error('def needs <wordIndex>:<json>');
+        const wordIndex = Number.parseInt(arg.slice(0, sep), 10);
+        const raw = JSON.parse(arg.slice(sep + 1)) as Partial<WordDef> & { alternatives: string[] };
+        if (!Number.isInteger(wordIndex) || wordIndex < 0) throw new Error(`def: bad wordIndex ${arg.slice(0, sep)}`);
+        if (!Array.isArray(raw.alternatives) || raw.alternatives.length === 0) throw new Error('def: alternatives required');
+        const text = adapter.getText().replace(/[\u200B\u200C]/g, '');
+        const words: Array<{ word: string; start: number; end: number }> = [];
+        const re = /\S+/g; let m: RegExpExecArray | null;
+        while ((m = re.exec(text)) !== null) words.push({ word: m[0], start: m.index, end: m.index + m[0].length });
+        const w = words[wordIndex];
+        if (!w) throw new Error(`def: no word at index ${wordIndex} (buffer has ${words.length})`);
+        const def: WordDef = {
+          originalWord: raw.originalWord ?? w.word,
+          alternatives: raw.alternatives[0] === w.word ? raw.alternatives : [w.word, ...raw.alternatives.filter((a) => a !== w.word)],
+          currentIndex: raw.currentIndex ?? 0,
+          spanStart: raw.spanStart ?? w.start,
+          spanEnd: raw.spanEnd ?? w.end,
+          ...(raw.cueTip ? { cueTip: raw.cueTip } : {}),
+          ...(raw.cueSource ? { cueSource: raw.cueSource } : {}),
+          ...(raw.blankName ? { blankName: raw.blankName } : {}),
+        };
+        const dd = this.bindings.state?.dynDefs as { set?(i: number, d: WordDef): boolean } | undefined;
+        if (!dd || typeof dd.set !== 'function') throw new Error('def: this host band handed the bridge no DynDefs');
+        if (!dd.set(wordIndex, def)) throw new Error('def: DynDefs.set rejected it (overlaps a managed span?)');
+        adapter.forceRender();
+        this.stream.emit({ type: 'def.seeded', wordIndex, word: w.word, alternatives: def.alternatives });
         return;
       }
       case 'wait': {
