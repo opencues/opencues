@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { entryCommand, isGroundedRewrite, SemanticTipsSource } from './semantic-tips-source';
+import { entryCommand, isGroundedCommandLine, isGroundedRewrite, SemanticTipsSource } from './semantic-tips-source';
 import { buildTipsCatalog, TIPS_CATALOG_BUDGET_CHARS, TIPS_CATALOG_HEADER } from '../tips-catalog';
 import { getProvider } from '../llm-provider';
 import type { CueContext, HttpAdapter, LocalCueData } from '../types';
@@ -143,6 +143,20 @@ describe('SemanticTipsSource.getCues — grounding', () => {
     expect(entryCommand({ trigger: 'zwsl', tip: 'keep the repo under /home/you, not /mnt/c' })).toBeUndefined();   // paths (a bare `/word` still reads as a command — pack lines avoid it; the bench's solution column catches one)
     expect(entryCommand({ trigger: 'zwsl', tip: 'keep it under /mnt/c; then /zdoctor' })).toBe('/zdoctor');
     expect(entryCommand({ trigger: 'zkey', tip: 'press Ctrl+Z', say: 'press Ctrl+Z twice' })).toBeUndefined();
+  });
+  it('a command line keeps REAL arguments, but the pack’s own text behind the command or a <placeholder> collapses to the bare command', async () => {
+    const e = { tip: 'ALT-TIP /zmcp list|enable|disable|reload manages ZMCP servers', say: 'Connecting a tool? /zmcp shows what is live' };
+    expect(isGroundedCommandLine('/zmcp', '/zmcp', e)).toBe(true);
+    expect(isGroundedCommandLine('/zmcp add my-db', '/zmcp', e)).toBe(true);
+    expect(isGroundedCommandLine('/zmcp shows', '/zmcp', e)).toBe(true);                                                 // a short argument, even one the say line uses
+    expect(isGroundedCommandLine('/zmcp list|enable|disable|reload manages ZMCP servers', '/zmcp', e)).toBe(false);   // the tip with the command in front
+    expect(isGroundedCommandLine('/zmcp shows what is live', '/zmcp', e)).toBe(false);                                 // the say line
+    expect(isGroundedCommandLine('/zmodel set <name>', '/zmodel', { tip: 'x' })).toBe(false);                            // a template
+    expect(isGroundedCommandLine('/zother add', '/zmcp', e)).toBe(false);
+    const pack = buildTipsCatalog([{ id: 'm', words: { '/zmcp': { tip: e.tip, when: 'wants to connect a tool', say: e.say, alts: [] } } }]);
+    const s = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter(
+      '[{"quote":"connect it to my db","tipId":"t1","apply":"/zmcp list|enable|disable|reload manages ZMCP servers"}]') });
+    expect((await s.getCues(ctx('connect it to my db', pack))).results[0].alternatives).toEqual(['connect it to my db', '/zmcp']);
   });
   it('a prose rewrite that is the tip’s own text, or drops the person’s words, is not a solution — the note stays advisory', async () => {
     expect(isGroundedRewrite('think really hard about this', 'think really hard about this ultrathink', { tip: 'Add ultrathink', say: 'A hard one? Put ultrathink in the prompt' })).toBe(true);

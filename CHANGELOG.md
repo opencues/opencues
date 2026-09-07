@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — a command tip's solution is the command plus real arguments, never the pack's line with the command in front (`@opencues/core` 0.60.1)
+- The grounding accepted any model `apply` that STARTED with the entry's command, so `/mcp list|enable|disable|reload manages MCP servers` (the tip text) and `/model set <name>` (a template) were "solutions" `_` would paste into the prompt (gemini-cli bench on qwen). `isGroundedCommandLine`: what follows the command must not be the entry's own tip / say text and must carry no `<placeholder>`; otherwise the solution collapses to the bare command. `/compact focus on the plan` and `/chat save` still pass.
+
+
 ### Added — the event bridge can seed a word def (`@opencues/runtime` 0.41.1); `@opencues/dsh` 0.2.21 carries the semantic tips
 - Bridge command `def:<wordIndex>:<json>` registers a word def straight into the band's DynDefs (every band already hands the bridge its state) — what the resolver does for a word-cue hit, exposed so an off-process driver can put a DETERMINISTIC cycleable def on a word without a model. Since 0.7.13 the only sources of word defs are LLM sources, and a runtime-contract check must not depend on a model's output. Emits `def.seeded`.
 - `@opencues/dsh` 0.2.20 → 0.2.21: republished with runtime 0.41 / core 0.60 inlined, so DeepSeek Harness users get the semantic tips and the static layer's removal.
