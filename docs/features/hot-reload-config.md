@@ -19,10 +19,10 @@ Config file changes take effect within ~2 seconds, without restarting the integr
 2. **On every analysis pass** (when the user types), the auto-submit code checks: `Date.now() - _configLoadedAt > 2000` and `!_dynPending` and `!_configReloading`. If all conditions are met, `_reloadCuesConfig()` fires
 3. **`_reloadCuesConfig()`** sets `_configReloading = true`, then parses all config files into local variables:
    - `OPENCUES.md` (frontmatter: runtime system settings + selector/satellite tips for cyclable scalars — **user-level only**, `~/.cues/OPENCUES.md`)
-   - `CUES.md` (frontmatter: project metadata; body: `## Tips` / `## Ignore` / `## Prompt` cue sources — user OR project level)
-   - `cues/{name}/CUE.md` (folder-based cue sources via `discoverFolderConfigs` — static cues with body JSON, or LLM cues with prompt body)
+   - `CUES.md` (frontmatter: project metadata; body: legacy `## Tips` / `## Ignore` / `## Prompt` cue sources — user OR project level)
+   - `cues/{name}/CUE.md` (folder-based cue sources via `discoverFolderConfigs` — tips packs with a body JSON situation catalogue, or LLM cues with prompt body)
    - `blanks/{name}/BLANK.md` (folder-based cue-blanks)
-4. **Atomic apply** — all parsed results are assigned to globals in a single block (`_cueBlankOverrides`, `_localCueMap`, `_cuesIgnoreWords`, etc.). If parsing throws, the previous config is preserved (`_applied` stays false and the resolver rebuild is skipped)
+4. **Atomic apply** — all parsed results are assigned to globals in a single block (`_cueBlankOverrides`, `_cuesIgnoreWords`, etc.). If parsing throws, the previous config is preserved (`_applied` stays false and the resolver rebuild is skipped)
 5. **Resolver rebuild** — `_cueResolver` is constructed from the new sources, `_resolverGeneration` is incremented, and `_dynLastAnalyzed` is cleared so all visible words re-analyze against the new config
 6. **`_configLoadedAt`** is set to `Date.now()`, restarting the 2-second TTL
 
@@ -35,7 +35,7 @@ Config file changes take effect within ~2 seconds, without restarting the integr
 - `cues/{name}/CUE.md` — folder-based cue sources (adding or removing a folder; static + LLM)
 - `blanks/{name}/BLANK.md` — folder-based cue-blanks (adding or removing a folder)
 
-The `_localCueMap` is rebuilt from scratch on every reload (not merged), so deleting a tip from a `cues/<name>/CUE.md` removes it immediately.
+The tips catalogue (`ConfigLoader.tipsCatalog`) is rebuilt from scratch on every reload (not merged), so deleting a situation from a `cues/<name>/CUE.md` removes it immediately.
 
 ---
 

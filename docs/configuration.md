@@ -58,7 +58,8 @@ Frontmatter keys at the top of `~/.cues/OPENCUES.md`. The same scalars are cycla
 | Setting | Values | Default | Description |
 |---|---|---|---|
 | `voice-mode` | `active` / `inactive` | `inactive` | TTS reads tips aloud on navigation. |
-| `tips-mode` | `on` / `off` | `on` | Show secondary-display tips (status line, side pane). |
+| `tips-mode` | `semantic` / `off` | `semantic` | Tips from the packs. `semantic`: a fast model matches the situation a tip is for and `_` applies it. `off`: no tips. `on` and `definitions` are legacy aliases read as `semantic` (`opencues seed-configs` rewrites them). |
+| `tips-shard-size` | `50` / `35` / `20` / `off` | `50` | Situations per semantic-tips call; a larger catalogue is cut into parallel shards of this size. |
 | `debug-mode` | `on` / `off` | `off` | Verbose logging in the host's debug surface. |
 | `cursor-navigate` | `active` / `inactive` | `inactive` | Highlight follows cursor to navigable words. |
 | `word-cues-mode` | `on` / `off` | `on` | LLM word-cue surface (spelling + any custom vocabularies) registered. |
@@ -116,7 +117,7 @@ Each surface has a master file at the root of any `.cues/` directory. Frontmatte
 name: my-project
 description: Short project description
 spec: opencues/0.1-alpha
-tips-mode: on             # whether static tip-group cues fire
+tips-mode: semantic       # semantic | off (see § Runtime settings)
 word-cues-mode: on        # whether LLM word-cue sources fire
 ignore: [TODO, FIXME]     # words never to cue
 disable: [spelling, example] # cue source ids to skip at this layer

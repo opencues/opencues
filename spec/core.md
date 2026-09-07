@@ -1,6 +1,6 @@
 # core — shared rules across cue-spec and blank-spec
 
-> **Status:** `0.11-alpha`. Expect changes.
+> **Status:** `0.12-alpha`. Expect changes.
 
 This document covers concerns shared by `cue-spec.md`, `blank-spec.md`, and `auditor-spec.md`: the project search-path, the master `CUES.md` / `BLANKS.md` / `AUDITORS.md` files at the root, host compatibility, hot-reload, routing, and the promotion path from runtime-specific knobs to standard fields.
 
@@ -69,7 +69,7 @@ Each surface has a master file at the project root. The master files configure t
 name: <project-name>
 description: <short description>
 spec: opencues/0.1-alpha
-tips-mode: on             # whether static tip-group cues fire
+tips-mode: semantic       # tip cues: semantic (default) | off; `on` = legacy alias of the default (the static layer left in 0.12)
 word-cues-mode: on        # whether LLM word-cue sources fire
 ignore: [TODO, FIXME]     # words never to cue, regardless of any source
 ---
@@ -113,7 +113,7 @@ Same defensive treatment: missing or 0-byte = treated as absent. See [`auditor-s
 | Field | Lives in | Why |
 |---|---|---|
 | `name`, `description`, `spec` | every master | Identifies the project / library + spec version. |
-| `tips-mode`, `word-cues-mode` | `CUES.md` | Cue-surface enable flags. (Spelling no longer has its own flag — it's a regular word-cue at `cues/spelling/CUE.md`.) |
+| `tips-mode`, `word-cues-mode` | `CUES.md` | Cue-surface enable flags: `tips-mode` = `semantic` (the situation catalogue, matched by a model) or `off`; `word-cues-mode` = the LLM word-cue sources. (Spelling no longer has its own flag — it's a regular word-cue at `cues/spelling/CUE.md`.) |
 | `ignore: [<word>, ...]` | `CUES.md`, `BLANKS.md` | Per-surface ignore lists. Words/blanks the runtime never surfaces, regardless of source matches. |
 | `disable: [<source-id>, ...]` | every master | Subtract a named source from this layer's composition without modifying the user-level library. Symmetric across cues, blanks, auditors. |
 | `identity-context-mode`, `blank-context-mode` | `OPENCUES.md` (or runtime equivalent) | Spec-level mode gates for the sentinel-catalog machinery. See § Spec-mandated scalars below + [`identity-context-spec.md`](./identity-context-spec.md) and [`blank-spec.md`](./blank-spec.md) § Sentinel aspects. |

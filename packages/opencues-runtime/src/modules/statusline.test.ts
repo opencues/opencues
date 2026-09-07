@@ -117,12 +117,15 @@ describe('Statusline cue-tip plumbing', () => {
     ],
   });
 
-  async function setupWithTips(text: string) {
-    const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
+  // `secondary` by default: under `inline` (the shipped default) a static tip
+  // paints INLINE (the caret-in-word note) and the status-line copy is
+  // suppressed on the same gate as a passive cue's — pinned below.
+  async function setupWithTips(text: string, mode: 'inline' | 'secondary' = 'secondary') {
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS, '/proj/OPENCUES.md': `---\ntips-mode: semantic\ninline-cues-mode: ${mode}\n---\n` } });
     adapter.pushText(text);
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/OPENCUES.md' });
     await loader.load();
     const statusline = new Statusline(adapter, hlState, dynDefs, {
       exportPath: '/tmp/test-statusline.json',
@@ -131,14 +134,15 @@ describe('Statusline cue-tip plumbing', () => {
     return { adapter, hlState, dynDefs, loader, statusline };
   }
 
-  it('populates cueTip from cue map for non-cycled active word', async () => {
-    const { hlState, statusline } = await setupWithTips('opus');
+  it('populates cueTip from the word-cue def for a non-cycled active word', async () => {
+    const { hlState, dynDefs, statusline } = await setupWithTips('opus');
     hlState.activate(0, 'opus');
+    dynDefs.set(0, { originalWord: 'opus', alternatives: ['opus', 'sonnet', 'haiku'], currentIndex: 0, spanStart: 0, spanEnd: 4, cueTip: 'Use the most capable model' });
     const p = statusline.buildPayload({ text: 'opus', cursor: 0, externalHighlights: [] });
     expect(p.cueTip).toBe('Use the most capable model');
   });
 
-  it('uses alt-specific tip when available, else primary', async () => {
+  it('the def tip stays across cycling (keyed on the def, not the displayed alt)', async () => {
     const { hlState, dynDefs, statusline } = await setupWithTips('undo');
     hlState.activate(0, 'undo');
     dynDefs.set(0, {
@@ -147,12 +151,19 @@ describe('Statusline cue-tip plumbing', () => {
       currentIndex: 1,
       spanStart: 0,
       spanEnd: 7,
+      cueTip: 'Undo a previous Claude action',
     });
     const p = statusline.buildPayload({ text: '/rewind', cursor: 0, externalHighlights: [] });
-    // The synonym group's tip is shared across all variants, so cueTip is the
-    // group tip even for the alt. altCueTips contains per-variant entries.
     expect(p.cueTip).toBe('Undo a previous Claude action');
-    expect(p.altCueTips).toBeDefined();
+    expect(p.altCueTips).toBeNull();   // per-alt tips left with the static word map (spec 0.12)
+  });
+
+  it('under inline-cues-mode: inline the static tip is suppressed here — it paints inline as the caret-in-word note', async () => {
+    const { hlState, statusline } = await setupWithTips('opus', 'inline');
+    hlState.activate(0, 'opus');
+    const p = statusline.buildPayload({ text: 'opus', cursor: 0, externalHighlights: [] });
+    expect(p.cueTip).toBeNull();
+    expect(p.altCueTips).toBeNull();
   });
 
   it('surfaces a def cueTip (dynamic advisory) passively in the status line under inline-cues-mode: secondary', async () => {
@@ -190,7 +201,7 @@ describe('Statusline cue-tip plumbing', () => {
     // is painted inline by DimRender and the redundant status-line copy is
     // suppressed. This is the intended default behaviour change: the tip moves
     // from the secondary display to the inline reveal.
-    const { hlState, dynDefs, statusline } = await setupWithTips('xyz');
+    const { hlState, dynDefs, statusline } = await setupWithTips('xyz', 'inline');
     hlState.activate(0, 'xyz');
     dynDefs.set(0, {
       originalWord: 'xyz',

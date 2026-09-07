@@ -326,7 +326,7 @@ for (const w of words) {
   // DynDefs (static-alt) — skip inner positions.
   const span = this.dynDefs.findSpanContaining(w.index);
   if (span && span.originIdx !== w.index) continue;
-  // ... usual navigable filter (cueMap / DynDef)
+  // ... usual navigable filter (DynDef)
 }
 ```
 

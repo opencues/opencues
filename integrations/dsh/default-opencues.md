@@ -4,7 +4,7 @@
 # runtime when the user cycles a setting. Hand-edit allowed.
 voice-mode: active
 debug-mode: off
-tips-mode: on
+tips-mode: semantic
 cursor-navigate: inactive
 
 # nav-keymap — modifier combo for word navigation (Left/Right) and
@@ -201,6 +201,12 @@ agent-debounce-ms: 1000
 # priority). 0 = uncapped. Set a positive number to bound LLM cost
 # when many auditors are active. See spec/auditor-spec.md § Composition.
 max-concurrent-auditors: 0
+
+# Situations per semantic-tips call. The tips catalogue is cut on section
+# boundaries into shards of this many lines and each shard is its own
+# parallel call, so a small model never reads a list longer than it
+# handles however many packs stack up. off = one call with everything.
+tips-shard-size: 50
 
 # Visual feedback while a `_` blank waits for its source (LLM call,
 # script invocation, HTTP fetch). The slot's character animates through

@@ -25,10 +25,10 @@ import { DynDefs } from '../state/dyn-defs';
 import { SpanFillState } from '../state/span-fill';
 import { SelectorSatelliteState } from '../state/selector-satellite';
 import { UndoJournal } from '../state/undo-journal';
-import { MockAdapter, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
+import { MockAdapter, seedWordDefs, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
 import { createBlankInvoke, createDefaultBlanksRegistry, type Blank } from '../blanks';
 
-const RICH_TIPS = wrapTipsAsCuesMd({
+const RICH_TIPS_DATA = {
   domain: 'test',
   version: 1,
   concepts: [{
@@ -39,7 +39,8 @@ const RICH_TIPS = wrapTipsAsCuesMd({
       word: { tip: '', alts: ['term'] },
     },
   }],
-});
+};
+const RICH_TIPS = wrapTipsAsCuesMd(RICH_TIPS_DATA);
 
 const EMPTY_TIPS = wrapTipsAsCuesMd({ concepts: [] });
 
@@ -102,8 +103,9 @@ describe('undo taps — alt-cycle records exact-range slices and coalesces', () 
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
     const spanFillState = new SpanFillState();
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
     await loader.load();
+    seedWordDefs(dynDefs, text, RICH_TIPS_DATA);
     const journal = new UndoJournal();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, spanFillState,
       undefined, undefined, undefined, undefined, journal);
@@ -176,7 +178,7 @@ describe('undo taps — volume fill + step burst (real registry, real os-set cap
     });
     const invoke = createBlankInvoke(new Map([['volume', volumeBlank]]));
     (adapter as unknown as { blankInvoke: typeof invoke }).blankInvoke = invoke;
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
     await loader.load();
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
@@ -361,7 +363,7 @@ describe('undo taps — note add round-trips through the real registry', () => {
     });
     const invoke = createBlankInvoke(createDefaultBlanksRegistry({ notesMdIO }));
     (adapter as unknown as { blankInvoke: typeof invoke }).blankInvoke = invoke;
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
     await loader.load();
     const spanFillState = new SpanFillState();
     const dynDefs = new DynDefs();
@@ -415,7 +417,7 @@ describe('undo taps — sentinel set round-trips through the real registry', () 
     });
     const invoke = createBlankInvoke(createDefaultBlanksRegistry({ identityMdIO }));
     (adapter as unknown as { blankInvoke: typeof invoke }).blankInvoke = invoke;
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
     await loader.load();
     const spanFillState = new SpanFillState();
     const dynDefs = new DynDefs();

@@ -43,7 +43,7 @@ describe('shipped defaults/OPENCUES.md template', () => {
     expect(state.navKeymap).toBe('auto');
     // Neighbouring scalars still land — the comment block broke nothing.
     expect(state.cursorNavigate).toBe('inactive');
-    expect(state.tipsMode).toBe('on');
+    expect(state.tipsMode).toBe('semantic');
     // The raw settings map carries the line verbatim.
     expect(state.settings.get('nav-keymap')).toBe('auto');
   });

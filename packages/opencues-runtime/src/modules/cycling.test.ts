@@ -8,17 +8,15 @@ import { DynDefs } from '../state/dyn-defs';
 import { SpanFillState } from '../state/span-fill';
 import { DismissedBlanks } from '../state/dismissed-blanks';
 import { SelectorSatelliteState } from '../state/selector-satellite';
-import { MockAdapter } from '../../testing/mock-adapter';
+import { MockAdapter, seedWordDefs, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
 
-// Tips live inside CUES.md's `## Tips` JSON block — no separate file.
-// Wrap a tips-data object as a minimal CUES.md so ConfigLoader's
-// existing parser flow (parseCuesMd → cuesConfig.tips → cueMap) loads
-// it just like a real config.
-function wrapTipsAsCuesMd(tipsData: unknown): string {
-  return `# tips fixture\n\n## Tips\n\`\`\`json\n${JSON.stringify(tipsData)}\n\`\`\`\n`;
-}
+// The fixture is a tips-data object: `wrapTipsAsCuesMd` makes it a CUES.md
+// for the loader, and `seedWordDefs` registers the word-cue defs the
+// resolver would have registered for it — the static cue map that used to
+// make these words cycleable on their own left with spec 0.12, so the
+// cycling journeys below drive the same mechanics through explicit defs.
 
-const TIPS = wrapTipsAsCuesMd({
+const TIPS_DATA = {
   domain: 'test',
   version: 1,
   concepts: [
@@ -30,15 +28,17 @@ const TIPS = wrapTipsAsCuesMd({
       },
     },
   ],
-});
+};
+const TIPS = wrapTipsAsCuesMd(TIPS_DATA);
 
 async function setup(text: string) {
   const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
   adapter.pushText(text);
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
-  const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+  const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
   await loader.load();
+  seedWordDefs(dynDefs, text, TIPS_DATA);   // the word-cue defs the resolver would have registered
   const cycling = new Cycling(adapter, hlState, dynDefs, loader);
   cycling.subscribe();
   const nav = new Navigation(adapter, hlState, dynDefs, loader);
@@ -72,7 +72,7 @@ blankScript: ./vol.sh
     adapter.pushText('volume 32%');
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader);
     cycling.subscribe();
@@ -104,7 +104,7 @@ blankScript: ./vol.sh
     adapter.pushText('volume 92%');
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader);
     cycling.subscribe();
@@ -243,7 +243,7 @@ describe('Cycling — zero-alternative + invalid-input hardening', () => {
     adapter.pushText('solo word');
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader);
     cycling.subscribe();
@@ -312,7 +312,7 @@ describe('Cycling static-alt multi-word spans', () => {
   //   - DimRender highlights the whole group as a unit
   //   - Subsequent cycles go through cycleSpanFill (Path 0), keeping
   //     currentAltIndex + spanLength in sync
-  const MW_TIPS = wrapTipsAsCuesMd({
+  const MW_TIPS_DATA = {
     domain: 'test',
     version: 1,
     concepts: [
@@ -324,7 +324,8 @@ describe('Cycling static-alt multi-word spans', () => {
         },
       },
     ],
-  });
+  };
+  const MW_TIPS = wrapTipsAsCuesMd(MW_TIPS_DATA);
 
   async function setupMw(text: string) {
     const adapter = new MockAdapter({ files: { '/mock/CUES.md': MW_TIPS } });
@@ -332,8 +333,9 @@ describe('Cycling static-alt multi-word spans', () => {
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
     const spanFillState = new SpanFillState();
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
     await loader.load();
+    seedWordDefs(dynDefs, text, MW_TIPS_DATA);   // the word-cue defs the resolver would have registered
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, spanFillState);
     cycling.subscribe();
     const nav = new Navigation(adapter, hlState, dynDefs, spanFillState);
@@ -688,7 +690,7 @@ describe('Cycling consume-all', () => {
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
     const consumeAll = new SpanFillState();
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, consumeAll);
     cycling.subscribe();
@@ -760,7 +762,7 @@ describe('Cycling consume-all', () => {
     const dynDefs = new DynDefs();
     const span = new SpanFillState();
     const dismissed = new DismissedBlanks();
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, span, dismissed);
     cycling.subscribe();

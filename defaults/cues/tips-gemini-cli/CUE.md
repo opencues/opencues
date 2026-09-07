@@ -24,27 +24,18 @@ on-host: [gemini-cli]
     "words": {
       "/compress": {
         "tip": "Summarize chat history to free tokens when context fills up",
-        "alts": ["/clear", "/rewind", "context"]
+        "when": "says the model forgot things, the session has got long, or asks how to free up context",
+        "say": "Losing the thread? /compress summarises the session and frees tokens"
       },
       "/clear": {
         "tip": "Wipe terminal + visible history (Ctrl+L) — keeps GEMINI.md",
-        "alts": ["/compress", "Ctrl+L", "/rewind"]
+        "when": "wants to start over or begin an unrelated task",
+        "say": "Starting over? /clear wipes the visible history; GEMINI.md stays"
       },
       "/rewind": {
         "tip": "Navigate backward through conversation history (Esc x2)",
-        "alts": ["/restore", "/compress", "undo"]
-      },
-      "Ctrl+L": {
-        "tip": "Ctrl+L clears the terminal screen and redraws the UI",
-        "alts": ["/clear", "/compress"]
-      },
-      "Esc x2": {
-        "tip": "Double-tap Esc to rewind through conversation history",
-        "alts": ["/rewind", "/restore", "undo"]
-      },
-      "context": {
-        "tip": "Manage context: /compress (summarize), /clear (fresh), /rewind (back)",
-        "alts": ["/compress", "/clear", "/rewind"]
+        "when": "wants to go back to an earlier point in the conversation",
+        "say": "Want to go back? /rewind (Esc twice) steps back through the conversation"
       }
     }
   },
@@ -53,23 +44,13 @@ on-host: [gemini-cli]
     "words": {
       "/restore": {
         "tip": "Roll project files back to a checkpoint before a tool ran",
-        "alts": ["checkpoint", "undo", "revert"]
+        "when": "wants to undo or take back what the assistant just changed in their files",
+        "say": "Undo what it just did? /restore rolls the files back to the checkpoint before the tool ran"
       },
       "checkpoint": {
         "tip": "Enable checkpointing in settings.json to auto-snapshot before edits",
-        "alts": ["/restore", "revert", "rollback"]
-      },
-      "undo": {
-        "tip": "Use /restore to undo — rolls files back to checkpoint state",
-        "alts": ["/restore", "revert", "rollback"]
-      },
-      "revert": {
-        "tip": "Use /restore to revert files to a pre-tool checkpoint",
-        "alts": ["/restore", "undo", "rollback"]
-      },
-      "rollback": {
-        "tip": "Use /restore to rollback files to a saved checkpoint",
-        "alts": ["/restore", "undo", "revert"]
+        "when": "worries about losing work before letting it edit, or asks how to make changes reversible",
+        "say": "Want a safety net? Enable checkpointing in settings.json so every edit gets a snapshot"
       }
     }
   },
@@ -78,48 +59,18 @@ on-host: [gemini-cli]
     "words": {
       "/plan": {
         "tip": "Enter Plan Mode — read-only research before any file changes",
-        "alts": ["Shift+Tab", "--approval-mode", "plan"]
-      },
-      "plan": {
-        "tip": "Use /plan or Shift+Tab to enter Plan Mode for risky changes",
-        "alts": ["/plan", "Shift+Tab", "risky"]
-      },
-      "Shift+Tab": {
-        "tip": "Shift+Tab cycles approval modes (default → auto_edit → yolo → plan)",
-        "alts": ["/plan", "--approval-mode", "yolo"]
-      },
-      "risky": {
-        "tip": "Risky change? Enter Plan Mode (/plan) to research first",
-        "alts": ["/plan", "Shift+Tab", "careful"]
-      },
-      "careful": {
-        "tip": "Be careful — use Plan Mode (/plan) to explore before changing",
-        "alts": ["/plan", "Shift+Tab", "risky"]
+        "when": "wants it to plan or research before touching files, or calls a change risky",
+        "say": "Risky change? /plan researches first and edits nothing; Shift+Tab cycles the modes"
       }
     }
   },
   {
     "id": "approval-modes",
     "words": {
-      "Ctrl+Y": {
-        "tip": "Ctrl+Y toggles YOLO mode — auto-approves every tool call",
-        "alts": ["--yolo", "yolo", "--approval-mode"]
-      },
-      "--yolo": {
-        "tip": "--yolo auto-approves all tool calls (prefer --approval-mode=yolo)",
-        "alts": ["-y", "Ctrl+Y", "--approval-mode"]
-      },
-      "yolo": {
-        "tip": "YOLO mode skips every approval prompt — use with care",
-        "alts": ["--yolo", "Ctrl+Y", "--approval-mode"]
-      },
       "--approval-mode": {
         "tip": "--approval-mode = default | auto_edit | yolo | plan",
-        "alts": ["--yolo", "/plan", "Shift+Tab"]
-      },
-      "auto_edit": {
-        "tip": "auto_edit auto-approves edits but not shell tools",
-        "alts": ["--approval-mode", "yolo", "Shift+Tab"]
+        "when": "is tired of approving every tool call, or asks how to auto-approve",
+        "say": "Tired of approving? --approval-mode auto_edit approves edits only; yolo approves everything, with care"
       }
     }
   },
@@ -128,23 +79,8 @@ on-host: [gemini-cli]
     "words": {
       "--sandbox": {
         "tip": "--sandbox (-s) isolates tool execution in docker/podman/sandbox-exec",
-        "alts": ["-s", "GEMINI_SANDBOX", "yolo"]
-      },
-      "sandbox": {
-        "tip": "Use --sandbox (-s) to confine tool execution to a container",
-        "alts": ["--sandbox", "GEMINI_SANDBOX", "yolo"]
-      },
-      "GEMINI_SANDBOX": {
-        "tip": "Set GEMINI_SANDBOX=docker|podman|sandbox-exec to pick the backend",
-        "alts": ["--sandbox", "sandbox", "-s"]
-      },
-      "docker": {
-        "tip": "Run inside docker via --sandbox or GEMINI_SANDBOX=docker",
-        "alts": ["--sandbox", "podman", "sandbox"]
-      },
-      "podman": {
-        "tip": "Run inside podman via GEMINI_SANDBOX=podman",
-        "alts": ["--sandbox", "docker", "sandbox"]
+        "when": "worries about a tool running something harmful on their machine",
+        "say": "Worried what it might run? --sandbox confines tools to a container (docker, podman or sandbox-exec)"
       }
     }
   },
@@ -153,19 +89,8 @@ on-host: [gemini-cli]
     "words": {
       "GEMINI.md": {
         "tip": "Put repeated instructions in GEMINI.md — Gemini follows it strictly",
-        "alts": ["/memory", "/init", "remember"]
-      },
-      "/init": {
-        "tip": "Run /init to generate a tailored GEMINI.md for your project",
-        "alts": ["GEMINI.md", "/memory", "remember"]
-      },
-      "/memory": {
-        "tip": "/memory add|show|refresh|list manages GEMINI.md context files",
-        "alts": ["GEMINI.md", "/init", "remember"]
-      },
-      "remember": {
-        "tip": "Put repeated instructions in GEMINI.md — Gemini follows it strictly",
-        "alts": ["GEMINI.md", "/memory", "/init"]
+        "when": "repeats an instruction it keeps ignoring, or says it forgets a rule every session",
+        "say": "Keep repeating a rule? Put it in GEMINI.md; /init scaffolds one, /memory shows what is loaded"
       }
     }
   },
@@ -174,56 +99,28 @@ on-host: [gemini-cli]
     "words": {
       "/mcp": {
         "tip": "/mcp list|enable|disable|reload manages MCP servers",
-        "alts": ["mcp", "/extensions", "server"]
-      },
-      "mcp": {
-        "tip": "Configure MCP servers in ~/.gemini/settings.json for extra tools",
-        "alts": ["/mcp", "/extensions", "server"]
+        "when": "wants to connect a tool, service or data source",
+        "say": "Connecting a tool? Add an MCP server in ~/.gemini/settings.json; /mcp lists and toggles them"
       },
       "/extensions": {
         "tip": "/extensions install|enable|disable|update manages extensions",
-        "alts": ["-e", "--extensions", "/mcp"]
-      },
-      "extension": {
-        "tip": "Use /extensions to install or toggle Gemini CLI extensions",
-        "alts": ["/extensions", "--extensions", "/mcp"]
-      },
-      "--extensions": {
-        "tip": "--extensions (-e) restricts which extensions load this session",
-        "alts": ["-e", "/extensions"]
-      },
-      "server": {
-        "tip": "MCP servers provide external tool integrations — see /mcp",
-        "alts": ["/mcp", "mcp", "/extensions"]
+        "when": "asks how to add a feature or an extension to the CLI",
+        "say": "Adding a capability? /extensions install picks up Gemini CLI extensions"
       }
     }
   },
   {
     "id": "skills-agents",
     "words": {
-      "/skills": {
-        "tip": "/skills list|enable|disable manages Agent Skills for workflows",
-        "alts": ["skill", "/agents", "/commands"]
-      },
-      "skill": {
-        "tip": "Use /skills to manage reusable specialized workflows",
-        "alts": ["/skills", "/agents", "custom command"]
-      },
       "/agents": {
         "tip": "/agents list|enable|disable|reload manages local/remote subagents",
-        "alts": ["/skills", "subagent", "/commands"]
-      },
-      "subagent": {
-        "tip": "Use /agents to spawn or manage subagents for delegated work",
-        "alts": ["/agents", "/skills"]
+        "when": "wants part of the work delegated or run by a separate agent",
+        "say": "Delegating? /agents lists and enables subagents for the work"
       },
       "/commands": {
         "tip": "/commands reload picks up new TOML custom slash commands",
-        "alts": ["custom command", "/skills"]
-      },
-      "custom command": {
-        "tip": "Drop a .toml file in commands dir, run /commands reload",
-        "alts": ["/commands", "/skills"]
+        "when": "does the same prompt every day and wants it as a command",
+        "say": "Same prompt daily? A .toml in the commands dir becomes a slash command; /commands reload picks it up"
       }
     }
   },
@@ -232,23 +129,13 @@ on-host: [gemini-cli]
     "words": {
       "/chat": {
         "tip": "/chat save|list|resume|delete manages saved chat sessions",
-        "alts": ["/resume", "--resume", "session"]
-      },
-      "/resume": {
-        "tip": "/resume save|list|resume|delete browses and continues sessions",
-        "alts": ["--resume", "/chat", "session"]
+        "when": "wants to save this session, name it, or find it later",
+        "say": "Want this later? /chat save NAME, then --resume NAME brings it back"
       },
       "--resume": {
         "tip": "--resume (-r) continues a session — use 'latest' or index",
-        "alts": ["-r", "/resume", "/chat"]
-      },
-      "session": {
-        "tip": "Save with /chat save NAME, continue with --resume NAME",
-        "alts": ["/chat", "/resume", "--resume"]
-      },
-      "--list-sessions": {
-        "tip": "--list-sessions prints all saved sessions for this project",
-        "alts": ["/resume", "--resume", "session"]
+        "when": "closed the terminal or wants yesterday's session back",
+        "say": "Closed it? gemini --resume latest reopens the last session; --list-sessions shows the rest"
       }
     }
   },
@@ -257,56 +144,18 @@ on-host: [gemini-cli]
     "words": {
       "/model": {
         "tip": "/model set <name> switches model mid-session",
-        "alts": ["--model", "-m", "gemini"]
-      },
-      "--model": {
-        "tip": "--model (-m) picks the model at launch (e.g. gemini-3-pro)",
-        "alts": ["-m", "/model", "gemini"]
-      },
-      "gemini": {
-        "tip": "Switch models with /model set or --model gemini-3-pro",
-        "alts": ["/model", "--model", "-m"]
-      },
-      "pro": {
-        "tip": "Gemini Pro for complex reasoning — more cost, deeper thought",
-        "alts": ["/model", "--model", "flash"]
-      },
-      "flash": {
-        "tip": "Gemini Flash for fast, cheaper tasks — lower latency",
-        "alts": ["/model", "--model", "pro"]
+        "when": "asks which model to use, complains about cost or speed, or wants a stronger or cheaper model",
+        "say": "Cost or speed? /model set gemini-flash for quick work, pro for deep reasoning"
       }
     }
   },
   {
     "id": "headless",
     "words": {
-      "--prompt": {
-        "tip": "--prompt (-p) forces non-interactive mode for CI/scripting",
-        "alts": ["-p", "ci", "headless"]
-      },
       "-p": {
         "tip": "-p '<prompt>' runs once and exits — ideal for pipelines",
-        "alts": ["--prompt", "ci", "headless"]
-      },
-      "headless": {
-        "tip": "Use -p for headless runs, --output-format json for parsing",
-        "alts": ["--prompt", "-p", "--output-format"]
-      },
-      "ci": {
-        "tip": "CI/CD: gemini -p '...' --output-format json (-o json)",
-        "alts": ["--prompt", "-p", "--output-format"]
-      },
-      "pipeline": {
-        "tip": "Pipelines: gemini -p '<task>' -o json for parseable output",
-        "alts": ["--prompt", "ci", "--output-format"]
-      },
-      "--output-format": {
-        "tip": "--output-format text|json|stream-json (-o) for headless parsing",
-        "alts": ["-o", "--prompt", "ci"]
-      },
-      "--prompt-interactive": {
-        "tip": "--prompt-interactive (-i) seeds a prompt then stays interactive",
-        "alts": ["-i", "--prompt", "-p"]
+        "when": "wants to run it from a script, a CI job or a pipeline",
+        "say": "Scripting it? gemini -p '<task>' runs once; -o json gives parseable output"
       }
     }
   },
@@ -315,35 +164,18 @@ on-host: [gemini-cli]
     "words": {
       "!": {
         "tip": "! prefix runs a shell command (!git status); ! alone toggles shell mode",
-        "alts": ["shell", "bash", "terminal"]
-      },
-      "shell": {
-        "tip": "Type ! then a command, or ! alone to toggle shell mode",
-        "alts": ["!", "bash", "terminal"]
-      },
-      "bash": {
-        "tip": "Use ! prefix for bash commands (PowerShell on Windows)",
-        "alts": ["!", "shell", "terminal"]
+        "when": "wants to run a quick shell command without leaving the prompt",
+        "say": "A quick shell command? Start the line with ! and it runs right here"
       },
       "@": {
         "tip": "@path/to/file injects file or directory contents into the prompt",
-        "alts": ["file", "include", "context"]
-      },
-      "file": {
-        "tip": "Use @<path> to inject a file — git-aware ignores excluded paths",
-        "alts": ["@", "include"]
+        "when": "describes a file's contents instead of showing it, or asks it to look at a file",
+        "say": "Talking about a file? @path/to/file puts its contents in the prompt"
       },
       "--include-directories": {
         "tip": "--include-directories adds extra workspace dirs (monorepo)",
-        "alts": ["/directory", "monorepo"]
-      },
-      "/directory": {
-        "tip": "/directory add <path> adds a workspace dir mid-session",
-        "alts": ["--include-directories", "monorepo", "@"]
-      },
-      "monorepo": {
-        "tip": "Monorepo? Use --include-directories or /directory add",
-        "alts": ["--include-directories", "/directory", "@"]
+        "when": "needs another directory or repo in the session, or works in a monorepo",
+        "say": "Another directory? /directory add <path> now, or --include-directories at launch"
       }
     }
   },
@@ -352,39 +184,18 @@ on-host: [gemini-cli]
     "words": {
       "Ctrl+G": {
         "tip": "Ctrl+G opens the current prompt or plan in your $EDITOR",
-        "alts": ["editor", "/editor", "multiline"]
-      },
-      "/editor": {
-        "tip": "Use /editor to pick which external editor Ctrl+G opens",
-        "alts": ["Ctrl+G", "editor", "multiline"]
-      },
-      "editor": {
-        "tip": "Press Ctrl+G to edit the prompt in your external editor",
-        "alts": ["Ctrl+G", "/editor", "multiline"]
-      },
-      "multiline": {
-        "tip": "Ctrl+Enter or Alt+Enter inserts a newline; Ctrl+G opens $EDITOR",
-        "alts": ["Ctrl+G", "Ctrl+Enter", "/terminal-setup"]
+        "when": "is writing a long or multi-line prompt, or fighting the input box",
+        "say": "Long prompt? Ctrl+G opens it in your editor; /editor picks which one"
       },
       "/terminal-setup": {
         "tip": "Run /terminal-setup to configure Shift+Enter for newlines",
-        "alts": ["multiline", "Shift+Enter", "linebreak"]
-      },
-      "Shift+Enter": {
-        "tip": "Run /terminal-setup once so Shift+Enter inserts a newline",
-        "alts": ["/terminal-setup", "Ctrl+Enter", "multiline"]
-      },
-      "linebreak": {
-        "tip": "Ctrl+Enter / Alt+Enter for newline, or /terminal-setup once",
-        "alts": ["Shift+Enter", "Ctrl+Enter", "multiline"]
+        "when": "complains that Enter sends the message when they wanted a new line",
+        "say": "Enter sending too early? /terminal-setup once makes Shift+Enter a newline; Ctrl+Enter works now"
       },
       "/vim": {
         "tip": "/vim toggles vim mode (NORMAL/INSERT) for the input line",
-        "alts": ["vim", "modal", "Esc"]
-      },
-      "vim": {
-        "tip": "Toggle vim mode with /vim — hjkl, dd, cw all work",
-        "alts": ["/vim", "modal", "Esc"]
+        "when": "wishes the input line had vim keys",
+        "say": "Miss vim keys? /vim toggles NORMAL and INSERT on the input line"
       }
     }
   },
@@ -393,19 +204,8 @@ on-host: [gemini-cli]
     "words": {
       "Ctrl+R": {
         "tip": "Ctrl+R reverse-searches command history",
-        "alts": ["Ctrl+P", "Ctrl+N", "history"]
-      },
-      "Ctrl+P": {
-        "tip": "Ctrl+P shows the previous history entry",
-        "alts": ["Ctrl+N", "Ctrl+R", "history"]
-      },
-      "Ctrl+N": {
-        "tip": "Ctrl+N shows the next history entry",
-        "alts": ["Ctrl+P", "Ctrl+R", "history"]
-      },
-      "history": {
-        "tip": "Ctrl+P/Ctrl+N walk history; Ctrl+R searches it",
-        "alts": ["Ctrl+R", "Ctrl+P", "Ctrl+N"]
+        "when": "wants to re-run or find an earlier prompt",
+        "say": "Looking for an earlier prompt? Ctrl+R searches history; Ctrl+P and Ctrl+N walk it"
       }
     }
   },
@@ -414,31 +214,18 @@ on-host: [gemini-cli]
     "words": {
       "Ctrl+T": {
         "tip": "Ctrl+T toggles the full TODO list view",
-        "alts": ["todo", "/stats", "/shells"]
-      },
-      "todo": {
-        "tip": "Press Ctrl+T to see all in-flight TODOs at once",
-        "alts": ["Ctrl+T", "/stats"]
+        "when": "asks what is still left to do or wants the task list",
+        "say": "Lost track of the tasks? Ctrl+T shows every in-flight TODO"
       },
       "/stats": {
         "tip": "/stats session|model|tools shows token + tool usage",
-        "alts": ["tokens", "usage", "/model"]
-      },
-      "tokens": {
-        "tip": "Use /stats to check token consumption this session",
-        "alts": ["/stats", "/compress", "limit"]
-      },
-      "usage": {
-        "tip": "Check usage with /stats, free space with /compress",
-        "alts": ["/stats", "/compress", "tokens"]
-      },
-      "limit": {
-        "tip": "Approaching limit? Run /compress to summarize and free space",
-        "alts": ["/compress", "/stats", "tokens"]
+        "when": "asks what this is costing, how many tokens it has used, or has hit a limit",
+        "say": "Tokens or limits? /stats shows usage this session; /compress frees space"
       },
       "/shells": {
         "tip": "/shells toggles the background-shells view for long jobs",
-        "alts": ["background", "shell", "Ctrl+T"]
+        "when": "started a long-running command and wants to see it",
+        "say": "A long job running? /shells shows the background shells"
       }
     }
   },
@@ -447,19 +234,8 @@ on-host: [gemini-cli]
     "words": {
       "--worktree": {
         "tip": "--worktree (-w) starts Gemini in a fresh git worktree",
-        "alts": ["-w", "worktree", "branches"]
-      },
-      "worktree": {
-        "tip": "Use --worktree (-w) for parallel Gemini sessions per branch",
-        "alts": ["--worktree", "-w", "branches"]
-      },
-      "branches": {
-        "tip": "Spin up a worktree per branch with --worktree NAME",
-        "alts": ["--worktree", "worktree", "parallel sessions"]
-      },
-      "parallel sessions": {
-        "tip": "Use git worktrees (--worktree) for parallel Gemini sessions",
-        "alts": ["--worktree", "worktree", "branches"]
+        "when": "wants to run several tasks in parallel, or keep a hotfix off the current branch",
+        "say": "Several tasks at once? gemini --worktree NAME gives each its own checkout"
       }
     }
   },
@@ -468,27 +244,13 @@ on-host: [gemini-cli]
     "words": {
       "/tools": {
         "tip": "/tools lists available tools; /tools desc shows descriptions",
-        "alts": ["tools", "/permissions", "/mcp"]
-      },
-      "tools": {
-        "tip": "See /tools for the active toolset; /tools desc for details",
-        "alts": ["/tools", "/permissions", "/mcp"]
+        "when": "asks what it can do or which tools it has",
+        "say": "Wondering what it can do? /tools lists the active tools; /tools desc explains them"
       },
       "/permissions": {
         "tip": "/permissions trust manages folder trust + tool approvals",
-        "alts": ["trust", "--skip-trust", "/policies"]
-      },
-      "trust": {
-        "tip": "Use /permissions trust to mark a folder as trusted",
-        "alts": ["/permissions", "--skip-trust"]
-      },
-      "--skip-trust": {
-        "tip": "--skip-trust trusts the workspace once without folder-trust dialog",
-        "alts": ["/permissions", "trust"]
-      },
-      "/policies": {
-        "tip": "/policies list shows active policy-engine rules by mode",
-        "alts": ["/permissions", "trust", "/hooks"]
+        "when": "gets a folder-trust prompt or asks about trusting the workspace",
+        "say": "Trust prompt? /permissions trust marks the folder trusted; --skip-trust for a one-off"
       }
     }
   },
@@ -497,19 +259,8 @@ on-host: [gemini-cli]
     "words": {
       "/hooks": {
         "tip": "/hooks list|enable|disable manages lifecycle event hooks",
-        "alts": ["hook", "automation", "lifecycle"]
-      },
-      "hook": {
-        "tip": "Configure lifecycle hooks (pre/post tool) via /hooks",
-        "alts": ["/hooks", "automation", "lifecycle"]
-      },
-      "automation": {
-        "tip": "Hooks automate actions before/after tool use — see /hooks",
-        "alts": ["/hooks", "hook", "lifecycle"]
-      },
-      "lifecycle": {
-        "tip": "Hook into Gemini's lifecycle via /hooks list/enable/disable",
-        "alts": ["/hooks", "hook", "automation"]
+        "when": "wants something to run automatically before or after every edit or tool call",
+        "say": "Want it automatic? /hooks manages the lifecycle hooks around tool calls"
       }
     }
   },
@@ -518,40 +269,18 @@ on-host: [gemini-cli]
     "words": {
       "/ide": {
         "tip": "/ide install|enable|status manages IDE integration",
-        "alts": ["ide", "vscode", "zed"]
-      },
-      "ide": {
-        "tip": "Use /ide install to wire Gemini into your IDE",
-        "alts": ["/ide", "vscode", "zed"]
-      },
-      "vscode": {
-        "tip": "Run /ide install to set up VS Code integration",
-        "alts": ["/ide", "ide", "zed"]
-      },
-      "zed": {
-        "tip": "--experimental-zed-integration runs Gemini in Zed editor mode",
-        "alts": ["/ide", "ide", "vscode"]
+        "when": "wants it inside their editor or asks about VS Code",
+        "say": "Want it in the editor? /ide install wires up VS Code"
       }
     }
   },
   {
     "id": "multimodal",
     "words": {
-      "image": {
-        "tip": "Inject an image with @image.png — Gemini reads it natively",
-        "alts": ["@", "pdf", "multimodal"]
-      },
-      "pdf": {
-        "tip": "Inject a PDF with @file.pdf — Gemini parses it multimodally",
-        "alts": ["@", "image", "multimodal"]
-      },
-      "multimodal": {
-        "tip": "Use @path to drop images / PDFs / sketches into the prompt",
-        "alts": ["@", "image", "pdf"]
-      },
       "screenshot": {
         "tip": "Inject screenshots with @path.png — Gemini sees them directly",
-        "alts": ["@", "image", "multimodal"]
+        "when": "describes something visual — a layout, a design, a diagram — without attaching an image of it",
+        "say": "Something visual? @path.png drops the screenshot in; it reads images and PDFs directly"
       }
     }
   },
@@ -560,23 +289,13 @@ on-host: [gemini-cli]
     "words": {
       "/help": {
         "tip": "/help lists all available slash commands",
-        "alts": ["/about", "/docs", "/bug"]
-      },
-      "/about": {
-        "tip": "/about prints version info — share when filing /bug reports",
-        "alts": ["/help", "/bug", "version"]
-      },
-      "/docs": {
-        "tip": "/docs opens the Gemini CLI documentation in your browser",
-        "alts": ["/help", "/about"]
+        "when": "is not sure what commands exist",
+        "say": "Not sure what exists? /help lists every command; /docs opens the docs"
       },
       "/bug": {
         "tip": "/bug files a GitHub issue with /about info pre-filled",
-        "alts": ["/about", "/help", "issue"]
-      },
-      "help": {
-        "tip": "/help lists commands; /docs opens docs; /bug files an issue",
-        "alts": ["/help", "/docs", "/bug"]
+        "when": "hit a bug in the CLI itself and wants to report it",
+        "say": "A bug in the CLI? /bug files an issue with the /about info filled in"
       }
     }
   },
@@ -585,23 +304,8 @@ on-host: [gemini-cli]
     "words": {
       "/quit": {
         "tip": "/quit (or /exit) leaves Gemini CLI cleanly",
-        "alts": ["/exit", "Ctrl+D", "Ctrl+C"]
-      },
-      "/exit": {
-        "tip": "/exit is an alias for /quit",
-        "alts": ["/quit", "Ctrl+D", "Ctrl+C"]
-      },
-      "Ctrl+C": {
-        "tip": "Ctrl+C cancels the current request; on empty input it exits",
-        "alts": ["/quit", "Ctrl+D", "Esc"]
-      },
-      "Ctrl+D": {
-        "tip": "Ctrl+D exits when the input buffer is empty",
-        "alts": ["/quit", "/exit", "Ctrl+C"]
-      },
-      "Esc": {
-        "tip": "Esc dismisses dialogs and cancels focus (not a quit)",
-        "alts": ["Ctrl+C", "/quit", "Esc x2"]
+        "when": "asks how to quit or leave cleanly",
+        "say": "Leaving? /quit exits cleanly; Ctrl+D on an empty line does too"
       }
     }
   },
@@ -610,23 +314,8 @@ on-host: [gemini-cli]
     "words": {
       "--debug": {
         "tip": "--debug (-d) enables verbose logging for troubleshooting",
-        "alts": ["-d", "debug", "F12"]
-      },
-      "debug": {
-        "tip": "Run with --debug, check F12 for error details",
-        "alts": ["--debug", "-d", "F12"]
-      },
-      "F12": {
-        "tip": "Press F12 in the TUI to see the latest error details",
-        "alts": ["--debug", "debug", "/bug"]
-      },
-      "bug": {
-        "tip": "Hit a bug? F12 for details, /bug to file, /restore to recover",
-        "alts": ["/bug", "F12", "/restore"]
-      },
-      "broken": {
-        "tip": "Broken state? /restore reverts files, /rewind walks history",
-        "alts": ["/restore", "/rewind", "/bug"]
+        "when": "says the CLI itself is misbehaving and they cannot see why",
+        "say": "CLI misbehaving? F12 shows the last error; --debug logs everything; /bug reports it"
       }
     }
   },
@@ -635,31 +324,18 @@ on-host: [gemini-cli]
     "words": {
       "/auth": {
         "tip": "/auth opens the auth dialog (OAuth / API key / Vertex AI)",
-        "alts": ["GEMINI_API_KEY", "vertex", "oauth"]
-      },
-      "GEMINI_API_KEY": {
-        "tip": "Set GEMINI_API_KEY env var for Gemini API access",
-        "alts": ["/auth", "oauth", "vertex"]
-      },
-      "vertex": {
-        "tip": "GOOGLE_GENAI_USE_VERTEXAI=true + GOOGLE_API_KEY for Vertex AI",
-        "alts": ["/auth", "GEMINI_API_KEY", "oauth"]
-      },
-      "oauth": {
-        "tip": "Sign in with Google via /auth — free tier 60/min, 1000/day",
-        "alts": ["/auth", "GEMINI_API_KEY", "vertex"]
+        "when": "asks about signing in, an API key, or Vertex AI",
+        "say": "Signing in? /auth picks Google OAuth, an API key or Vertex AI"
       },
       "/settings": {
         "tip": "/settings opens the settings editor for ~/.gemini/settings.json",
-        "alts": ["settings.json", "/theme", "/editor"]
-      },
-      "/theme": {
-        "tip": "/theme changes Gemini CLI's visual theme",
-        "alts": ["/settings", "theme"]
+        "when": "wants to change how the CLI behaves",
+        "say": "Changing a setting? /settings edits ~/.gemini/settings.json in place"
       },
       "/privacy": {
         "tip": "/privacy shows the privacy notice and data-collection toggles",
-        "alts": ["/settings", "/auth"]
+        "when": "worries whether their code or data is collected",
+        "say": "Data worries? /privacy shows the notice and the collection toggles"
       }
     }
   },
@@ -668,15 +344,8 @@ on-host: [gemini-cli]
     "words": {
       "experiment": {
         "tip": "Experiment fearlessly — /restore reverts files, /rewind history",
-        "alts": ["try", "test", "fearless"]
-      },
-      "fearless": {
-        "tip": "Be fearless — checkpointing + /restore undo failed experiments",
-        "alts": ["experiment", "/restore", "checkpoint"]
-      },
-      "try": {
-        "tip": "Try anything in Plan Mode first (/plan) before committing",
-        "alts": ["/plan", "experiment", "fearless"]
+        "when": "hesitates to try something because it might break things",
+        "say": "Worried it breaks? Try it; /restore reverts the files, /rewind the conversation"
       }
     }
   }

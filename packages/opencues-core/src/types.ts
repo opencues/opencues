@@ -77,6 +77,14 @@ export interface CueContext {
   domain?: string;
 
   /**
+   * The host's tips packs rendered as a watchlist for the semantic tips
+   * matcher (`tips-mode: semantic`). Built by the runtime's ConfigLoader
+   * from the same LocalCueData the tips catalogue is built from; undefined
+   * when the mode is off or the packs are empty. See tips-catalog.ts.
+   */
+  tipsCatalog?: import('./tips-catalog').TipsCatalog;
+
+  /**
    * Character offset into `text` where the user's caret currently
    * sits. Sources can inject a `[CURSOR]` sentinel here so the LLM
    * can anchor positional instructions ("insert X here _", "add a
@@ -435,7 +443,7 @@ export interface LookupMultipleResult {
 }
 
 // ============================================================================
-// Local Cue Types (for LocalCueSource)
+// Local Cue Types (the ```json catalogue block of a cue file)
 // ============================================================================
 
 /**
@@ -444,6 +452,22 @@ export interface LookupMultipleResult {
 export interface CueWordEntry {
   /** Cue-tip text displayed when this word is highlighted (JSON field: "tip") */
   tip: string;
+
+  /** The SITUATION this tip is for, for the semantic matcher (JSON field:
+   *  "when") — what a token can't say: "wants to start over, or says the
+   *  model keeps circling". Optional; the static path ignores it. */
+  when?: string;
+
+  /** The note's emoji for a semantic match (JSON field: "emoji"); 💡 when
+   *  absent. One glyph leads the note; the runtime never adds a second. */
+  emoji?: string;
+
+  /** What the note SAYS on a semantic match (JSON field: "say"): advice
+   *  addressed to the person in the situation, naming the command —
+   *  "Starting over? /clear wipes the conversation, CLAUDE.md stays". The
+   *  `tip` is a definition for the typed word; this is the line for the
+   *  situation. Falls back to `tip` when absent. */
+  say?: string;
 
   /** Alternative words to cycle through */
   alts: string[];
@@ -461,6 +485,13 @@ export interface CueSynonymGroup {
 
   /** Cue-tip text for all synonyms in this group (JSON field: "tip") */
   tip: string;
+
+  /** the situation this group's tip is for (see CueWordEntry.when) */
+  when?: string;
+  /** the note's emoji for a semantic match (see CueWordEntry.emoji) */
+  emoji?: string;
+  /** the advice line for a semantic match (see CueWordEntry.say) */
+  say?: string;
 
   /** Alternatives - point to other groups/concepts, not more synonyms */
   alts: string[];

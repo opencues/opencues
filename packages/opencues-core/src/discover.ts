@@ -99,7 +99,7 @@ function scanDir(
     // Host-compat filter — skip the whole folder when the current host
     // isn't in the entry's allow-list (on-host) or is in its deny-list
     // (not-on-host). Drops every contained source / blank / tip / auditor
-    // before merge so they never reach the cueMap.
+    // before merge so they never reach the catalogue.
     if (opts.hostName && !isAllowedOnHost(config.frontmatter, opts.hostName)) {
       continue;
     }

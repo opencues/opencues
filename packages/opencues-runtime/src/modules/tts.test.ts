@@ -3,9 +3,9 @@ import { TTS } from './tts';
 import { ConfigLoader } from './config-loader';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
-import { MockAdapter, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
+import { MockAdapter, seedWordDefs, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
 
-const TIPS = wrapTipsAsCuesMd({
+const TIPS_DATA = {
   domain: 'test',
   version: 1,
   concepts: [
@@ -17,15 +17,27 @@ const TIPS = wrapTipsAsCuesMd({
       },
     },
   ],
-});
+};
+const TIPS = wrapTipsAsCuesMd(TIPS_DATA);
+
+/** the word-cue def the resolver registers for `ultrathink` (tip → TTS) */
+function ultrathinkDefs(): DynDefs {
+  const d = new DynDefs();
+  d.set(0, { originalWord: 'ultrathink', alternatives: ['ultrathink', 'Tab'], currentIndex: 0, spanStart: 0, spanEnd: 10, cueTip: 'Maximum reasoning' });
+  return d;
+}
 
 async function setup(text: string) {
   const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
   adapter.pushText(text);
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
-  const loader = new ConfigLoader(adapter);
+  const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
   await loader.load();
+  // word-cue defs carry their tip; the static per-word `speak:` hint left with
+  // spec 0.12, so only the fixture's speak:true words are seeded here — a def
+  // with a tip speaks, a word with no def is silent
+  seedWordDefs(dynDefs, text, TIPS_DATA, { speakOnly: true });
   const tts = new TTS(adapter, hlState, dynDefs, loader, { scriptPath: '/speak.sh' });
   tts.subscribe();
   // Spy on spawnProcess
@@ -90,6 +102,7 @@ describe('TTS', () => {
       currentIndex: 0,
       spanStart: 0,
       spanEnd: 10,
+      cueTip: 'Maximum reasoning',
     });
     tts.maybeSpeak({ text: 'ultrathink', cursor: 0, externalHighlights: [] });
     expect(spawnSpy).toHaveBeenCalledTimes(1);
@@ -127,7 +140,7 @@ describe('TTS', () => {
     hlState.activate(0, 'ultrathink');
     const loader = new ConfigLoader(adapter, { settingsFile: '/proj/.cues/OPENCUES.md' });
     await loader.load();
-    const tts = new TTS(adapter, hlState, new DynDefs(), loader, { scriptPath: '/speak.sh' });
+    const tts = new TTS(adapter, hlState, ultrathinkDefs(), loader, { scriptPath: '/speak.sh' });
     const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
     expect(tts.maybeSpeak({ text: 'ultrathink', cursor: 0, externalHighlights: [] })).toBeNull();
     expect(spawnSpy).not.toHaveBeenCalled();
@@ -149,7 +162,7 @@ describe('TTS', () => {
     hlState.activate(0, 'ultrathink');
     const loader = new ConfigLoader(adapter, { settingsFile: '/proj/.cues/OPENCUES.md' });
     await loader.load();
-    const tts = new TTS(adapter, hlState, new DynDefs(), loader, {
+    const tts = new TTS(adapter, hlState, ultrathinkDefs(), loader, {
       scriptPath: '/speak.sh',
       rate: '2', // host default — should be overridden
     });
@@ -174,7 +187,7 @@ describe('TTS', () => {
     hlState.activate(0, 'ultrathink');
     const loader = new ConfigLoader(adapter, { settingsFile: '/proj/.cues/OPENCUES.md' });
     await loader.load();
-    const tts = new TTS(adapter, hlState, new DynDefs(), loader, { scriptPath: '/default/speak.sh' });
+    const tts = new TTS(adapter, hlState, ultrathinkDefs(), loader, { scriptPath: '/default/speak.sh' });
     const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
     tts.maybeSpeak({ text: 'ultrathink', cursor: 0, externalHighlights: [] });
     expect(spawnSpy.mock.calls[0][0].args[0]).toBe('/custom/say.sh');
@@ -193,9 +206,9 @@ describe('TTS', () => {
     adapter.pushText('ultrathink');
     const hlState = new HighlightState();
     hlState.activate(0, 'ultrathink');
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
     await loader.load();
-    const tts = new TTS(adapter, hlState, new DynDefs(), loader, { scriptPath: '/speak.sh' });
+    const tts = new TTS(adapter, hlState, ultrathinkDefs(), loader, { scriptPath: '/speak.sh' });
     const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
     expect(tts.maybeSpeak({ text: 'ultrathink', cursor: 0, externalHighlights: [] })).toBeNull();
     expect(spawnSpy).not.toHaveBeenCalled();
@@ -206,10 +219,10 @@ describe('TTS', () => {
     adapter.pushText('ultrathink');
     const hlState = new HighlightState();
     hlState.activate(0, 'ultrathink');
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
     await loader.load();
     const speakFn = vi.fn();
-    const tts = new TTS(adapter, hlState, new DynDefs(), loader, { scriptPath: '/speak.sh', speakFn });
+    const tts = new TTS(adapter, hlState, ultrathinkDefs(), loader, { scriptPath: '/speak.sh', speakFn });
     const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
     const result = tts.maybeSpeak({ text: 'ultrathink', cursor: 0, externalHighlights: [] });
     expect(result).toBe('Maximum reasoning');
@@ -222,10 +235,10 @@ describe('TTS', () => {
     adapter.pushText('ultrathink');
     const hlState = new HighlightState();
     hlState.activate(0, 'ultrathink');
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
     await loader.load();
     const speakFn = vi.fn();
-    const tts = new TTS(adapter, hlState, new DynDefs(), loader, { speakFn });
+    const tts = new TTS(adapter, hlState, ultrathinkDefs(), loader, { speakFn });
     expect(tts.maybeSpeak({ text: 'ultrathink', cursor: 0, externalHighlights: [] })).toBe('Maximum reasoning');
     expect(speakFn).toHaveBeenCalled();
   });
@@ -235,10 +248,10 @@ describe('TTS', () => {
     adapter.pushText('ultrathink');
     const hlState = new HighlightState();
     hlState.activate(0, 'ultrathink');
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
     await loader.load();
     const speakFn = vi.fn(() => { throw new Error('audio device gone'); });
-    const tts = new TTS(adapter, hlState, new DynDefs(), loader, { speakFn });
+    const tts = new TTS(adapter, hlState, ultrathinkDefs(), loader, { speakFn });
     const logSpy = vi.spyOn(adapter, 'log');
     expect(() => tts.maybeSpeak({ text: 'ultrathink', cursor: 0, externalHighlights: [] })).not.toThrow();
     expect(logSpy).toHaveBeenCalledWith('error', expect.stringContaining('TTS speakFn threw'), expect.any(Error));
@@ -261,7 +274,7 @@ describe('TTS', () => {
     const loader = new ConfigLoader(adapter, { settingsFile: '/proj/.cues/OPENCUES.md' });
     await loader.load();
     const speakFn = vi.fn();
-    const tts = new TTS(adapter, hlState, new DynDefs(), loader, { speakFn, rate: '2' });
+    const tts = new TTS(adapter, hlState, ultrathinkDefs(), loader, { speakFn, rate: '2' });
     tts.maybeSpeak({ text: 'ultrathink', cursor: 0, externalHighlights: [] });
     expect(speakFn).toHaveBeenCalledWith('Maximum reasoning', '5');
   });

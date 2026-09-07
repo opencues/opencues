@@ -26,12 +26,12 @@ import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
 import { SpanFillState } from '../state/span-fill';
 import { SelectorSatelliteState } from '../state/selector-satellite';
-import { MockAdapter, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
+import { MockAdapter, seedWordDefs, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
 
 // ---------------------------------------------------------------------------
 // Rich tips fixture: enough cued words to build multi-span scenarios
 // ---------------------------------------------------------------------------
-const RICH_TIPS = wrapTipsAsCuesMd({
+const RICH_TIPS_DATA = {
   domain: 'test',
   version: 1,
   concepts: [
@@ -51,7 +51,8 @@ const RICH_TIPS = wrapTipsAsCuesMd({
       },
     },
   ],
-});
+};
+const RICH_TIPS = wrapTipsAsCuesMd(RICH_TIPS_DATA);
 
 async function setupScenario(text: string): Promise<{
   adapter: MockAdapter;
@@ -69,8 +70,9 @@ async function setupScenario(text: string): Promise<{
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
   const spanFillState = new SpanFillState();
-  const loader = new ConfigLoader(adapter);
+  const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
   await loader.load();
+  seedWordDefs(dynDefs, text, RICH_TIPS_DATA);   // the word-cue defs the resolver would have registered
   const cycling = new Cycling(adapter, hlState, dynDefs, loader, spanFillState);
   cycling.subscribe();
   const nav = new Navigation(adapter, hlState, dynDefs, loader, spanFillState);
@@ -845,6 +847,7 @@ async function setupJourney(text: string) {
   const ss = new SelectorSatelliteState();
   const loader = new ConfigLoader(adapter, { settingsFile: '/proj/.cues/OPENCUES.md' });
   await loader.load();
+  seedWordDefs(dynDefs, text, RICH_TIPS_DATA);
   // Production subscription order: Cycling claims `_` FIRST, BlankFill second.
   const cycling = new Cycling(adapter, hlState, dynDefs, loader, spanFillState, undefined, ss);
   cycling.subscribe();
@@ -886,13 +889,13 @@ describe('journey — transform span survives trailing edits, then `_` reverts i
 
     // Step 2 — the note still paints with the caret inside the span.
     let out = dim.compute({ text: buf + ' ', cursor: 5, externalHighlights: [] });
-    expect(out?.inlineNote?.text).toBe('2 | hey buddy…');
+    expect(out?.inlineNote?.text).toBe('was: hey buddy make it formal _');   // a toggle: the landed rewrite is in, the note says what it was
 
     // Step 3 — user deletes the char after the span (the exact live repro).
     adapter.pushTextNoKeystroke(buf, buf.length);
     expect(dynDefs.get(0)).toBeDefined();              // still alive — no die/reattach
     out = dim.compute({ text: buf, cursor: 5, externalHighlights: [] });
-    expect(out?.inlineNote?.text).toBe('2 | hey buddy…');
+    expect(out?.inlineNote?.text).toBe('was: hey buddy make it formal _');   // a toggle: the landed rewrite is in, the note says what it was
 
     // Step 4 — caret PAST the span (in the tail): `_` is a normal blank again.
     adapter.setCursorOffset(buf.length);
@@ -985,8 +988,10 @@ describe('journey — bare blank keyword is a pure trigger until `_` fires', () 
     const text = 'fast affirm ';
     const { adapter, hlState, dim, spanFillState } = await setupJourney(text);
 
-    // Step 1 — dim: the cue word dims, the bare keyword does NOT.
-    let out = dim.compute({ text, cursor: 0, externalHighlights: [] });
+    // Step 1 — dim: the cue word dims, the bare keyword does NOT. (Caret at
+    // the END: on the word itself the gray auto-selects into the highlight —
+    // anything dimmable has a note state — which the static-note journeys pin.)
+    let out = dim.compute({ text, cursor: text.length, externalHighlights: [] });
     const ranges = out?.dimRanges ?? [];
     expect(ranges.some(r => r.start === 0 && r.end === 4)).toBe(true);   // "fast"
     expect(ranges.some(r => r.start <= 5 && r.end >= 11)).toBe(false);   // not "affirm"

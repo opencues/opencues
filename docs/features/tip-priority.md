@@ -18,9 +18,10 @@ Checked in this order — the first match wins:
 | 1 | Satellite (settings menu) | The setting's per-value tip (`valueTips.get(currentValue)`) |
 | 2 | Span-fill (any word inside an active consume-all or list-blank span) | The blank's `tip` (e.g. "Daily affirmations") |
 | 3 | Blank-attributed value (e.g. `50%` after `volume`) | **None — suppressed on purpose.** The value is already visible in the buffer; a tip would be redundant ("system volume blank 50%"). |
-| 4 | General word (including blank keywords like the word `volume` itself, and plain LLM/local cue words) | `configLoader.lookup(word).cueTip`, preferring `altCueTips[currentAlt]` when set |
+| 4 | General word | The def's own `cueTip` when the word has a DynDef that carries one (an LLM word-cue's tip); otherwise `configLoader.lookup(word).cueTip`, which since spec 0.12 resolves only a BLANK keyword's tip (the word `volume` itself → "system volume"), preferring `altCueTips[currentAlt]` when set. A typed tips-pack word has no entry here — the static per-word tips were retired with the layer. |
+| 5 | Semantic tip span (a `sentence-cue:tip` DynDef from `tips-mode: semantic`) | The def's own `cueTip` — the pack's line for the cited entry, one leading emoji (💡 unless the entry sets `emoji:`), the model's short "why" after it. Handled by the sentence-cue branch, not this table's word lookup. |
 
-**Important correction from earlier revisions of this doc**: a blank's *value* word never shows a live "current reading" tip via a `blankInvoke get` call — there is no such code path in the current statusline. A blank's *keyword* word (the trigger, e.g. "volume") gets whatever static/LLM tip its cue-lookup entry has, formatted with `cueBlank: true` (the consumer prints the tip alone, without a "(N/M)" alt-position suffix) — it does not invoke the blank's script live.
+**Important correction from earlier revisions of this doc**: a blank's *value* word never shows a live "current reading" tip via a `blankInvoke get` call — there is no such code path in the current statusline. A blank's *keyword* word (the trigger, e.g. "volume") gets the blank's own `tip` via `configLoader.lookup`, formatted with `cueBlank: true` (the consumer prints the tip alone, without a "(N/M)" alt-position suffix) — it does not invoke the blank's script live.
 
 `tips-mode: off` suppresses the tip text at every priority level (word/alts data still gets exposed for the status line, just no tip string).
 
@@ -33,7 +34,7 @@ Checked in this order — the first match wins:
 1. **Selector/satellite** — is the highlighted word index within the active `SelectorSatelliteState`'s selector or satellite range? If so, look up the tip from `configLoader.opencuesState.definitions.get(currentSetting)` (selector: `.tip`; satellite: `.valueTips.get(currentValue)`).
 2. **Span-fill** — is the highlighted word index inside the active `SpanFillState`? If so, use the span's own `tip`.
 3. **Blank-attributed DynDef** (`def?.blankName` set) — return with `cueTip: null` unconditionally. This is priority-3 in the table above.
-4. **Everything else** — look up the word (using its *original* word, stable across cycling) via `configLoader.lookup()`; prefer `altCueTips[currentDisplayedWord]` over the primary `cueTip` if the lookup has per-alt tips. Whether this word is `cueBlank: true` (tip-alone display) is decided separately, by checking if the word is in `configLoader.blanksByWord` — independent of whether the lookup itself found a tip.
+4. **Everything else** — take the def's `cueTip` if its DynDef has one; else look up the word (using its *original* word, stable across cycling) via `configLoader.lookup()`, which answers only for blank keywords; prefer `altCueTips[currentDisplayedWord]` over the primary `cueTip` if the lookup has per-alt tips. Whether this word is `cueBlank: true` (tip-alone display) is decided separately, by checking if the word is in `configLoader.blanksByWord` — independent of whether the lookup itself found a tip.
 
 A word inside a multi-word blank/fluid/transform substitute span resolves to the ORIGINATING def (via `DynDefs.findSpanContaining`) before any of the above runs, so e.g. highlighting "email" inside an LLM-drafted email body doesn't surface an unrelated word-cue tip for "email" as a standalone word.
 

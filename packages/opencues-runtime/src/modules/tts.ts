@@ -107,9 +107,9 @@ export class TTS {
     const original = clean(def?.originalWord ?? displayed);
     if (!displayed) return null;
 
-    // Span/selector-satellite tip wins over per-word cueMap lookup.
+    // Span/selector-satellite tip wins over the per-word def / blank tip.
     // Without this, highlighting "display mode" speaks "screen
-    // brightness" because cueMap has an entry for "display" that's
+    // brightness" because a blank tip for "display" would be found that's
     // unrelated to the selector context.
     let tip: string | undefined;
     let tipSource: 'span' | 'selector' | 'satellite' | 'lookup' = 'lookup';
@@ -156,14 +156,12 @@ export class TTS {
       tip = span!.tip;
       tipSource = 'span';
     } else {
-      const lookup = this.configLoader.lookup(original);
-      if (!lookup || !lookup.speak) {
-        // Mark visited so we don't re-check on every render of the same
-        // word. Re-evaluated when wordIndex changes.
-        /* index already tracked by _lastSeenIndex above */
-        return null;
-      }
-      tip = lookup.altCueTips?.[displayed] ?? lookup.cueTip;
+      // A plain word: the def's own tip (an LLM word-cue's `cueTip`), else
+      // a blank keyword's tip. The per-word static `speak:` hint left with
+      // spec 0.12 along with the static word map; voice-mode is the gate.
+      const lookup = def?.cueTip ? null : this.configLoader.lookup(original);
+      tip = def?.cueTip ?? (lookup?.speak ? (lookup.altCueTips?.[displayed] ?? lookup.cueTip) : undefined);
+      if (!tip) return null;
     }
 
     /* index already tracked by _lastSeenIndex above */

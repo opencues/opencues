@@ -12,7 +12,7 @@ Visual cues are the styling changes applied to words in the input to indicate wh
 
 Implemented by the `DimRender` module (`packages/opencues-runtime/src/modules/dim-render.ts`), which computes a set of dim ranges plus (at most) one highlight range, expressed as a `RenderDirectives` object the host applies over its own already-rendered text.
 
-1. **Compute dim ranges**: for every word that's navigable (same cueMap/DynDef rule Navigation uses) and isn't the currently-highlighted word or inside an active span/selector/satellite block, add its character range to `dimRanges`. Multi-word spans emit one range covering the whole span, not one per word.
+1. **Compute dim ranges**: for every word that's navigable (same DynDef rule Navigation uses) and isn't the currently-highlighted word or inside an active span/selector/satellite block, add its character range to `dimRanges`. Multi-word spans emit one range covering the whole span, not one per word.
 2. **Compute the highlight range**: if a word is highlighted (`HighlightState.active`), its range — extended across the whole span if it's part of one, or across both halves if it's an active selector/satellite pair — becomes the single highlight range.
 3. **Host applies directives**: `packages/opencues-runtime/src/render-directives.ts`'s `applyRenderDirectives` walks the host's already-ANSI-rendered string character-by-character, distinguishing visible chars from existing escape sequences, and inserts the dim/highlight ANSI codes at the directive boundaries. Existing ANSI codes (the host's own syntax highlighting) are preserved.
 
@@ -20,11 +20,11 @@ Implemented by the `DimRender` module (`packages/opencues-runtime/src/modules/di
 
 ## What Gets Dimmed
 
-A word is dimmed if it's navigable per the same rule `Navigation.computeTargets()` uses (cueMap match, or a `DynDef` entry — LLM alternatives, blank-fill value, span member), it isn't the highlighted word, and it isn't inside the currently-active span/selector/satellite block (those get one whole-region highlight instead of per-word dim, so they don't look like random word-fading). A few refinements on top:
+A word is dimmed if it's navigable per the same rule `Navigation.computeTargets()` uses (a `DynDef` entry — LLM alternatives, a spelling fix, a sentence cue, blank-fill value, span member; a typed tips-pack word has no def and does not dim), it isn't the highlighted word, and it isn't inside the currently-active span/selector/satellite block (those get one whole-region highlight instead of per-word dim, so they don't look like random word-fading). A few refinements on top:
 
 - **Multi-word spans** — each span's *origin* emits one dim range covering the whole span; inner positions don't get their own range.
 - **CJK / spaceless substitutes** — when a def carries a live-matching character span (`spanStart`/`spanEnd`), that's used instead of the word-derived range, so a spaceless CJK substitute (fewer whitespace-tokens than characters) dims completely rather than partially. A stale span (buffer edited, def not yet cleared) is skipped rather than painted over new text.
-- **Bare blank keywords are gated** — a word that's ONLY a blank keyword (not also a word-cue match or `## Tips` entry) doesn't dim until `_` is nearby. Otherwise every prose mention of "volume" or "bitcoin" would falsely suggest it's interactive when no `_` is in play.
+- **Bare blank keywords are gated** — a word that's ONLY a blank keyword (no DynDef of its own) doesn't dim until `_` is nearby. Otherwise every prose mention of "volume" or "bitcoin" would falsely suggest it's interactive when no `_` is in play.
 
 ---
 

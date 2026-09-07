@@ -7,11 +7,8 @@
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
 import {
-  lookupWord,
-  lookupWords,
   parseLocalCueFile,
   validateLocalCueData,
-  LocalCueSource,
 } from './local-cue-source';
 import { LocalCueData } from '../types';
 
@@ -52,63 +49,7 @@ const sampleLocalCueData: LocalCueData = [
   },
 ];
 
-describe('lookupWord', () => {
-  it('should find word in words structure', () => {
-    const result = lookupWord('ultrathink', sampleLocalCueData);
-    assert.ok(result);
-    assert.strictEqual(result.word, 'ultrathink');
-    assert.strictEqual(result.cueTip, 'Add ultrathink to prompt for max reasoning');
-    assert.deepStrictEqual(result.alternatives, ['ultrathink', 'Tab', 'deep thinking']);
-    assert.strictEqual(result.source, 'tips');
-  });
 
-  it('should find word in groups structure', () => {
-    const result = lookupWord('agents', sampleLocalCueData);
-    assert.ok(result);
-    assert.strictEqual(result.word, 'agents');
-    assert.strictEqual(result.cueTip, 'Spawn parallel workers via Task tool');
-    assert.deepStrictEqual(result.alternatives, ['agents', 'swarm', 'background']);
-  });
-
-  it('should find synonym in groups structure', () => {
-    const result = lookupWord('sub-agents', sampleLocalCueData);
-    assert.ok(result);
-    assert.strictEqual(result.word, 'sub-agents');
-    assert.strictEqual(result.cueTip, 'Spawn parallel workers via Task tool');
-  });
-
-  it('should be case-insensitive', () => {
-    const result = lookupWord('ULTRATHINK', sampleLocalCueData);
-    assert.ok(result);
-    assert.strictEqual(result.cueTip, 'Add ultrathink to prompt for max reasoning');
-  });
-
-  it('should return null for unknown word', () => {
-    const result = lookupWord('unknown', sampleLocalCueData);
-    assert.strictEqual(result, null);
-  });
-
-  it('should include per-alt tips', () => {
-    const result = lookupWord('ultrathink', sampleLocalCueData);
-    assert.ok(result);
-    assert.ok(result.altCueTips);
-    assert.strictEqual(result.altCueTips['ultrathink'], 'Add ultrathink to prompt for max reasoning');
-    assert.strictEqual(result.altCueTips['Tab'], 'Press Tab to toggle extended thinking mode');
-  });
-});
-
-describe('lookupWords', () => {
-  it('should look up multiple words', () => {
-    const words = ['The', 'agents', 'use', 'ultrathink'];
-    const results = lookupWords(words, sampleLocalCueData);
-
-    assert.strictEqual(results.size, 2);
-    assert.ok(results.has(1)); // 'agents' at index 1
-    assert.ok(results.has(3)); // 'ultrathink' at index 3
-    assert.ok(!results.has(0)); // 'The' not found
-    assert.ok(!results.has(2)); // 'use' not found
-  });
-});
 
 describe('parseLocalCueFile', () => {
   it('should parse valid JSON', () => {
@@ -145,30 +86,5 @@ describe('validateLocalCueData', () => {
   });
 });
 
-describe('LocalCueSource', () => {
-  it('should implement CueSource interface', async () => {
-    const source = new LocalCueSource(sampleLocalCueData);
-
-    assert.strictEqual(source.id, 'tips');
-    assert.ok(source.priority > 0);
-    assert.ok(source.supports({ text: 'test', words: ['test'] }));
-
-    const result = await source.getCues({
-      text: 'agents use ultrathink',
-      words: ['agents', 'use', 'ultrathink'],
-    });
-
-    assert.ok(result.results.length >= 2);
-    assert.ok(result.timing !== undefined);
-    assert.strictEqual(result.error, undefined);
-  });
-
-  it('should respect domain filtering', () => {
-    const source = new LocalCueSource(sampleLocalCueData, { domain: 'claude-code' });
-
-    assert.ok(source.supports({ text: 'test', words: ['test'], domain: 'claude-code' }));
-    assert.ok(!source.supports({ text: 'test', words: ['test'], domain: 'gemini-cli' }));
-  });
-});
 
 console.log('All tests defined. Run with: node --test dist/sources/tips-file.test.js');

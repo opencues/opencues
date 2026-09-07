@@ -61,6 +61,14 @@ BANNED_PATTERNS=(
   'start[ ]tutorial'
   'opencues[T]utorial'
 
+  # static tips layer removed (spec 0.12, Sep 2026): no cue map, no static defs,
+  # no `definitions` mode. Historical mentions carry LEGACY-NAME-ALLOW.
+  'staticCue[A]tCaret'
+  'staticCue[D]ef'
+  'buildLookup[M]ap'
+  'LocalCue[S]ource\b'
+  'tips-mode:[ ]definitions'
+
   'SENTINELS\.md'
   'USER\.md'
   '\bsentinels-mode\b'
