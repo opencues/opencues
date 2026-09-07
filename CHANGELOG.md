@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.13] - 2026-09-07
+
 ### Fixed — JS user blanks were silently disabled on Claude Code and OpenCode forks; a failed shell bundle reported success (`@opencues/claude-code` 0.2.13, `@opencues/opencode` 0.2.18, `@opencues/shell` 0.2.24)
 - The user-blank loader lazy-requires `acorn` + `acorn-walk` from the FORK's `node_modules`, and only the gemini installer put them there. On Claude Code and OpenCode a fresh install logged `Cannot find package 'acorn'` on the first JS user blank (`gh-issues`) and disabled it. Both installers now copy the two packages from wherever the repo resolves them (never an `npm install` into a bun workspace). `scripts/check-cc-bundle-integrity.sh` mirrors the copy and requires both to load, so dropping the step fails CI instead of degrading a user's fork.
 - The shell installer's bundle step swallowed its exit status behind `| tee | grep || true`: a Babel-clash failure printed nothing, "Shell build done." followed, and the PREVIOUS `dist/app.js` stayed in place, which `oc-edit` prefers over `src/`. The step now reports the failure with the log tail and removes any stale bundle so the launch falls back to transpiling `src/app.tsx`.
