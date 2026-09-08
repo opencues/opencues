@@ -139,7 +139,8 @@ const UNTYPEABLE = /(?:^|[\s(])(--?[a-z][\w-]*|(?:ctrl|shift|alt|cmd|meta|option
  * A prose rewrite keeps ≥ half of the quote's words, is not the entry's own
  * tip or say line, and adds no launch flag or keybind the quote did not have —
  * `<draft> --sandbox` and `Press Ctrl+R to search for <draft>` keep every word
- * of the draft and are still advice to the person, not a prompt to send.
+ * of the draft and are still advice to the person, not a prompt to send. An
+ * `@path` it adds must be a path the draft named, never a placeholder.
  */
 export function isGroundedRewrite(quote: string, rewrite: string, entry: { tip: string; say?: string }): boolean {
   const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);
@@ -148,6 +149,9 @@ export function isGroundedRewrite(quote: string, rewrite: string, entry: { tip: 
   const untypeable = (t: string) => new Set(Array.from(t.matchAll(UNTYPEABLE), (m) => m[1].toLowerCase()));
   const had = untypeable(quote);
   for (const u of untypeable(rewrite)) if (!had.has(u)) return false;
+  // an @path the rewrite adds must be a path the draft named — `@path/to/screenshot.png`
+  // is a placeholder the person would have to edit, so the tip stays advice
+  for (const m of rewrite.matchAll(/(?:^|\s)@(\S+)/g)) if (!quote.includes(m[1])) return false;
   const rj = r.join(' ');
   for (const own of [entry.tip, entry.say ?? '']) {
     const o = norm(own).join(' ');

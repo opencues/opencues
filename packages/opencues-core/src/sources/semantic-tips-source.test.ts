@@ -173,7 +173,8 @@ describe('SemanticTipsSource.getCues — grounding', () => {
     expect(isGroundedRewrite('show me the zorb list', 'show me the zorb list (press Shift+Tab)', { tip: 'x' })).toBe(false);
     expect(isGroundedRewrite('show me the zorb list', 'show me the zorb list (Esc twice)', { tip: 'x' })).toBe(false);
     expect(isGroundedRewrite('run it with --zbox on the zorb', 'run it with --zbox on the zorb please', { tip: 'ALT-TIP' })).toBe(true);   // the draft already had the flag
-    expect(isGroundedRewrite('look at the zorb file', '@zorb/file.ts look at it', { tip: 'ALT-TIP' })).toBe(true);   // @path is typeable prompt syntax
+    expect(isGroundedRewrite('look at zorb/file.ts and tell me', '@zorb/file.ts tell me', { tip: 'ALT-TIP' })).toBe(true);   // @path the draft named
+    expect(isGroundedRewrite('the zorb header looks off', 'the zorb header looks off @path/to/screenshot.png', { tip: 'ALT-TIP' })).toBe(false);   // an invented @path is a placeholder
     const tipText = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[{"quote":"so spendy","tipId":"t3","apply":"ALT-THREE quux is spendy"}]') });
     expect((await tipText.getCues(ctx('this is so spendy today'))).results[0].alternatives).toEqual(['so spendy']);   // advisory
   });
