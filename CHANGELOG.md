@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — a tip's rewrite cannot be the pack's own line paraphrased around the draft (`@opencues/core` 0.60.3)
+- Found measuring tips end-to-end on Claude Code: `it should remember our coding rules every session` produced the swap `Put your coding rules in CLAUDE.md — Claude follows it strictly every session`, the CLAUDE.md entry's tip sentence with four of the draft's words kept, which passed the half-the-words rule. `isGroundedRewrite` now also looks at what the rewrite ADDS: four or more added words of which at least half come from the entry's tip or say line is the line pasted in, so the tip stays advisory. One or two added words (`ultrathink`, a `see CLAUDE.md` pointer) still pass.
+
 ### Fixed — a tuned shipped pack now reaches an existing `~/.cues` (`opencues` CLI 0.7.14)
 - `opencues seed-configs`' shipped-md refresh kept the user's CUE.md / BLANK.md / AUDITOR.md BODY whenever it had content, so a `when:` line tuned in a release (this week's Gemini pack) never reached anyone who had already installed: every prior body counted as user content and had to be copied by hand. `~/.cues/.shipped-bodies.json` now records the hash of the shipped body each file carried when it was seeded or last refreshed; a body that still matches its record is untouched and follows the new shipped body, any other body is the user's and is kept. The record bootstraps on the first run after upgrade for every file whose body still equals the shipped one, so the NEXT release's tuning lands; frontmatter merging is unchanged.
 

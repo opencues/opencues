@@ -161,7 +161,20 @@ export function isGroundedRewrite(quote: string, rewrite: string, entry: { tip: 
   if (q.length === 0) return false;
   const rs = new Set(r);
   const kept = q.filter((w) => rs.has(w)).length;
-  return kept * 2 >= q.length;
+  if (kept * 2 < q.length) return false;
+  // what the rewrite ADDS must be the person's prompt, not the pack's line: a
+  // paraphrase that keeps half the draft and fills the rest with the tip's
+  // own words (`Put your coding rules in CLAUDE.md — Claude follows it …`)
+  // is the sentence pasted in. One or two added words (`ultrathink`) are an
+  // insertion and pass.
+  const qs = new Set(q);
+  const added = r.filter((w) => !qs.has(w));
+  if (added.length >= 4) {
+    const pack = new Set(norm(`${entry.tip} ${entry.say ?? ''}`));
+    const fromPack = added.filter((w) => pack.has(w)).length;
+    if (fromPack * 2 >= added.length) return false;
+  }
+  return true;
 }
 
 
