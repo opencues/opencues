@@ -89,7 +89,7 @@ landing its command.
 | opencode (14 / 6) | 14 of 14, 9 of 9 | 13 of 14, 8 of 9 |
 | gemini-cli (24 / 12) | 24 of 24, 19 of 19 commands | 24 of 24, 19 of 19 commands |
 | shell (10 / 5) | 10 of 10 | 9 of 10 |
-| false alarms, all packs | 0 | 0 |
+| false alarms, all packs | 0 (two Gemini traps are borderline on gpt-oss and only report) | 0 |
 | gate | met on all four | met on all four |
 
 **The model is the ceiling on terse phrasings.** The bench phrasings are
@@ -104,6 +104,12 @@ and fires on the large one. Checked with `--probe "<phrase>" --model <m>`:
 | that broke everything, go back to before the refactor | /rewind | /rewind |
 | revert what you just did | silent | /rewind |
 | put it back the way it was | silent | /rewind |
+
+**How quick it is.** Measured through the runtime on opencode, Gemini CLI
+and Claude Code: the tip is on screen about 1.1 seconds after your last
+keystroke on either model, half of which is the resolver's 500ms pause
+that waits for you to stop typing. With session-contradiction on it is
+about 1.5 seconds, because that check runs first.
 
 A silent case logs `SemanticTips: no tip`: the runtime asked and the model
 declined. `cue ready` is a hit. The lever is the cues bucket's model

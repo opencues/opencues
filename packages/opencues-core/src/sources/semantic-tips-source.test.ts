@@ -174,6 +174,11 @@ describe('SemanticTipsSource.getCues — grounding', () => {
     expect(isGroundedRewrite('show me the zorb list', 'show me the zorb list (Esc twice)', { tip: 'x' })).toBe(false);
     expect(isGroundedRewrite('run it with --zbox on the zorb', 'run it with --zbox on the zorb please', { tip: 'ALT-TIP' })).toBe(true);   // the draft already had the flag
     expect(isGroundedRewrite('look at zorb/file.ts and tell me', '@zorb/file.ts tell me', { tip: 'ALT-TIP' })).toBe(true);   // @path the draft named
+    // a paraphrase that keeps half the draft and fills the rest from the pack's line is the line pasted in
+    expect(isGroundedRewrite('it should remember our zorb rules every session', 'Put your zorb rules in ZORB.md - Zorb follows it strictly every session',
+      { tip: 'Put repeated instructions in ZORB.md - Zorb follows it strictly', say: 'Keep repeating a rule? Put it in ZORB.md; it is read every session' })).toBe(false);
+    expect(isGroundedRewrite('it should remember our zorb rules every session', 'it should remember our zorb rules every session, see ZORB.md',
+      { tip: 'Put repeated instructions in ZORB.md - Zorb follows it strictly' })).toBe(true);   // a short pointer added to the person's words
     expect(isGroundedRewrite('the zorb header looks off', 'the zorb header looks off @path/to/screenshot.png', { tip: 'ALT-TIP' })).toBe(false);   // an invented @path is a placeholder
     const tipText = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[{"quote":"so spendy","tipId":"t3","apply":"ALT-THREE quux is spendy"}]') });
     expect((await tipText.getCues(ctx('this is so spendy today'))).results[0].alternatives).toEqual(['so spendy']);   // advisory
