@@ -37,6 +37,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const { tag, bold, dim, fileLink, tree, banner, cliVersion } = require('../lib/style.cjs');
@@ -357,8 +358,18 @@ module.exports = function seedConfigs(argv, ctx) {
   //       prompt body) are preserved; contract fields refresh from
   //       defaults. Mirrors mergeOpencuesMd but for the shipped
   //       library files. ─────────────────────────────────────────────
+  //       The BODY follows defaults too, but only while the user has
+  //       never edited it: `.shipped-bodies.json` records the hash of
+  //       the shipped body each file carried when it was seeded or last
+  //       refreshed. A body that still matches its record is untouched
+  //       and takes the new shipped body; any other body is the user's
+  //       and is kept. Without this a tuned shipped tips pack (a `when:`
+  //       line that fires better) never reached an existing install —
+  //       every prior body counted as user content. ───────────────────
   log('');
   const mdRefreshed = [];
+  const shippedBodies = readShippedBodies(targetDir);
+  let shippedBodiesChanged = false;
   for (const subdir of ['cues', 'blanks', 'auditors']) {
     const srcParent = path.join(sourceDir, subdir);
     const dstParent = path.join(targetDir, subdir);
@@ -371,17 +382,25 @@ module.exports = function seedConfigs(argv, ctx) {
       if (!fs.existsSync(srcMd) || !fs.existsSync(dstMd)) continue;
       const srcContent = fs.readFileSync(srcMd, 'utf8');
       const dstContent = fs.readFileSync(dstMd, 'utf8');
-      const merged = mergeShippedMd(srcContent, dstContent);
+      const key = `${subdir}/${name}/${mdName}`;
+      const srcHash = bodyHash(srcContent);
+      const untouched = shippedBodies[key] === bodyHash(dstContent);
+      const refreshBody = untouched && shippedBodies[key] !== srcHash;
+      const merged = mergeShippedMd(srcContent, dstContent, { refreshBody });
       if (merged !== dstContent) {
         fs.writeFileSync(dstMd, merged);
-        mdRefreshed.push(`${subdir}/${name}/${mdName}`);
+        mdRefreshed.push([key, refreshBody ? 'shipped body refreshed (never edited); user fields preserved' : 'contract fields refreshed; user fields preserved']);
       }
+      // the body on disk equals the shipped one: remember that, so the NEXT
+      // shipped change can tell "untouched" from "edited"
+      if (bodyHash(merged) === srcHash && shippedBodies[key] !== srcHash) { shippedBodies[key] = srcHash; shippedBodiesChanged = true; }
     }
   }
+  if (shippedBodiesChanged) writeShippedBodies(targetDir, shippedBodies);
   const refreshRows = mdRefreshed.length
-    ? mdRefreshed.map(f => [f, dim('contract fields refreshed; user fields preserved'), tag('ok')])
-    : [[dim('(no changes — shipped frontmatter current)'), '']];
-  log(tree({ title: 'Shipped .md refresh', description: 'pull latest contract fields from defaults; preserve user customisations', rows: refreshRows }));
+    ? mdRefreshed.map(([f, note]) => [f, dim(note), tag('ok')])
+    : [[dim('(no changes — shipped frontmatter + untouched bodies current)'), '']];
+  log(tree({ title: 'Shipped .md refresh', description: 'pull latest contract fields (and never-edited bodies) from defaults; preserve user customisations', rows: refreshRows }));
 
   // ── 3. HEAL — self-heal empty OPENCUES.md + rename legacy cue.md → blank.md ──
   log('');
@@ -991,14 +1010,26 @@ const SHIPPED_MD_CONTRACT_FIELDS = new Set([
   // they have no defaults counterpart, so this merge never sees them.
   'blankMultilineIsAnswer',
 ]);
-function mergeShippedMd(defaultsContent, userContent) {
-  const split = (text) => {
-    const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
-    if (!m) return { fm: '', body: text };
-    return { fm: m[1], body: m[2] };
-  };
-  const d = split(defaultsContent);
-  const u = split(userContent);
+function splitFrontmatter(text) {
+  const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if (!m) return { fm: '', body: text };
+  return { fm: m[1], body: m[2] };
+}
+/** SHA-256 of a shipped file's body (frontmatter excluded, whitespace-trimmed). */
+function bodyHash(text) {
+  return crypto.createHash('sha256').update(splitFrontmatter(text).body.trim()).digest('hex');
+}
+const SHIPPED_BODIES_FILE = '.shipped-bodies.json';
+function readShippedBodies(dir) {
+  try { const v = JSON.parse(fs.readFileSync(path.join(dir, SHIPPED_BODIES_FILE), 'utf8')); return v && typeof v === 'object' ? v : {}; }
+  catch { return {}; }
+}
+function writeShippedBodies(dir, record) {
+  fs.writeFileSync(path.join(dir, SHIPPED_BODIES_FILE), JSON.stringify(record, null, 2) + '\n');
+}
+function mergeShippedMd(defaultsContent, userContent, { refreshBody = false } = {}) {
+  const d = splitFrontmatter(defaultsContent);
+  const u = splitFrontmatter(userContent);
   const KEY_RE = /^([a-zA-Z][a-zA-Z0-9_-]*):\s*(.*)$/;
 
   // Pull user's frontmatter keys (top-level only, skip comments/blanks).
@@ -1043,10 +1074,10 @@ function mergeShippedMd(defaultsContent, userContent) {
   }
 
   const mergedFm = out.join('\n');
-  // Body: prefer user's when it carries content (LLM prompt for CUE.md, etc.).
-  const userBodyTrim = u.body.trim();
-  const defaultsBodyTrim = d.body.trim();
-  const body = userBodyTrim !== '' ? u.body : d.body;
+  // Body: the user's when it carries content (LLM prompt for CUE.md, etc.),
+  // unless the caller proved it was never edited (`refreshBody`) — then the
+  // shipped body.
+  const body = refreshBody || u.body.trim() === '' ? d.body : u.body;
   // Idempotency: if user already had every default key + same contract values
   // + same body shape, we want to return the user file verbatim. Hard to do
   // perfectly without re-parsing, but the line-walk above is deterministic so
@@ -1082,4 +1113,4 @@ function printHelp() {
 // Test surface — internals exposed for unit testing without re-exporting
 // the bare functions at the top level. Keep stable: the tests in
 // packages/opencues-runtime/testing/ import via `seedConfigs._test`.
-module.exports._test = { mergeOpencuesMd, mergeShippedMd };
+module.exports._test = { mergeOpencuesMd, mergeShippedMd, bodyHash, SHIPPED_BODIES_FILE };

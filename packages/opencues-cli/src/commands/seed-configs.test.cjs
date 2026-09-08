@@ -176,6 +176,49 @@ test('RULES.md: seeded on first run with the nine benched defaults; an edited fi
   assert.strictEqual(fs.readFileSync(file, 'utf8'), '# mine\n- my only rule\n', 'an edited RULES.md was overwritten by re-seeding');
 });
 
+test('shipped-md refresh: a never-edited shipped pack body follows defaults; an edited body is kept', () => {
+  // Before this, mergeShippedMd kept ANY user body with content, so a tuned
+  // shipped tips pack (a `when:` line that fires better) never reached an
+  // existing ~/.cues. The record in .shipped-bodies.json is what tells an
+  // untouched body from an edit. A throwaway repo root carries the defaults
+  // so the "release" can change them without touching the real ones.
+  const tmpRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-seed-repo-'));
+  try {
+    fs.cpSync(path.join(REPO_ROOT, 'defaults'), path.join(tmpRepo, 'defaults'), { recursive: true });
+    const read = (p) => fs.readFileSync(p, 'utf8');
+    const packSrc = path.join(tmpRepo, 'defaults', 'cues', 'tips-gemini-cli', 'CUE.md');
+    const packDst = path.join(tmpHome, '.cues', 'cues', 'tips-gemini-cli', 'CUE.md');
+    const shippedLine = '"when": "wants to start over or begin an unrelated task"';
+    assert.ok(read(packSrc).includes(shippedLine), 'fixture assumes the shipped /clear line');
+
+    silence(() => seedConfigs(['--silent'], { REPO_ROOT: tmpRepo }));
+    assert.strictEqual(read(packDst), read(packSrc), 'first seed copies the pack');
+    const record = JSON.parse(read(path.join(tmpHome, '.cues', seedConfigs._test.SHIPPED_BODIES_FILE)));
+    assert.strictEqual(record['cues/tips-gemini-cli/CUE.md'], seedConfigs._test.bodyHash(read(packSrc)), 'the seeded body is recorded');
+
+    // a release tunes a when: line — the untouched install follows it
+    fs.writeFileSync(packSrc, read(packSrc).replace(shippedLine, '"when": "ALT-WHEN zorbo"'));
+    silence(() => seedConfigs(['--silent'], { REPO_ROOT: tmpRepo }));
+    assert.ok(read(packDst).includes('ALT-WHEN zorbo'), 'a never-edited body did not follow defaults');
+
+    // the user edits the pack; the next release tunes again; the edit survives
+    fs.writeFileSync(packDst, read(packDst).replace('ALT-WHEN zorbo', 'MY-WHEN zorbo'));
+    fs.writeFileSync(packSrc, read(packSrc).replace('ALT-WHEN zorbo', 'ALT-WHEN-TWO zorbo'));
+    silence(() => seedConfigs(['--silent'], { REPO_ROOT: tmpRepo }));
+    assert.ok(read(packDst).includes('MY-WHEN zorbo'), 'a user edit was overwritten by the shipped-body refresh');
+    assert.ok(!read(packDst).includes('ALT-WHEN-TWO'), 'the shipped change leaked over a user edit');
+
+    // a prompt-body file (a blank) with a user-written body is left alone too
+    const blankDst = path.join(tmpHome, '.cues', 'blanks', 'example', 'BLANK.md');
+    const mine = read(blankDst).replace(/\n---\n?([\s\S]*)$/, '\n---\nMY-BODY zorbo\n');
+    fs.writeFileSync(blankDst, mine);
+    silence(() => seedConfigs(['--silent'], { REPO_ROOT: tmpRepo }));
+    assert.ok(read(blankDst).includes('MY-BODY zorbo'), 'a user-written blank body was replaced');
+  } finally {
+    fs.rmSync(tmpRepo, { recursive: true, force: true });
+  }
+});
+
 test('self-heal rewrites the legacy `tips-mode: on` / `definitions` to `semantic` (the static layer left in spec 0.12)', () => {
   const cues = path.join(tmpHome, '.cues');
   fs.mkdirSync(cues, { recursive: true });
