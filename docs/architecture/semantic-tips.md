@@ -152,7 +152,7 @@ command case lands its command. Current state (2026-09-08):
 | opencode (14 / 6) | 14 / 14, 9 / 9 | 13 / 14, 8 / 9 |
 | gemini-cli (24 / 12) | 24 / 24, 19 / 19 commands | 24 / 24, 19 / 19 commands |
 | shell (10 / 5) | 10 / 10 | 9 / 10 |
-| false alarms | 0 | 0 |
+| false alarms | 0 (2 borderline traps report, see below) | 0 |
 
 Three lessons the bench taught, all of which bit before it existed:
 
@@ -167,15 +167,46 @@ Three lessons the bench taught, all of which bit before it existed:
 
 - **A `when:` edit is a whole-catalogue edit on gpt-oss.** The 2026-09-08
   Gemini review ran a 101-phrase probe set (two phrasings per entry, 35
-  topic-adjacent traps) over nine pack variants. gpt-oss is deterministic
-  for a given catalogue (the master pack scored identically twice) and
-  chaotic across catalogues: adding one `hooks` line moved verdicts on four
-  unrelated phrasings, and a trap that a line's rewrite silenced in one
-  variant fired again in the next with the line unchanged. A per-line probe
-  delta of a few cases is cross-talk, not signal. qwen moved with the lines
-  it was given. So: A/B the whole pack with `--pack-file`, keep every line
-  terse (example lists in parentheses made gpt-oss keyword-happy across the
-  board), and let the shipped gate on both models decide.
+  topic-adjacent traps) over nine pack variants. gpt-oss is stable within
+  a run window (the master pack scored identically twice, minutes apart)
+  and chaotic across catalogues: adding one `hooks` line moved verdicts on
+  four unrelated phrasings, and a trap that a line's rewrite silenced in
+  one variant fired again in the next with the line unchanged. A per-line
+  probe delta of a few cases is cross-talk, not signal. qwen moved with the
+  lines it was given. So: A/B the whole pack with `--pack-file`, keep every
+  line terse (example lists in parentheses made gpt-oss keyword-happy across
+  the board), and let the shipped gate on both models decide.
+- **gpt-oss also drifts across hours with nothing changed.** The shipped
+  Gemini pack passed its twelve traps three times in one hour, then fired
+  `/restore` on `restore the backup from last night into staging` and
+  `/tools` on `which tools are in the toolbar component` in every run of the
+  next hour, byte-identical pack and prompt. Those two rows carry a
+  `'borderline'` flag in the bench: reported as `ALARM (borderline)`, never
+  gating. Add the flag only to a trap that no wording of its entry's line
+  moved either way; a new false alarm on an unflagged trap is still a
+  regression.
+
+### End-to-end latency (2026-09-08, measured through the bridge)
+
+Per phrase: `clear`, inject the draft, then the bridge's own timestamps for
+`text.injected` → `resolver.started` → `resolver.completed`, plus the first
+dump that shows the `sentence-cue:tip` def (100ms poll). Six shipped-bench
+phrasings per host, cerebras, every other cue mode off:
+
+| host | model | resolver starts | call done | tip visible (median) |
+|---|---|---|---|---|
+| opencode | qwen-3.8-27b | 498ms | 959ms | 1100ms |
+| opencode | gpt-oss-120b | 499ms | 1016ms | 1100ms |
+| gemini-cli | qwen-3.8-27b | 500ms | 970ms | 1100ms |
+| claude-code | qwen-3.8-27b | 500ms | 936ms | 1083ms |
+
+So roughly: the 500ms resolver debounce (fixed per band, `host.llmDebounceMs
+?? 500`, not a user tunable), then a 350 to 650ms model call, then the def
+is on screen on the next render. Under a full config with
+`session-contradiction-mode: on` the fused session rail runs the
+contradiction leg first and awaits it, so the tip lands about 400ms later
+(opencode, qwen: median 1505ms). The bench's per-call latency is the middle
+column; what the person feels is the last one.
 
 Re-run the bench on both models before editing `SEMANTIC_TIPS_MATCH_SYSTEM`,
 any `when:` line, or the catalogue renderer. Prompt wording is fragile on
