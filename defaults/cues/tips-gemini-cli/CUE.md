@@ -79,7 +79,7 @@ on-host: [gemini-cli]
     "words": {
       "--sandbox": {
         "tip": "--sandbox (-s) isolates tool execution in docker/podman/sandbox-exec",
-        "when": "worries about a tool running something harmful on their machine",
+        "when": "worries about a tool running something harmful on their machine, or wants its commands run in a container",
         "say": "Worried what it might run? --sandbox confines tools to a container (docker, podman or sandbox-exec)"
       }
     }
@@ -104,7 +104,7 @@ on-host: [gemini-cli]
       },
       "/extensions": {
         "tip": "/extensions install|enable|disable|update manages extensions",
-        "when": "asks how to add a feature or an extension to the CLI",
+        "when": "asks how to add a feature, plugin or extension to the CLI",
         "say": "Adding a capability? /extensions install picks up Gemini CLI extensions"
       }
     }
@@ -114,7 +114,7 @@ on-host: [gemini-cli]
     "words": {
       "/agents": {
         "tip": "/agents list|enable|disable|reload manages local/remote subagents",
-        "when": "wants part of the work delegated or run by a separate agent",
+        "when": "wants part of the work delegated to a separate agent or subagent",
         "say": "Delegating? /agents lists and enables subagents for the work"
       },
       "/commands": {
@@ -134,7 +134,7 @@ on-host: [gemini-cli]
       },
       "--resume": {
         "tip": "--resume (-r) continues a session — use 'latest' or index",
-        "when": "closed the terminal or wants yesterday's session back",
+        "when": "closed the terminal or wants an earlier session back",
         "say": "Closed it? gemini --resume latest reopens the last session; --list-sessions shows the rest"
       }
     }
@@ -204,7 +204,7 @@ on-host: [gemini-cli]
     "words": {
       "Ctrl+R": {
         "tip": "Ctrl+R reverse-searches command history",
-        "when": "wants to re-run or find an earlier prompt",
+        "when": "wants to re-run or find a prompt they typed earlier in this CLI",
         "say": "Looking for an earlier prompt? Ctrl+R searches history; Ctrl+P and Ctrl+N walk it"
       }
     }
@@ -244,7 +244,7 @@ on-host: [gemini-cli]
     "words": {
       "/tools": {
         "tip": "/tools lists available tools; /tools desc shows descriptions",
-        "when": "asks what it can do or which tools it has",
+        "when": "asks what the assistant can do, what it has access to, or which tools it has",
         "say": "Wondering what it can do? /tools lists the active tools; /tools desc explains them"
       },
       "/permissions": {
@@ -289,7 +289,7 @@ on-host: [gemini-cli]
     "words": {
       "/help": {
         "tip": "/help lists all available slash commands",
-        "when": "is not sure what commands exist",
+        "when": "asks which slash commands exist or how to see them all",
         "say": "Not sure what exists? /help lists every command; /docs opens the docs"
       },
       "/bug": {
@@ -324,7 +324,7 @@ on-host: [gemini-cli]
     "words": {
       "/auth": {
         "tip": "/auth opens the auth dialog (OAuth / API key / Vertex AI)",
-        "when": "asks about signing in, an API key, or Vertex AI",
+        "when": "asks how to sign in to the CLI, which Google API key or account it uses, or about Vertex AI",
         "say": "Signing in? /auth picks Google OAuth, an API key or Vertex AI"
       },
       "/settings": {

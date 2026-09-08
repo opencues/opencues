@@ -69,8 +69,9 @@ situations, OpenCode 37, Gemini CLI 41, shell 15.
   that does not start with it collapses to the bare command. A launch flag
   such as `--worktree` is never a solution, since it cannot be applied inside
   the session; that note is advice.
-- A prose rewrite must keep your words and must not be the pack's own text,
-  or the note stays advisory.
+- A prose rewrite must keep your words, must not be the pack's own text,
+  and must not add a launch flag or a keybind your draft did not have, or
+  the note stays advisory. `<draft> --sandbox` is advice, not a prompt.
 - The note text is the pack's line. The model's reasoning never paints.
 - A contradiction cue on the same clause wins over a tip.
 
@@ -85,8 +86,8 @@ landing its command.
 | pack (recall / traps) | gpt-oss-120b | qwen-3.8-27b |
 |---|---|---|
 | claude-code (20 / 10) | 20 of 20, 15 of 15 commands | 18 of 20, 13 of 13 cited |
-| opencode (14 / 6) | 14 of 14, 9 of 9 | 14 of 14, 9 of 9 |
-| gemini-cli (14 / 6) | 13 of 14, 10 of 10 | 14 of 14, 10 of 10 |
+| opencode (14 / 6) | 14 of 14, 9 of 9 | 13 of 14, 8 of 9 |
+| gemini-cli (24 / 12) | 24 of 24, 19 of 19 commands | 24 of 24, 19 of 19 commands |
 | shell (10 / 5) | 10 of 10 | 9 of 10 |
 | false alarms, all packs | 0 | 0 |
 | gate | met on all four | met on all four |

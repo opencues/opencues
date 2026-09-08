@@ -15,6 +15,7 @@
 //        [--shard <n>|off]   situations per call (default: the shipped 35)
 //        [--stack a,b,...]   also load these packs into the catalogue (scale test: the case set stays --pack's)
 //        [--probe "<phrase>"] (repeatable) run these phrases instead of the case set and print what fires — no gate; the way to check a phrasing before promising it in a test list
+//        [--pack-file <path>] load the --pack's catalogue from this file instead of defaults/ — A/B a rewritten pack without touching the shipped one
 
 import path from 'node:path';
 import url from 'node:url';
@@ -31,7 +32,8 @@ const SHARD = argv.includes('--shard') ? argv[argv.indexOf('--shard') + 1] : Str
 const STACK = argv.includes('--stack') ? argv[argv.indexOf('--stack') + 1].split(',').filter(Boolean) : [];
 if (!process.env.CEREBRAS_API_KEY) { console.error('CEREBRAS_API_KEY is required'); process.exit(2); }
 
-const loadPack = (h) => JSON.parse(fs.readFileSync(path.join(R, `defaults/cues/tips-${h}/CUE.md`), 'utf8').match(/```json\s*([\s\S]*?)```/)[1]);
+const PACK_FILE = argv.includes('--pack-file') ? path.resolve(argv[argv.indexOf('--pack-file') + 1]) : null;
+const loadPack = (h) => JSON.parse(fs.readFileSync(h === PACK && PACK_FILE ? PACK_FILE : path.join(R, `defaults/cues/tips-${h}/CUE.md`), 'utf8').match(/```json\s*([\s\S]*?)```/)[1]);
 // the case set's pack first (project-first order), then whatever is stacked on it
 const pack = [...loadPack(PACK), ...STACK.flatMap((h) => loadPack(h).map((sec) => ({ ...sec, id: `${h}:${sec.id}` })))];
 const catalog = core.buildTipsCatalog(pack, { shardSize: SHARD === 'off' ? undefined : Number.parseInt(SHARD, 10) });
@@ -125,12 +127,29 @@ CASES_BY_PACK['gemini-cli'] = [
   ["connect it to my postgres tool", /^\/mcp$/, 'connect a tool', /^\/mcp\b/],
   ["what tools does it actually have", /^\/tools$/, 'which tools', /^\/tools\b/],
   ["i lost track of what's left on the todo list", /^ctrl\+t$/, 'todo list', null],
+  // 2026-09-08 review pass: phrasings that held on both models (probe set in the PR that added them)
+  ["jump back to where we were discussing the schema", /^\/rewind$/, 'back in the conversation', /^\/rewind\b/],
+  ["how do i sign in with my api key", /^\/auth$/, 'sign in', /^\/auth\b/],
+  ["every time i press enter it sends the message instead of adding a new line", /^\/terminal-setup$/, 'enter sends', /^\/terminal-setup\b/],
+  ["it keeps asking whether i trust this folder", /^\/permissions$/, 'trust prompt', /^\/permissions\b/],
+  ["how many tokens have we burned so far", /^\/stats$/, 'tokens used', /^\/stats\b/],
+  ["can i use this inside vs code", /^\/ide$/, 'vs code', /^\/ide\b/],
+  ["i wish i could use vim keys in this input", /^\/vim$/, 'vim keys', /^\/vim\b/],
+  ["how do i exit this thing cleanly", /^\/quit$/, 'quit', /^\/quit\b/],
+  ["does google collect my code when i use this", /^\/privacy$/, 'data collection', /^\/privacy\b/],
+  ["just run git status for me real quick", /^!$/, 'quick shell command', null],
   ["clear the cache directory before the build", null, 'clear, the verb'],
   ["restore the backup from last night into staging", null, 'restore, a code action'],
   ["the plan field on the invoice should be nullable", null, 'plan, a field'],
   ["add a compress option to the image upload", null, 'compress, a feature'],
   ["what does this project do?", null, 'the quickstart first prompt'],
   ["the model in models/user.ts needs a created_at field", null, 'model, the noun'],
+  ["which tools are in the toolbar component", null, 'tools, a component'],
+  ["wipe the test database before each run", null, 'wipe, a code action'],
+  ["add a resume upload field to the job application form", null, 'resume, the noun'],
+  ["the auth middleware rejects expired tokens", null, 'auth, the middleware'],
+  ["restore scroll position after navigation", null, 'restore, a ui action'],
+  ["the chat component scrolls to the bottom on every message", null, 'chat, a component'],
 ];
 CASES_BY_PACK['shell'] = [
   ["this draft is a mess, can you tidy it up before i send it", /^improve prompt$/, 'rough draft', null],

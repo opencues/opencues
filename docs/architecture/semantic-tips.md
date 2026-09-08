@@ -63,8 +63,12 @@ no tip). Every flag then passes four checks in the source:
    command tip the model's `apply` is kept only if it starts with that
    command (`/compact focus on the plan` survives), else it collapses to the
    bare command. For a prose tip (no command anywhere in the entry) the
-   rewrite must keep at least half the quote's words and must not be the
-   entry's own text (`isGroundedRewrite`), else the tip is an advisory.
+   rewrite must keep at least half the quote's words, must not be the
+   entry's own text, and must not add a launch flag or a keybind the quote
+   did not have (`isGroundedRewrite`), else the tip is an advisory. The last
+   rule exists because `<draft> --sandbox` and `Press Ctrl+R to search for
+   <draft>` keep every word of the draft and are still advice to the person;
+   `@path` and `!cmd` are allowed, a prompt can carry them.
 4. **The note is the pack's line.** `cueTip` = `emoji` + `say` (or tip); the
    model's `why` goes to `metadata.tip.why` and the log.
 
@@ -136,17 +140,17 @@ once a project pack stacks on a shipped one.
 ## The bench is the gate
 
 `tests/benchmarks/tips/semantic-tips-bench.mjs --pack <host> [--model <m>]
-[--shard <n>|off] [--stack a,b] [--probe "<phrase>"]`. Scoring is
+[--shard <n>|off] [--stack a,b] [--probe "<phrase>"] [--pack-file <path>]`. Scoring is
 deterministic: each recall case names the entry it must cite and the command
 `_` must swap in; traps are topic-adjacent drafts that name a subject without
 being in its situation. Gate: 0 false alarms, ≥ 90% cited right, every
-command case lands its command. Current state (2026-09-07):
+command case lands its command. Current state (2026-09-08):
 
 | pack (recall / traps) | gpt-oss-120b | qwen-3.8-27b |
 |---|---|---|
 | claude-code (20 / 10) | 20 / 20, 15 / 15 commands | 18 / 20, 13 / 13 cited |
-| opencode (14 / 6) | 14 / 14, 9 / 9 | 14 / 14, 9 / 9 |
-| gemini-cli (14 / 6) | 13 / 14, 10 / 10 | 14 / 14, 10 / 10 |
+| opencode (14 / 6) | 14 / 14, 9 / 9 | 13 / 14, 8 / 9 |
+| gemini-cli (24 / 12) | 24 / 24, 19 / 19 commands | 24 / 24, 19 / 19 commands |
 | shell (10 / 5) | 10 / 10 | 9 / 10 |
 | false alarms | 0 | 0 |
 
@@ -161,9 +165,22 @@ Three lessons the bench taught, all of which bit before it existed:
   `when:` rewrite chasing them regressed two other cases and was reverted.
   The lever is the cues bucket's model.
 
+- **A `when:` edit is a whole-catalogue edit on gpt-oss.** The 2026-09-08
+  Gemini review ran a 101-phrase probe set (two phrasings per entry, 35
+  topic-adjacent traps) over nine pack variants. gpt-oss is deterministic
+  for a given catalogue (the master pack scored identically twice) and
+  chaotic across catalogues: adding one `hooks` line moved verdicts on four
+  unrelated phrasings, and a trap that a line's rewrite silenced in one
+  variant fired again in the next with the line unchanged. A per-line probe
+  delta of a few cases is cross-talk, not signal. qwen moved with the lines
+  it was given. So: A/B the whole pack with `--pack-file`, keep every line
+  terse (example lists in parentheses made gpt-oss keyword-happy across the
+  board), and let the shipped gate on both models decide.
+
 Re-run the bench on both models before editing `SEMANTIC_TIPS_MATCH_SYSTEM`,
 any `when:` line, or the catalogue renderer. Prompt wording is fragile on
-qwen: one added sentence cost four cases.
+qwen: one added sentence cost four cases. Write a candidate pack to a file
+and bench it with `--pack-file` before touching `defaults/`.
 
 ## What it deliberately does not do
 
