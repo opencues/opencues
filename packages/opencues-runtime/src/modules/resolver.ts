@@ -33,6 +33,9 @@ import { diffSplice, fillSplice, type PendingTransaction, type UndoJournal } fro
 import { UndoApplier } from './undo';
 import { matchDeterministicAction } from '@opencues/core';
 
+/** Scripts that do not delimit words with spaces — a letter of these is never 'inside a word' for the pause rule. */
+const NO_WORD_DELIMITER_SCRIPT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
+
 /** Minimal interface MarkdownRender exposes for rich-text injection.
  *  Keeps Resolver from importing MarkdownRender directly (would create
  *  a layering cycle through boot-common). */
@@ -120,6 +123,10 @@ export interface ResolverOptions {
   readonly apiKeys?: Readonly<Record<string, string | undefined>>;
   /** Default 500ms â same as v1's auto-submit debounce. */
   readonly debounceMs?: number;
+  /** Pause after a closed sentence (terminator / newline). Default 100. */
+  readonly terminatorDebounceMs?: number;
+  /** Pause while the caret sits inside a word of a space-delimited script. Default 800. */
+  readonly inWordDebounceMs?: number;
   /** Optional injection seam for tests. When set, runtime uses this instead
    *  of constructing a NodeHttpAdapter. Should expose at least .post(). */
   readonly httpAdapter?: unknown;
@@ -1239,8 +1246,14 @@ export class Resolver {
   }
 
   private scheduleResolve(text: string, freshUnderscoreInserted = false): void {
+    const delay = this.pickDelay(text, freshUnderscoreInserted);
+    // Whitespace-only append (the space after `party!`, a newline after a
+    // line): nothing new to resolve. Leave the pending timer and generation
+    // alone so the resolve already scheduled or in flight for the text
+    // before the space lands instead of being superseded by a twin of
+    // itself — the terminator fast-fire used to fire twice, 160ms apart.
+    if (delay === null) return;
     if (this._debounceTimer) clearTimeout(this._debounceTimer);
-    const delay = this.options.debounceMs ?? 500;
     // Capture the freshness now so the gate reflects when the change
     // happened â not when the debounce fires `delay` ms later (by which
     // time the keystroke window may have lapsed even though the user
@@ -1252,6 +1265,53 @@ export class Resolver {
       void this.resolveAndApply(text, { allowBlanks });
     }, delay);
   }
+
+  /**
+   * The pause before a resolve, from the SHAPE of the last keystroke — never
+   * from the words, so it holds in any language:
+   *
+   *  - a closed sentence (terminator, optionally followed by whitespace, or a
+   *    newline) fires fast (`terminatorDebounceMs`, 100): the sentence is
+   *    complete, every sentence-scope source can judge it, and the answer is
+   *    the one the per-sentence cache reuses on the pauses that follow;
+   *  - a pause INSIDE a word (last char is a letter or digit of a script that
+   *    delimits words with spaces) waits longer (`inWordDebounceMs`, 800):
+   *    three of every four resolves used to land there and be thrown away;
+   *  - anything else (a space, a comma, an edit in the middle of the buffer,
+   *    a script with no word delimiters) keeps `debounceMs` (500).
+   *
+   * A `.` right after a digit is not a terminator (`3.` may become `3.5`).
+   * Only an APPEND at the end of the buffer is shaped; a mid-buffer edit
+   * gets the plain pause. Returns null for a whitespace-only append: no
+   * resolve is scheduled for it at all.
+   */
+  pickDelay(text: string, freshUnderscoreInserted = false): number | null {
+    const base = this.options.debounceMs ?? 500;
+    const prev = this._prevScheduledText;
+    const appended = prev !== null && text.length > prev.length && text.startsWith(prev);
+    // a whitespace-only append is not a new resolve (see scheduleResolve);
+    // `_prevScheduledText` stays at the text before it so the next real
+    // keystroke still reads as an append
+    if (appended && !freshUnderscoreInserted && text.slice(prev.length).trim() === '') return null;
+    this._prevScheduledText = text;
+    if (!appended) return base;
+    const m = /([\s\S])(\s*)$/.exec(text);
+    if (!m) return base;
+    const trailingWs = m[2];
+    const last = trailingWs.length > 0 ? text[text.length - trailingWs.length - 1] : m[1];
+    if (last === undefined) return base;
+    if (trailingWs.includes('\n')) return this.options.terminatorDebounceMs ?? 100;
+    if (/[.!?。！？．]/.test(last)) {
+      const before = text[text.length - trailingWs.length - 2];
+      if (last === '.' && before !== undefined && /\p{N}/u.test(before)) return base;   // 3. → 3.5
+      return this.options.terminatorDebounceMs ?? 100;
+    }
+    if (trailingWs.length === 0 && /[\p{L}\p{N}]/u.test(last) && !NO_WORD_DELIMITER_SCRIPT.test(last)) {
+      return this.options.inWordDebounceMs ?? 800;
+    }
+    return base;
+  }
+  private _prevScheduledText: string | null = null;
 
   /** Exposed for tests.
    *  @param opts.allowBlanks Default true. When false, `_` slots in the

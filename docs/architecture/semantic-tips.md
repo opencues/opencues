@@ -200,9 +200,18 @@ phrasings per host, cerebras, every other cue mode off:
 | gemini-cli | qwen-3.8-27b | 500ms | 970ms | 1100ms |
 | claude-code | qwen-3.8-27b | 500ms | 936ms | 1083ms |
 
-So roughly: the 500ms resolver debounce (fixed per band, `host.llmDebounceMs
-?? 500`, not a user tunable), then a 350 to 650ms model call, then the def
-is on screen on the next render. Under a full config with
+So roughly: the resolver's pause, then a 350 to 650ms model call, then the
+def is on screen on the next render. Since runtime 0.41.2 the pause is chosen
+from the SHAPE of the last keystroke (`Resolver.pickDelay`, never from the
+words, so it holds in any script): a closed sentence (terminator or newline)
+fires after `terminatorDebounceMs` (100), a pause inside a word of a
+space-delimited script waits `inWordDebounceMs` (800), anything else keeps
+`debounceMs` (500, per band `host.llmDebounceMs ?? 500`); a `.` after a digit
+is not a terminator; a whitespace-only append schedules nothing at all, so the
+space after `party!` neither re-fires nor supersedes the fast fire. Measured on
+the typing model, the in-word hold changes nothing for a 70 wpm typist (every
+wasted fire sat after a SPACE), so the rule's value is the half-second it
+takes off every sentence end; the word-boundary waste is the judge's job. Under a full config with
 `session-contradiction-mode: on` the fused session rail runs the
 contradiction leg first and awaits it, so the tip lands about 400ms later
 (opencode, qwen: median 1505ms). The bench's per-call latency is the middle
