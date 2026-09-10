@@ -16,6 +16,7 @@
 //        [--stack a,b,...]   also load these packs into the catalogue (scale test: the case set stays --pack's)
 //        [--probe "<phrase>"] (repeatable) run these phrases instead of the case set and print what fires — no gate; the way to check a phrasing before promising it in a test list
 //        [--pack-file <path>] load the --pack's catalogue from this file instead of defaults/ — A/B a rewritten pack without touching the shipped one
+//        [--provider <id>]   cerebras (default) | gemini | groq | … — key from <PROVIDER>_API_KEY; prints per-call tokens + list-price cost per run
 
 import path from 'node:path';
 import url from 'node:url';
@@ -25,12 +26,25 @@ const core = await import(path.join(R, 'packages/opencues-core/dist/index.js'));
 const { NodeHttpAdapter } = await import(path.join(R, 'packages/opencues-core/node-http-adapter.js'));
 
 const argv = process.argv.slice(2);
-const MODEL = argv.includes('--model') ? argv[argv.indexOf('--model') + 1] : 'gpt-oss-120b';
+const MODEL = argv.includes('--model') ? argv[argv.indexOf('--model') + 1] : (argv.includes('--provider') && argv[argv.indexOf('--provider') + 1] === 'gemini' ? 'gemini-3.5-flash-lite' : 'gpt-oss-120b');
 const VERBOSE = argv.includes('--verbose');
 const PACK = argv.includes('--pack') ? argv[argv.indexOf('--pack') + 1] : 'claude-code';
 const SHARD = argv.includes('--shard') ? argv[argv.indexOf('--shard') + 1] : String(core.TIPS_SHARD_SIZE_DEFAULT);
 const STACK = argv.includes('--stack') ? argv[argv.indexOf('--stack') + 1].split(',').filter(Boolean) : [];
-if (!process.env.CEREBRAS_API_KEY) { console.error('CEREBRAS_API_KEY is required'); process.exit(2); }
+const PROVIDER = argv.includes('--provider') ? argv[argv.indexOf('--provider') + 1] : 'cerebras';
+const KEY_ENV = `${PROVIDER.toUpperCase().replace(/-/g, '_')}_API_KEY`;
+const API_KEY = process.env[KEY_ENV];
+if (!API_KEY) { console.error(`${KEY_ENV} is required`); process.exit(2); }
+// per-run usage: every dispatchChat reports through the process-global sink
+const usage = { calls: 0, prompt: 0, completion: 0, cached: 0 };
+core.registerUsageSink((u) => { usage.calls++; usage.prompt += u.promptTokens ?? 0; usage.completion += u.completionTokens ?? 0; usage.cached += u.cachedTokens ?? 0; });
+function usageLine() {
+  const price = core.priceFor(PROVIDER, MODEL);
+  const cost = price ? usage.prompt * price.input / 1e6 + usage.completion * price.output / 1e6 : null;
+  const per = usage.calls ? ` · per call ${Math.round(usage.prompt / usage.calls)} in / ${Math.round(usage.completion / usage.calls)} out` : '';
+  return `usage: ${usage.calls} calls, ${usage.prompt} prompt (${usage.prompt ? Math.round(100 * usage.cached / usage.prompt) : 0}% cached), ${usage.completion} completion${per}` +
+    (cost === null ? ' · no list price' : ` · $${cost.toFixed(4)} (${price.approx ? 'approx ' : ''}$${price.input}/$${price.output} per M)` + (usage.calls ? ` · $${(cost / usage.calls).toFixed(5)} per call` : ''));
+}
 
 const PACK_FILE = argv.includes('--pack-file') ? path.resolve(argv[argv.indexOf('--pack-file') + 1]) : null;
 const loadPack = (h) => JSON.parse(fs.readFileSync(h === PACK && PACK_FILE ? PACK_FILE : path.join(R, `defaults/cues/tips-${h}/CUE.md`), 'utf8').match(/```json\s*([\s\S]*?)```/)[1]);
@@ -39,7 +53,7 @@ const pack = [...loadPack(PACK), ...STACK.flatMap((h) => loadPack(h).map((sec) =
 const catalog = core.buildTipsCatalog(pack, { shardSize: SHARD === 'off' ? undefined : Number.parseInt(SHARD, 10) });
 const src = new core.SemanticTipsSource({
   httpAdapter: new NodeHttpAdapter({ maxSockets: 4, timeout: 30000 }),
-  provider: core.getProvider('cerebras'), model: MODEL, apiKey: process.env.CEREBRAS_API_KEY,
+  provider: core.getProvider(PROVIDER), model: MODEL, apiKey: API_KEY,
   log: (m) => { if (VERBOSE) console.log('   ', m); },
 });
 
@@ -173,13 +187,14 @@ CASES_BY_PACK['shell'] = [
 ];
 const PROBES = argv.flatMap((a, i) => (a === '--probe' ? [argv[i + 1]] : [])).filter(Boolean);
 if (PROBES.length > 0) {
-  console.log(`\nsemantic tips probe · ${PACK} · cerebras/${MODEL} · catalogue ${catalog.entries.length} entries · ${catalog.shards.length} shard(s)\n`);
+  console.log(`\nsemantic tips probe · ${PACK} · ${PROVIDER}/${MODEL} · catalogue ${catalog.entries.length} entries · ${catalog.shards.length} shard(s)\n`);
   for (const text of PROBES) {
     const t0 = Date.now();
     const r = await src.getCues({ text, words: text.split(/\s+/).filter(Boolean), tipsCatalog: catalog });
     const g = r.results[0];
     console.log(`${String(Date.now() - t0).padStart(5)}ms  ${JSON.stringify(text).padEnd(60)} → ${g ? `${g.metadata.tip.trigger.split(' / ')[0].padEnd(14)} ${g.alternatives[1] ?? '(advisory)'}` : '(silent)'}`);
   }
+  console.log('\n' + usageLine());
   process.exit(0);
 }
 const CASES = CASES_BY_PACK[PACK];
@@ -212,13 +227,14 @@ for (const [text, want, note, wantSol, flag] of CASES) {
   rows.push([verdict, ms, note, trig ?? '(silent)', got ? got.alternatives[1] ?? '(advisory)' : '']);
 }
 const recallN = CASES.filter(c => c[1] !== null).length, trapN = CASES.length - recallN;
-console.log(`\nsemantic tips bench · ${PACK}${STACK.length ? ' + ' + STACK.join(',') : ''} · cerebras/${MODEL} · catalogue ${catalog.entries.length} entries (${catalog.text.length} chars) · ${catalog.shards.length} shard(s) of ≤${SHARD}\n`);
+console.log(`\nsemantic tips bench · ${PACK}${STACK.length ? ' + ' + STACK.join(',') : ''} · ${PROVIDER}/${MODEL} · catalogue ${catalog.entries.length} entries (${catalog.text.length} chars) · ${catalog.shards.length} shard(s) of ≤${SHARD}\n`);
 for (const [v, ms, note, trig, alt] of rows) console.log(`${v.padEnd(19)} ${String(ms).padStart(5)}ms  ${note.padEnd(30)} → ${trig.padEnd(14)} ${alt}`);
 const cmdN = CASES.filter(c => c[1] !== null && c[3]).length;
 console.log(`\nrecall set (${recallN}): surfaced ${surfaced}, cited the right entry ${cited}, wrong entry ${wrong}, missed ${misses}`);
 console.log(`solutions  (${cmdN} command cases): right ${solved}, wrong stop ${badSolution}`);
 console.log(`trap set   (${trapN}): silent ${silentOk}, false alarms ${falseAlarms}${borderlineAlarms ? `, borderline alarms ${borderlineAlarms} (reported, not gated)` : ''}`);
 console.log(`mean latency ${Math.round(totalMs / CASES.length)}ms`);
+console.log(usageLine());
 const gate = falseAlarms === 0 && cited / recallN >= 0.9 && badSolution === 0;
 console.log(`\nship gate (0 false alarms, ≥90% cited right, every command case lands its command): ${gate ? 'PASS' : 'FAIL'}`);
 process.exit(gate ? 0 : 1);
