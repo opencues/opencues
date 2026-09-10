@@ -1244,11 +1244,19 @@ export class Resolver {
   private scheduleResolve(text: string, freshUnderscoreInserted = false): void {
     const delay = this.pickDelay(text, freshUnderscoreInserted);
     // Whitespace-only append (the space after `party!`, a newline after a
-    // line): nothing new to resolve. Leave the pending timer and generation
-    // alone so the resolve already scheduled or in flight for the text
-    // before the space lands instead of being superseded by a twin of
-    // itself — the terminator fast-fire used to fire twice, 160ms apart.
-    if (delay === null) return;
+    // line): nothing new to resolve. If a resolve is still pending for the
+    // text before the space, RE-ARM it — the keystroke still counts as
+    // typing, so the pause restarts — but on that same text and delay, so
+    // it neither becomes a twin of a fast fire that already went out nor
+    // supersedes one in flight. If nothing is pending, nothing fires.
+    if (delay === null) {
+      const pending = this._pendingResolve;
+      if (this._debounceTimer && pending) {
+        clearTimeout(this._debounceTimer);
+        this._debounceTimer = setTimeout(() => { this._debounceTimer = null; this._pendingResolve = null; void this.resolveAndApply(pending.text, { allowBlanks: pending.allowBlanks }); }, pending.delay);
+      }
+      return;
+    }
     if (this._debounceTimer) clearTimeout(this._debounceTimer);
     // Capture the freshness now so the gate reflects when the change
     // happened â not when the debounce fires `delay` ms later (by which
@@ -1257,10 +1265,14 @@ export class Resolver {
     // OR a positive underscore-count delta as proof of fresh user
     // intent â see callsite comment for the middle-`_` rationale.
     const allowBlanks = this.explicitUnderscoreRecent() || freshUnderscoreInserted;
+    this._pendingResolve = { text, allowBlanks, delay };
     this._debounceTimer = setTimeout(() => {
+      this._debounceTimer = null; this._pendingResolve = null;
       void this.resolveAndApply(text, { allowBlanks });
     }, delay);
   }
+  /** what the pending debounce timer will resolve — re-armed as-is on a whitespace-only append */
+  private _pendingResolve: { text: string; allowBlanks: boolean; delay: number } | null = null;
 
   /**
    * The pause before a resolve, from the SHAPE of the last keystroke — never

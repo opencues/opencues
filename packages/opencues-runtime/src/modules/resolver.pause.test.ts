@@ -77,3 +77,44 @@ describe('Resolver.pickDelay — the pause from the shape of the last keystroke'
     expect(r.pickDelay('the zorb _ ', true)).not.toBeNull();
   });
 });
+
+describe('scheduleResolve — a whitespace-only append re-arms the pending resolve, never a twin', () => {
+  function live() {
+    const adapter = new MockAdapter();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    const resolver = new Resolver(adapter, new HighlightState(), new DynDefs(), loader, {
+      endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', httpAdapter: {}, debounceMs: 40, terminatorDebounceMs: 5,
+    });
+    const resolved: string[] = [];
+    (resolver as unknown as { _resolver: { resolve(ctx: { text: string }): Promise<{ results: never[] }> } })._resolver = {
+      resolve: async (ctx) => { resolved.push(ctx.text); return { results: [] }; },
+    };
+    resolver.subscribe();
+    return { adapter, resolved };
+  }
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  it('a space keeps the debounce ticking on the pre-space text: the resolve fires 40ms after the SPACE, once', async () => {
+    const { adapter, resolved } = live();
+    adapter.pushText('the zorb');
+    await sleep(25);
+    adapter.pushText('the zorb ');          // whitespace-only append at +25ms
+    await sleep(25);                         // +50ms from the letter: a leaked timer would have fired by now
+    expect(resolved).toEqual([]);
+    await sleep(30);                         // +55ms from the space
+    expect(resolved).toEqual(['the zorb']);
+  });
+  it('a terminator fires fast and the following space neither re-fires nor supersedes it', async () => {
+    const { adapter, resolved } = live();
+    adapter.pushText('the zorb is');
+    adapter.pushText('the zorb is.');
+    await sleep(20);
+    expect(resolved).toEqual(['the zorb is.']);
+    adapter.pushText('the zorb is. ');
+    await sleep(70);
+    expect(resolved).toEqual(['the zorb is.']);   // no twin
+    adapter.pushText('the zorb is. n');
+    await sleep(70);
+    expect(resolved).toEqual(['the zorb is.', 'the zorb is. n']);
+  });
+});
