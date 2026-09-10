@@ -158,7 +158,7 @@ passive DynDef at `currentIndex: 0` — the buffer keeps the user's draft; the
 **Fused with ask-cues** (`sources/session-cue-source.ts`): both this matcher and
 the ask-cues source (`ToolPromptCueSource`, `❓`) consume the same distilled
 session and compete for the sentence under the cursor, so they're wrapped in one
-`SessionCueSource` (priority 88) that runs **contradiction-first**: if the
+`SessionCueSource` (priority 88) that runs contradiction and tips **in parallel** (since core 0.60.4; contradiction wins when it fires) and the ask leg only when neither flagged: if the
 contradiction matcher emits a flag, ask-cues is skipped for that pass; otherwise
 ask-cues runs. This removes the earlier duplication where ask-cues had its own
 contradiction-catching exception. `build-sources.ts` constructs the fused source
@@ -232,7 +232,7 @@ of a transcript, skipping Stage A entirely.
   unit-tested (`session-commitments.test.ts`).
 - `session-contradiction-source.ts` — the matcher + its prompt + grounding
   (`session-contradiction-source.test.ts`).
-- `session-cue-source.ts` — the fused contradiction-first wrapper (with ask-cues).
+- `session-cue-source.ts` — the fused wrapper (contradiction ∥ tips, then ask-cues).
 - `extract-commitments.cjs` — the producer (gate → scoped debounce → scoped lock
   → per-format parse → wire call → scoped write).
 - `highlight-statusline.sh` `_oc_kick_commitments` + `setup.sh` bake step — the CC
