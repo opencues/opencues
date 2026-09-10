@@ -204,17 +204,22 @@ So roughly: the resolver's pause, then a 350 to 650ms model call, then the
 def is on screen on the next render. Since runtime 0.41.2 the pause is chosen
 from the SHAPE of the last keystroke (`Resolver.pickDelay`, never from the
 words, so it holds in any script): a closed sentence (terminator or newline)
-fires after `terminatorDebounceMs` (100), a pause inside a word of a
-space-delimited script waits `inWordDebounceMs` (800), anything else keeps
-`debounceMs` (500, per band `host.llmDebounceMs ?? 500`); a `.` after a digit
-is not a terminator; a whitespace-only append schedules nothing at all, so the
-space after `party!` neither re-fires nor supersedes the fast fire. Measured on
-the typing model, the in-word hold changes nothing for a 70 wpm typist (every
-wasted fire sat after a SPACE), so the rule's value is the half-second it
+fires after `terminatorDebounceMs` (100), anything else keeps `debounceMs`
+(500, per band `host.llmDebounceMs ?? 500`); a `.` after a digit is not a
+terminator; a whitespace-only append schedules nothing at all, so the space
+after `party!` neither re-fires nor supersedes the fast fire. An "inside a
+word, wait longer" rule was tried and removed: most prompts end after a
+plain word, so it held the person's FINAL pause (resolver.started 500 → 800ms
+on every bench phrase) while saving nothing mid-draft (every wasted fire on
+the typing model sat after a SPACE). The rule's value is the half-second it
 takes off every sentence end; the word-boundary waste is the judge's job. Under a full config with
-`session-contradiction-mode: on` the fused session rail runs the
-contradiction leg first and awaits it, so the tip lands about 400ms later
-(opencode, qwen: median 1505ms). The bench's per-call latency is the middle
+`session-contradiction-mode: on` the fused session rail used to run the
+contradiction leg first and await it, so the tip landed about 400ms later
+(opencode, qwen: median 1505ms); since core 0.60.4 the two legs run in
+parallel (contradiction still wins when it fires), so a tip lands at
+max(contradiction, tips) rather than their sum. What remains is the
+resolver applying every source's results together, so a tip still paints
+when the slowest sibling returns — see the fan-out numbers above. The bench's per-call latency is the middle
 column; what the person feels is the last one.
 
 Re-run the bench on both models before editing `SEMANTIC_TIPS_MATCH_SYSTEM`,

@@ -33,8 +33,6 @@ import { diffSplice, fillSplice, type PendingTransaction, type UndoJournal } fro
 import { UndoApplier } from './undo';
 import { matchDeterministicAction } from '@opencues/core';
 
-/** Scripts that do not delimit words with spaces — a letter of these is never 'inside a word' for the pause rule. */
-const NO_WORD_DELIMITER_SCRIPT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
 
 /** Minimal interface MarkdownRender exposes for rich-text injection.
  *  Keeps Resolver from importing MarkdownRender directly (would create
@@ -125,8 +123,6 @@ export interface ResolverOptions {
   readonly debounceMs?: number;
   /** Pause after a closed sentence (terminator / newline). Default 100. */
   readonly terminatorDebounceMs?: number;
-  /** Pause while the caret sits inside a word of a space-delimited script. Default 800. */
-  readonly inWordDebounceMs?: number;
   /** Optional injection seam for tests. When set, runtime uses this instead
    *  of constructing a NodeHttpAdapter. Should expose at least .post(). */
   readonly httpAdapter?: unknown;
@@ -1274,11 +1270,12 @@ export class Resolver {
    *    newline) fires fast (`terminatorDebounceMs`, 100): the sentence is
    *    complete, every sentence-scope source can judge it, and the answer is
    *    the one the per-sentence cache reuses on the pauses that follow;
-   *  - a pause INSIDE a word (last char is a letter or digit of a script that
-   *    delimits words with spaces) waits longer (`inWordDebounceMs`, 800):
-   *    three of every four resolves used to land there and be thrown away;
-   *  - anything else (a space, a comma, an edit in the middle of the buffer,
-   *    a script with no word delimiters) keeps `debounceMs` (500).
+   *  - anything else keeps `debounceMs` (500).
+   *
+   * There is deliberately NO "inside a word, wait longer" rule: most prompts
+   * end after a plain word with no punctuation, and a hold there is a hold on
+   * the person's final pause (measured: resolver.started 500 → 800ms on every
+   * bench phrase). Mid-word hesitations rarely exceed 500ms anyway.
    *
    * A `.` right after a digit is not a terminator (`3.` may become `3.5`).
    * Only an APPEND at the end of the buffer is shaped; a mid-buffer edit
@@ -1305,9 +1302,6 @@ export class Resolver {
       const before = text[text.length - trailingWs.length - 2];
       if (last === '.' && before !== undefined && /\p{N}/u.test(before)) return base;   // 3. → 3.5
       return this.options.terminatorDebounceMs ?? 100;
-    }
-    if (trailingWs.length === 0 && /[\p{L}\p{N}]/u.test(last) && !NO_WORD_DELIMITER_SCRIPT.test(last)) {
-      return this.options.inWordDebounceMs ?? 800;
     }
     return base;
   }
