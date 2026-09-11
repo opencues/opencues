@@ -44,6 +44,14 @@ export interface ResolverResult {
  */
 export const SENTENCE_CUE_MERGE_KEY_BASE = 2_000_000;
 
+/** Per-call options for `resolve`. */
+export interface ResolveOptions {
+  /** Fires as EACH source settles (parallel mode only), with its raw, un-reconciled
+   *  result — so a caller can act on a high-priority source before the slowest
+   *  sibling returns. */
+  readonly onSourceResult?: (sourceId: string, result: CueSourceResult) => void;
+}
+
 export class CueResolver {
   private sources: CueSource[];
   private config: CueResolverConfig;
@@ -65,7 +73,7 @@ export class CueResolver {
    * @param context - The context to resolve cues for
    * @returns Merged results from all applicable sources
    */
-  async resolve(context: CueContext): Promise<ResolverResult> {
+  async resolve(context: CueContext, opts: ResolveOptions = {}): Promise<ResolverResult> {
     const startTime = Date.now();
     const metrics: CueMetrics[] = [];
     const errors: Array<{ sourceId: string; error: string }> = [];
@@ -129,6 +137,16 @@ export class CueResolver {
           withConsumed({ ...context, signal: controllers[i].signal }, consumedBlankSlots),
         )
       );
+      // Early delivery: the caller hears each source the moment it settles,
+      // BEFORE the priority-ordered reconciliation below. The result handed
+      // over is the source's raw result — claim filtering has not run, so a
+      // caller must only act on it when no `_` slot is in play (the runtime
+      // paints the session rail early on `_`-free passes; see
+      // Resolver.resolveAndApply's onSourceResult).
+      if (opts.onSourceResult) {
+        const cb = opts.onSourceResult;
+        promises.forEach((p, i) => { p.then((r) => { try { cb(applicableSources[i].id, r); } catch { /* caller's problem, never the pass's */ } }).catch(() => { /* surfaced below */ }); });
+      }
 
       for (let i = 0; i < promises.length; i++) {
         const source = applicableSources[i];

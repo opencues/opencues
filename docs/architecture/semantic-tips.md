@@ -217,9 +217,12 @@ takes off every sentence end; the word-boundary waste is the judge's job. Under 
 contradiction leg first and await it, so the tip landed about 400ms later
 (opencode, qwen: median 1505ms); since core 0.60.4 the two legs run in
 parallel (contradiction still wins when it fires), so a tip lands at
-max(contradiction, tips) rather than their sum. What remains is the
-resolver applying every source's results together, so a tip still paints
-when the slowest sibling returns — see the fan-out numbers above. The bench's per-call latency is the middle
+max(contradiction, tips) rather than their sum. And since runtime 0.41.2 the rail
+no longer waits for its siblings either: core `resolve` reports each source
+as it settles (`onSourceResult`), and on a `_`-free pass the runtime paints
+the rail's result at once through the same apply path (a `resolver.early`
+event), the full pass re-applying it later as a refresh. The remaining
+sources still land together when the slowest returns. The bench's per-call latency is the middle
 column; what the person feels is the last one.
 
 Re-run the bench on both models before editing `SEMANTIC_TIPS_MATCH_SYSTEM`,

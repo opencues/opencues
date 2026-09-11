@@ -180,7 +180,7 @@ export interface ResolverOptions {
 
 interface CuesCoreLike {
   buildSourcesFromConfig(c: unknown, b: unknown, o: unknown): unknown[];
-  createResolver(sources: unknown[], opts: unknown): { resolve(ctx: unknown): Promise<{ results: CueResultLike[] }> };
+  createResolver(sources: unknown[], opts: unknown): { resolve(ctx: unknown, opts?: unknown): Promise<{ results: CueResultLike[] }> };
   /** Whitelist an ambient down to its privacy-safe SHAPE booleans
    *  (`singleLine`/`disposable`) — forwarded unconditionally for field-kind
    *  routing even when `ambient-context-mode` is off. Optional so an older
@@ -311,7 +311,7 @@ function noBlankContextConsumer(
 export const SENTENCE_CUE_SYNTHETIC_KEY_BASE = 2_000_000;
 
 export class Resolver {
-  private _resolver: { resolve(ctx: unknown): Promise<{ results: CueResultLike[] }> } | null = null;
+  private _resolver: { resolve(ctx: unknown, opts?: unknown): Promise<{ results: CueResultLike[] }> } | null = null;
   private _sources: unknown[] = [];
   private _httpAdapter: unknown = null;
   /** Cached `@opencues/core` module handle (loaded lazily in buildSources).
@@ -1324,30 +1324,45 @@ export class Resolver {
    *    buffer are masked from blank sources (FluidBlank / TransformBlank /
    *    ConfigIntent). Production callers in `onTextChange` set this based
    *    on `explicitUnderscoreRecent()` â see the explicit-`_` gate above. */
-  async resolveAndApply(text: string, opts: { allowBlanks?: boolean } = {}): Promise<void> {
+  async resolveAndApply(text: string, opts: { allowBlanks?: boolean; preResolved?: { results: CueResultLike[] }; generation?: number } = {}): Promise<void> {
     const allowBlanks = opts.allowBlanks ?? true;
     if (!this._resolver) return;
+    // EARLY PAINT (opts.preResolved): one source of the pass that is still
+    // running has already settled and its result is safe to show: the
+    // session rail (priority 88, passive, whole-buffer) on a `_`-free pass,
+    // where no higher-priority claim can filter it. The apply half below runs
+    // on that result now, under the running pass's generation; when the full
+    // pass completes it applies the same result again and the sentence-cue
+    // path treats it as a refresh, never a second def. Measured live before
+    // this: the tip was back at 0.7s and painted at 1.2s, waiting on a slower
+    // sibling.
+    const early = opts.preResolved !== undefined;
     // A pending config-intent transaction left over from a superseded/
     // early-returned pass holds real scalar writes â commit it (scalar-
     // only) rather than let it dangle and mis-attach to this pass.
-    this.commitPendingConfigIntentTx();
+    if (!early) this.commitPendingConfigIntentTx();
     // Abort the previous resolve's in-flight HTTP calls (if any). The
     // resolve is being superseded by this newer one â its results would
     // be dropped on generation mismatch downstream, so the LLM round-
     // trip is pure waste (provider $$$ + rate-limit pressure).
-    if (this._inFlightController) {
+    if (!early && this._inFlightController) {
       try { this._inFlightController.abort(); } catch { /* never */ }
     }
     const controller = new AbortController();
-    this._inFlightController = controller;
-    const generation = ++this._generation;
+    if (!early) this._inFlightController = controller;
+    const generation = early ? (opts.generation ?? this._generation) : ++this._generation;
+    if (early && generation !== this._generation) return;
     const t0 = Date.now();
-    this.adapter.log('debug', `Resolver.resolveAndApply: text=${JSON.stringify(text.slice(0, 80))}`);
-    this.adapter.emitEvent?.('resolver.started', {
-      text: text.slice(0, 200),
-      textLen: text.length,
-      generation,
-    });
+    this.adapter.log('debug', early
+      ? `Resolver.resolveAndApply: early paint (${opts.preResolved!.results.length} result(s)) text=${JSON.stringify(text.slice(0, 80))}`
+      : `Resolver.resolveAndApply: text=${JSON.stringify(text.slice(0, 80))}`);
+    if (!early) {
+      this.adapter.emitEvent?.('resolver.started', {
+        text: text.slice(0, 200),
+        textLen: text.length,
+        generation,
+      });
+    }
 
     const wordSpans = splitWords(text);
     // Skip words we've already resolved. Empty strings get filtered out
@@ -1466,7 +1481,7 @@ export class Resolver {
     // stop() restores each slot to `_` so the substitution path's
     // `target.word === '_'` check still passes.
     const animatedSlots: number[] = [];
-    if (this.blankLoading) {
+    if (this.blankLoading && !early) {
       for (let i = 0; i < cleanWords.length; i++) {
         if (cleanWords[i] === '_') {
           this.blankLoading.start(i, 'resolver');
@@ -1485,8 +1500,16 @@ export class Resolver {
     // timing from the LLM source.
     const __resolveStart = Date.now();
     let result;
+    // Early delivery from the core's parallel dispatch: paint the session
+    // rail the moment it settles on a `_`-free pass (see EARLY PAINT above).
+    const onSourceResult = text.includes('_') ? undefined : (sourceId: string, r: { results: CueResultLike[] }) => {
+      if (sourceId !== 'session-cue' || r.results.length === 0) return;
+      if (generation !== this._generation) return;
+      this.adapter.emitEvent?.('resolver.early', { sourceId, resultCount: r.results.length, latencyMs: Date.now() - t0, generation });
+      void this.resolveAndApply(text, { allowBlanks, preResolved: { results: r.results }, generation });
+    };
     try {
-      result = await this._resolver.resolve({
+      result = early ? opts.preResolved! : await this._resolver.resolve({
         text,
         words: cleanWords,
         domain: 'claude-code',
@@ -1622,7 +1645,7 @@ export class Resolver {
         // of letting them run to completion just to have their results
         // dropped on generation mismatch.
         signal: controller.signal,
-      });
+      }, { onSourceResult });
     } catch (err) {
       stopAllAnimations();
       // AbortError on supersede is expected â don't surface as a logical
@@ -1636,9 +1659,9 @@ export class Resolver {
       return;
     }
     stopAllAnimations();
-    if (this._inFlightController === controller) this._inFlightController = null;
+    if (!early && this._inFlightController === controller) this._inFlightController = null;
 
-    this.adapter.log('debug', `Resolver.resolve: got ${result.results.length} result(s) for ${cleanWords.length} cleanWords`);
+    if (!early) this.adapter.log('debug', `Resolver.resolve: got ${result.results.length} result(s) for ${cleanWords.length} cleanWords`);
     // Per-word routing/skipped surfaces which ConfigSource claimed each
     // word â the structural property RoutedWordSourceGroup enforces for
     // prompt-injection isolation. Empty-string entries in cleanWords
@@ -1659,16 +1682,18 @@ export class Resolver {
         else skipped.push({ wordIndex: i, word: w });
       }
     }
-    this.adapter.emitEvent?.('resolver.completed', {
-      text: text.slice(0, 200),
-      textLen: text.length,
-      cleanWords: cleanWords.length,
-      resultCount: result.results.length,
-      latencyMs: Date.now() - t0,
-      generation,
-      routing,
-      skipped,
-    });
+    if (!early) {
+      this.adapter.emitEvent?.('resolver.completed', {
+        text: text.slice(0, 200),
+        textLen: text.length,
+        cleanWords: cleanWords.length,
+        resultCount: result.results.length,
+        latencyMs: Date.now() - t0,
+        generation,
+        routing,
+        skipped,
+      });
+    }
 
     // Stale check â a newer scheduleResolve might have run in between.
     if (generation !== this._generation) return;
