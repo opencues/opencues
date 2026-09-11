@@ -1083,7 +1083,7 @@ export class Resolver {
       // boot-common's resolveLLM thunk so its scalars are NOT keyed
       // here â agent-rewrite resolves at tick time, not build time.
       s.get('cues-llm-provider') ?? '', s.get('cues-llm-model') ?? '', s.get('cues-llm-endpoint') ?? '',
-      s.get('judge-mode') ?? '', s.get('judge-model') ?? '', s.get('judge-provider') ?? '',   // trial judge: rebuild when it is switched or re-pointed
+      s.get('judge-mode') ?? '', s.get('judge-model') ?? '', s.get('judge-provider') ?? '', s.get('judge-scope') ?? '',   // trial judge: rebuild when it is switched or re-pointed
       s.get('blanks-llm-provider') ?? s.get('blank-llm-provider') ?? '',
       s.get('blanks-llm-model') ?? s.get('blank-llm-model') ?? '',
       s.get('blanks-llm-endpoint') ?? s.get('blank-llm-endpoint') ?? '',
@@ -1538,7 +1538,13 @@ export class Resolver {
             this.adapter.emitEvent?.('judge.verdict', { ok, latencyMs: Date.now() - t0, generation });
             return ok;
           }),
-          applies: (id: string) => id.startsWith('sentence-cue:') || id === 'contradiction-cues' || id === 'word-cues',
+          // `judge-scope: fanout` (default) gates only the per-sentence sources; `all`
+          // gates every source on a `_`-free pass — tips and the rail included — so a
+          // NO pause costs one judge call and nothing else (trial: is a shorter
+          // pause affordable when only resting points pay?).
+          applies: (this.configLoader.opencuesState.settings.get('judge-scope') ?? 'fanout') === 'all'
+            ? () => true
+            : (id: string) => id.startsWith('sentence-cue:') || id === 'contradiction-cues' || id === 'word-cues',
         }
       : undefined;
     try {

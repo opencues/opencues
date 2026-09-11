@@ -230,6 +230,47 @@ any `when:` line, or the catalogue renderer. Prompt wording is fragile on
 qwen: one added sentence cost four cases. Write a candidate pack to a file
 and bench it with `--pack-file` before touching `defaults/`.
 
+## The completeness judge (trial, `judge-mode: on`)
+
+Step 3 of the Sep 2026 cost plan. One tiny call per pause
+(`CompletenessJudge`, `packages/opencues-core/src/judge.ts`: qwen-3.8-27b,
+~130 prompt tokens, one output token, reasoning off, cached on the trimmed
+text, fails OPEN) answers "is this draft at a resting point?". Core
+`resolve` takes a `gate`; sources it applies to wait for the verdict and are
+skipped on NO. `judge-scope: fanout` (default) gates the per-sentence
+sources only (sentence cues, contradiction parse, word-cues); `all` gates
+every source on a `_`-free pass, tips and the rail included. Settings-map
+only (`judge-mode`, `judge-model`, `judge-provider`, `judge-scope`), off by
+default. Bench `tests/benchmarks/judge/judge-bench.mjs`: qwen 31/32 at
+273ms, $0.00005 per call; gpt-oss-120b 31/32 at 529ms (it still emits
+reasoning tokens); the prompt names no language and reads only the end of
+the text.
+
+Measured on the opencode fork (2026-09-11), the three-sentence post typed
+at 70 wpm under shipped defaults + calendar, and the six one-liners under
+the full config:
+
+| pause · judge | post: pauses / model calls / cost | one-liner tip visible (median) |
+|---|---|---|
+| 500 · off (shipped) | 9 / 49 / $0.032 | 1.10s |
+| 500 · fanout | 9 / 40 + 9 / $0.029 | 1.10s |
+| 500 · all | 9 / 26 + 9 / $0.018 | 1.31s |
+| 300 · fanout | 28 / 93 + 28 / $0.070 | **0.87s** |
+| 300 · all | 28 / 25 + 27 / $0.019 | 1.14s |
+
+The judge's verdicts were right by inspection (NO on `Had`, `…party! Prior`,
+`…saw the`, `…me alon`; YES on each closed sentence). What the grid says:
+after the sentence cache, the fan-out is no longer the cost — the two
+whole-buffer calls (tips, the rail) are, at about $0.0012 per pause, and
+they are the ones the judge does not gate under `fanout`. Gating them too
+(`all`) makes a pause cheap enough that a 300ms pause costs the same as
+today's 500 while cutting the bill 40%, but puts the judge's ~200ms in front
+of the tip, so the tip is no faster. The only row that is faster, `300 ·
+fanout`, pays for it with 2.2× the bill. Speed and money pull against each
+other through the tips call; the lever that moves both is a cheaper tips
+call (reasoning off, or a provider that bills cached prefix at a discount),
+not the judge alone. Nothing here changes what any source answers.
+
 ## What it deliberately does not do
 
 - No token matching, anywhere. The static layer (`ConfigLoader.cueMap`,
