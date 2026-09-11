@@ -179,6 +179,8 @@ export interface ResolverOptions {
 }
 
 interface CuesCoreLike {
+  CompletenessJudge?: new (cfg: unknown) => { judge(text: string, signal?: AbortSignal): Promise<boolean>; stats: { calls: number; hits: number; yes: number; no: number; errors: number } };
+  getProvider?: (id: string) => unknown;
   buildSourcesFromConfig(c: unknown, b: unknown, o: unknown): unknown[];
   createResolver(sources: unknown[], opts: unknown): { resolve(ctx: unknown, opts?: unknown): Promise<{ results: CueResultLike[] }> };
   /** Whitelist an ambient down to its privacy-safe SHAPE booleans
@@ -312,6 +314,8 @@ export const SENTENCE_CUE_SYNTHETIC_KEY_BASE = 2_000_000;
 
 export class Resolver {
   private _resolver: { resolve(ctx: unknown, opts?: unknown): Promise<{ results: CueResultLike[] }> } | null = null;
+  /** Completeness judge (trial, `judge-mode: on`): gates the per-sentence fan-out. Rebuilt with the sources. */
+  private _judge: { judge(text: string, signal?: AbortSignal): Promise<boolean>; stats: { calls: number; hits: number; yes: number; no: number; errors: number } } | null = null;
   private _sources: unknown[] = [];
   private _httpAdapter: unknown = null;
   /** Cached `@opencues/core` module handle (loaded lazily in buildSources).
@@ -770,6 +774,23 @@ export class Resolver {
     // The build-sources factory does the actual resolution; we just
     // shovel the relevant settings down.
     const settings = this.configLoader.opencuesState.settings;
+    this._judge = null;
+    if ((settings.get('judge-mode') ?? 'off') === 'on' && this._core?.CompletenessJudge && this._core?.getProvider) {
+      const inherit = (v: string | undefined) => (v && v !== 'inherit' ? v : undefined);
+      const providerId = inherit(settings.get('judge-provider')) ?? inherit(settings.get('cues-llm-provider')) ?? inherit(settings.get('llm-provider')) ?? 'cerebras';
+      const provider = this._core.getProvider(providerId) as { envKeyName?: string } | undefined;
+      // apiKeys is keyed by the provider's ENV name (CEREBRAS_API_KEY), not its id — the same lookup core's sources use
+      const apiKey = (provider?.envKeyName ? this.options.apiKeys?.[provider.envKeyName] : undefined) ?? this.options.apiKey ?? '';
+      if (provider && apiKey) {
+        this._judge = new this._core.CompletenessJudge({
+          provider, httpAdapter: this._httpAdapter, apiKey, model: settings.get('judge-model') ?? 'qwen-3.8-27b',
+          log: (m: string) => this.adapter.log(m.includes('fail open') ? 'warn' : 'debug', m),
+        });
+        this.adapter.log('info', `Resolver: completeness judge on (${providerId}/${settings.get('judge-model') ?? 'qwen-3.8-27b'}) — gating sentence cues, contradiction parse, word-cues`);
+      } else {
+        this.adapter.log('warn', `Resolver: judge-mode on but no provider/key for ${providerId} — fan-out ungated`);
+      }
+    }
     const buildOpts = {
       httpAdapter: this._httpAdapter,
       // Multi-provider keys; `apiKey` (legacy) is still passed for the
@@ -1062,6 +1083,7 @@ export class Resolver {
       // boot-common's resolveLLM thunk so its scalars are NOT keyed
       // here â agent-rewrite resolves at tick time, not build time.
       s.get('cues-llm-provider') ?? '', s.get('cues-llm-model') ?? '', s.get('cues-llm-endpoint') ?? '',
+      s.get('judge-mode') ?? '', s.get('judge-model') ?? '', s.get('judge-provider') ?? '',   // trial judge: rebuild when it is switched or re-pointed
       s.get('blanks-llm-provider') ?? s.get('blank-llm-provider') ?? '',
       s.get('blanks-llm-model') ?? s.get('blank-llm-model') ?? '',
       s.get('blanks-llm-endpoint') ?? s.get('blank-llm-endpoint') ?? '',
@@ -1508,6 +1530,17 @@ export class Resolver {
       this.adapter.emitEvent?.('resolver.early', { sourceId, resultCount: r.results.length, latencyMs: Date.now() - t0, generation });
       void this.resolveAndApply(text, { allowBlanks, preResolved: { results: r.results }, generation });
     };
+    // Fan-out gate (trial, `judge-mode: on`): on a `_`-free pass the per-sentence
+    // sources wait for the judge's verdict; tips and the session rail never do.
+    const gate = !early && this._judge && !text.includes('_')
+      ? {
+          verdict: this._judge.judge(text, controller.signal).then((ok) => {
+            this.adapter.emitEvent?.('judge.verdict', { ok, latencyMs: Date.now() - t0, generation });
+            return ok;
+          }),
+          applies: (id: string) => id.startsWith('sentence-cue:') || id === 'contradiction-cues' || id === 'word-cues',
+        }
+      : undefined;
     try {
       result = early ? opts.preResolved! : await this._resolver.resolve({
         text,
@@ -1645,7 +1678,7 @@ export class Resolver {
         // of letting them run to completion just to have their results
         // dropped on generation mismatch.
         signal: controller.signal,
-      }, { onSourceResult });
+      }, { onSourceResult, gate });
     } catch (err) {
       stopAllAnimations();
       // AbortError on supersede is expected â don't surface as a logical

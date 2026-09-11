@@ -50,6 +50,11 @@ export interface ResolveOptions {
    *  result — so a caller can act on a high-priority source before the slowest
    *  sibling returns. */
   readonly onSourceResult?: (sourceId: string, result: CueSourceResult) => void;
+  /** A gate the fan-out waits for (parallel mode only): sources for which
+   *  `applies(id)` is true are dispatched only once `verdict` resolves true;
+   *  false skips them this pass with an empty result. Sources it does not
+   *  apply to dispatch at once. */
+  readonly gate?: { readonly verdict: Promise<boolean>; readonly applies: (sourceId: string) => boolean };
 }
 
 export class CueResolver {
@@ -131,12 +136,17 @@ export class CueResolver {
           });
         }
       }
-      const promises = applicableSources.map((source, i) =>
-        this.querySourceWithTimeout(
+      const EMPTY: CueSourceResult = { results: [], timing: 0 };
+      const promises = applicableSources.map((source, i) => {
+        const run = () => this.querySourceWithTimeout(
           source,
           withConsumed({ ...context, signal: controllers[i].signal }, consumedBlankSlots),
-        )
-      );
+        );
+        if (opts.gate && opts.gate.applies(source.id)) {
+          return opts.gate.verdict.then((ok) => (ok && !controllers[i].signal.aborted ? run() : EMPTY), () => run());
+        }
+        return run();
+      });
       // Early delivery: the caller hears each source the moment it settles,
       // BEFORE the priority-ordered reconciliation below. The result handed
       // over is the source's raw result — claim filtering has not run, so a

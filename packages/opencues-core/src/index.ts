@@ -85,6 +85,7 @@ export {
   type SingleSentenceAlts,
 } from './sources/sentence-cue-source';
 export { SentenceCallCache } from './sources/sentence-call-cache';
+export { CompletenessJudge, COMPLETENESS_JUDGE_SYSTEM, type CompletenessJudgeConfig } from './judge';
 
 export { ContradictionCueSource, type ContradictionCueSourceOptions } from './contradiction/contradiction-cue-source';
 export { ContradictionLlmSource, parseClaims, CONTRADICTION_EXTRACT_SYSTEM, COMMUNITY_RULE_JUDGE_SYSTEM, type ContradictionLlmSourceConfig } from './contradiction/contradiction-llm-source';
