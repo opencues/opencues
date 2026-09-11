@@ -97,12 +97,12 @@ function router3(contradictionReply: string, tipsReply: string, askReply: string
 const A_TIP = JSON.stringify([{ quote: 'lets begin again', tipId: 't1', why: 'fresh start', apply: '/zap' }]);
 
 describe('SessionCueSource — the tips leg sits between contradiction and ask', () => {
-  it('a contradiction fires → tips and ask are both skipped', async () => {
+  it('a contradiction fires → it wins; the tips call ran alongside it (parallel legs), ask is skipped', async () => {
     const { adapter, calls } = router3(CONTRADICTS, A_TIP, A_QUESTION);
     const src = new SessionCueSource({ ...base, httpAdapter: adapter, enableContradiction: true, enableSemanticTips: true, enableAsk: true });
     const res = await src.getCues(ctx3('please add the redis npm package now, lets begin again'));
     expect(res.results[0]?.source).toBe('sentence-cue:session-contradiction');
-    expect(calls).toEqual({ contradiction: 1, tips: 0, ask: 0 });
+    expect(calls).toEqual({ contradiction: 1, tips: 1, ask: 0 });
   });
   it('no contradiction, a tip fires → ask is skipped, the tip is the result', async () => {
     const { adapter, calls } = router3('[]', A_TIP, A_QUESTION);
@@ -133,5 +133,58 @@ describe('SessionCueSource — the tips leg sits between contradiction and ask',
     expect(src.supports(ctx3('lets begin again'))).toBe(true);
     await src.getCues(ctx3('lets begin again'));
     expect(calls).toEqual({ contradiction: 0, tips: 1, ask: 0 });
+  });
+});
+
+// ── contradiction ∥ tips (Sep 2026) ──────────────────────────────────────────
+// The tips leg used to wait for the contradiction leg. Same routing as router3,
+// plus a delay / a throw on the contradiction call so the ordering is observable.
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+function railRouter(opts: { contradiction: string | Error; contradictionDelayMs?: number; tips: string }) {
+  const calls = { contradiction: 0, tips: 0, ask: 0 };
+  const adapter: HttpAdapter = {
+    post: async (_u, body) => {
+      const sys = JSON.parse(body as string).messages[0].content as string;
+      const kind = sys.includes('AskUserQuestion') ? 'ask' : sys.includes('TIPS — things users') ? 'tips' : 'contradiction';
+      calls[kind]++;
+      if (kind === 'ask') return JSON.stringify({ choices: [{ message: { content: A_QUESTION } }] });
+      if (kind === 'tips') return JSON.stringify({ choices: [{ message: { content: opts.tips } }] });
+      await sleep(opts.contradictionDelayMs ?? 0);
+      if (opts.contradiction instanceof Error) throw opts.contradiction;
+      return JSON.stringify({ choices: [{ message: { content: opts.contradiction } }] });
+    },
+  };
+  return { adapter, calls };
+}
+
+describe('SessionCueSource — contradiction and tips run in parallel; contradiction wins', () => {
+  it('a slow contradiction leg no longer delays the tip: the pass takes about max(legs), not their sum', async () => {
+    const { adapter, calls } = railRouter({ contradiction: '[]', contradictionDelayMs: 150, tips: A_TIP });
+    const src = new SessionCueSource({ ...base, httpAdapter: adapter, enableContradiction: true, enableAsk: false, enableSemanticTips: true });
+    const t0 = Date.now();
+    const res = await src.getCues(ctx3('ok lets begin again on the zorb'));
+    expect(res.results[0]?.source).toBe('sentence-cue:tip');
+    expect(calls).toEqual({ contradiction: 1, tips: 1, ask: 0 });
+    expect(Date.now() - t0).toBeLessThan(150 + 100);   // bounded by the slow leg alone
+  });
+  it('both fire → the contradiction wins; the tips call was spent alongside it (the price of parallel)', async () => {
+    const { adapter, calls } = railRouter({ contradiction: CONTRADICTS, tips: A_TIP });
+    const src = new SessionCueSource({ ...base, httpAdapter: adapter, enableContradiction: true, enableAsk: true, enableSemanticTips: true });
+    const res = await src.getCues(ctx3('please add the redis npm package now, lets begin again'));
+    expect(res.results[0]?.source).toBe('sentence-cue:session-contradiction');
+    expect(calls).toEqual({ contradiction: 1, tips: 1, ask: 0 });   // ask still short-circuited
+  });
+  it('a contradiction leg that throws is an empty leg — the tip still lands', async () => {
+    const { adapter } = railRouter({ contradiction: new Error('network down'), tips: A_TIP });
+    const src = new SessionCueSource({ ...base, httpAdapter: adapter, enableContradiction: true, enableAsk: false, enableSemanticTips: true });
+    const res = await src.getCues(ctx3('ok lets begin again on the zorb'));
+    expect(res.results[0]?.source).toBe('sentence-cue:tip');
+  });
+  it('neither flags → the ask leg still runs, after both', async () => {
+    const { adapter, calls } = railRouter({ contradiction: '[]', tips: '[]' });
+    const src = new SessionCueSource({ ...base, httpAdapter: adapter, enableContradiction: true, enableAsk: true, enableSemanticTips: true });
+    const res = await src.getCues(ctx3('the new approach is way better'));
+    expect(res.results[0]?.source).toBe('sentence-cue:tool-ask');
+    expect(calls).toEqual({ contradiction: 1, tips: 1, ask: 1 });
   });
 });

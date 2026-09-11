@@ -2179,6 +2179,49 @@ export function parseProviderResponse(providerId: ProviderId, rawJson: string): 
  * the cache is hitting in production logs. Silent when the provider
  * doesn't surface usage details (e.g. on parse error).
  */
+/**
+ * One usage shape from the three wire formats that carry one. OpenAI-compatible
+ * providers (cerebras, groq, openrouter, openai, ollama) put it under `usage`;
+ * Gemini under `usageMetadata` (`promptTokenCount` / `candidatesTokenCount`,
+ * cached prefix as `cachedContentTokenCount`, reasoning as `thoughtsTokenCount`,
+ * which is billed as output); Anthropic under `usage` with `input_tokens` /
+ * `output_tokens` and the cache read as `cache_read_input_tokens`. Until
+ * Sep 2026 only the first was parsed, so the meter (and `opencues usage`)
+ * was blind to Gemini and Anthropic calls. Returns undefined when no usage
+ * block is present.
+ */
+export function normalizeUsage(parsed: unknown): { promptTokens: number; completionTokens: number; cachedTokens: number; acceptedPredictionTokens: number; rejectedPredictionTokens: number } | undefined {
+  const p = parsed as {
+    usage?: {
+      prompt_tokens?: number; completion_tokens?: number;
+      prompt_tokens_details?: { cached_tokens?: number };
+      completion_tokens_details?: { accepted_prediction_tokens?: number; rejected_prediction_tokens?: number };
+      input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number;
+    };
+    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; cachedContentTokenCount?: number; thoughtsTokenCount?: number };
+  } | null;
+  if (!p || typeof p !== 'object') return undefined;
+  const u = p.usage;
+  if (u && typeof u.prompt_tokens === 'number') {
+    return {
+      promptTokens: u.prompt_tokens,
+      completionTokens: u.completion_tokens ?? 0,
+      cachedTokens: u.prompt_tokens_details?.cached_tokens ?? 0,
+      acceptedPredictionTokens: u.completion_tokens_details?.accepted_prediction_tokens ?? 0,
+      rejectedPredictionTokens: u.completion_tokens_details?.rejected_prediction_tokens ?? 0,
+    };
+  }
+  if (u && typeof u.input_tokens === 'number') {   // anthropic: input_tokens EXCLUDES the cache read; the meter counts the whole prompt
+    const cached = u.cache_read_input_tokens ?? 0;
+    return { promptTokens: u.input_tokens + cached + (u.cache_creation_input_tokens ?? 0), completionTokens: u.output_tokens ?? 0, cachedTokens: cached, acceptedPredictionTokens: 0, rejectedPredictionTokens: 0 };
+  }
+  const g = p.usageMetadata;
+  if (g && typeof g.promptTokenCount === 'number') {
+    return { promptTokens: g.promptTokenCount, completionTokens: (g.candidatesTokenCount ?? 0) + (g.thoughtsTokenCount ?? 0), cachedTokens: g.cachedContentTokenCount ?? 0, acceptedPredictionTokens: 0, rejectedPredictionTokens: 0 };
+  }
+  return undefined;
+}
+
 export interface UsageReport {
   readonly promptTokens: number;
   readonly completionTokens: number;
@@ -2348,17 +2391,17 @@ export async function dispatchChat(
             };
           };
         };
-        const u = parsed.usage;
-        if (u && typeof u.prompt_tokens === 'number') {
-          const cached = u.prompt_tokens_details?.cached_tokens ?? 0;
-          const accepted = u.completion_tokens_details?.accepted_prediction_tokens ?? 0;
-          const rejected = u.completion_tokens_details?.rejected_prediction_tokens ?? 0;
+        const u = normalizeUsage(parsed);
+        if (u) {
+          const cached = u.cachedTokens;
+          const accepted = u.acceptedPredictionTokens;
+          const rejected = u.rejectedPredictionTokens;
           const predTotal = accepted + rejected;
           ctx.onUsage?.({
-            promptTokens: u.prompt_tokens,
-            completionTokens: u.completion_tokens ?? 0,
+            promptTokens: u.promptTokens,
+            completionTokens: u.completionTokens,
             cachedTokens: cached,
-            cacheHitRate: u.prompt_tokens > 0 ? cached / u.prompt_tokens : 0,
+            cacheHitRate: u.promptTokens > 0 ? cached / u.promptTokens : 0,
             acceptedPredictionTokens: accepted,
             rejectedPredictionTokens: rejected,
             predictionAcceptRate: predTotal > 0 ? accepted / predTotal : 0,
@@ -2366,9 +2409,9 @@ export async function dispatchChat(
           reportUsage({
             providerId: provider.id,
             model: req.model,
-            promptTokens: u.prompt_tokens,
+            promptTokens: u.promptTokens,
             cachedTokens: cached,
-            completionTokens: u.completion_tokens ?? 0,
+            completionTokens: u.completionTokens,
           });
         }
       } catch { /* malformed usage block — silent */ }

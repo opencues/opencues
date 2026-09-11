@@ -60,6 +60,7 @@
  */
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
+import { SentenceCallCache } from './sentence-call-cache';
 import { SourceConfig } from '../cues-md';
 import { inferFieldCompat } from '../host-compat';
 import { describeLLMCall, dispatchChat, type ProviderAdapter } from '../llm-provider';
@@ -366,6 +367,9 @@ export class SentenceCueSource implements CueSource {
     return spans.length > 0;
   }
 
+  /** Per-sentence answers + in-flight sharing (see sentence-call-cache.ts). */
+  private readonly _calls = new SentenceCallCache<ReturnType<typeof parseSingleSentenceAlts>>();
+
   async getCues(context: CueContext): Promise<CueSourceResult> {
     const t0 = Date.now();
     const spans = segmentSentences(context.text, context.words);
@@ -439,8 +443,14 @@ export class SentenceCueSource implements CueSource {
           if (dSpan?.changed) {
             this.log(`SentenceCue[${this.sourceConfig.name}]: dehydrated ${dSpan.spans.length} value(s) → tokens (outbound PII scrub)`);
           }
-          const raw = await this.callLLM(system, `SENTENCE: ${outbound}`, budget, context.signal);
-          const parsed = parseSingleSentenceAlts(raw);
+          // Cached on the EXACT LLM input (system prompt + outbound sentence):
+          // an unchanged sentence at the next pause costs nothing, and a pass
+          // that supersedes this one joins the in-flight call for it instead
+          // of aborting it. Hydration runs below on every path — the catalog
+          // may have changed since the answer was cached.
+          const user = `SENTENCE: ${outbound}`;
+          const parsed = await this._calls.get(`${system}\u0000${user}`, context.signal, async (signal) =>
+            parseSingleSentenceAlts(await this.callLLM(system, user, budget, signal)));
           if (parsed.ceded) return 'ceded';
           if (parsed.alts.length === 0) return null;
           // Hydration catalog = identity sentinels (safe mode) PLUS the
@@ -523,7 +533,8 @@ export class SentenceCueSource implements CueSource {
       });
     }
 
-    this.log(`SentenceCue[${this.sourceConfig.name}]: completed (${Date.now() - t0}ms, emitted=${results.length}, ceded=${cededCount}, sentences=${spans.length})`);
+    const cs = this._calls.takeStats();
+    this.log(`SentenceCue[${this.sourceConfig.name}]: completed (${Date.now() - t0}ms, emitted=${results.length}, ceded=${cededCount}, sentences=${spans.length}, calls=${cs.dispatched}, cached=${cs.hits}, joined=${cs.joined})`);
     this.emit({ type: 'completed', emitted: results.length, ceded: cededCount, latencyMs: Date.now() - t0 });
     return { results, timing: Date.now() - t0, model: this.model };
   }

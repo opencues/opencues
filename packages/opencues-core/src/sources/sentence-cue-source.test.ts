@@ -526,4 +526,18 @@ describe('SentenceCueSource', () => {
     assert.ok(users.some(u => u.includes('Second one.')));
     assert.ok(!users[0].includes('Second one.') || !users[1].includes('First one.'), 'sentences not batched into one message');
   });
+  describe('unchanged sentences are not re-sent at the next pause', () => {
+  it('two passes over a two-sentence buffer where one sentence changed cost three calls, not four', async () => {
+    let calls = 0;
+    const adapter: HttpAdapter = { post: async () => { calls++; return JSON.stringify({ choices: [{ message: { content: 'ALT: ALT-ONE zorb' } }] }); } };
+    const src = new SentenceCueSource({ ...baseConfig, httpAdapter: adapter, sourceConfig: moreFormalSource });
+    await src.getCues(ctxFromText('the zorb is fine. the zorb is slow.'));
+    assert.strictEqual(calls, 2);
+    const r = await src.getCues(ctxFromText('the zorb is fine. the zorb is very slow.'));
+    assert.strictEqual(calls, 3, 'only the changed sentence should go out');
+    assert.strictEqual(r.results.length, 2, 'the cached sentence still yields its cue at its span');
+    assert.strictEqual(r.results[1].spanStart, 'the zorb is fine. '.length);
+  });
+  });
+
 });

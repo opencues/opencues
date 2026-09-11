@@ -6,11 +6,17 @@
  *   1. session-contradiction (⚠) — is the draft going AGAINST a decision?
  *   2. ask-cues (❓)             — is there an open question worth asking?
  *
- * Contradiction is the more urgent signal, so it runs FIRST; if it fires, we
- * short-circuit and DON'T spend the (bigger) ask call — which the priority rail
- * would have evicted anyway. This kills the redundant work the two separate
- * sources did (both firing on a contradiction, the ask result thrown away)
- * while keeping each job on its own proven prompt (no overloaded-prompt risk).
+ * Contradiction is the more urgent signal and WINS when it fires; the ask call
+ * (the biggest of the three, opt-in) is only spent when neither contradiction
+ * nor tips flagged anything, since the priority rail would evict it anyway.
+ *
+ * Ordering (Sep 2026): contradiction and tips run IN PARALLEL. They used to run
+ * one after the other, so a tip waited for the contradiction call even on a
+ * draft with nothing to contradict — measured live as +400ms on every pause
+ * with a watchlist loaded, and 2.2s on a slow provider call. Now a tip lands at
+ * max(contradiction, tips) instead of their sum; the only cost is the tips
+ * call being spent on the rare pause where a contradiction also fires (it is
+ * one cached-prefix call). Each job keeps its own proven prompt — never fused.
  *
  * Per-type gating: constructed with `enableContradiction` / `enableAsk` from the
  * `session-contradiction-mode` / `ask-cues-mode` scalars — so contradiction-only,
@@ -32,7 +38,7 @@ export interface SessionCueSourceConfig extends SessionContradictionSourceConfig
   readonly enableContradiction: boolean;
   readonly enableAsk: boolean;
   /** the tips pack matched as a watchlist (`tips-mode: semantic`) — runs
-   *  after contradiction, before ask; its own call, never folded in. */
+   *  alongside contradiction, before ask; its own call, never folded in. */
   readonly enableSemanticTips?: boolean;
 }
 
@@ -56,18 +62,18 @@ export class SessionCueSource implements CueSource {
   }
 
   async getCues(context: CueContext): Promise<CueSourceResult> {
-    // Contradiction first (the more urgent signal). If it flags, short-circuit —
-    // no ask call, since the ask cue would be evicted by the contradiction anyway.
-    if (this.contradiction?.supports(context)) {
-      const c = await this.contradiction.getCues(context);
-      if (c.results.length > 0) return c;
-    }
-    // No contradiction → the ask cue is free to surface an open question.
-    if (this.tips?.supports(context)) {
-      const t = await this.tips.getCues(context);
-      if (t.results.length > 0) return t;
-    }
+    // Contradiction and tips together; contradiction wins if it fires (the
+    // more urgent signal), else the tip. A leg that throws is an empty leg —
+    // the other still lands.
+    const empty: CueSourceResult = { results: [] };
+    const [c, t] = await Promise.all([
+      this.contradiction?.supports(context) ? this.contradiction.getCues(context).catch(() => empty) : Promise.resolve(empty),
+      this.tips?.supports(context) ? this.tips.getCues(context).catch(() => empty) : Promise.resolve(empty),
+    ]);
+    if (c.results.length > 0) return c;
+    if (t.results.length > 0) return t;
+    // Neither flagged → the ask cue is free to surface an open question.
     if (this.ask?.supports(context)) return this.ask.getCues(context);
-    return { results: [] };
+    return empty;
   }
 }

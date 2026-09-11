@@ -33,6 +33,7 @@ import { diffSplice, fillSplice, type PendingTransaction, type UndoJournal } fro
 import { UndoApplier } from './undo';
 import { matchDeterministicAction } from '@opencues/core';
 
+
 /** Minimal interface MarkdownRender exposes for rich-text injection.
  *  Keeps Resolver from importing MarkdownRender directly (would create
  *  a layering cycle through boot-common). */
@@ -120,6 +121,8 @@ export interface ResolverOptions {
   readonly apiKeys?: Readonly<Record<string, string | undefined>>;
   /** Default 500ms â same as v1's auto-submit debounce. */
   readonly debounceMs?: number;
+  /** Pause after a closed sentence (terminator / newline). Default 100. */
+  readonly terminatorDebounceMs?: number;
   /** Optional injection seam for tests. When set, runtime uses this instead
    *  of constructing a NodeHttpAdapter. Should expose at least .post(). */
   readonly httpAdapter?: unknown;
@@ -177,7 +180,7 @@ export interface ResolverOptions {
 
 interface CuesCoreLike {
   buildSourcesFromConfig(c: unknown, b: unknown, o: unknown): unknown[];
-  createResolver(sources: unknown[], opts: unknown): { resolve(ctx: unknown): Promise<{ results: CueResultLike[] }> };
+  createResolver(sources: unknown[], opts: unknown): { resolve(ctx: unknown, opts?: unknown): Promise<{ results: CueResultLike[] }> };
   /** Whitelist an ambient down to its privacy-safe SHAPE booleans
    *  (`singleLine`/`disposable`) — forwarded unconditionally for field-kind
    *  routing even when `ambient-context-mode` is off. Optional so an older
@@ -308,7 +311,7 @@ function noBlankContextConsumer(
 export const SENTENCE_CUE_SYNTHETIC_KEY_BASE = 2_000_000;
 
 export class Resolver {
-  private _resolver: { resolve(ctx: unknown): Promise<{ results: CueResultLike[] }> } | null = null;
+  private _resolver: { resolve(ctx: unknown, opts?: unknown): Promise<{ results: CueResultLike[] }> } | null = null;
   private _sources: unknown[] = [];
   private _httpAdapter: unknown = null;
   /** Cached `@opencues/core` module handle (loaded lazily in buildSources).
@@ -1239,8 +1242,22 @@ export class Resolver {
   }
 
   private scheduleResolve(text: string, freshUnderscoreInserted = false): void {
+    const delay = this.pickDelay(text, freshUnderscoreInserted);
+    // Whitespace-only append (the space after `party!`, a newline after a
+    // line): nothing new to resolve. If a resolve is still pending for the
+    // text before the space, RE-ARM it — the keystroke still counts as
+    // typing, so the pause restarts — but on that same text and delay, so
+    // it neither becomes a twin of a fast fire that already went out nor
+    // supersedes one in flight. If nothing is pending, nothing fires.
+    if (delay === null) {
+      const pending = this._pendingResolve;
+      if (this._debounceTimer && pending) {
+        clearTimeout(this._debounceTimer);
+        this._debounceTimer = setTimeout(() => { this._debounceTimer = null; this._pendingResolve = null; void this.resolveAndApply(pending.text, { allowBlanks: pending.allowBlanks }); }, pending.delay);
+      }
+      return;
+    }
     if (this._debounceTimer) clearTimeout(this._debounceTimer);
-    const delay = this.options.debounceMs ?? 500;
     // Capture the freshness now so the gate reflects when the change
     // happened â not when the debounce fires `delay` ms later (by which
     // time the keystroke window may have lapsed even though the user
@@ -1248,40 +1265,104 @@ export class Resolver {
     // OR a positive underscore-count delta as proof of fresh user
     // intent â see callsite comment for the middle-`_` rationale.
     const allowBlanks = this.explicitUnderscoreRecent() || freshUnderscoreInserted;
+    this._pendingResolve = { text, allowBlanks, delay };
     this._debounceTimer = setTimeout(() => {
+      this._debounceTimer = null; this._pendingResolve = null;
       void this.resolveAndApply(text, { allowBlanks });
     }, delay);
   }
+  /** what the pending debounce timer will resolve — re-armed as-is on a whitespace-only append */
+  private _pendingResolve: { text: string; allowBlanks: boolean; delay: number } | null = null;
+
+  /**
+   * The pause before a resolve, from the SHAPE of the last keystroke — never
+   * from the words, so it holds in any language:
+   *
+   *  - a closed sentence (terminator, optionally followed by whitespace, or a
+   *    newline) fires fast (`terminatorDebounceMs`, 100): the sentence is
+   *    complete, every sentence-scope source can judge it, and the answer is
+   *    the one the per-sentence cache reuses on the pauses that follow;
+   *  - anything else keeps `debounceMs` (500).
+   *
+   * There is deliberately NO "inside a word, wait longer" rule: most prompts
+   * end after a plain word with no punctuation, and a hold there is a hold on
+   * the person's final pause (measured: resolver.started 500 → 800ms on every
+   * bench phrase). Mid-word hesitations rarely exceed 500ms anyway.
+   *
+   * A `.` right after a digit is not a terminator (`3.` may become `3.5`).
+   * Only an APPEND at the end of the buffer is shaped; a mid-buffer edit
+   * gets the plain pause. Returns null for a whitespace-only append: no
+   * resolve is scheduled for it at all.
+   */
+  pickDelay(text: string, freshUnderscoreInserted = false): number | null {
+    const base = this.options.debounceMs ?? 500;
+    const prev = this._prevScheduledText;
+    const appended = prev !== null && text.length > prev.length && text.startsWith(prev);
+    // a whitespace-only append is not a new resolve (see scheduleResolve);
+    // `_prevScheduledText` stays at the text before it so the next real
+    // keystroke still reads as an append
+    if (appended && !freshUnderscoreInserted && text.slice(prev.length).trim() === '') return null;
+    this._prevScheduledText = text;
+    if (!appended) return base;
+    const m = /([\s\S])(\s*)$/.exec(text);
+    if (!m) return base;
+    const trailingWs = m[2];
+    const last = trailingWs.length > 0 ? text[text.length - trailingWs.length - 1] : m[1];
+    if (last === undefined) return base;
+    if (trailingWs.includes('\n')) return this.options.terminatorDebounceMs ?? 100;
+    if (/[.!?。！？．]/.test(last)) {
+      const before = text[text.length - trailingWs.length - 2];
+      if (last === '.' && before !== undefined && /\p{N}/u.test(before)) return base;   // 3. → 3.5
+      return this.options.terminatorDebounceMs ?? 100;
+    }
+    return base;
+  }
+  private _prevScheduledText: string | null = null;
 
   /** Exposed for tests.
    *  @param opts.allowBlanks Default true. When false, `_` slots in the
    *    buffer are masked from blank sources (FluidBlank / TransformBlank /
    *    ConfigIntent). Production callers in `onTextChange` set this based
    *    on `explicitUnderscoreRecent()` â see the explicit-`_` gate above. */
-  async resolveAndApply(text: string, opts: { allowBlanks?: boolean } = {}): Promise<void> {
+  async resolveAndApply(text: string, opts: { allowBlanks?: boolean; preResolved?: { results: CueResultLike[] }; generation?: number } = {}): Promise<void> {
     const allowBlanks = opts.allowBlanks ?? true;
     if (!this._resolver) return;
+    // EARLY PAINT (opts.preResolved): one source of the pass that is still
+    // running has already settled and its result is safe to show: the
+    // session rail (priority 88, passive, whole-buffer) on a `_`-free pass,
+    // where no higher-priority claim can filter it. The apply half below runs
+    // on that result now, under the running pass's generation; when the full
+    // pass completes it applies the same result again and the sentence-cue
+    // path treats it as a refresh, never a second def. Measured live before
+    // this: the tip was back at 0.7s and painted at 1.2s, waiting on a slower
+    // sibling.
+    const early = opts.preResolved !== undefined;
     // A pending config-intent transaction left over from a superseded/
     // early-returned pass holds real scalar writes â commit it (scalar-
     // only) rather than let it dangle and mis-attach to this pass.
-    this.commitPendingConfigIntentTx();
+    if (!early) this.commitPendingConfigIntentTx();
     // Abort the previous resolve's in-flight HTTP calls (if any). The
     // resolve is being superseded by this newer one â its results would
     // be dropped on generation mismatch downstream, so the LLM round-
     // trip is pure waste (provider $$$ + rate-limit pressure).
-    if (this._inFlightController) {
+    if (!early && this._inFlightController) {
       try { this._inFlightController.abort(); } catch { /* never */ }
     }
     const controller = new AbortController();
-    this._inFlightController = controller;
-    const generation = ++this._generation;
+    if (!early) this._inFlightController = controller;
+    const generation = early ? (opts.generation ?? this._generation) : ++this._generation;
+    if (early && generation !== this._generation) return;
     const t0 = Date.now();
-    this.adapter.log('debug', `Resolver.resolveAndApply: text=${JSON.stringify(text.slice(0, 80))}`);
-    this.adapter.emitEvent?.('resolver.started', {
-      text: text.slice(0, 200),
-      textLen: text.length,
-      generation,
-    });
+    this.adapter.log('debug', early
+      ? `Resolver.resolveAndApply: early paint (${opts.preResolved!.results.length} result(s)) text=${JSON.stringify(text.slice(0, 80))}`
+      : `Resolver.resolveAndApply: text=${JSON.stringify(text.slice(0, 80))}`);
+    if (!early) {
+      this.adapter.emitEvent?.('resolver.started', {
+        text: text.slice(0, 200),
+        textLen: text.length,
+        generation,
+      });
+    }
 
     const wordSpans = splitWords(text);
     // Skip words we've already resolved. Empty strings get filtered out
@@ -1400,7 +1481,7 @@ export class Resolver {
     // stop() restores each slot to `_` so the substitution path's
     // `target.word === '_'` check still passes.
     const animatedSlots: number[] = [];
-    if (this.blankLoading) {
+    if (this.blankLoading && !early) {
       for (let i = 0; i < cleanWords.length; i++) {
         if (cleanWords[i] === '_') {
           this.blankLoading.start(i, 'resolver');
@@ -1419,8 +1500,16 @@ export class Resolver {
     // timing from the LLM source.
     const __resolveStart = Date.now();
     let result;
+    // Early delivery from the core's parallel dispatch: paint the session
+    // rail the moment it settles on a `_`-free pass (see EARLY PAINT above).
+    const onSourceResult = text.includes('_') ? undefined : (sourceId: string, r: { results: CueResultLike[] }) => {
+      if (sourceId !== 'session-cue' || r.results.length === 0) return;
+      if (generation !== this._generation) return;
+      this.adapter.emitEvent?.('resolver.early', { sourceId, resultCount: r.results.length, latencyMs: Date.now() - t0, generation });
+      void this.resolveAndApply(text, { allowBlanks, preResolved: { results: r.results }, generation });
+    };
     try {
-      result = await this._resolver.resolve({
+      result = early ? opts.preResolved! : await this._resolver.resolve({
         text,
         words: cleanWords,
         domain: 'claude-code',
@@ -1556,7 +1645,7 @@ export class Resolver {
         // of letting them run to completion just to have their results
         // dropped on generation mismatch.
         signal: controller.signal,
-      });
+      }, { onSourceResult });
     } catch (err) {
       stopAllAnimations();
       // AbortError on supersede is expected â don't surface as a logical
@@ -1570,9 +1659,9 @@ export class Resolver {
       return;
     }
     stopAllAnimations();
-    if (this._inFlightController === controller) this._inFlightController = null;
+    if (!early && this._inFlightController === controller) this._inFlightController = null;
 
-    this.adapter.log('debug', `Resolver.resolve: got ${result.results.length} result(s) for ${cleanWords.length} cleanWords`);
+    if (!early) this.adapter.log('debug', `Resolver.resolve: got ${result.results.length} result(s) for ${cleanWords.length} cleanWords`);
     // Per-word routing/skipped surfaces which ConfigSource claimed each
     // word â the structural property RoutedWordSourceGroup enforces for
     // prompt-injection isolation. Empty-string entries in cleanWords
@@ -1593,16 +1682,18 @@ export class Resolver {
         else skipped.push({ wordIndex: i, word: w });
       }
     }
-    this.adapter.emitEvent?.('resolver.completed', {
-      text: text.slice(0, 200),
-      textLen: text.length,
-      cleanWords: cleanWords.length,
-      resultCount: result.results.length,
-      latencyMs: Date.now() - t0,
-      generation,
-      routing,
-      skipped,
-    });
+    if (!early) {
+      this.adapter.emitEvent?.('resolver.completed', {
+        text: text.slice(0, 200),
+        textLen: text.length,
+        cleanWords: cleanWords.length,
+        resultCount: result.results.length,
+        latencyMs: Date.now() - t0,
+        generation,
+        routing,
+        skipped,
+      });
+    }
 
     // Stale check â a newer scheduleResolve might have run in between.
     if (generation !== this._generation) return;

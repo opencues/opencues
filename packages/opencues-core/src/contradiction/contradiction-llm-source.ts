@@ -18,6 +18,7 @@ import { verifyClaim, verifyJourneyClaim, verifyCommunityRuleClaim, type Claim, 
 import { geocodePlace } from './journey';
 import { cityFromTimeZone } from './weather';
 import type { CommunityRulesSnapshot } from './reddit-rules';
+import { SentenceCallCache } from '../sources/sentence-call-cache';
 
 export const CONTRADICTION_EXTRACT_SYSTEM = `You extract EXPLICITLY-STATED, checkable factual claims from ONE sentence so a separate program can verify them. You do NOT judge correctness and you do NOT compute anything. Output ONLY a JSON array (no prose, no markdown). Output [] when there is no explicit, fully-stated claim.
 
@@ -115,6 +116,9 @@ export class ContradictionLlmSource implements CueSource {
   readonly isCycleable = true;
 
   private readonly cfg: ContradictionLlmSourceConfig;
+  /** Per-sentence claim extraction + rule judgement, cached on the exact input and shared across superseding passes. */
+  private readonly _extractCalls = new SentenceCallCache<Claim[]>();
+  private readonly _judgeCalls = new SentenceCallCache<CommunityRuleClaim[]>();
   private readonly nowFn: () => Date;
   private readonly log: (msg: string) => void;
   /** Tier 5c — the user's approximate home coords (from the host timezone city),
@@ -179,7 +183,7 @@ export class ContradictionLlmSource implements CueSource {
       async (sent): Promise<CueResult[]> => {
         const verified: VerifiedContradiction[] = [];
         let claims: Claim[] = [];
-        try { claims = await this.extract(sent.text, context.signal); }
+        try { claims = await this._extractCalls.get(sent.text, context.signal, (signal) => this.extract(sent.text, signal)); }
         catch (e) { this.log(`ContradictionLlm: extract failed for "${sent.text.slice(0, 30)}…" — ${(e as Error).message}`); }
         for (const claim of claims) {
           // Journey claims are per-query → verified async (geocode + distance);
@@ -194,7 +198,7 @@ export class ContradictionLlmSource implements CueSource {
         // path's contradictions still emit.
         if (communityRules && rulesBlock) {
           try {
-            for (const claim of await this.judgeCommunityRules(sent.text, rulesBlock, context.signal)) {
+            for (const claim of await this._judgeCalls.get(`${rulesBlock}\u0000${sent.text}`, context.signal, (signal) => this.judgeCommunityRules(sent.text, rulesBlock, signal))) {
               const v = verifyCommunityRuleClaim(claim, sent.text, communityRules);
               if (v) verified.push(v);
             }

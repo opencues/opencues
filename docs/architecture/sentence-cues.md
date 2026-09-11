@@ -290,6 +290,32 @@ module), not by capping registration.
 
 ---
 
+## Per-sentence call cache + in-flight sharing (Sep 2026)
+
+Every pass re-runs the source on the whole buffer, and the resolver aborts the
+previous pass's calls when a new one starts. On a multi-sentence draft that
+re-sent every sentence that had not changed (34% of all sentence calls in the
+Sep 2026 log) and threw away calls for sentences the person had finished.
+`SentenceCallCache` (`packages/opencues-core/src/sources/sentence-call-cache.ts`),
+one per source instance, fixes both, keyed on the EXACT LLM input (system
+prompt + outbound sentence, so a calendar block or a dehydration change is a
+miss):
+
+- a completed answer is reused — positive, empty and `ceded` alike; an error
+  is never stored (the `RoutedWordSourceGroup` rule);
+- a pass that supersedes another JOINS the in-flight call for an unchanged
+  sentence instead of aborting it; the call is aborted only once no pass
+  still wants it (per-call `AbortController`, waiter count, the pass's own
+  signal only detaches that pass).
+
+Hydration still runs on every path, because the catalog can change between
+the cached answer and its reuse. The `completed` log line carries
+`calls=, cached=, joined=` per pass. `ContradictionLlmSource` uses the same
+class for its per-sentence extract and rule-judge calls. Lifetime is the
+source instance: a config change rebuilds sources and drops the cache.
+Pinned by `sentence-call-cache.test.ts` and the "unchanged sentences are not
+re-sent" case in `sentence-cue-source.test.ts`.
+
 ## Per-cue prompt + format-spec composition
 
 User authors write the INTENT in CUE.md body. The framework appends
