@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed — `gemma-4-31b` and `zai-glm-4.7` leave the Cerebras model menu (`@opencues/core`)
+### Fixed — `gemma-4-31b` and `zai-glm-4.7` leave the Cerebras model menu (`@opencues/core` 0.60.5)
 - Both still appear in Cerebras's `/v1/models`, but a chat call returns 404 (`model_not_found` for gemma, `model_archived` for zai), so cycling `*-llm-model` onto either produced silent dead cues. The menu is now `gpt-oss-120b`, `qwen-3.8-27b`; gemma's wire-shape gates stay for a file-edit re-add. There was never a llama on the Cerebras list; Groq's `llama-3.3-70b-versatile` left in June.
 
 ### Changed — sentence-scope calls are cached per sentence and shared across passes; the resolver's pause follows the shape of the last keystroke (`@opencues/core` 0.60.4, `@opencues/runtime` 0.41.2)
