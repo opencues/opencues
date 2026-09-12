@@ -13,7 +13,7 @@ different provider/model for each LLM-driven feature.
 
 | Provider | Auth | Default model | Notes |
 |---|---|---|---|
-| **cerebras** *(auto-route default)* | `CEREBRAS_API_KEY` | `gpt-oss-120b` | OpenAI-compat HTTP. Also serves `zai-glm-4.7` and `gemma-4-31b` (see Cerebras models below) |
+| **cerebras** *(auto-route default)* | `CEREBRAS_API_KEY` | `gpt-oss-120b` | OpenAI-compat HTTP. Also serves `qwen-3.8-27b` (see Cerebras models below; `gemma-4-31b` and `zai-glm-4.7` now 404) |
 | **groq** | `GROQ_API_KEY` | `openai/gpt-oss-120b` | OpenAI-compat HTTP |
 | **gemini** | `GEMINI_API_KEY` | `gemini-3.5-flash-lite` | Google `contents`/`parts` shape |
 | **anthropic** | `ANTHROPIC_API_KEY` | `claude-haiku-4-5-20251001` | Messages API |
@@ -48,11 +48,12 @@ path, Predicted-Outputs + prefix-cache support). Three more are first-class:
 | `gpt-oss-120b` *(default)* | yes (medium) | everything; reasoning-heavy cues |
 | `zai-glm-4.7` | binary (off) | non-reasoning alternative |
 | `qwen-3.8-27b` | hybrid (low) | small-model pick: lookups at parity, top rewrite accuracy |
-| `gemma-4-31b` | no | DEPRECATED by Cerebras (Public preview) — use `qwen-3.8-27b` |
+| `gemma-4-31b` | no | REMOVED from the menu (Sep 2026): Cerebras now returns 404 `model_not_found` on chat, though `/v1/models` still lists it. Reachable by file edit only; the wire-shape gates remain. `zai-glm-4.7` is 404 `model_archived` and is gone too. |
 
 `qwen-3.8-27b` (Sep 2026) is the recommended small-model pick, replacing
-`gemma-4-31b` (which Cerebras deprecated to Public preview — still served,
-still supported here for back-compat, but don't build on it). qwen is a
+`gemma-4-31b` (which Cerebras first deprecated to Public preview and, by
+2026-09-11, stopped serving: a chat call returns 404 `model_not_found` even
+though `/v1/models` still lists it — it is out of the menu). qwen is a
 hybrid reasoning model; the runtime pins it to `reasoning_effort: 'low'`
 (`'none'` with `max-thinking: off`). Same-session bench 2026-09-03:
 fluid-blank 137/137 (100%, ties gpt-oss-120b) at 274ms avg; transform-blank

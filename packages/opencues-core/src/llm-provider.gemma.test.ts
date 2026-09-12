@@ -83,8 +83,9 @@ describe('isRateLimitError — RPM/TPM throttle detection (drives dispatch retry
 });
 
 describe('cerebras knownModels — gemma is first-class, gpt-oss stays default', () => {
-  it('lists gemma-4-31b in knownModels', () => {
-    expect(getProvider('cerebras')!.knownModels).toContain('gemma-4-31b');
+  it('gemma-4-31b is OUT of the menu (Cerebras returns 404 on chat since Sep 2026) — the wire-shape gates above still hold for a file-edit re-add', () => {
+    expect(getProvider('cerebras')!.knownModels).not.toContain('gemma-4-31b');
+    expect(getProvider('cerebras')!.knownModels).not.toContain('zai-glm-4.7');
   });
   it('default model is still gpt-oss-120b (gemma did NOT become the default)', () => {
     expect(getProvider('cerebras')!.defaultModel).toBe('gpt-oss-120b');
