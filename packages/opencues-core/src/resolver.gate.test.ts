@@ -28,7 +28,8 @@ describe('CueResolver — the fan-out gate', () => {
     assert.deepStrictEqual(calls.sort(), ['sentence-cue:zeta', 'session-cue']);
     const calls2: string[] = [];
     const r2 = new CueResolver([src('sentence-cue:zeta', 85, calls2)], { parallel: true, timeout: 1000 } as never);
-    await r2.resolve(ctx, { gate: { verdict: Promise.reject(new Error('judge down')), applies: () => true } });
+    const down = Promise.reject(new Error('judge down')); down.catch(() => { /* observed here; the gate attaches its own handler */ });
+    await r2.resolve(ctx, { gate: { verdict: down, applies: () => true } });
     assert.deepStrictEqual(calls2, ['sentence-cue:zeta']);
   });
 });
