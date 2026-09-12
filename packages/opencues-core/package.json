@@ -15,7 +15,7 @@
     "access": "restricted"
   },
   "scripts": {
-    "build": "tsc && node ../../scripts/build-shipped-manifest.cjs",
+    "build": "rm -rf dist && tsc && node ../../scripts/build-shipped-manifest.cjs",
     "typecheck": "tsc --noEmit",
     "test": "find dist -name '*.test.js' ! -name 'feature-registry*.test.js' ! -name 'llm-provider.drift.test.js' ! -name 'llm-provider.temperature.test.js' ! -name 'llm-provider.max-thinking.test.js' ! -name 'llm-provider.gemma.test.js' ! -name 'llm-provider.qwen.test.js' ! -name 'llm-provider.usage.test.js' ! -name 'model-thinking.test.js' ! -name 'conformance.test.js' ! -name 'harness-bridge.test.js' ! -name 'semantic-tips-source.test.js' | xargs node --test && vitest run",
     "prepublishOnly": "node ../../scripts/prepublish-guard.cjs",
