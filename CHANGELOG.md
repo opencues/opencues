@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the bridge dump paints on every host (`@opencues/runtime` 0.41.4)
+- **Shell and Gemini CLI now expose render directives + painted text to the bridge dump.** Both bands started the introspection bridge without the `renderDirectives` / `renderedText` hooks the Claude Code and OpenCode bands wire, so a dump's `render` came back null there and any driver reading the inline note (`render.N.inlineNote`, `renderedText`) failed on those two hosts alone. Same "wired in one band, silently absent in its twin" shape as the cue-dismissal gap; `boot-bands-wiring.test.ts` now pins that every band starting the bridge exposes both hooks.
+
 ### Fixed — a deterministic `undo _` no longer fans out; two gates stop tripping on the machine's own noise (`@opencues/core` 0.60.6, `@opencues/runtime` 0.41.3, `opencues` CLI 0.7.15)
 - **Deterministic undo dispatches config-intent only.** `undo _` / `redo _` is answered without a model, but the pass still dispatched every other source and cancelled them ~50ms later when the action verdict landed — thirteen calls for one keystroke on a 391-character draft (transform, fluid, both rail legs, ask, a contradiction parse per sentence), seen live 2026-09-10. Core `resolve` takes `only`; the runtime passes it when `matchDeterministicAction` matches the text before a trailing `_`.
 - **Hermeticity gate ignores timer-written files.** Every running host rewrites `~/.cues/calendar.json` every fifteen minutes (and the directory's own mtime with it); a live session landing a sync inside the gate's window read as a test writing to the real home, twice this week. `calendar.json`, `kata-progress.json` and the directory entry are excluded; a test that writes anything else still fails the gate.

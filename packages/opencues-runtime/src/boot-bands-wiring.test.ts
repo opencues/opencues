@@ -56,6 +56,22 @@ describe('boot bands wire the shared services', () => {
     expect(viaShared || direct).toBe(true);
   });
 
+  it.each(bands())('%s exposes render directives + painted text to the bridge dump', (_label, src) => {
+    const body = code(src);
+    // Only bands that start the bridge at all (chrome drives the runtime from
+    // its content script and has no bridge block).
+    if (!/\bstartEventBridge\s*\(/.test(body)) return;
+    // Sep 2026: shell and gemini started the bridge without these two hooks,
+    // so the dump's `render` was null there and every scenario reading
+    // `render.N.inlineNote` / `renderedText` failed on those hosts alone —
+    // the same "wired in one band, silently absent in its twin" shape as
+    // cue dismissals above. Bands spread the shared bridgeRenderBindings;
+    // CC keeps its own viewport-aware pair. Assert on the call, not a mention.
+    const shared = /\.\.\.bridgeRenderBindings\s*\(/.test(body);
+    const own = /\brenderDirectives\s*:/.test(body) && /\brenderedText\s*:/.test(body);
+    expect(shared || own).toBe(true);
+  });
+
   it('the CC band wires it DIRECTLY — it does not call buildSharedRuntime', () => {
     // Pinned as a fact about this band rather than an assumption elsewhere: if
     // CC ever adopts buildSharedRuntime, this test fails and whoever does it

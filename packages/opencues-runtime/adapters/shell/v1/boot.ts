@@ -18,6 +18,7 @@ import { Runtime } from '../../../src/runtime';
 import { buildBootApiKeys, pickAutoProvider } from '@opencues/core';
 import { ShellV1Adapter, type ShellBindings } from './adapter';
 import { startEventBridge } from '../../../src/event-bridge';
+import { bridgeRenderBindings } from '../../../src/bridge-render-bindings';
 import { Statusline } from '../../../src/modules/statusline';
 import { KataCoach } from '../../../src/modules/kata';
 import { Resolver } from '../../../src/modules/resolver';
@@ -299,6 +300,10 @@ export function boot(host: HostInfo): BootResult {
       notifyTextChange: (text, cursor, source) => fireTextChange(text, cursor, source),
       notifyCursorChange: (text, cursor, source) => fireCursorChange(text, cursor, source),
       state: { hlState, dynDefs, spanFillState, selectorSatelliteState, agentTaskState },
+      // Render directives + painted text for the dump — the shared bindings
+      // (src/bridge-render-bindings.ts); shell used to start the bridge
+      // without them, so `render` was null here alone.
+      ...bridgeRenderBindings(adapter, renderEvents, log),
       // Wire the SAME reset that the host's resetBufferState calls so the
       // bridge `reset` command drops DynDefs / SpanFill / SelectorSatellite /
       // runtime module caches / Resolver source rebuilds (including the
