@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — a deterministic `undo _` no longer fans out; two gates stop tripping on the machine's own noise (`@opencues/core` 0.60.6, `@opencues/runtime` 0.41.3, `opencues` CLI 0.7.15)
+- **Deterministic undo dispatches config-intent only.** `undo _` / `redo _` is answered without a model, but the pass still dispatched every other source and cancelled them ~50ms later when the action verdict landed — thirteen calls for one keystroke on a 391-character draft (transform, fluid, both rail legs, ask, a contradiction parse per sentence), seen live 2026-09-10. Core `resolve` takes `only`; the runtime passes it when `matchDeterministicAction` matches the text before a trailing `_`.
+- **Hermeticity gate ignores timer-written files.** Every running host rewrites `~/.cues/calendar.json` every fifteen minutes (and the directory's own mtime with it); a live session landing a sync inside the gate's window read as a test writing to the real home, twice this week. `calendar.json`, `kata-progress.json` and the directory entry are excluded; a test that writes anything else still fails the gate.
+- **Windows interop probes time out at 3s.** `cmd.exe /c echo %USERNAME%` and `wslpath` in `which`, `sync` and `seed-configs` had no timeout; when WSL interop stalls (ten seconds on this machine, 2026-09-11) the command hung and the CLI test suite timed out with it. A stalled probe now degrades to "no Windows side" the way a missing one does.
+
 ### Fixed — `gemma-4-31b` and `zai-glm-4.7` leave the Cerebras model menu (`@opencues/core` 0.60.5)
 - Both still appear in Cerebras's `/v1/models`, but a chat call returns 404 (`model_not_found` for gemma, `model_archived` for zai), so cycling `*-llm-model` onto either produced silent dead cues. The menu is now `gpt-oss-120b`, `qwen-3.8-27b`; gemma's wire-shape gates stay for a file-edit re-add. There was never a llama on the Cerebras list; Groq's `llama-3.3-70b-versatile` left in June.
 

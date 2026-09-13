@@ -276,7 +276,7 @@ function copyDirSync(src, dst) {
 // install chrome --wsl` (integrations/chrome/bin/install.cjs).
 function resolveWslDeployPath() {
   if (!isWsl()) return null;
-  const probe = require('node:child_process').spawnSync('cmd.exe', ['/c', 'echo %USERNAME%'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  const probe = require('node:child_process').spawnSync('cmd.exe', ['/c', 'echo %USERNAME%'], { timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] });
   if (probe.status !== 0) return null;
   const winUser = String(probe.stdout).trim().replace(/\r$/, '');
   if (!winUser) return null;
@@ -289,7 +289,7 @@ function resolveWslDeployPath() {
 // integrations/chrome/bin/install.cjs's helper.
 function toWindowsPathIfPossible(p) {
   if (!/^\/mnt\/[a-z]\//i.test(p)) return p;
-  const probe = require('node:child_process').spawnSync('wslpath', ['-w', p], { stdio: ['ignore', 'pipe', 'ignore'] });
+  const probe = require('node:child_process').spawnSync('wslpath', ['-w', p], { timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] });
   if (probe.status === 0) {
     const out = String(probe.stdout).trim();
     if (out) return out;
