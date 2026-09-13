@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.15] - 2026-09-13
+
 ### Fixed — the bridge dump paints on every host (`@opencues/runtime` 0.41.4)
 - **Shell and Gemini CLI now expose render directives + painted text to the bridge dump.** Both bands started the introspection bridge without the `renderDirectives` / `renderedText` hooks the Claude Code and OpenCode bands wire, so a dump's `render` came back null there and any driver reading the inline note (`render.N.inlineNote`, `renderedText`) failed on those two hosts alone. Same "wired in one band, silently absent in its twin" shape as the cue-dismissal gap; `boot-bands-wiring.test.ts` now pins that every band starting the bridge exposes both hooks.
 
