@@ -24,6 +24,7 @@ import { ConfigLoader } from '../../../src/modules/config-loader';
 import { applyDirectives } from '../../../src/render-directives';
 import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, buildSessionCommitmentsIngest, startSessionCommitmentsKick, startUsageMeter, locateNewestGeminiChat, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { startEventBridge } from '../../../src/event-bridge';
+import { bridgeRenderBindings } from '../../../src/bridge-render-bindings';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
   CommonHostInfo,
@@ -565,6 +566,10 @@ export function boot(host: HostInfo): BootResult {
         drainPendingAndRender();
       },
       state: { hlState, dynDefs, spanFillState, selectorSatelliteState, agentTaskState },
+      // Render directives + painted text for the dump — the shared bindings
+      // (src/bridge-render-bindings.ts). The adapter's getText already strips
+      // the trailing ZWS the forceRender toggle appends.
+      ...bridgeRenderBindings(adapter, renderEvents, log),
     });
   }
 

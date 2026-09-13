@@ -12,6 +12,7 @@
 import { Runtime } from '../../../src/runtime';
 import { OpenCodeV14Adapter, type OpenCodeBindings } from './adapter';
 import { startEventBridge } from '../../../src/event-bridge';
+import { bridgeRenderBindings } from '../../../src/bridge-render-bindings';
 import { Statusline } from '../../../src/modules/statusline';
 import { Resolver } from '../../../src/modules/resolver';
 import { AgentRewrite } from '../../../src/modules/agent-rewrite';
@@ -301,6 +302,7 @@ export function boot(host: HostInfo): BootResult {
       notifyTextChange: (text, cursor, source) => fireTextChange(text, cursor, source),
       notifyCursorChange: (text, cursor, source) => fireCursorChange(text, cursor, source),
       state: { hlState, dynDefs, spanFillState, selectorSatelliteState, agentTaskState },
+      ...bridgeRenderBindings(adapter, renderEvents, log),
     });
   }
 
