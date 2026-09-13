@@ -1508,6 +1508,16 @@ export class Resolver {
       this.adapter.emitEvent?.('resolver.early', { sourceId, resultCount: r.results.length, latencyMs: Date.now() - t0, generation });
       void this.resolveAndApply(text, { allowBlanks, preResolved: { results: r.results }, generation });
     };
+    // A deterministic `undo _` / `redo _` (an action alias right before the
+    // `_`, see `matchDeterministicAction`) is answered by config-intent with
+    // no model. Every other source used to be dispatched anyway and cancelled
+    // ~50ms later when the action verdict landed: on a 391-char draft that
+    // was thirteen calls for one keystroke (transform, fluid, both rail legs,
+    // ask, a contradiction parse per sentence). Restrict the pass up front.
+    const usIdxForOnly = allowBlanks ? text.lastIndexOf('_') : -1;
+    const deterministicAction = usIdxForOnly >= 0 && text.slice(usIdxForOnly + 1).trim() === '' ? matchDeterministicAction(text.slice(0, usIdxForOnly)) : null;
+    const only = deterministicAction ? (id: string) => id === 'config-intent' : undefined;
+    if (only) this.adapter.log('debug', `Resolver: deterministic ${deterministicAction!.action} — dispatching config-intent only`);
     try {
       result = early ? opts.preResolved! : await this._resolver.resolve({
         text,
@@ -1645,7 +1655,7 @@ export class Resolver {
         // of letting them run to completion just to have their results
         // dropped on generation mismatch.
         signal: controller.signal,
-      }, { onSourceResult });
+      }, { onSourceResult, only });
     } catch (err) {
       stopAllAnimations();
       // AbortError on supersede is expected â don't surface as a logical

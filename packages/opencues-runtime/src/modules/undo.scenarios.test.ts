@@ -99,11 +99,12 @@ function setup(initialText: string) {
     journal,
   );
   let scripted: ScriptedResult[] = [];
-  (resolver as unknown as { _resolver: { resolve(ctx: unknown): Promise<{ results: ScriptedResult[] }> } })._resolver = {
-    resolve: async () => ({ results: scripted }),
+  const resolveOpts: Array<{ only?: (id: string) => boolean } | undefined> = [];
+  (resolver as unknown as { _resolver: { resolve(ctx: unknown, opts?: unknown): Promise<{ results: ScriptedResult[] }> } })._resolver = {
+    resolve: async (_ctx: unknown, opts?: unknown) => { resolveOpts.push(opts as { only?: (id: string) => boolean } | undefined); return { results: scripted }; },
   };
   function script(results: ScriptedResult[]): void { scripted = results; }
-  return { adapter, dynDefs, hlState, loader, resolver, selectorSatelliteState, spanFillState, journal, script };
+  return { adapter, dynDefs, hlState, loader, resolver, selectorSatelliteState, spanFillState, journal, script, resolveOpts };
 }
 
 /** Attach a scripted blankInvoke to the mock adapter. Returns the call log. */
@@ -705,3 +706,25 @@ describe('undo — ACTION exclusivity + deterministic cursor (live-CC regression
   });
 });
 
+describe('deterministic undo — the pass asks config-intent only, nothing else is dispatched', () => {
+  it('`… undo _` restricts the resolve to config-intent; a plain `_` lookup does not', async () => {
+    const s = setup('capital of france _');
+    s.script([fluidResult('Paris', 0, 'capital of france _'.length)]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    expect(s.resolveOpts.at(-1)?.only).toBeUndefined();            // a lookup: every source may answer
+    s.adapter.pushText('Paris undo _');
+    s.script([undoResult('undo', 1, 'Paris '.length, 'Paris undo _'.length)]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    const only = s.resolveOpts.at(-1)?.only;
+    expect(only).toBeDefined();
+    expect(only!('config-intent')).toBe(true);
+    for (const id of ['transform-blank', 'fluid-blank', 'session-cue', 'contradiction-cues', 'word-cues', 'sentence-cue:zeta']) expect(only!(id)).toBe(false);
+    expect(s.adapter.getText()).toBe('capital of france');           // and the undo itself still lands
+  });
+  it('an undo with a task OBJECT (`undo the migration in db _`) is not deterministic — the pass stays open for the model', async () => {
+    const s = setup('please undo the migration in db _');
+    s.script([]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    expect(s.resolveOpts.at(-1)?.only).toBeUndefined();
+  });
+});

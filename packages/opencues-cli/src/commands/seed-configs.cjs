@@ -846,7 +846,7 @@ function compileExe(csc, csFile, outDir, log) {
   // Stage the .cs file in the Windows TEMP dir so paths are addressable.
   let winUser;
   try {
-    winUser = spawnSync('cmd.exe', ['/c', 'echo %USERNAME%'], { encoding: 'utf8' })
+    winUser = spawnSync('cmd.exe', ['/c', 'echo %USERNAME%'], { encoding: 'utf8', timeout: 3000 })
       .stdout.trim().replace(/\r/g, '');
   } catch { return false; }
   if (!winUser) return false;

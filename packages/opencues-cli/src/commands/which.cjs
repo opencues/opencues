@@ -94,7 +94,7 @@ function statSafe(p) {
 // exists OR if we're under WSL (so the user knows the slot exists).
 function wslChromeDeployRows() {
   if (!isWsl()) return [];
-  const probe = spawnSync('cmd.exe', ['/c', 'echo %USERNAME%'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  const probe = spawnSync('cmd.exe', ['/c', 'echo %USERNAME%'], { stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000 });
   if (probe.status !== 0) return [];
   const winUser = String(probe.stdout).trim().replace(/\r$/, '');
   if (!winUser) return [];

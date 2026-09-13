@@ -55,7 +55,12 @@ declare -a BASELINE_FILES=()
 # vendor-pins-wiping-the-real-tmux-dir class stays caught.
 # Each snapshot line is `<relative-path>:<mtime>`, so an entry is ignored when
 # it IS one of these (followed by `:`) or lives UNDER one (followed by `/`).
-IGNORE_RE='^(\.session-commitments[^:/]*|session-commitments(\.stash-[0-9]+)?|\.opencues-log|\.user-blank-state|\.user-blank-storage)(:|/)'
+# Also ignored (Sep 2026): `calendar.json`, which every running host's
+# calendar-sync rewrites every 15 minutes — a live opencode session tripped
+# this gate twice by landing a sync inside its window — and the directory's
+# OWN mtime entry (the empty path), which changes whenever a host renames a
+# temp file into place. Neither is something a test wrote.
+IGNORE_RE='^(\.session-commitments[^:/]*|session-commitments(\.stash-[0-9]+)?|\.opencues-log|\.user-blank-state|\.user-blank-storage|calendar\.json|kata-progress\.json)(:|/)|^:'
 
 snapshot_dir() {
   local dir="$1" out="$2"

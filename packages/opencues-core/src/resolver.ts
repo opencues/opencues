@@ -50,6 +50,13 @@ export interface ResolveOptions {
    *  result — so a caller can act on a high-priority source before the slowest
    *  sibling returns. */
   readonly onSourceResult?: (sourceId: string, result: CueSourceResult) => void;
+  /** Restrict the pass to the sources this predicate accepts; the rest are
+   *  never dispatched (empty result, no call). The runtime uses it when it
+   *  already KNOWS what the pass is — a deterministic `undo _` / `redo _`
+   *  is answered by config-intent alone, yet every other source used to be
+   *  dispatched too and cancelled 50ms later (thirteen wasted calls on one
+   *  keystroke, seen live 2026-09-10). */
+  readonly only?: (sourceId: string) => boolean;
 }
 
 export class CueResolver {
@@ -79,8 +86,8 @@ export class CueResolver {
     const errors: Array<{ sourceId: string; error: string }> = [];
     const resultsByIndex = new Map<number, CueResult>();
 
-    // Filter to applicable sources
-    const applicableSources = this.sources.filter((s) => s.supports(context));
+    // Filter to applicable sources (and to the caller's `only` set, if given)
+    const applicableSources = this.sources.filter((s) => s.supports(context) && (!opts.only || opts.only(s.id)));
 
     // Accumulated `_` slots that an upstream source CLAIMED but failed
     // to fill (TransformBlank EXTRACT=TRANSFORM, APPLY empty, etc.).

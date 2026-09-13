@@ -145,7 +145,7 @@ describe('opencues which — edge cases', () => {
   // machine-dependent shape as the bug it was added to catch, just inverted.
   const hasWindowsInterop = (() => {
     try {
-      return spawnSync('cmd.exe', ['/c', 'echo x'], { stdio: 'ignore' }).status === 0;
+      return spawnSync('cmd.exe', ['/c', 'echo x'], { stdio: 'ignore', timeout: 3000 }).status === 0;
     } catch { return false; }
   })();
 
