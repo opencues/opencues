@@ -735,7 +735,7 @@ done
 | `package.json` (monorepo root) | `opencues` | 0.1.0 | private |
 | `packages/opencues-core/` | `@opencues/core` | 0.60.6 | private |
 | `packages/opencues-runtime/` | `@opencues/runtime` | 0.41.4 | private |
-| `packages/opencues-cli/` | `opencues` (real CLI) | 0.7.15 | **PUBLISHED on npm** (0.7.13 is the published release; 0.7.15 unreleased) |
+| `packages/opencues-cli/` | `opencues` (real CLI) | 0.7.15 | **PUBLISHED on npm** (0.7.15) |
 | `integrations/claude-code/` | `@opencues/claude-code` | 0.2.13 | private |
 | `integrations/opencode/` | `@opencues/opencode` | 0.2.18 | private |
 | `integrations/chrome/` | `@opencues/chrome` | 0.2.201 | private |
