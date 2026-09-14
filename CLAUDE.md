@@ -533,6 +533,21 @@ that were retired — mine still had `legal`, `medical` and `financial`. Never
 take an example from `~/.cues/`, from a test, or from this file's own tree
 diagram without checking `defaults/cues/` first.
 
+⚠ **When a doc, a README row or a demo needs a cue example, lead with a
+semantic tip.** A tips-pack situation typed in the person's own words, the
+pack's own `say:` line as the note, and the command `_` gives (`i keep having
+to approve every single git command` → `💡 Tired of approving? /permissions …`
+→ `/permissions`). Verify the phrasing with
+`tests/benchmarks/tips/semantic-tips-bench.mjs --pack <host> --probe "<draft>"`
+on both Cerebras models before promising it (`--json` prints what a capture
+records). Spelling is the fixture for single-word MECHANICS only (stepping,
+editing, relocation, caret). Never a synonym cue: none ships, so `happy →
+glad` or `attorney → lawyer` shows a product nobody installs. And every
+note is the product's current shape: two stops have no count (`✍️ receive`,
+then `was: recieve`), three or more count down; the hint is a verb. The
+2026-09-14 audit found the retired static-tips demo, the deleted legal cue
+and the pre-0.7.13 count shape still on opencues.com and in the README image.
+
 ---
 
 ## Agentic scenarios — assert the ABSENCE of a regression, not the PRESENCE of a specific LLM output

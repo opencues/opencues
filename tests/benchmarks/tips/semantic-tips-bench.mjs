@@ -15,6 +15,7 @@
 //        [--shard <n>|off]   situations per call (default: the shipped 35)
 //        [--stack a,b,...]   also load these packs into the catalogue (scale test: the case set stays --pack's)
 //        [--probe "<phrase>"] (repeatable) run these phrases instead of the case set and print what fires — no gate; the way to check a phrasing before promising it in a test list
+//        [--json] with --probe: print one JSON array (text, id, cueTip, solution, advisory) — what a media capture records
 //        [--pack-file <path>] load the --pack's catalogue from this file instead of defaults/ — A/B a rewritten pack without touching the shipped one
 //        [--provider <id>]   cerebras (default) | gemini | groq | … — key from <PROVIDER>_API_KEY; prints per-call tokens + list-price cost per run
 
@@ -186,14 +187,26 @@ CASES_BY_PACK['shell'] = [
   ["cd ~/projects && npm test", null, 'a shell line'],
 ];
 const PROBES = argv.flatMap((a, i) => (a === '--probe' ? [argv[i + 1]] : [])).filter(Boolean);
+const AS_JSON = argv.includes('--json');   // one JSON array on stdout: what a capture needs, nothing else
 if (PROBES.length > 0) {
-  console.log(`\nsemantic tips probe · ${PACK} · ${PROVIDER}/${MODEL} · catalogue ${catalog.entries.length} entries · ${catalog.shards.length} shard(s)\n`);
+  const out = [];
+  if (!AS_JSON) console.log(`\nsemantic tips probe · ${PACK} · ${PROVIDER}/${MODEL} · catalogue ${catalog.entries.length} entries · ${catalog.shards.length} shard(s)\n`);
   for (const text of PROBES) {
     const t0 = Date.now();
     const r = await src.getCues({ text, words: text.split(/\s+/).filter(Boolean), tipsCatalog: catalog });
     const g = r.results[0];
+    if (AS_JSON) {
+      // the runtime's def, as the resolver registers it: cueTip is the painted
+      // note (emoji + the pack's say: line), alternatives[1] is what `_` gives
+      out.push(g ? { text, id: g.metadata.tip.trigger.split(' / ')[0], cueTip: g.cueTip,
+                     solution: g.alternatives[1] ?? null, advisory: g.alternatives.length < 2,
+                     provider: PROVIDER, model: MODEL, ms: Date.now() - t0 }
+                 : { text, id: null, cueTip: null, solution: null, advisory: null, provider: PROVIDER, model: MODEL, ms: Date.now() - t0 });
+      continue;
+    }
     console.log(`${String(Date.now() - t0).padStart(5)}ms  ${JSON.stringify(text).padEnd(60)} → ${g ? `${g.metadata.tip.trigger.split(' / ')[0].padEnd(14)} ${g.alternatives[1] ?? '(advisory)'}` : '(silent)'}`);
   }
+  if (AS_JSON) { console.log(JSON.stringify(out, null, 1)); process.exit(0); }
   console.log('\n' + usageLine());
   process.exit(0);
 }
