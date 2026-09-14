@@ -39,7 +39,7 @@ count:
 
 | | before the press | after the press |
 |---|---|---|
-| spelling, one correction | `✍️ definitely` | `✍️ was: definately` |
+| spelling, one correction | `✍️ definitely` | `was: definately` |
 | contradiction with a reconciled line | `⚠ the 19th is a Friday` | `⚠ was: Thursday the 19th` |
 | a command tip | `💡 Starting over? /clear wipes the conversation, CLAUDE.md stays` | `💡 was: ok this is a mess, lets start over on…` |
 | a prose tip | `💡 Paste the error… → fix the login bug: [paste…` | `💡 was: fix the login bug` |

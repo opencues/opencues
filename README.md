@@ -70,15 +70,16 @@ OpenCues is platform, model, and provider agnostic, engineered from the ground u
 
 | You type | You get |
 |---|---|
-| let's ship it Thursday the 19th | ↳ the 19th is a Friday |
+| i keep having to approve every single git command | ↳ 💡 Tired of approving? /permissions allow rules like Bash(git *), or Shift+Tab to auto mode |
+| ok this is a mess, let's start over on the auth stuff | ↳ 💡 Starting over? /clear wipes the conversation, CLAUDE.md stays |
+| let's ship it Thursday the 19th | ↳ ⚠ the 19th is a Friday |
 | we should probably go ahead and refactor this | ↳ we should refactor this |
 | hey can u send me that report when u get a sec make this formal _ | Could you please send me that report at your earliest convenience? |
-| 4 + 4 = _ | 4 + 4 = 8 |
 | hello world translate to japanese _ | こんにちは世界 |
 | draft an email to my landlord asking for a rent reduction _ | (the email, written) |
 | ffmpeg command to convert a video to web-ready mp4 _ | ffmpeg -i input.mov -vcodec libx264 -crf 23 -pix_fmt yuv420p -acodec aac output.mp4 |
 
-Rows with `_` are **blanks**: you ask, the model fills in. Rows without are **cues**: the model speaks up on what you wrote, no prompt.
+Rows with `_` are **blanks**: you ask, the model fills in. Rows without are **cues**: the model speaks up on what you wrote, no prompt. A 💡 cue knows the situation you are in and `_` makes the draft the command.
 
 #
 
@@ -99,7 +100,7 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
 
 <!-- Slot 2, the cues half. Nothing is pressed to make these appear.
      film29. -->
-<img width="100%" alt="A Claude Code tip cue, then Slack catching a date that does not exist" src="assets/readme-2-cues.webp">
+<img width="100%" alt="A Claude Code tip that knows the situation you are in, underscore makes the draft the command; then Slack catching a date that does not exist" src="assets/readme-2-cues.webp">
 
 #
 

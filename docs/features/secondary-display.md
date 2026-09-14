@@ -15,7 +15,7 @@ Tips come from several sources depending on the word type:
 | **Cue-blank value** | `tip` in the blank's `BLANK.md` | `72` → "System volume" |
 | **Cue-blank keyword** | Live `blankInvoke get` output, falls back to `tip` in `BLANK.md` | `volume` → "85" |
 | **Semantic tip span** | The pack entry the matcher cited (`say:` line, else `tip`) via the def's `cueTip` — see [Semantic Tips](semantic-tips.md) | flagged clause → "💡 Starting over? /clear wipes the conversation, CLAUDE.md stays" |
-| **LLM-analyzed word** | LLM response via opencues-core resolver | `happy` → "glad, joyful, content" |
+| **LLM-analyzed word** | LLM response via opencues-core resolver | `recieve` → "✍️ receive" (the shipped `spelling` cue; a synonym cue needs your own CUE.md) |
 
 See [Tip Priority](tip-priority.md) for the full resolution order and how the branches interact.
 
