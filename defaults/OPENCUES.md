@@ -55,6 +55,13 @@ replace-parse-mode: on
 #                       one at a time, each behind its own bench gate.
 decisions-provider: off
 
+# decisions-fanout — with a decision provider on, ONE decision request per
+# pause carries every leg's question (which tip, which decision is
+# contradicted, is there an open question) instead of one request per leg.
+#   on  (default): one fused request per pause.
+#   off          : one decision request per leg.
+decisions-fanout: on
+
 # Forwards a low-fan-out, sanitized snapshot of the focused field
 # (label, placeholder, aria-*, input type, page title, page url
 # origin+path, meta description) to the fluid-blank LLM call ONLY,

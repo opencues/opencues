@@ -250,6 +250,10 @@ export interface BuildSourcesOptions {
    * chat call, and a log line says why.
    */
   decisionsProvider?: string;
+  /** `decisions-fanout` (default on): one decision request per pause vs one per leg. */
+  decisionsFanout?: boolean;
+  /** the ask leg's chat call runs only when the fused ask noul ≥ this (default 0.7). */
+  askGateThreshold?: number;
   /** Host-provided GET for the contradiction world-data caches (bank holidays,
    *  weather). Chrome passes a service-worker-routed fetch (a content-script
    *  fetch is blocked by the host page's CSP); native hosts omit it → global fetch. */
@@ -635,6 +639,8 @@ export function buildSourcesFromConfig(
         enableAsk: !!options.enableAskCues,
         enableSemanticTips: !!options.enableSemanticTips,
         decisions,
+        decisionsFanout: options.decisionsFanout ?? true,
+        askGateThreshold: options.askGateThreshold,
         log: (m) => options.log?.(m),
       }));
     } else {

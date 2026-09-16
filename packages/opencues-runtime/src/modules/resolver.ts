@@ -913,6 +913,7 @@ export class Resolver {
       // settings-map read as the registry scalar; build-sources resolves the
       // key and logs when it cannot build one.
       decisionsProvider: settings.get('decisions-provider') ?? 'off',
+      decisionsFanout: (settings.get('decisions-fanout') ?? 'on') !== 'off',
       worldDataFetch: this.options.worldDataFetch,
       pageLocation: this.options.pageLocation,
       weatherLocation: settings.get('weather-location'),

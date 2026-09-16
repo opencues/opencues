@@ -38,6 +38,7 @@ const SETTINGS_MAP_ONLY: ReadonlySet<string> = new Set([
   'contradictionCuesMode',   // consumed in resolver.ts:enableContradictionCues
   'integrationWeaveMode', // consumed in blank-fill.ts applyAsyncFill weave gate
                           // (read from settings map; no resolver/typed field)
+  'decisionsFanout',    // consumed in resolver.ts (buildSources decisionsFanout) — plain on/off
   'decisionsProvider',  // consumed by the decision layer's boot wiring only
                         // (step 0 of the Jev plan: seam only, no reader yet)
   'maxThinking',        // consumed in resolver.ts (buildSources maxThinking)

@@ -29,7 +29,7 @@ import type { CueContext, CueResult, CueSource, CueSourceResult, HttpAdapter } f
 import type { TipsCatalog } from '../tips-catalog';
 import { dispatchChat, type ProviderAdapter } from '../llm-provider';
 import { parseFlags } from '../contradiction/session-contradiction-source';
-import type { DecisionProvider, ChoiceQuestion } from '../decisions/types';
+import type { DecisionProvider, ChoiceQuestion, ChoiceAnswer, DecisionAnswer } from '../decisions/types';
 import { dispatchDecision } from '../decisions/dispatch';
 import { DECISION_LIMITS } from '../decisions/types';
 
@@ -235,14 +235,6 @@ export class SemanticTipsSource implements CueSource {
     const text = context.text ?? '';
     const catalog = context.tipsCatalog as TipsCatalog | undefined;
     if (!catalog || catalog.entries.length === 0) return { results: [] };
-
-    const charOffsets: Array<[number, number]> = [];
-    { let pos = 0; for (const w of context.words) { const idx = text.indexOf(w, pos); if (idx < 0) { charOffsets.push([pos, pos]); continue; } charOffsets.push([idx, idx + w.length]); pos = idx + w.length; } }
-    const wordIndexAt = (charPos: number): number => {
-      for (let i = 0; i < charOffsets.length; i++) { if (charPos < charOffsets[i][1]) return i; }
-      return Math.max(0, charOffsets.length - 1);
-    };
-
     let flags: RawTipFlag[];
     try { flags = await this.match(text, catalog, context.signal); }
     catch (e) {
@@ -254,6 +246,30 @@ export class SemanticTipsSource implements CueSource {
       }
       return { results: [] };
     }
+    return this.assemble(context, catalog, flags);
+  }
+
+  /**
+   * The fused per-pause path (plan step 3): the caller sent the questions
+   * from `buildDecisionQuestions` inside ONE request with the other legs'
+   * questions and hands the answers back. No call is made here.
+   */
+  getCuesFromDecision(context: CueContext, answers: Readonly<Record<string, DecisionAnswer>>): CueSourceResult {
+    const text = context.text ?? '';
+    const catalog = context.tipsCatalog as TipsCatalog | undefined;
+    if (!catalog || catalog.entries.length === 0) return { results: [] };
+    return this.assemble(context, catalog, this.flagsFromDecision(text, catalog, answers));
+  }
+
+  private assemble(context: CueContext, catalog: TipsCatalog, flags: RawTipFlag[]): CueSourceResult {
+    const text = context.text ?? '';
+
+    const charOffsets: Array<[number, number]> = [];
+    { let pos = 0; for (const w of context.words) { const idx = text.indexOf(w, pos); if (idx < 0) { charOffsets.push([pos, pos]); continue; } charOffsets.push([idx, idx + w.length]); pos = idx + w.length; } }
+    const wordIndexAt = (charPos: number): number => {
+      for (let i = 0; i < charOffsets.length; i++) { if (charPos < charOffsets[i][1]) return i; }
+      return Math.max(0, charOffsets.length - 1);
+    };
 
     const byId = new Map(catalog.entries.map((e) => [e.id, e]));
     const out: CueResult[] = [];
@@ -391,13 +407,19 @@ export class SemanticTipsSource implements CueSource {
    * as "not gated".
    */
   private async matchDecision(text: string, catalog: TipsCatalog, signal?: AbortSignal): Promise<RawTipFlag[]> {
-    const provider = this.cfg.decisions!;
-    const threshold = this.cfg.decisionThreshold ?? TIPS_DECISION_THRESHOLD_DEFAULT;
+    const questions = this.buildDecisionQuestions(text, catalog);
+    if (Object.keys(questions).length === 0) { this.log('SemanticTips[decision]: every entry pre-checked out (draft already carries the command)'); return []; }
+    const res = await dispatchDecision(this.cfg.decisions!, { state: { draft: text }, questions }, { signal, leg: 'tips', log: (l) => this.log(l) });
+    return this.flagsFromDecision(text, catalog, res.answers);
+  }
+
+  /** The tips questions for a request: one Choice per ≤240-entry slice, ids `tip0`, `tip1`, …
+   *  Empty when every entry is pre-checked out. Shared by the standalone and fused paths. */
+  buildDecisionQuestions(text: string, catalog: TipsCatalog): Record<string, ChoiceQuestion> {
     const candidates = catalog.entries.filter((e) => {
       const cmd = entryCommand(e);
       return !(cmd && text.includes(cmd));
     });
-    if (candidates.length === 0) { this.log('SemanticTips[decision]: every entry pre-checked out (draft already carries the command)'); return []; }
     const per = DECISION_LIMITS.maxChoiceOptions - 15;   // 240: headroom below the wire cap
     const questions: Record<string, ChoiceQuestion> = {};
     for (let i = 0; i * per < candidates.length; i++) {
@@ -407,14 +429,20 @@ export class SemanticTipsSource implements CueSource {
       criteria.none = TIPS_DECISION_NONE;
       questions[`tip${i}`] = { type: 'choice', instructions: TIPS_DECISION_INSTRUCTIONS, criteria };
     }
-    const res = await dispatchDecision(provider, { state: { draft: text }, questions }, { signal, leg: 'tips', log: (l) => this.log(l) });
-    // best non-none across slices, then the gate
+    return questions;
+  }
+
+  /** Read the `tip<N>` answers back into at most one flag (best non-none slice, then the gate). */
+  private flagsFromDecision(text: string, catalog: TipsCatalog, answers: Readonly<Record<string, DecisionAnswer>>): RawTipFlag[] {
+    const threshold = this.cfg.decisionThreshold ?? TIPS_DECISION_THRESHOLD_DEFAULT;
+    const tipAnswers = Object.entries(answers).filter(([id, a]) => id.startsWith('tip') && a.type === 'choice').map(([, a]) => a as ChoiceAnswer);
+    if (tipAnswers.length === 0) return [];
     let best: { id: string; confidence: number; p: number } | null = null;
-    for (const a of Object.values(res.answers)) {
-      if (a.type !== 'choice' || a.choice === 'none') continue;
+    for (const a of tipAnswers) {
+      if (a.choice === 'none') continue;
       if (!best || a.confidence > best.confidence) best = { id: a.choice, confidence: a.confidence, p: a.probabilities[a.choice] ?? 0 };
     }
-    const top = Object.values(res.answers).map((a) => a.type === 'choice' ? Object.entries(a.probabilities).sort((x, y) => y[1] - x[1]).slice(0, 2).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(' / ') : '').join(' | ');
+    const top = tipAnswers.map((a) => Object.entries(a.probabilities).sort((x, y) => y[1] - x[1]).slice(0, 2).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(' / ')).join(' | ');
     if (!best) { this.log(`SemanticTips[decision]: none (${top})`); return []; }
     if (best.confidence < threshold) { this.log(`SemanticTips[decision]: ${best.id} at ${best.confidence.toFixed(2)} < ${threshold} (${top})`); return []; }
     const entry = catalog.entries.find((e) => e.id === best!.id);

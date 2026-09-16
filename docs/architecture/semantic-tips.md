@@ -257,6 +257,13 @@ in the same request. Gate: `semantic-tips-bench.mjs --provider typesafe
 `tests/benchmarks/decisions/RESULTS.md` (2026-09-16: all four packs pass,
 ~270 ms and ~$0.00006 per call against ~570 ms and ~$0.0011).
 
+With `decisions-fanout: on` (the default once a decision provider is set) the
+tips Choice does not travel alone: `SessionCueSource.getCuesFused` sends it in
+ONE request with the contradiction gate and the ask gate and hands the answers
+to `getCuesFromDecision` (core 0.64.0). Same questions, same assembly, one
+fewer round trip per pause. Measured on the real rail: 0.23 chat calls per
+pause instead of 2, $0.000200 vs $0.001570, p50 238 vs 418 ms (`pause-bench.mjs`).
+
 ## What it deliberately does not do
 
 - No token matching, anywhere. The static layer (`ConfigLoader.cueMap`,

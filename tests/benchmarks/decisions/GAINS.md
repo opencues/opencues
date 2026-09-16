@@ -69,14 +69,40 @@ Per event, with the cost model's 10% not-none rate on realistic drafts (step 1 a
 | pause, ask off | 1 chat + 1 Jev · $0.000558 · 461 ms | 0.1 chat + 2 Jev · $0.000166 · ~320 ms (a positive pause ~730) | −70% $, −31% ms |
 | **1-hour session (a)** | $0.1634 | ≈ $0.088 (per-draft rows measured; per-event modelled until step 3's fused request is measured end to end) | −46% |
 
+## Step 3 — one decision request per pause (core 0.64.0)
+
+**What moved:** the two per-leg decision calls from steps 1–2 become one request carrying the
+tips Choice, the contradiction gate and the ask gate (`SessionCueSource.getCuesFused`). The
+generation calls that remain (a contradiction hit's quote/tip/reconcile, an ask hit's question)
+run as before. `decisions-fanout: off` keeps one call per leg.
+
+Per pause, MEASURED end to end on the real rail (`pause-bench.mjs`, 26 pauses, same session):
+
+| pause | before (chat, today) | after step 3 (fused) | Δ |
+|---|---|---|---|
+| ask off | 2.00 chat · $0.001570 · p50 418 / mean 544 ms | 0.23 chat + 1 Jev · $0.000200 · p50 238 / mean 345 ms | **−87% $, −43% p50** |
+| ask on | 2.50 chat · $0.001927 · p50 550 / mean 656 ms | 0.50 chat + 1 Jev · $0.000417 · p50 489 / mean 483 ms | −78% $, −11% p50, −26% mean |
+
+Accuracy at parity on both arms (tips 8/8, contradiction 5/5, traps 0/13 ask-off; the ask cue's
+two alarms are identical under both arms). One borderline tip draft reported, not gated.
+
+Per hour of coding (scenario (a): 120 pauses, ask off), now with a measured per-pause row:
+
+| | chat calls | Jev calls | $ pauses | $ `_` (15, unchanged) | $ / hour | vs baseline |
+|---|---|---|---|---|---|---|
+| baseline | 240 + 75 | 0 | 0.211 | 0.096 | 0.307 | — |
+| after step 3 | 28 + 75 | 120 | 0.024 | 0.096 | **0.120** | **−61%** |
+
+The remaining $0.096/hour is the `_` side (5 chat calls per underscore), which step 5 addresses.
+
 ## Cumulative
 
 | after step | chat calls / hour | $ / hour | saving vs baseline | pause ms | `_` ms |
 |---|---|---|---|---|---|
 | baseline | 315 | 0.3073 | — | 590 | 422 |
 | 1 (tips) | 195 | 0.1634 | 46.8% | 461 | 422 |
-| 2 (contradiction pre-gate) | ~87 chat + 240 Jev | ≈0.088 | ≈71% (per-draft measured; per-event at the 10% not-none assumption) | ≈320 | 422 |
-| 3 (one request per pause) | — | — | modelled 80% | modelled 316 | — |
+| 2 (contradiction pre-gate) | ~87 chat + 240 Jev | ≈0.111 | ≈64% (per-draft measured; per-event at the 10% not-none assumption; `_` side included) | ≈320 | 422 |
+| 3 (one request per pause) | 103 chat + 120 Jev | 0.120 (measured per-pause) | 61% | 238 p50 / 345 mean (measured) | 422 |
 | 5 (`_` router) | — | — | — | — | modelled 643 (design A) |
 
 Modelled rows are from the cost model before the step ships and are replaced with measured

@@ -80,7 +80,7 @@ No visual change at any step; confidence is carried as data and left unrendered.
 | 0 ✅ | this seam, the compare bench | — | smoke |
 | 1 ✅ | tips matching as one Choice over the pack + none (`SemanticTipsSource.matchDecision`, core 0.62.0) | tips chat call ($0.00127, 590 ms → $0.00007, 259 ms) | `semantic-tips-bench.mjs --provider typesafe` passes the ship gate on all four packs — done 2026-09-16, rows in RESULTS.md |
 | 2 ✅ | contradiction pre-gate (`contradictionGateRequest`: Choice over the watchlist ids + none; chat call only when the gate does not skip; core 0.63.0) | contradiction call on every pause | `company-rules-bench.mjs --gate typesafe`: 22/22 silent drafts skipped, 0/28 violations lost, 0 false alarms — done 2026-09-16 |
-| 3 | one Jev request per pause in `SessionCueSource` (tips + rules + ask gate) | 2–3 chat calls per pause | isolation ≤ 0.05 Δp; per-pause cost/latency rows |
+| 3 ✅ | one Jev request per pause in `SessionCueSource.getCuesFused` (tips Choice + contradiction gate + ask noul; `decisions-fanout`; core 0.64.0) | 2–3 chat calls per pause | `pause-bench.mjs`: 0.23 chat calls per pause instead of 2, $0.000200 vs $0.001570, p50 238 vs 418 ms, accuracy at parity — done 2026-09-17 |
 | 4 | ask-cues and needs-rewrite gates in front of their generation calls | ask call every pause; rewrite call every sentence | precision unchanged; gated-call count drops |
 | 5 | the `_` router (design ruled separately: serial vs parallel-and-cancel) | 5 chat calls per `_` | router bench ≥ 95% on acted cases; agentic 08/09/102 |
 | 6 | contradiction detection in full (clause Choice for the span; reconcile generated lazily) | the remaining contradiction call | same benches; span exactness |

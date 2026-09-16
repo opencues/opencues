@@ -78,3 +78,41 @@ The gate skipped every compliant trap and lost no violation; accuracy is the SOU
 the chat call is unchanged on every draft that reaches it. Not run: real-transcript watchlists
 (near-duplicate-prone); the gate's fall-through design (a low-confidence `none` still runs the
 chat call; a gate error runs it too) bounds the risk to a saved call, never a lost cue.
+
+## pause — step 3 (one decision request per pause)
+
+2026-09-17 · jev-1.13.0 · `pause-bench.mjs`: the REAL `SessionCueSource` (claude-code tips pack,
+44 entries + a 5-rule engineering watchlist) on 26 pauses — 8 tips recall, 5 rule violations,
+13 traps/neutral (1 borderline) — CHAT path vs FUSED path, same session, cost from the meter.
+
+```
+CHAT (today)  (26 pauses, ask off)
+  tips right 8/8 · contradiction recall 5/5 · false alarms 0/13
+  latency p50 418 ms · p90 938 ms · mean 544 ms
+  calls per pause: chat 2.00 · jev 0.00 · $ per pause 0.001570
+FUSED (one decision request per pause)  (26 pauses, ask off)
+  tips right 8/8 · contradiction recall 5/5 · false alarms 0/13 (+1 borderline, reported not gated)
+  latency p50 238 ms · p90 667 ms · mean 345 ms
+  calls per pause: chat 0.23 · jev 1.00 · $ per pause 0.000200
+    typesafe/jev-1.13.0: 26 calls · 2215 in / 474 out
+    cerebras/gpt-oss-120b: 6 calls · 603 in / 337 out      ← the 5 contradiction hits + 1 gate pass-through
+
+CHAT (today)  (26 pauses, ask on)
+  tips right 8/8 · contradiction recall 5/5 · false alarms 2/13
+  latency p50 550 ms · p90 1168 ms · mean 656 ms
+  calls per pause: chat 2.50 · jev 0.00 · $ per pause 0.001927
+FUSED (one decision request per pause)  (26 pauses, ask on)
+  tips right 8/8 · contradiction recall 5/5 · false alarms 2/13 (+1 borderline)
+  latency p50 489 ms · p90 839 ms · mean 483 ms
+  calls per pause: chat 0.50 · jev 1.00 · $ per pause 0.000417
+```
+
+Reading: one Jev request (~2.2k tokens, the catalogue + the watchlist + the draft) replaces
+both chat calls on a silent pause and all but the hit's chat call on a contradiction. Per pause,
+ask off: −87% $, p50 −43%, mean −37%; 0.23 chat calls per pause instead of 2. With ask on the
+gate lets 0.27 ask calls through per pause instead of 0.5, and the two ask alarms are the same
+two under both arms (the ask cue's own 1-in-3 ceiling, not the gate). The borderline draft
+("pushing the branch now" against the commit entry's "is about to commit") scores none
+0.47–0.53 alone and fused, inside the ±0.05 band at the 0.5 threshold; flagged in the case
+set, not tuned around. Three repeat runs of the fused arm: p50 238 / 239 / 260 ms, identical
+accuracy.

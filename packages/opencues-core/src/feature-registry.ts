@@ -610,6 +610,17 @@ export const FEATURES: readonly FeatureSpec[] = [
       { id: 'typesafe', description: 'TypeSafe Jev (pinned version; $0.042/M input, output free)' },
     ],
   },
+  {
+    scalar: 'decisions-fanout',
+    group: 'LLM routing',
+    camelCase: 'decisionsFanout',
+    description: 'With a decision provider on: one decision request per pause carrying every leg\'s question (tips, contradiction gate, ask gate) instead of one request per leg. Off keeps one call per leg. Inert when decisions-provider is off.',
+    menuTip: 'One decision request per pause (tips + contradiction gate + ask gate together) or one per leg.',
+    values: [
+      { id: 'on',  description: 'Default — one fused request per pause' },
+      { id: 'off', description: 'One decision request per leg (steps 1–2 shape)' },
+    ],
+  },
 
   // ── Provider routing ─────────────────────────────────────────────
   //

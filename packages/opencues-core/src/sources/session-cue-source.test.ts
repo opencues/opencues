@@ -188,3 +188,107 @@ describe('SessionCueSource — contradiction and tips run in parallel; contradic
     expect(calls).toEqual({ contradiction: 1, tips: 1, ask: 1 });
   });
 });
+
+// ── the fused per-pause request (Jev plan step 3) ────────────────────────
+import { buildTipsCatalog } from '../tips-catalog';
+import type { DecisionProvider, DecisionRequest } from '../decisions/types';
+
+const PACK_F = buildTipsCatalog([{ id: 'zeta', words: {
+  '/zap': { tip: 'ALT-ONE zap resets the zorb', when: 'wants to begin again from nothing', say: 'ALT-SAY beginning again? /zap', alts: [] },
+} }]);
+function fctx(text: string): CueContext {
+  return { text, words: text.split(/\s+/).filter(Boolean), sessionCommitments: WATCH, tipsCatalog: PACK_F, cursor: text.length };
+}
+/** answers keyed by question id; anything not listed answers none / 0 */
+function fakeFused(plan: { tip?: string; tipConf?: number; gate?: string; gateConf?: number; ask?: number }): DecisionProvider & { requests: DecisionRequest[] } {
+  const requests: DecisionRequest[] = [];
+  return {
+    id: 'fake', model: 'fake-1', requests,
+    async ask(req) {
+      requests.push(req);
+      const answers: Record<string, unknown> = {};
+      for (const [id, q] of Object.entries(req.questions)) {
+        if (q.type === 'noul') { answers[id] = { type: 'noul', noul: plan.ask ?? 0 }; continue; }
+        if (q.type !== 'choice') continue;
+        const ids = Object.keys(q.criteria);
+        const want = id === 'gate' ? (plan.gate ?? 'none') : (plan.tip ?? 'none');
+        const conf = id === 'gate' ? (plan.gateConf ?? 0.9) : (plan.tipConf ?? 0.9);
+        const pick = ids.includes(want) ? want : 'none';
+        const probabilities: Record<string, number> = {};
+        for (const o of ids) probabilities[o] = o === pick ? conf : (1 - conf) / (ids.length - 1);
+        answers[id] = { type: 'choice', choice: pick, probabilities, confidence: conf };
+      }
+      return { answers: answers as never, model: 'fake-1', usage: { inputTokens: 10, outputTokens: 5 }, ms: 1 };
+    },
+  };
+}
+
+describe('SessionCueSource — one decision request per pause', () => {
+  it('sends ONE request carrying the tips Choice, the contradiction gate and the ask noul; state keyed by id', async () => {
+    const d = fakeFused({});
+    const r = router(CONTRADICTS, A_QUESTION);
+    const src = new SessionCueSource({ ...base, httpAdapter: r.adapter, enableContradiction: true, enableAsk: true, enableSemanticTips: true, decisions: d });
+    const out = await src.getCues(fctx('bumped the README badge'));
+    expect(d.requests.length).toBe(1);
+    const req = d.requests[0];
+    expect(Object.keys(req.questions).sort()).toEqual(['ask', 'gate', 'tip0']);
+    expect(req.state).toEqual({ draft: 'bumped the README badge', decisions: { c1: 'Do not add new npm dependencies' } });
+    // everything none / below the ask gate → no chat call at all
+    expect(r.calls).toEqual({ contradiction: 0, ask: 0 });
+    expect(out.results).toEqual([]);
+  });
+
+  it('a gate hit runs the contradiction chat call and wins; no second decision call, no ask call', async () => {
+    const d = fakeFused({ gate: 'c1', gateConf: 0.95, tip: 't1', ask: 0.99 });
+    const r = router(CONTRADICTS, A_QUESTION);
+    const src = new SessionCueSource({ ...base, httpAdapter: r.adapter, enableContradiction: true, enableAsk: true, enableSemanticTips: true, decisions: d });
+    const out = await src.getCues(fctx('lets add the redis npm package'));
+    expect(d.requests.length).toBe(1);
+    expect(r.calls).toEqual({ contradiction: 1, ask: 0 });
+    expect(out.results[0].cueTip).toBe('⚠ no new deps');
+    expect(out.results[0].confidence).toBe(0.95);
+  });
+
+  it('a tip hit lands with no chat call at all', async () => {
+    const d = fakeFused({ tip: 't1', tipConf: 0.8 });
+    const r = router(CONTRADICTS, A_QUESTION);
+    const src = new SessionCueSource({ ...base, httpAdapter: r.adapter, enableContradiction: true, enableAsk: true, enableSemanticTips: true, decisions: d });
+    const out = await src.getCues(fctx('lets begin again on the zorb'));
+    expect(r.calls).toEqual({ contradiction: 0, ask: 0 });
+    expect(out.results[0].alternatives).toEqual(['lets begin again on the zorb', '/zap']);
+    expect(out.results[0].confidence).toBe(0.8);
+  });
+
+  it('the ask chat call runs only above the ask gate', async () => {
+    const r1 = router(CONTRADICTS, A_QUESTION);
+    const low = new SessionCueSource({ ...base, httpAdapter: r1.adapter, enableContradiction: true, enableAsk: true, enableSemanticTips: true, decisions: fakeFused({ ask: 0.4 }) });
+    await low.getCues(fctx('do the thing'));
+    expect(r1.calls.ask).toBe(0);
+    const r2 = router(CONTRADICTS, A_QUESTION);
+    const high = new SessionCueSource({ ...base, httpAdapter: r2.adapter, enableContradiction: true, enableAsk: true, enableSemanticTips: true, decisions: fakeFused({ ask: 0.85 }) });
+    const out = await high.getCues(fctx('do the thing'));
+    expect(r2.calls.ask).toBe(1);
+    expect(out.results.length).toBeGreaterThan(0);
+  });
+
+  it('a failed fused request falls back to the per-leg path (each leg makes its own call)', async () => {
+    let n = 0;
+    const flaky: DecisionProvider = { id: 'flaky', model: 'x', async ask(req) { n++; if (n === 1) throw new Error('boom'); return fakeFused({ gate: 'c1' }).ask(req); } };
+    const r = router(CONTRADICTS, A_QUESTION);
+    const lines: string[] = [];
+    const src = new SessionCueSource({ ...base, httpAdapter: r.adapter, enableContradiction: true, enableSemanticTips: true, decisions: flaky, log: (m) => lines.push(m) });
+    const out = await src.getCues(fctx('lets add the redis npm package'));
+    expect(lines.join('\n')).toMatch(/falling back to the per-leg path/);
+    expect(n).toBeGreaterThan(1);              // the legs asked again on their own
+    expect(out.results[0].cueTip).toBe('⚠ no new deps');
+  });
+
+  it('decisionsFanout: off keeps one decision call per leg', async () => {
+    const d = fakeFused({});
+    const r = router(CONTRADICTS, A_QUESTION);
+    const src = new SessionCueSource({ ...base, httpAdapter: r.adapter, enableContradiction: true, enableSemanticTips: true, decisions: d, decisionsFanout: false });
+    await src.getCues(fctx('bumped the README badge'));
+    expect(d.requests.length).toBe(2);
+    expect(d.requests.map((q) => Object.keys(q.questions).join(',')).sort()).toEqual(['gate', 'tip0']);
+  });
+});

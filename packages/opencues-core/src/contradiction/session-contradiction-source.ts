@@ -128,7 +128,13 @@ export class SessionContradictionSource implements CueSource {
     );
   }
 
-  async getCues(context: CueContext): Promise<CueSourceResult> {
+  /**
+   * `preGate`: the fused per-pause path (plan step 3) already asked the gate
+   * question inside its one request and hands the answer in; the source then
+   * makes no decision call of its own. Absent → the source asks the gate
+   * itself when a decision provider is configured (step 2).
+   */
+  async getCues(context: CueContext, preGate?: ChoiceAnswer): Promise<CueSourceResult> {
     const text = context.text ?? '';
     const snapshot = context.sessionCommitments as SessionCommitmentsSnapshot | undefined;
     if (!snapshot || snapshot.commitments.length === 0) return { results: [] };
@@ -144,8 +150,12 @@ export class SessionContradictionSource implements CueSource {
     // PRE-GATE (decision provider set): a confident `none` ends the pass
     // here, no chat call. Any failure of the gate itself falls through to
     // the chat call — the gate can only save a call, never lose a cue.
-    let gate: ChoiceAnswer | undefined;
-    if (this.cfg.decisions) {
+    let gate: ChoiceAnswer | undefined = preGate;
+    if (gate) {
+      const top = Object.entries(gate.probabilities).sort((x, y) => y[1] - x[1]).slice(0, 2).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(' / ');
+      if (contradictionGateSkips(gate, this.cfg.decisionThreshold)) { this.log(`SessionContradiction[gate]: none at ${gate.confidence.toFixed(2)} — chat call skipped (${top})`); return { results: [] }; }
+      this.log(`SessionContradiction[gate]: ${gate.choice} at ${gate.confidence.toFixed(2)} — running the chat call (${top})`);
+    } else if (this.cfg.decisions) {
       try {
         const res = await dispatchDecision(this.cfg.decisions, contradictionGateRequest(text, snapshot), { signal: context.signal, leg: 'contradiction-gate', log: (l) => this.log(l) });
         gate = res.answers.gate;
