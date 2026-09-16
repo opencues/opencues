@@ -87,6 +87,10 @@ No visual change at any step; confidence is carried as data and left unrendered.
 | 7 | candidate-selection legs (replace-detect span, spelling via dictionary) | replace-detect call; part of word-cues | literal suite reproduced by code; a spelling bench |
 | 8 | spec: `questions:` block, chat-fallback semantics, `confidence` on a cue result | — | spec bump checklist |
 
+Every shipped step also updates **`tests/benchmarks/decisions/GAINS.md`**, the running
+ledger: what moved, per-call before/after, per-event before/after (pause, `_`, sentence),
+and the cumulative table. A step PR without its ledger entry is incomplete.
+
 The benchmark row every step reports, from `tests/benchmarks/decisions/compare.mjs <leg>`:
 the shipped bench's own accuracy metric · p50 / p90 ms · $ per call · tokens per call ·
 calls per event, for the Cerebras leg and the Jev leg in the same session. A step ships

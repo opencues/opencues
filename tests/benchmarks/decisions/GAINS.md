@@ -1,0 +1,62 @@
+# Jev integration — gains ledger
+
+One entry per shipped step: what moved off a chat call, what it cost before and after
+(measured, same session, this WSL2 host at ~160 ms RTT), and the cumulative effect on the
+events a user actually pays for (a pause, a `_`, a sentence). Numbers per call come from
+`RESULTS.md`; per-event numbers come from the cost model in
+`bench/system/cost/model.json` (scenario (a): a 1-hour coding session, 120 pauses, 15 `_`,
+tips on, contradiction on, ask off). Update this file in the same PR as the step.
+
+Prices: cerebras gpt-oss-120b $0.35/M in, $0.75/M out, cached tokens at the input rate;
+TypeSafe jev-1.13.0 $0.042/M in, $0 out.
+
+## Baseline — everything on cerebras (measured 2026-09-16, real sources through core)
+
+| event | chat calls | $ per event | latency to decision |
+|---|---|---|---|
+| pause, ask off (tips ∥ contradiction) | 2 | 0.001757 | 590 ms |
+| pause, ask on | 3 | 0.002480 | 988 ms |
+| `_` (config classifier ∥ summon ∥ transform fused ∥ replace-detect ∥ fluid) | 5 | 0.006429 | 422 ms |
+| sentence, sentence-cues on | 1 | 0.000434 | 462 ms |
+| **1-hour coding session (a)** | **315** | **$0.3073** | pause 590 / `_` 422 |
+
+## Step 1 — tips matching → Jev (PR #461, core 0.62.0)
+
+**What moved:** the `SemanticTipsSource` matching call. The note, the command and the span
+are assembled from the pack; the model returns an id and a probability.
+
+Per call, gate-passing on every pack (shipped ship gate, both arms same session):
+
+| pack | before (cerebras) | after (Jev) | latency | cost |
+|---|---|---|---|---|
+| claude-code | 573 ms · $0.00124 · 20/20 · 0/10 | 259 ms · $0.00008 · 20/20 · 0/10 | −55% | −94% |
+| opencode | 397 ms · $0.00109 · 14/14 · 0/6 | 265 ms · $0.00006 · 14/14 · 0/6 | −33% | −94% |
+| gemini-cli | 456 ms · $0.00116 · 24/24 · 0/12 | 272 ms · $0.00007 · 24/24 · 0/12 | −40% | −94% |
+| shell | 618 ms · $0.00082 · 10/10 · 0/5 | 267 ms · $0.00004 · 10/10 · 0/5 | −57% | −95% |
+
+Per event (the tips call is one of the two parallel calls on a pause; the pause's
+latency is the slower of the two, which is now the contradiction call):
+
+| event | before | after step 1 | Δ |
+|---|---|---|---|
+| pause, ask off | 2 chat · $0.001757 · 590 ms | 1 chat + 1 Jev · $0.000558 · 461 ms | −68% $, −22% ms |
+| pause, ask on | 3 chat · $0.002480 · 988 ms | 2 chat + 1 Jev · $0.001280 · 859 ms | −48% $, −13% ms |
+| **1-hour session (a)** | 315 chat · $0.3073 | 195 chat + 120 Jev · $0.1634 | **−46.8%** |
+| 500 users × 4 h | $614.66 / day | $326.75 / day | −$288 / day |
+
+What did not change: the contradiction and ask calls (steps 2–4), every `_` (step 5),
+sentence rewrites (step 4). Accuracy: at parity on the shipped gate on all four packs;
+the exploratory bench's one false alarm is removed by the typed-trigger pre-check.
+
+## Cumulative
+
+| after step | chat calls / hour | $ / hour | saving vs baseline | pause ms | `_` ms |
+|---|---|---|---|---|---|
+| baseline | 315 | 0.3073 | — | 590 | 422 |
+| 1 (tips) | 195 | 0.1634 | 46.8% | 461 | 422 |
+| 2 (contradiction pre-gate) | — | — | modelled 61% | — | — |
+| 3 (one request per pause) | — | — | modelled 80% | modelled 316 | — |
+| 5 (`_` router) | — | — | — | — | modelled 643 (design A) |
+
+Modelled rows are from the cost model before the step ships and are replaced with measured
+rows when it does.
