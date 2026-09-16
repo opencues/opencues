@@ -38,6 +38,7 @@ export default defineConfig({
       'src/sources/tool-prompt-source.test.ts',
       'src/sources/session-cue-source.test.ts',
       'src/usage-meter.test.ts',
+      'src/decisions/decisions.test.ts',
       'src/providers/harness-bridge.test.ts',
     ],
     // Never discover into git worktrees (`.claude/worktrees/`) — stale repo

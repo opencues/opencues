@@ -43,6 +43,18 @@ max-thinking: on
 #   off          : always the fused whole-buffer path (saves the call).
 replace-parse-mode: on
 
+# decisions-provider — a calibrated DECISION model for the deciding
+# legs (which tip fits, which rule is contradicted, whether a rewrite
+# call is worth spending). It answers typed questions with probabilities
+# and never generates text, so it is a separate seam from the LLM
+# buckets above, not a fourth one. See docs/architecture/decisions.md.
+#   off      (default): every decision stays on the chat provider it
+#                       uses today.
+#   typesafe          : TypeSafe Jev (pinned version, TYPESAFE_API_KEY;
+#                       $0.042/M input, output free). Legs move onto it
+#                       one at a time, each behind its own bench gate.
+decisions-provider: off
+
 # Forwards a low-fan-out, sanitized snapshot of the focused field
 # (label, placeholder, aria-*, input type, page title, page url
 # origin+path, meta description) to the fluid-blank LLM call ONLY,

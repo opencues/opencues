@@ -1005,6 +1005,10 @@ module.exports = async function doctor(argv, ctx) {
       if (adapter.transport === 'cli' || !adapter.envKeyName) continue;
       s.ok(keyLabel(`${adapter.envKeyName} (LLM)`, adapter.envKeyName), !!sourceOf(adapter.envKeyName));
     }
+    // Decision provider key (TypeSafe Jev) — a separate seam from the
+    // LLM providers, so it is not in listProviders(). Shown as a plain
+    // key row; the layer is inert until `decisions-provider: typesafe`.
+    s.ok(keyLabel('TYPESAFE_API_KEY (decisions — Jev, optional)', 'TYPESAFE_API_KEY'), !!sourceOf('TYPESAFE_API_KEY'));
     // Non-LLM service keys — kept hardcoded; one entry today (FINNHUB
     // for the stocks blank). Lift into a SERVICE_KEYS registry when
     // there's a second one. NOTE: script-facing keys still come from

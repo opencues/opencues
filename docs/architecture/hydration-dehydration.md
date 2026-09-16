@@ -64,8 +64,9 @@ when adding a source.
 | 8 | AgentRewrite `DOCUMENT:` | `agent-rewrite.ts:callLLMOnce` — windowed doc dehydrated, `[CURSOR]` at `mapOffset` | hydrate LLM output BEFORE window splice + three-way merge (see below) |
 | 9 | blank-weave `PRIOR TEXT:` | `blank-weave.ts` — priorContext dehydrated (the `⟦VALUE⟧` weave token is not bracket-shaped; hydration never touches it) | woven output hydrated |
 | 10 | replace-detect `INPUT:` (replace-parse-mode) | `transform-blank-source.ts` — the parallel detector ships the SAME `inputForLLM` channel 2 already dehydrated; no second scrub needed, no new raw copy exists | `verifyReplaceDetect`'s `hydrateField` — echoed `[TOKEN]`s in TARGET/COMMAND/VALUE substitute to values BEFORE the verbatim-substring verification, so the splice geometry is derived in value space; an unknown token fails the substring check and falls back to fused (safe) |
+| 11 | Decision provider `state` (TypeSafe Jev — every deciding leg, once one is wired) | `decisions/dispatch.ts:applyDecisionDehydrationFloor` — walks EVERY string in the structured state (nested objects and arrays) before `provider.ask`; question text is scanned but never rewritten (it is static catalogue text; a hit there is logged as "a leg is composing user text into a question") | n/a — answers are probabilities over ids the runtime supplied; no text comes back to hydrate |
 
-Plus the **defense-in-depth floor** (below) covering anything missed.
+Plus the **defense-in-depth floor** (below) covering anything missed. The decision channel has its own floor in `dispatchDecision` for the same reason `dispatchChat` has one: it is the single chokepoint, so no leg can bypass it.
 
 ## The dehydrator (`packages/opencues-core/src/dehydrate.ts`)
 

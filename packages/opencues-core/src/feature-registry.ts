@@ -591,6 +591,26 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
 
+  // ── Decision provider ────────────────────────────────────────────
+  //
+  // A DECISION provider (TypeSafe's Jev) answers typed questions with
+  // calibrated probabilities and never generates text. It is a separate
+  // seam from the LLM buckets (packages/opencues-core/src/decisions/) and
+  // this is its ONE scalar. `off` is the default until a leg passes its
+  // bench gate (docs/architecture/decisions.md § Integration plan); no leg
+  // reads it yet in this version — step 0 is the seam only.
+  {
+    scalar: 'decisions-provider',
+    group: 'LLM routing',
+    camelCase: 'decisionsProvider',
+    description: 'Calibrated decision model for the deciding legs (tips matching, contradiction pre-gate, gates in front of generation calls). `typesafe` needs TYPESAFE_API_KEY. Separate from the LLM buckets: it never generates text. See docs/architecture/decisions.md.',
+    menuTip: 'Route decisions (which tip, which rule, whether to spend a rewrite call) through a calibrated decision model instead of a chat call. Needs TYPESAFE_API_KEY.',
+    values: [
+      { id: 'off',      description: 'Default — every decision stays on the chat provider it uses today' },
+      { id: 'typesafe', description: 'TypeSafe Jev (pinned version; $0.042/M input, output free)' },
+    ],
+  },
+
   // ── Provider routing ─────────────────────────────────────────────
   //
   // Three buckets, one knob each. Surfaces map to buckets as follows:

@@ -532,3 +532,39 @@ export {
   type HarnessDispatch,
   type HarnessBridgeInfo,
 } from './providers/harness-bridge';
+
+// Decision provider — calibrated decision models (TypeSafe's Jev) behind
+// one seam, separate from the LLM providers. See decisions/types.ts and
+// docs/architecture/decisions.md.
+export {
+  DecisionError,
+  DECISION_LIMITS,
+  type DecisionValue,
+  type NoulQuestion,
+  type ChoiceQuestion,
+  type ScoreQuestion,
+  type DecisionQuestion,
+  type NoulAnswer,
+  type ChoiceAnswer,
+  type ScoreAnswer,
+  type DecisionAnswer,
+  type AnswersFor,
+  type DecisionRequest,
+  type DecisionResult,
+  type DecisionUsage,
+  type DecisionContext,
+  type DecisionErrorKind,
+  type DecisionProvider,
+} from './decisions/types';
+export {
+  TypeSafeDecisionProvider,
+  TYPESAFE_ENDPOINT,
+  TYPESAFE_MODELS_ENDPOINT,
+  TYPESAFE_ENV_KEY,
+  TYPESAFE_PINNED_MODEL,
+  buildTypeSafeBody,
+  parseTypeSafeBody,
+  type TypeSafeProviderConfig,
+} from './decisions/typesafe';
+export { ChatFallbackDecisionProvider, CHAT_FALLBACK_SYSTEM, type ChatFn } from './decisions/chat-fallback';
+export { dispatchDecision, validateDecisionRequest, applyDecisionDehydrationFloor, type DispatchDecisionContext } from './decisions/dispatch';
