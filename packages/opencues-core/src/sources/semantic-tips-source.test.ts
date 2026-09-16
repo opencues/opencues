@@ -274,3 +274,100 @@ describe('SemanticTipsSource — trailing whitespace is not content', () => {
     expect(c.alternatives).toEqual(['lets begin again on the zorb', '/zap']);   // the original is the content, not the spaces
   });
 });
+
+// ── the decision path (Jev plan step 1) ─────────────────────────────────
+// A fake DecisionProvider stands in for Jev: the tests pin the SHAPE the
+// matcher builds and the assembly it does from an id + probability.
+import { lastSentence, TIPS_DECISION_NONE } from './semantic-tips-source';
+import type { DecisionProvider, DecisionRequest } from '../decisions/types';
+
+function fakeDecisions(answer: { choice: string; confidence: number }): DecisionProvider & { requests: DecisionRequest[] } {
+  const requests: DecisionRequest[] = [];
+  return {
+    id: 'fake', model: 'fake-1', requests,
+    async ask(req) {
+      requests.push(req);
+      const answers: Record<string, unknown> = {};
+      for (const [id, q] of Object.entries(req.questions)) {
+        if (q.type !== 'choice') continue;
+        const ids = Object.keys(q.criteria);
+        const pick = ids.includes(answer.choice) ? answer.choice : 'none';
+        const probabilities: Record<string, number> = {};
+        for (const o of ids) probabilities[o] = o === pick ? answer.confidence : (1 - answer.confidence) / (ids.length - 1);
+        answers[id] = { type: 'choice', choice: pick, probabilities, confidence: answer.confidence };
+      }
+      return { answers: answers as never, model: 'fake-1', usage: { inputTokens: 10, outputTokens: 5 }, ms: 1 };
+    },
+  };
+}
+
+describe('SemanticTipsSource — decision matcher', () => {
+  it('builds ONE Choice over the entries (when: as description) plus a concrete none, state = {draft}, and never a chat call', async () => {
+    const d = fakeDecisions({ choice: 't1', confidence: 0.9 });
+    const src = new SemanticTipsSource({ ...baseConfig, httpAdapter: { post: async () => { throw new Error('chat must not be called'); } }, decisions: d });
+    const r = await src.getCues(ctx('ok this is a mess, lets begin again on the zorb'));
+    expect(d.requests.length).toBe(1);
+    const q = d.requests[0].questions.tip0;
+    expect(q.type).toBe('choice');
+    expect(d.requests[0].state).toEqual({ draft: 'ok this is a mess, lets begin again on the zorb' });
+    expect(Object.keys((q as { criteria: Record<string, string> }).criteria)).toEqual(['t1', 't2', 't3', 'none']);
+    expect((q as { criteria: Record<string, string> }).criteria.t1).toBe('wants to begin again from nothing');
+    expect((q as { criteria: Record<string, string> }).criteria.none).toBe(TIPS_DECISION_NONE);
+    expect(r.results.length).toBe(1);
+  });
+
+  it('assembles a command tip from the pack: whole-buffer span, [original, /command], the say: line, confidence as data', async () => {
+    const src = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: fakeDecisions({ choice: 't1', confidence: 0.83 }) });
+    const text = 'ok this is a mess, lets begin again on the zorb';
+    const [c] = (await src.getCues(ctx(text))).results;
+    expect(c.alternatives).toEqual([text, '/zap']);
+    expect(c.spanStart).toBe(0);
+    expect(c.spanEnd).toBe(text.length);
+    expect(c.cueTip).toBe('💡 ALT-SAY beginning again? /zap resets the zorb');
+    expect(c.confidence).toBe(0.83);
+    expect((c.metadata as { tip: { command: boolean; why: string } }).tip.command).toBe(true);
+  });
+
+  it('holds below the threshold, and on none', async () => {
+    const low = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: fakeDecisions({ choice: 't1', confidence: 0.4 }) });
+    expect((await low.getCues(ctx('lets begin again on the zorb'))).results).toEqual([]);
+    const custom = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: fakeDecisions({ choice: 't1', confidence: 0.4 }), decisionThreshold: 0.3 });
+    expect((await custom.getCues(ctx('lets begin again on the zorb'))).results.length).toBe(1);
+    const none = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: fakeDecisions({ choice: 'none', confidence: 0.95 }) });
+    expect((await none.getCues(ctx('the zorb field on the invoice should be a decimal'))).results).toEqual([]);
+  });
+
+  it('typed-trigger pre-check: an entry whose command the draft already contains is not offered', async () => {
+    const d = fakeDecisions({ choice: 't1', confidence: 0.9 });
+    const src = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: d });
+    const r = await src.getCues(ctx('run /zap before we continue'));
+    expect(Object.keys((d.requests[0].questions.tip0 as { criteria: Record<string, string> }).criteria)).toEqual(['t2', 't3', 'none']);
+    expect(r.results).toEqual([]);   // the fake's t1 is not on offer → none
+  });
+
+  it('a prose tip is advisory: [original] alone, the flagged span is the cursor sentence', async () => {
+    const src = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: fakeDecisions({ choice: 't3', confidence: 0.77 }) });
+    const text = 'the zorb landed. why is this so spendy today';
+    const [c] = (await src.getCues(ctx(text))).results;
+    expect(c.alternatives).toEqual(['why is this so spendy today']);
+    expect(text.slice(c.spanStart!, c.spanEnd!)).toBe('why is this so spendy today');
+    expect(c.cueTip).toBe('💡 ALT-THREE quux is spendy');
+    expect(c.confidence).toBe(0.77);
+  });
+
+  it('a decision failure is logged and yields no cue, never a throw', async () => {
+    const lines: string[] = [];
+    const bad: DecisionProvider = { id: 'bad', model: 'x', async ask() { throw new Error('boom'); } };
+    const src = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: bad, log: (m) => lines.push(m) });
+    expect((await src.getCues(ctx('lets begin again on the zorb'))).results).toEqual([]);
+    expect(lines.join('\n')).toMatch(/match failed/);
+  });
+
+  it('lastSentence: the cursor sentence, or the whole draft', () => {
+    expect(lastSentence('one. two three')).toBe('two three');
+    expect(lastSentence('one! two?  ')).toBe('two?');
+    expect(lastSentence('just one line')).toBe('just one line');
+    expect(lastSentence('first line\nsecond line')).toBe('second line');
+    expect(lastSentence('ends here.')).toBe('ends here.');
+  });
+});

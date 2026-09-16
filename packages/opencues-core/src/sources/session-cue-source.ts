@@ -40,6 +40,9 @@ export interface SessionCueSourceConfig extends SessionContradictionSourceConfig
   /** the tips pack matched as a watchlist (`tips-mode: semantic`) — runs
    *  alongside contradiction, before ask; its own call, never folded in. */
   readonly enableSemanticTips?: boolean;
+  /** decision provider for the legs that have moved to it (step 1: tips). */
+  readonly decisions?: import('../decisions/types').DecisionProvider;
+  readonly decisionThreshold?: number;
 }
 
 export class SessionCueSource implements CueSource {

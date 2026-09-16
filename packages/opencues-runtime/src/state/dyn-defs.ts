@@ -53,6 +53,13 @@ export interface WordDef {
    * back to snippeting the alternatives.
    */
   readonly noteLabels?: readonly string[];
+  /**
+   * How sure the source was that this cue applies, 0..1, when it came from
+   * a calibrated decision model (docs/architecture/decisions.md). DATA ONLY
+   * in this version: no renderer, hint or placement reads it. Absent for
+   * chat-sourced cues.
+   */
+  readonly confidence?: number;
 }
 
 /**

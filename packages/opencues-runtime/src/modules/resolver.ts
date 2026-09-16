@@ -193,6 +193,8 @@ interface CueResultLike {
   word: string;
   alternatives: string[];
   cueTip?: string;
+  /** decision-sourced confidence, 0..1; data only (docs/architecture/decisions.md) */
+  confidence?: number;
   altCueTips?: Record<string, string>;
   /** Multi-word span in CHARACTER offsets â set by FluidBlankSource WIPE mode. */
   spanStart?: number;
@@ -906,6 +908,11 @@ export class Resolver {
       // Semantic tips: opt-in (`tips-mode: semantic`); the catalogue is forwarded
       // below under the SAME read, so the source and its input can't drift.
       enableSemanticTips: settings.get('tips-mode') !== 'off',
+      // `decisions-provider` (default off): the calibrated decision model
+      // for the legs that have moved to it (tips matching first). Same
+      // settings-map read as the registry scalar; build-sources resolves the
+      // key and logs when it cannot build one.
+      decisionsProvider: settings.get('decisions-provider') ?? 'off',
       worldDataFetch: this.options.worldDataFetch,
       pageLocation: this.options.pageLocation,
       weatherLocation: settings.get('weather-location'),
@@ -2418,6 +2425,8 @@ export class Resolver {
           // Per-alternative display labels (ask-cues) → the rotating note shows
           // legible option labels instead of prefix-identical sentence snippets.
           noteLabels: (r.metadata as { noteLabels?: readonly string[] } | undefined)?.noteLabels,
+          // Decision-sourced confidence rides along as data; nothing reads it yet.
+          ...(typeof r.confidence === 'number' ? { confidence: r.confidence } : {}),
         });
         wrote++;
 

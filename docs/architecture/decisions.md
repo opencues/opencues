@@ -77,8 +77,8 @@ No visual change at any step; confidence is carried as data and left unrendered.
 
 | Step | Ships | Replaces | Gate |
 |---|---|---|---|
-| 0 | this seam, the compare bench | — | smoke |
-| 1 | tips matching as one Choice over the pack + none | tips chat call ($0.00127, 590 ms → $0.00007, 251 ms) | `semantic-tips-bench.mjs --provider typesafe` passes the ship gate on all four packs |
+| 0 ✅ | this seam, the compare bench | — | smoke |
+| 1 ✅ | tips matching as one Choice over the pack + none (`SemanticTipsSource.matchDecision`, core 0.62.0) | tips chat call ($0.00127, 590 ms → $0.00007, 259 ms) | `semantic-tips-bench.mjs --provider typesafe` passes the ship gate on all four packs — done 2026-09-16, rows in RESULTS.md |
 | 2 | contradiction pre-gate (Choice over rule ids + none; chat call only when not none) | contradiction call on every pause | company-rules + real-transcript benches, zero lost violations |
 | 3 | one Jev request per pause in `SessionCueSource` (tips + rules + ask gate) | 2–3 chat calls per pause | isolation ≤ 0.05 Δp; per-pause cost/latency rows |
 | 4 | ask-cues and needs-rewrite gates in front of their generation calls | ask call every pause; rewrite call every sentence | precision unchanged; gated-call count drops |

@@ -18,6 +18,8 @@
 //        [--json] with --probe: print one JSON array (text, id, cueTip, solution, advisory) — what a media capture records
 //        [--pack-file <path>] load the --pack's catalogue from this file instead of defaults/ — A/B a rewritten pack without touching the shipped one
 //        [--provider <id>]   cerebras (default) | gemini | groq | … — key from <PROVIDER>_API_KEY; prints per-call tokens + list-price cost per run
+//        [--provider typesafe] the DECISION matcher (Jev plan step 1): the real SemanticTipsSource with a TypeSafeDecisionProvider, one Choice over the pack — same cases, same gate, same usage line (priced from core's table)
+//        [--threshold <t>]   decision path only: fire at confidence ≥ t (default core's TIPS_DECISION_THRESHOLD_DEFAULT)
 
 import path from 'node:path';
 import url from 'node:url';
@@ -27,15 +29,20 @@ const core = await import(path.join(R, 'packages/opencues-core/dist/index.js'));
 const { NodeHttpAdapter } = await import(path.join(R, 'packages/opencues-core/node-http-adapter.js'));
 
 const argv = process.argv.slice(2);
-const MODEL = argv.includes('--model') ? argv[argv.indexOf('--model') + 1] : (argv.includes('--provider') && argv[argv.indexOf('--provider') + 1] === 'gemini' ? 'gemini-3.5-flash-lite' : 'gpt-oss-120b');
+let MODEL_OVERRIDE = null;
+const MODEL_ARG = argv.includes('--model') ? argv[argv.indexOf('--model') + 1] : (argv.includes('--provider') && argv[argv.indexOf('--provider') + 1] === 'gemini' ? 'gemini-3.5-flash-lite' : 'gpt-oss-120b');
 const VERBOSE = argv.includes('--verbose');
 const PACK = argv.includes('--pack') ? argv[argv.indexOf('--pack') + 1] : 'claude-code';
 const SHARD = argv.includes('--shard') ? argv[argv.indexOf('--shard') + 1] : String(core.TIPS_SHARD_SIZE_DEFAULT);
 const STACK = argv.includes('--stack') ? argv[argv.indexOf('--stack') + 1].split(',').filter(Boolean) : [];
 const PROVIDER = argv.includes('--provider') ? argv[argv.indexOf('--provider') + 1] : 'cerebras';
+const DECISION = PROVIDER === 'typesafe';
+const THRESHOLD = argv.includes('--threshold') ? Number(argv[argv.indexOf('--threshold') + 1]) : undefined;
 const KEY_ENV = `${PROVIDER.toUpperCase().replace(/-/g, '_')}_API_KEY`;
 const API_KEY = process.env[KEY_ENV];
 if (!API_KEY) { console.error(`${KEY_ENV} is required`); process.exit(2); }
+// the decision arm reports under the pinned model; the chat arm under --model
+if (DECISION && !argv.includes('--model')) MODEL_OVERRIDE = core.TYPESAFE_PINNED_MODEL;
 // per-run usage: every dispatchChat reports through the process-global sink
 const usage = { calls: 0, prompt: 0, completion: 0, cached: 0 };
 core.registerUsageSink((u) => { usage.calls++; usage.prompt += u.promptTokens ?? 0; usage.completion += u.completionTokens ?? 0; usage.cached += u.cachedTokens ?? 0; });
@@ -52,11 +59,23 @@ const loadPack = (h) => JSON.parse(fs.readFileSync(h === PACK && PACK_FILE ? PAC
 // the case set's pack first (project-first order), then whatever is stacked on it
 const pack = [...loadPack(PACK), ...STACK.flatMap((h) => loadPack(h).map((sec) => ({ ...sec, id: `${h}:${sec.id}` })))];
 const catalog = core.buildTipsCatalog(pack, { shardSize: SHARD === 'off' ? undefined : Number.parseInt(SHARD, 10) });
-const src = new core.SemanticTipsSource({
-  httpAdapter: new NodeHttpAdapter({ maxSockets: 4, timeout: 30000 }),
-  provider: core.getProvider(PROVIDER), model: MODEL, apiKey: API_KEY,
-  log: (m) => { if (VERBOSE) console.log('   ', m); },
-});
+const MODEL = MODEL_OVERRIDE ?? MODEL_ARG;
+const http = new NodeHttpAdapter({ maxSockets: 4, timeout: 30000 });
+const src = new core.SemanticTipsSource(DECISION
+  // The decision arm: the chat provider fields are required by the config
+  // but never dispatched (the matcher branches to the decision provider
+  // first); cerebras is named so the source constructs.
+  ? {
+    httpAdapter: http, provider: core.getProvider('cerebras'), model: 'gpt-oss-120b', apiKey: '',
+    decisions: new core.TypeSafeDecisionProvider({ apiKey: API_KEY, httpAdapter: http }),
+    ...(THRESHOLD !== undefined ? { decisionThreshold: THRESHOLD } : {}),
+    log: (m) => { if (VERBOSE) console.log('   ', m); },
+  }
+  : {
+    httpAdapter: http,
+    provider: core.getProvider(PROVIDER), model: MODEL, apiKey: API_KEY,
+    log: (m) => { if (VERBOSE) console.log('   ', m); },
+  });
 
 // ── cases: [draft, trigger regex | null, note, solution regex | null, 'borderline'?] ──
 // A 'borderline' trap is reported but does not fail the gate: gpt-oss-120b's verdict on it

@@ -230,6 +230,33 @@ any `when:` line, or the catalogue renderer. Prompt wording is fragile on
 qwen: one added sentence cost four cases. Write a candidate pack to a file
 and bench it with `--pack-file` before touching `defaults/`.
 
+## The decision path (`decisions-provider: typesafe`)
+
+Since core 0.62.0 the MATCHING leg can run on a calibrated decision model
+instead of the chat call (docs/architecture/decisions.md, Jev plan step 1).
+`SemanticTipsSource` takes a `decisions` provider; when set, `match` builds
+ONE Choice whose options are the catalogue's entries (description = the
+`when:` line) plus a concretely described `none`, with the draft as the
+state, and fires when `choice ≠ none` and `confidence ≥ 0.5`
+(`TIPS_DECISION_THRESHOLD_DEFAULT`). Nothing the model returns is text:
+
+- the cited id is the option key, so grounding 2 holds by construction;
+- the solution is the entry's own command (`entryCommand`), so grounding 3
+  holds by construction; a prose tip stays advisory (`[original]` alone);
+- the quote is the cursor's sentence (`lastSentence`), or the whole draft;
+- the note is the pack's `say:` line, as on the chat path;
+- the answer's confidence rides `CueResult.confidence` as data — no
+  renderer reads it in this version.
+
+Two rules the chat prompt carried by instruction are code here: the
+typed-trigger pre-check (an entry whose command the draft already contains
+is left out of the options — the bench's one design-A alarm) and the
+`none` description. Packs over ~240 entries split into one Choice per slice
+in the same request. Gate: `semantic-tips-bench.mjs --provider typesafe
+--pack <host>` must pass the same ship gate as the chat arm; rows in
+`tests/benchmarks/decisions/RESULTS.md` (2026-09-16: all four packs pass,
+~270 ms and ~$0.00006 per call against ~570 ms and ~$0.0011).
+
 ## What it deliberately does not do
 
 - No token matching, anywhere. The static layer (`ConfigLoader.cueMap`,

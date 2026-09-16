@@ -31,6 +31,8 @@ import { ConfigIntentSource, type ConfigIntentSourceConfig } from './config-inte
 import { SentenceCueSource, type SentenceCueSourceConfig } from './sentence-cue-source';
 import { ContradictionLlmSource } from '../contradiction/contradiction-llm-source';
 import { SessionCueSource } from './session-cue-source';
+import { TypeSafeDecisionProvider, TYPESAFE_ENV_KEY, TYPESAFE_PINNED_MODEL } from '../decisions/typesafe';
+import type { DecisionProvider } from '../decisions/types';
 import { BankHolidayProvider } from '../contradiction/bank-holidays';
 import { WeatherProvider } from '../contradiction/weather';
 import { TflProvider } from '../contradiction/tfl';
@@ -241,6 +243,13 @@ export interface BuildSourcesOptions {
    *  `CueContext.tipsCatalog`. Defaults to false; flip on via OPENCUES.md
    *  `tips-mode: semantic`. */
   enableSemanticTips?: boolean;
+  /**
+   * `decisions-provider` scalar. `typesafe` builds a TypeSafeDecisionProvider
+   * from `apiKeys.TYPESAFE_API_KEY` and hands it to the legs that have moved
+   * to it (step 1: the tips matcher). Off, or no key → every leg keeps its
+   * chat call, and a log line says why.
+   */
+  decisionsProvider?: string;
   /** Host-provided GET for the contradiction world-data caches (bank holidays,
    *  weather). Chrome passes a service-worker-routed fetch (a content-script
    *  fetch is blocked by the host page's CSP); native hosts omit it → global fetch. */
@@ -425,6 +434,23 @@ export function combineWordSources(srcs: SourceConfig[]): SourceConfig {
  * - blanks: keyword-bound entries → BlankSource. Free-form `_` →
  *   FluidBlankSource (always-on base layer; no mode scalar).
  */
+/**
+ * The decision provider for the legs that use one, from the
+ * `decisions-provider` scalar and the key bag. Undefined (with one log line
+ * naming why) keeps every leg on its chat call. Built once per source build,
+ * so the tips matcher and later legs share one instance and one keep-alive
+ * adapter.
+ */
+export function buildDecisionProvider(options: Pick<BuildSourcesOptions, 'decisionsProvider' | 'apiKeys' | 'httpAdapter' | 'log'>): DecisionProvider | undefined {
+  const which = options.decisionsProvider ?? 'off';
+  if (which === 'off') return undefined;
+  if (which !== 'typesafe') { options.log?.(`buildSources: decisions-provider ${which} unknown → decision legs stay on chat`); return undefined; }
+  const apiKey = options.apiKeys?.[TYPESAFE_ENV_KEY];
+  if (!apiKey) { options.log?.(`buildSources: decisions-provider typesafe but ${TYPESAFE_ENV_KEY} is not set → decision legs stay on chat`); return undefined; }
+  options.log?.(`buildSources: decisions → typesafe/${TYPESAFE_PINNED_MODEL}`);
+  return new TypeSafeDecisionProvider({ apiKey, httpAdapter: options.httpAdapter });
+}
+
 export function buildSourcesFromConfig(
   cuesConfig: CuesMdConfig | undefined,
   _blanksConfig: CuesMdConfig | undefined,
@@ -597,6 +623,7 @@ export function buildSourcesFromConfig(
     if (scLlm) {
       const which = [options.enableSessionContradiction && 'contradiction', options.enableSemanticTips && 'tips', options.enableAskCues && 'ask'].filter(Boolean).join('+');
       options.log?.(`buildSources: session-cue [${which}] → LLM engine (${scLlm.provider.id}/${scLlm.model})`);
+      const decisions = buildDecisionProvider(options);
       sources.push(new SessionCueSource({
         httpAdapter: withFallback(options.httpAdapter, scLlm.fallback),
         provider: scLlm.provider,
@@ -607,6 +634,7 @@ export function buildSourcesFromConfig(
         enableContradiction: !!options.enableSessionContradiction,
         enableAsk: !!options.enableAskCues,
         enableSemanticTips: !!options.enableSemanticTips,
+        decisions,
         log: (m) => options.log?.(m),
       }));
     } else {

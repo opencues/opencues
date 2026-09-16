@@ -91,7 +91,7 @@ on-host: [opencode]
     "words": {
       "/models": {
         "tip": "Use /models (Ctrl+X m) to switch model mid-session",
-        "when": "asks which model this is, or typed /model from another tool",
+        "when": "asks which model this is or which to use, complains about cost or speed, wants a stronger or cheaper model, or typed /model from another tool",
         "say": "Which model? /models picks one, and each agent keeps its own"
       },
       "Ctrl+T": {
@@ -146,7 +146,7 @@ on-host: [opencode]
       },
       "AGENTS.md": {
         "tip": "AGENTS.md holds project rules — run /init to scaffold it",
-        "when": "asks where the project rules go, or typed CLAUDE.md",
+        "when": "asks where the project rules go, says it forgets a rule every session or keeps ignoring one, or typed CLAUDE.md",
         "say": "Rules it should keep? Put them in AGENTS.md; /init scaffolds it"
       }
     }
