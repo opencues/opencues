@@ -71,6 +71,37 @@ matter for shipping live in `tests/benchmarks/decisions/`.
 
 Scalar: `decisions-provider: off | typesafe` (feature registry; `off` default). Usage: `opencues usage` prices the `typesafe` row at $0.042 / $0. Doctor: a `TYPESAFE_API_KEY` row. PII: row 11 of the coverage table in `hydration-dehydration.md`.
 
+## The cue side, case by case (reviewed 2026-09-17, after step 3)
+
+What the session rail does for every combination, with a decision provider configured.
+"Chat" = the pre-decision behaviour, byte-identical.
+
+| situation | behaviour |
+|---|---|
+| tips on, watchlist present, ask off (the default) | one fused request: `tip0` (+ `tip1`… over 240 entries) + `gate`; contradiction chat call only on a gate hit; tip assembled from the pack |
+| + ask on | + `ask` noul in the same request; the ask chat call only at ≥ 0.7 and only when neither leg flagged |
+| no watchlist (no transcript yet, chrome) | the fused request carries only the tips Choice(s) (+ ask); state has no `decisions` |
+| `tips-mode: off` | only `gate` (+ `ask`) |
+| `decisions-fanout: off` | one decision request per leg (steps 1–2 shape); the ask gate still runs as its own small request |
+| draft already contains an entry's command (`run /compact …`) | that entry is left out of the options (typed-trigger pre-check); the static path owns it |
+| the cursor is mid-buffer | a prose tip's span is the sentence containing `context.cursor` (`sentenceAt`), the last sentence when the cursor is unknown; command tips span the whole buffer regardless |
+| a tip scores within ±0.05 of 0.5 | it may flicker on/off across consecutive pauses on the same draft (jitter is ±0.03–0.05 at the threshold; the chat path at temperature 0 is steadier here). Known; the fix is hysteresis in the runtime keyed on `DynDef.confidence`, the first real consumer of the field — parked with rendering |
+| the fused request fails (overloaded after its retry, transport, budget, malformed) | the same pause falls back to the CHAT path for every leg with no further decision call, and the breaker holds the provider down for 30 s (`DECISIONS_BREAKER_MS`); an outage costs one failed request per window, not one per leg per pause |
+| the key is wrong (auth) | breaker for 10 min + one log line; `opencues doctor` shows the row |
+| the fused request is aborted by a newer keystroke | empty result, no fallback, no breaker (the next pause asks again) |
+| the gate says a decision id but the chat call finds nothing | empty (the chat call's grounding is authoritative); the gate only ever decides whether to spend the call |
+| the gate says `none` below 0.5 | the chat call runs (a low-confidence none is not a skip) |
+| a commitment statement contains a catalogue value | the state's copy (`decisions.cN`) is dehydrated by the floor; the Choice criteria copy is scanned and warned on, not rewritten (same policy as the chat path's SYSTEM message) |
+| chrome / dsh (a page) | `buildDecisionProvider` refuses on a non-Node host; every leg stays on chat until the host bridges carry it |
+| no `TYPESAFE_API_KEY` | one boot log line, every leg on chat; doctor warns |
+| `decisions-provider: off` | nothing above runs; the code paths are the pre-step-0 ones |
+
+Not on the decision layer yet (deliberately): `SentenceCueSource` rewrites (step 4's
+needs-rewrite gate), `ContradictionLlmSource`'s per-sentence claim parse
+(`contradiction-cues-mode`, off by default; a "does this sentence make a checkable
+claim" noul is the obvious gate, not scheduled), word-cues (generation), AgentRewrite /
+auditors (an "anything to change?" gate, after step 4).
+
 ## Integration plan (simplest first, each behind its gate)
 
 No visual change at any step; confidence is carried as data and left unrendered.

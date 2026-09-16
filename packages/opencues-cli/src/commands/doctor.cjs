@@ -1106,6 +1106,20 @@ module.exports = async function doctor(argv, ctx) {
         });
       }
     }
+    // Decision provider — a separate seam from the buckets, one scalar.
+    // Shows what the runtime will actually do: on + key → the pinned model;
+    // on + no key → stays on chat (the runtime logs the same line at boot).
+    {
+      const dp = scalars['decisions-provider'] ?? 'off';
+      const fanout = (scalars['decisions-fanout'] ?? 'on') !== 'off';
+      const hasKey = !!(process.env.TYPESAFE_API_KEY || (envKeysMod ? envKeysMod.readCuesEnvFile().TYPESAFE_API_KEY : undefined));
+      let pinned = 'jev (pinned)';
+      try { pinned = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/decisions/typesafe.js')).TYPESAFE_PINNED_MODEL; } catch { /* dist not built: the label still reads */ }
+      if (dp === 'off') s.info('decisions:', 'off · every decision leg on its chat call (set decisions-provider: typesafe + TYPESAFE_API_KEY to move tips / contradiction gate / ask gate to Jev)');
+      else if (dp === 'typesafe' && hasKey) s.info('decisions:', `typesafe · ${pinned} · ${fanout ? 'one request per pause' : 'one request per leg'} (tips matcher, contradiction gate, ask gate)`);
+      else if (dp === 'typesafe') s.warn('decisions:', 'typesafe requested but TYPESAFE_API_KEY not found → every decision leg stays on its chat call');
+      else s.warn('decisions:', `"${dp}" is not a known decision provider (off | typesafe) → chat`);
+    }
     s.render();
   }
   // CLI-transport providers (subscription-backed) probed separately.

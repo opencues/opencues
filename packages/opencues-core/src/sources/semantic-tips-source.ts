@@ -87,7 +87,11 @@ export interface SemanticTipsSourceConfig {
   /** fires when choice ≠ none AND confidence ≥ this. Bench-chosen: 0.5
    *  (tips/REPORT.md — 0.9 silences four right answers to remove one
    *  typed-trigger alarm the pre-check removes for free). */
-  readonly decisionThreshold?: number;
+  readonly tipsThreshold?: number;
+  /** When it returns false the decision provider is bypassed and the chat
+   *  matcher runs instead — the session rail's circuit breaker after a
+   *  failed decision request (SessionCueSource). Absent → healthy. */
+  readonly decisionsHealthy?: () => boolean;
 }
 
 /** `none` must be described concretely: "none of the above" loses to
@@ -236,7 +240,7 @@ export class SemanticTipsSource implements CueSource {
     const catalog = context.tipsCatalog as TipsCatalog | undefined;
     if (!catalog || catalog.entries.length === 0) return { results: [] };
     let flags: RawTipFlag[];
-    try { flags = await this.match(text, catalog, context.signal); }
+    try { flags = await this.match(text, catalog, context.signal, context.cursor); }
     catch (e) {
       const err = e as Error;
       if (err?.name === 'AbortError' || /abort/i.test(err?.message ?? '')) {
@@ -258,7 +262,7 @@ export class SemanticTipsSource implements CueSource {
     const text = context.text ?? '';
     const catalog = context.tipsCatalog as TipsCatalog | undefined;
     if (!catalog || catalog.entries.length === 0) return { results: [] };
-    return this.assemble(context, catalog, this.flagsFromDecision(text, catalog, answers));
+    return this.assemble(context, catalog, this.flagsFromDecision(text, catalog, answers, context.cursor));
   }
 
   private assemble(context: CueContext, catalog: TipsCatalog, flags: RawTipFlag[]): CueSourceResult {
@@ -349,8 +353,8 @@ export class SemanticTipsSource implements CueSource {
     return { results: out };
   }
 
-  private async match(text: string, catalog: TipsCatalog, signal?: AbortSignal): Promise<RawTipFlag[]> {
-    if (this.cfg.decisions) return this.matchDecision(text, catalog, signal);
+  private async match(text: string, catalog: TipsCatalog, signal?: AbortSignal, cursor?: number): Promise<RawTipFlag[]> {
+    if (this.cfg.decisions && (this.cfg.decisionsHealthy?.() ?? true)) return this.matchDecision(text, catalog, signal, cursor);
     // One call per SHARD, all in parallel (the catalogue builder cut them on
     // section boundaries at the configured size — `tips-shard-size`). Each
     // shard is a stable system-message prefix of its own, so every call is
@@ -406,11 +410,11 @@ export class SemanticTipsSource implements CueSource {
    * write the person's sentence, and the bench already scores prose tips
    * as "not gated".
    */
-  private async matchDecision(text: string, catalog: TipsCatalog, signal?: AbortSignal): Promise<RawTipFlag[]> {
+  private async matchDecision(text: string, catalog: TipsCatalog, signal?: AbortSignal, cursor?: number): Promise<RawTipFlag[]> {
     const questions = this.buildDecisionQuestions(text, catalog);
     if (Object.keys(questions).length === 0) { this.log('SemanticTips[decision]: every entry pre-checked out (draft already carries the command)'); return []; }
     const res = await dispatchDecision(this.cfg.decisions!, { state: { draft: text }, questions }, { signal, leg: 'tips', log: (l) => this.log(l) });
-    return this.flagsFromDecision(text, catalog, res.answers);
+    return this.flagsFromDecision(text, catalog, res.answers, cursor);
   }
 
   /** The tips questions for a request: one Choice per ≤240-entry slice, ids `tip0`, `tip1`, …
@@ -433,8 +437,8 @@ export class SemanticTipsSource implements CueSource {
   }
 
   /** Read the `tip<N>` answers back into at most one flag (best non-none slice, then the gate). */
-  private flagsFromDecision(text: string, catalog: TipsCatalog, answers: Readonly<Record<string, DecisionAnswer>>): RawTipFlag[] {
-    const threshold = this.cfg.decisionThreshold ?? TIPS_DECISION_THRESHOLD_DEFAULT;
+  private flagsFromDecision(text: string, catalog: TipsCatalog, answers: Readonly<Record<string, DecisionAnswer>>, cursor?: number): RawTipFlag[] {
+    const threshold = this.cfg.tipsThreshold ?? TIPS_DECISION_THRESHOLD_DEFAULT;
     const tipAnswers = Object.entries(answers).filter(([id, a]) => id.startsWith('tip') && a.type === 'choice').map(([, a]) => a as ChoiceAnswer);
     if (tipAnswers.length === 0) return [];
     let best: { id: string; confidence: number; p: number } | null = null;
@@ -448,12 +452,31 @@ export class SemanticTipsSource implements CueSource {
     const entry = catalog.entries.find((e) => e.id === best!.id);
     if (!entry) return [];
     const cmd = entryCommand(entry);
-    return [{ quote: lastSentence(text), tipId: entry.id, why: `p ${best.p.toFixed(2)} conf ${best.confidence.toFixed(2)}`, apply: cmd ?? '', confidence: best.confidence }];
+    return [{ quote: sentenceAt(text, cursor), tipId: entry.id, why: `p ${best.p.toFixed(2)} conf ${best.confidence.toFixed(2)}`, apply: cmd ?? '', confidence: best.confidence }];
   }
 }
 
-/** The sentence the draft ends in — the cursor's sentence — or the whole
- *  (trimmed) draft when it has one. Exported for the bench and tests. */
+/**
+ * The sentence containing the cursor (a char offset), or the last sentence
+ * when the cursor is unknown / at the end, or the whole draft when it has
+ * one. The decision matcher returns no quote, so this is the span a prose
+ * tip's note attaches to; command tips span the whole buffer regardless.
+ */
+export function sentenceAt(text: string, cursor?: number): string {
+  if (cursor === undefined || cursor < 0 || cursor >= text.trimEnd().length) return lastSentence(text);
+  const re = /[^.!?\n]*[^\s.!?][^.!?\n]*[.!?]?/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m[0].trim().length === 0) { if (re.lastIndex === m.index) re.lastIndex++; continue; }
+    const start = m.index + (m[0].length - m[0].trimStart().length);
+    const end = m.index + m[0].length;
+    if (cursor >= start && cursor <= end) return m[0].trim();
+  }
+  return lastSentence(text);
+}
+
+/** The sentence the draft ends in, or the whole (trimmed) draft when it has
+ *  one. Exported for the bench and tests. */
 export function lastSentence(text: string): string {
   const t = text.trimEnd();
   const m = /(?:^|[.!?]\s+|\n+)([^.!?\n]*[^\s.!?][^.!?\n]*[.!?]?)\s*$/.exec(t);

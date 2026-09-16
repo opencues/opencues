@@ -271,15 +271,16 @@ describe('SessionCueSource — one decision request per pause', () => {
     expect(out.results.length).toBeGreaterThan(0);
   });
 
-  it('a failed fused request falls back to the per-leg path (each leg makes its own call)', async () => {
+  it('a failed fused request falls back to the CHAT path in the same pause (the legs do not re-ask the provider)', async () => {
     let n = 0;
-    const flaky: DecisionProvider = { id: 'flaky', model: 'x', async ask(req) { n++; if (n === 1) throw new Error('boom'); return fakeFused({ gate: 'c1' }).ask(req); } };
+    const flaky: DecisionProvider = { id: 'flaky', model: 'x', async ask() { n++; throw new Error('boom'); } };
     const r = router(CONTRADICTS, A_QUESTION);
     const lines: string[] = [];
     const src = new SessionCueSource({ ...base, httpAdapter: r.adapter, enableContradiction: true, enableSemanticTips: true, decisions: flaky, log: (m) => lines.push(m) });
     const out = await src.getCues(fctx('lets add the redis npm package'));
-    expect(lines.join('\n')).toMatch(/falling back to the per-leg path/);
-    expect(n).toBeGreaterThan(1);              // the legs asked again on their own
+    expect(lines.join('\n')).toMatch(/falling back to the chat path/);
+    expect(n).toBe(1);
+    expect(r.calls.contradiction).toBe(2);     // tips + contradiction chat calls
     expect(out.results[0].cueTip).toBe('⚠ no new deps');
   });
 
@@ -290,5 +291,46 @@ describe('SessionCueSource — one decision request per pause', () => {
     await src.getCues(fctx('bumped the README badge'));
     expect(d.requests.length).toBe(2);
     expect(d.requests.map((q) => Object.keys(q.questions).join(',')).sort()).toEqual(['gate', 'tip0']);
+  });
+});
+
+// ── review fixes: breaker, per-leg ask gate ──────────────────────────────
+import { DecisionError } from '../decisions/types';
+
+describe('SessionCueSource — circuit breaker and per-leg ask gate', () => {
+  it('a failed fused request trips the breaker: the SAME pause and the next run every leg on chat with no further decision call', async () => {
+    let asks = 0;
+    const down: DecisionProvider = { id: 'down', model: 'x', async ask() { asks++; throw new DecisionError('overloaded', 'typesafe: overloaded'); } };
+    const r = router(CONTRADICTS, A_QUESTION);
+    const lines: string[] = [];
+    const src = new SessionCueSource({ ...base, httpAdapter: r.adapter, enableContradiction: true, enableSemanticTips: true, decisions: down, log: (m) => lines.push(m) });
+    const out = await src.getCues(fctx('lets add the redis npm package'));
+    expect(asks).toBe(1);                                   // the fused request only; the legs did NOT retry the provider
+    expect(r.calls.contradiction).toBe(2);                  // chat path ran: the tips AND contradiction chat calls (the router counts both as non-ask)
+    expect(out.results[0].cueTip).toBe('⚠ no new deps');
+    expect(lines.join('\n')).toMatch(/decision provider down for 30s/);
+    await src.getCues(fctx('bumped the README badge'));
+    expect(asks).toBe(1);                                   // still down: no decision call on the next pause either
+    expect(r.calls.contradiction).toBe(4);
+  });
+
+  it('an auth failure trips the breaker for the long window', async () => {
+    const bad: DecisionProvider = { id: 'bad', model: 'x', async ask() { throw new DecisionError('auth', 'typesafe: Unauthorized'); } };
+    const r = router(CONTRADICTS, A_QUESTION);
+    const lines: string[] = [];
+    const src = new SessionCueSource({ ...base, httpAdapter: r.adapter, enableSemanticTips: true, decisions: bad, log: (m) => lines.push(m) });
+    await src.getCues(fctx('lets begin again on the zorb'));
+    expect(lines.join('\n')).toMatch(/down for 600s \(auth/);
+  });
+
+  it('fanout off + healthy provider: the ask call is still gated by its own noul request', async () => {
+    const d = fakeFused({ ask: 0.2 });
+    const r = router(CONTRADICTS, A_QUESTION);
+    const src = new SessionCueSource({ ...base, httpAdapter: r.adapter, enableAsk: true, decisions: d, decisionsFanout: false });
+    const out = await src.getCues(fctx('do the thing'));
+    expect(d.requests.length).toBe(1);
+    expect(Object.keys(d.requests[0].questions)).toEqual(['ask']);
+    expect(r.calls.ask).toBe(0);
+    expect(out.results).toEqual([]);
   });
 });

@@ -449,6 +449,10 @@ export function buildDecisionProvider(options: Pick<BuildSourcesOptions, 'decisi
   const which = options.decisionsProvider ?? 'off';
   if (which === 'off') return undefined;
   if (which !== 'typesafe') { options.log?.(`buildSources: decisions-provider ${which} unknown → decision legs stay on chat`); return undefined; }
+  // Native hosts only for now: in a page (chrome, dsh's client half) the key
+  // would sit in the bundle. Those hosts reach a decision provider through
+  // their host bridge later (plan § Rules); until then the layer is inert there.
+  if (typeof process === 'undefined' || !process.versions?.node) { options.log?.('buildSources: decisions-provider typesafe on a browser host → decision legs stay on chat (native hosts only in this version)'); return undefined; } // BROWSER-SAFE-ALLOW: the guard itself
   const apiKey = options.apiKeys?.[TYPESAFE_ENV_KEY];
   if (!apiKey) { options.log?.(`buildSources: decisions-provider typesafe but ${TYPESAFE_ENV_KEY} is not set → decision legs stay on chat`); return undefined; }
   options.log?.(`buildSources: decisions → typesafe/${TYPESAFE_PINNED_MODEL}`);

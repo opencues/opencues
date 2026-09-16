@@ -45,8 +45,10 @@ export interface SessionCueSourceConfig extends SessionContradictionSourceConfig
   /** the tips pack matched as a watchlist (`tips-mode: semantic`) — runs
    *  alongside contradiction, before ask; its own call, never folded in. */
   readonly enableSemanticTips?: boolean;
-  // `decisions` / `decisionThreshold` come from SessionContradictionSourceConfig
-  // and reach both the tips matcher (step 1) and the contradiction gate (step 2).
+  // `decisions` comes from SessionContradictionSourceConfig and reaches the tips
+  // matcher (step 1, `tipsThreshold`) and the contradiction gate (step 2,
+  // `contradictionGateThreshold`) — two thresholds, two meanings (fire vs skip).
+  readonly tipsThreshold?: number;
   /**
    * `decisions-fanout` (default on when a decision provider is set): ONE
    * decision request per pause carrying the tips Choice, the contradiction
@@ -59,6 +61,9 @@ export interface SessionCueSourceConfig extends SessionContradictionSourceConfig
 }
 
 export const ASK_GATE_THRESHOLD_DEFAULT = 0.7;
+/** breaker windows after a failed decision request */
+export const DECISIONS_BREAKER_MS = 30_000;
+export const DECISIONS_BREAKER_AUTH_MS = 10 * 60_000;
 export const ASK_GATE_QUESTION = {
   question: 'Is there an open question in `draft` that the writer should answer before sending — something a careful reader would have to ask back?',
   focus: 'A request with no specifics, a plan with an unstated dependency, a claim with no source, a choice left unmade. If `decisions` or the draft itself already answer it, it is not open.',
@@ -76,13 +81,29 @@ export class SessionCueSource implements CueSource {
 
   private readonly cfg: SessionCueSourceConfig;
   private readonly log: (msg: string) => void;
+  /**
+   * Circuit breaker. A failed decision request (overloaded after its retry,
+   * transport, budget, auth) marks the provider down for a window; while
+   * down, every leg runs its chat path with no decision call at all, so an
+   * outage costs one failed request per window, not one per leg per pause.
+   * Auth failures are not transient: a longer window, and a log line.
+   */
+  private decisionsDownUntil = 0;
+  private readonly decisionsHealthy = (): boolean => Date.now() >= this.decisionsDownUntil;
 
   constructor(cfg: SessionCueSourceConfig) {
     this.cfg = cfg;
     this.log = cfg.log ?? (() => {});
-    if (cfg.enableContradiction) this.contradiction = new SessionContradictionSource(cfg);
+    const legCfg = { ...cfg, decisionsHealthy: this.decisionsHealthy };
+    if (cfg.enableContradiction) this.contradiction = new SessionContradictionSource(legCfg);
     if (cfg.enableAsk) this.ask = new ToolPromptCueSource(cfg);
-    if (cfg.enableSemanticTips) this.tips = new SemanticTipsSource(cfg);
+    if (cfg.enableSemanticTips) this.tips = new SemanticTipsSource(legCfg);
+  }
+
+  private tripBreaker(err: { kind?: string; message?: string }): void {
+    const ms = err?.kind === 'auth' ? DECISIONS_BREAKER_AUTH_MS : DECISIONS_BREAKER_MS;
+    this.decisionsDownUntil = Date.now() + ms;
+    this.log(`SessionCue: decision provider down for ${Math.round(ms / 1000)}s (${err?.kind ?? 'error'}: ${err?.message}) — every leg on its chat path meanwhile`);
   }
 
   supports(context: CueContext): boolean {
@@ -91,12 +112,13 @@ export class SessionCueSource implements CueSource {
 
   async getCues(context: CueContext): Promise<CueSourceResult> {
     const empty: CueSourceResult = { results: [] };
-    if (this.cfg.decisions && (this.cfg.decisionsFanout ?? true)) {
+    if (this.cfg.decisions && (this.cfg.decisionsFanout ?? true) && this.decisionsHealthy()) {
       const fused = await this.getCuesFused(context);
       if (fused) return fused;
-      // the fused request failed → the per-leg path below (each leg makes
-      // its own decision call, or its chat call) so a pause never goes silent
-      // because one request did.
+      // the fused request failed → the breaker is tripped, and the per-leg
+      // path below runs every leg on its CHAT path, so a pause never goes
+      // silent because one request did and an outage costs one failed
+      // request per breaker window, not one per leg.
     }
     // Contradiction and tips together; contradiction wins if it fires (the
     // more urgent signal), else the tip. A leg that throws is an empty leg —
@@ -108,7 +130,24 @@ export class SessionCueSource implements CueSource {
     if (c.results.length > 0) return c;
     if (t.results.length > 0) return t;
     // Neither flagged → the ask cue is free to surface an open question.
-    if (this.ask?.supports(context)) return this.ask.getCues(context);
+    // With a healthy decision provider and the fanout off, the ask gate
+    // still runs (its own small request) so the ask chat call is gated the
+    // same way on both paths.
+    if (this.ask?.supports(context)) {
+      if (this.cfg.decisions && this.decisionsHealthy()) {
+        try {
+          const res = await dispatchDecision(this.cfg.decisions, { state: { draft: context.text ?? '' }, questions: { ask: { type: 'noul', instructions: ASK_GATE_QUESTION } } }, { signal: context.signal, leg: 'ask-gate', log: (m) => this.log(m) });
+          const p = res.answers.ask.noul;
+          const threshold = this.cfg.askGateThreshold ?? ASK_GATE_THRESHOLD_DEFAULT;
+          if (p < threshold) { this.log(`SessionCue: ask gate ${p.toFixed(2)} < ${threshold} — ask call skipped`); return empty; }
+        } catch (e) {
+          const err = e as { name?: string; kind?: string; message?: string };
+          if (err?.name === 'AbortError' || /abort/i.test(err?.message ?? '')) return empty;
+          this.tripBreaker(err);   // and fall through to the ungated ask call
+        }
+      }
+      return this.ask.getCues(context);
+    }
     return empty;
   }
 
@@ -144,7 +183,8 @@ export class SessionCueSource implements CueSource {
     } catch (e) {
       const err = e as Error;
       if (err?.name === 'AbortError' || /abort/i.test(err?.message ?? '')) { this.log('SessionCue[fused]: superseded (newer keystroke)'); return empty; }
-      this.log(`SessionCue[fused]: request failed (${err?.message}) — falling back to the per-leg path`);
+      this.log(`SessionCue[fused]: request failed (${err?.message}) — falling back to the chat path`);
+      this.tripBreaker(err as { kind?: string; message?: string });
       return null;
     }
 

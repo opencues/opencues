@@ -66,7 +66,10 @@ export interface SessionContradictionSourceConfig {
   /** skip the chat call when the gate says `none` at confidence ≥ this.
    *  Bench-chosen 0.5: on the company-rules bench every compliant trap had
    *  `none` ≥ 0.83 and every violation ≤ 0.20 (22/22 skipped, 0 lost). */
-  readonly decisionThreshold?: number;
+  readonly contradictionGateThreshold?: number;
+  /** false → the gate is bypassed and the chat call runs (the session rail's
+   *  circuit breaker after a failed decision request). Absent → healthy. */
+  readonly decisionsHealthy?: () => boolean;
 }
 
 export const CONTRADICTION_GATE_THRESHOLD_DEFAULT = 0.5;
@@ -153,14 +156,14 @@ export class SessionContradictionSource implements CueSource {
     let gate: ChoiceAnswer | undefined = preGate;
     if (gate) {
       const top = Object.entries(gate.probabilities).sort((x, y) => y[1] - x[1]).slice(0, 2).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(' / ');
-      if (contradictionGateSkips(gate, this.cfg.decisionThreshold)) { this.log(`SessionContradiction[gate]: none at ${gate.confidence.toFixed(2)} — chat call skipped (${top})`); return { results: [] }; }
+      if (contradictionGateSkips(gate, this.cfg.contradictionGateThreshold)) { this.log(`SessionContradiction[gate]: none at ${gate.confidence.toFixed(2)} — chat call skipped (${top})`); return { results: [] }; }
       this.log(`SessionContradiction[gate]: ${gate.choice} at ${gate.confidence.toFixed(2)} — running the chat call (${top})`);
-    } else if (this.cfg.decisions) {
+    } else if (this.cfg.decisions && (this.cfg.decisionsHealthy?.() ?? true)) {
       try {
         const res = await dispatchDecision(this.cfg.decisions, contradictionGateRequest(text, snapshot), { signal: context.signal, leg: 'contradiction-gate', log: (l) => this.log(l) });
         gate = res.answers.gate;
         const top = Object.entries(gate.probabilities).sort((x, y) => y[1] - x[1]).slice(0, 2).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(' / ');
-        if (contradictionGateSkips(gate, this.cfg.decisionThreshold)) {
+        if (contradictionGateSkips(gate, this.cfg.contradictionGateThreshold)) {
           this.log(`SessionContradiction[gate]: none at ${gate.confidence.toFixed(2)} — chat call skipped (${top})`);
           return { results: [] };
         }

@@ -331,7 +331,7 @@ describe('SemanticTipsSource — decision matcher', () => {
   it('holds below the threshold, and on none', async () => {
     const low = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: fakeDecisions({ choice: 't1', confidence: 0.4 }) });
     expect((await low.getCues(ctx('lets begin again on the zorb'))).results).toEqual([]);
-    const custom = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: fakeDecisions({ choice: 't1', confidence: 0.4 }), decisionThreshold: 0.3 });
+    const custom = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: fakeDecisions({ choice: 't1', confidence: 0.4 }), tipsThreshold: 0.3 });
     expect((await custom.getCues(ctx('lets begin again on the zorb'))).results.length).toBe(1);
     const none = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: fakeDecisions({ choice: 'none', confidence: 0.95 }) });
     expect((await none.getCues(ctx('the zorb field on the invoice should be a decimal'))).results).toEqual([]);
@@ -369,5 +369,26 @@ describe('SemanticTipsSource — decision matcher', () => {
     expect(lastSentence('just one line')).toBe('just one line');
     expect(lastSentence('first line\nsecond line')).toBe('second line');
     expect(lastSentence('ends here.')).toBe('ends here.');
+  });
+});
+
+// ── review fix: the note attaches to the CURSOR's sentence, not the last one ──
+import { sentenceAt } from './semantic-tips-source';
+describe('sentenceAt', () => {
+  const t = 'first thing here. second thing here. third thing here';
+  it('picks the sentence containing the cursor, the last one at the end or when unknown', () => {
+    expect(sentenceAt(t, 3)).toBe('first thing here.');
+    expect(sentenceAt(t, 25)).toBe('second thing here.');
+    expect(sentenceAt(t, t.length)).toBe('third thing here');
+    expect(sentenceAt(t)).toBe('third thing here');
+    expect(sentenceAt(t, -1)).toBe('third thing here');
+    expect(sentenceAt('one line only', 4)).toBe('one line only');
+    expect(sentenceAt('line one\nline two\nline three', 12)).toBe('line two');
+  });
+  it('a prose tip with a mid-buffer cursor attaches to that sentence', async () => {
+    const src = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: fakeDecisions({ choice: 't3', confidence: 0.77 }) });
+    const text = 'why is this so spendy today. the zorb landed.';
+    const [c] = (await src.getCues({ ...ctx(text), cursor: 5 })).results;
+    expect(text.slice(c.spanStart!, c.spanEnd!)).toBe('why is this so spendy today.');
   });
 });
