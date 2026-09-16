@@ -248,6 +248,13 @@ state, and fires when `choice ≠ none` and `confidence ≥ 0.5`
 - the answer's confidence rides `CueResult.confidence` as data — no
   renderer reads it in this version.
 
+Threshold hysteresis: probabilities jitter ±0.03–0.05 between identical
+requests, so a draft at the threshold would flip a tip on and off across
+pauses. Once an entry has fired on a draft it holds while it stays the top
+non-none option at ≥ 0.4 on a continuation of that draft (typed forward,
+backspaced, same cursor sentence) for 60 s (`TIPS_HYSTERESIS`,
+`TIPS_HYSTERESIS_TTL_MS`); a fresh fire still needs 0.5.
+
 Two rules the chat prompt carried by instruction are code here: the
 typed-trigger pre-check (an entry whose command the draft already contains
 is left out of the options — the bench's one design-A alarm) and the

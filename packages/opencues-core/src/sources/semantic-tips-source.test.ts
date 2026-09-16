@@ -392,3 +392,47 @@ describe('sentenceAt', () => {
     expect(text.slice(c.spanStart!, c.spanEnd!)).toBe('why is this so spendy today.');
   });
 });
+
+// ── the flicker fix: hysteresis at the threshold ─────────────────────────
+describe('SemanticTipsSource — hysteresis', () => {
+  /** a provider whose confidence for t1 follows a script, one value per call */
+  function scripted(confs: number[]): DecisionProvider {
+    let i = 0;
+    return {
+      id: 'scripted', model: 'x',
+      async ask(req) {
+        const c = confs[Math.min(i++, confs.length - 1)];
+        const q = req.questions.tip0 as { criteria: Record<string, string> };
+        const ids = Object.keys(q.criteria);
+        const pick = c >= 0.34 ? 't1' : 'none';   // below ~a third, none wins the argmax
+        const probabilities: Record<string, number> = {};
+        for (const o of ids) probabilities[o] = o === pick ? c : (1 - c) / (ids.length - 1);
+        return { answers: { tip0: { type: 'choice', choice: pick, probabilities, confidence: c } } as never, model: 'x', usage: { inputTokens: 1, outputTokens: 1 }, ms: 1 };
+      },
+    };
+  }
+  const draft = 'lets begin again on the zorb';
+
+  it('a tip that fired holds through a dip to 0.4 on the same draft, and releases below it', async () => {
+    const src = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: scripted([0.52, 0.46, 0.41, 0.38, 0.52]) });
+    const fired = async (t: string) => (await src.getCues(ctx(t))).results.length;
+    expect(await fired(draft)).toBe(1);                 // 0.52: fires
+    expect(await fired(draft + ' ')).toBe(1);           // 0.46: held (continuation)
+    expect(await fired(draft + ' n')).toBe(1);          // 0.41: held
+    expect(await fired(draft + ' no')).toBe(0);         // 0.38: below the lower band → released
+    expect(await fired(draft + ' now')).toBe(1);        // 0.52: fires again on its own
+  });
+
+  it('does not hold on a different draft, and never fires fresh below the threshold', async () => {
+    const src = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: scripted([0.52, 0.46, 0.46]) });
+    expect((await src.getCues(ctx(draft))).results.length).toBe(1);
+    expect((await src.getCues(ctx('the zorb field on the invoice is wrong'))).results.length).toBe(0);   // new draft: 0.46 < 0.5, not held
+    expect((await src.getCues(ctx('some other zorb thing entirely'))).results.length).toBe(0);
+  });
+
+  it('holds when the cursor sentence is unchanged even if the text before it changed', async () => {
+    const src = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: scripted([0.52, 0.44]) });
+    expect((await src.getCues({ ...ctx('intro. ' + draft), cursor: 100 })).results.length).toBe(1);
+    expect((await src.getCues({ ...ctx('a new intro here. ' + draft), cursor: 100 })).results.length).toBe(1);
+  });
+});
