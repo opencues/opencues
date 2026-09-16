@@ -53,3 +53,28 @@ and one fifteenth of the cost, with the cerebras rows already assuming 74–93% 
 (which cost nothing on cerebras but do not reduce the bill). The one design-A alarm from the
 exploratory bench (`run /compact before we continue`) is gone: the typed-trigger pre-check leaves
 an entry out of the options when the draft already carries its command.
+
+## contradiction pre-gate — step 2
+
+2026-09-16 · jev-1.13.0 · `company-rules-bench.mjs --gate typesafe` (six domains, 28 violations +
+22 compliant traps = 50 drafts). GATED = the source's exact gate request
+(`contradictionGateRequest`: one Choice over the watchlist's ids + none, skip on a confident
+`none` ≥ 0.5) on TypeSafe, then the SOURCE chat call only when the gate did not skip. Same
+session; cost from the meter's price table.
+
+```
+SOURCE  recall 28/28 · right-rule 28/28 · restraint 22/22  (0 false alarms) · mean 395ms
+GATED   recall 28/28 · right-rule 28/28 · restraint 22/22  (0 false alarms) · chat calls skipped 22/50 · violations lost to the gate 0 · mean 528ms
+SOURCE  cerebras/gpt-oss-120b: 50 calls · 621 in / 267 out per call · $0.0209 total, $0.000417 per draft
+GATED   typesafe/jev-1.13.0:   50 calls · 739 in /  70 out per call · $0.0016 total, $0.000031 per draft
+GATED   cerebras/gpt-oss-120b: 28 calls · 620 in / 347 out per call · $0.0134 total, $0.000267 per draft
+```
+
+Per draft: a silent draft costs the gate alone ($0.000031, ~270 ms) instead of the chat call
+($0.000417, ~395 ms); a flagged draft costs both ($0.000298, ~730 ms, the gate being serial).
+On this bench (56% violations) that is −29% $ overall; on realistic drafts, where ~90% of pauses
+contradict nothing, the per-pause cost falls to ~$0.00007 (−83%) and the mean latency to ~320 ms.
+The gate skipped every compliant trap and lost no violation; accuracy is the SOURCE's own, since
+the chat call is unchanged on every draft that reaches it. Not run: real-transcript watchlists
+(near-duplicate-prone); the gate's fall-through design (a low-confidence `none` still runs the
+chat call; a gate error runs it too) bounds the risk to a saved call, never a lost cue.

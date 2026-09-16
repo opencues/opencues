@@ -48,13 +48,34 @@ What did not change: the contradiction and ask calls (steps 2–4), every `_` (s
 sentence rewrites (step 4). Accuracy: at parity on the shipped gate on all four packs;
 the exploratory bench's one false alarm is removed by the typed-trigger pre-check.
 
+## Step 2 — contradiction pre-gate → Jev (core 0.63.0)
+
+**What moved:** nothing generative. A Choice over the watchlist's ids + `none` runs before the
+contradiction chat call; a confident `none` (≥ 0.5) ends the pass. The chat call, its quote, tip
+and reconciled rewrite are unchanged on every draft that reaches it.
+
+Per draft (company-rules bench, 50 drafts, same session):
+
+| draft | before (cerebras) | after (gate + chat only on a hit) | Δ |
+|---|---|---|---|
+| silent (22/22 skipped) | 395 ms · $0.000417 | ~270 ms · $0.000031 | −32% ms, −93% $ |
+| violation (28/28 kept) | 395 ms · $0.000417 | ~730 ms · $0.000298 | +85% ms, −29% $ |
+| bench overall (56% violations) | $0.0209 | $0.0150 | −29% $; 0 lost, 0 false alarms |
+
+Per event, with the cost model's 10% not-none rate on realistic drafts (step 1 already banked):
+
+| event | after step 1 | after step 2 | Δ vs step 1 |
+|---|---|---|---|
+| pause, ask off | 1 chat + 1 Jev · $0.000558 · 461 ms | 0.1 chat + 2 Jev · $0.000166 · ~320 ms (a positive pause ~730) | −70% $, −31% ms |
+| **1-hour session (a)** | $0.1634 | ≈ $0.088 (per-draft rows measured; per-event modelled until step 3's fused request is measured end to end) | −46% |
+
 ## Cumulative
 
 | after step | chat calls / hour | $ / hour | saving vs baseline | pause ms | `_` ms |
 |---|---|---|---|---|---|
 | baseline | 315 | 0.3073 | — | 590 | 422 |
 | 1 (tips) | 195 | 0.1634 | 46.8% | 461 | 422 |
-| 2 (contradiction pre-gate) | — | — | modelled 61% | — | — |
+| 2 (contradiction pre-gate) | ~87 chat + 240 Jev | ≈0.088 | ≈71% (per-draft measured; per-event at the 10% not-none assumption) | ≈320 | 422 |
 | 3 (one request per pause) | — | — | modelled 80% | modelled 316 | — |
 | 5 (`_` router) | — | — | — | — | modelled 643 (design A) |
 

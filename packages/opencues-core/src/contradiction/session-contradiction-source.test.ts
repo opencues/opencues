@@ -117,3 +117,88 @@ describe('parseFlags', () => {
     expect(parseFlags('')).toEqual([]);
   });
 });
+
+// ── the pre-gate (Jev plan step 2) ───────────────────────────────────────
+import { contradictionGateRequest, contradictionGateSkips, CONTRADICTION_GATE_NONE } from './session-contradiction-source';
+import type { DecisionProvider, DecisionRequest } from '../decisions/types';
+
+function fakeGate(choice: string, confidence: number): DecisionProvider & { requests: DecisionRequest[] } {
+  const requests: DecisionRequest[] = [];
+  return {
+    id: 'fake', model: 'fake-1', requests,
+    async ask(req) {
+      requests.push(req);
+      const q = req.questions.gate as { criteria: Record<string, string> };
+      const ids = Object.keys(q.criteria);
+      const probabilities: Record<string, number> = {};
+      for (const o of ids) probabilities[o] = o === choice ? confidence : (1 - confidence) / (ids.length - 1);
+      return { answers: { gate: { type: 'choice', choice, probabilities, confidence } } as never, model: 'fake-1', usage: { inputTokens: 5, outputTokens: 2 }, ms: 1 };
+    },
+  };
+}
+function countingAdapter(content: string): HttpAdapter & { calls: number } {
+  const a = { calls: 0, post: async () => { a.calls++; return JSON.stringify({ choices: [{ message: { content } }] }); } };
+  return a;
+}
+const HIT = JSON.stringify([{ quote: 'add the redis npm package', commitmentId: 'c2', tip: 'ALT-TIP no new deps', reconciled: 'ALT-REC use the built-in cache' }]);
+
+describe('SessionContradictionSource — decision pre-gate', () => {
+  it('builds the gate keyed BY ID (never an array), options = every commitment + a concrete none', () => {
+    const req = contradictionGateRequest('zephyr draft', WATCHLIST!);
+    expect(req.state).toEqual({ draft: 'zephyr draft', decisions: { c1: 'Runtime is Bun, not Node', c2: 'Do not add new npm dependencies' } });
+    expect(Object.keys(req.questions.gate.criteria)).toEqual(['c1', 'c2', 'none']);
+    expect(req.questions.gate.criteria.none).toBe(CONTRADICTION_GATE_NONE);
+  });
+
+  it('a confident none skips the chat call entirely', async () => {
+    const http = countingAdapter(HIT);
+    const lines: string[] = [];
+    const src = new SessionContradictionSource({ ...baseConfig, httpAdapter: http, decisions: fakeGate('none', 0.9), log: (m) => lines.push(m) });
+    const r = await src.getCues(ctx('bumped the README badge'));
+    expect(r.results).toEqual([]);
+    expect(http.calls).toBe(0);
+    expect(lines.join('\n')).toMatch(/chat call skipped/);
+  });
+
+  it('a hit runs the chat call unchanged and attaches the gate confidence when the cited id matches', async () => {
+    const http = countingAdapter(HIT);
+    const src = new SessionContradictionSource({ ...baseConfig, httpAdapter: http, decisions: fakeGate('c2', 0.88) });
+    const [c] = (await src.getCues(ctx('lets add the redis npm package for caching'))).results;
+    expect(http.calls).toBe(1);
+    expect(c.alternatives).toEqual(['add the redis npm package', 'ALT-REC use the built-in cache']);
+    expect(c.cueTip).toBe('⚠ ALT-TIP no new deps');
+    expect(c.confidence).toBe(0.88);
+    expect((c.metadata as { gate: { choice: string } }).gate.choice).toBe('c2');
+  });
+
+  it('a low-confidence none still runs the chat call (the gate only saves a call, never loses a cue)', async () => {
+    const http = countingAdapter(HIT);
+    const src = new SessionContradictionSource({ ...baseConfig, httpAdapter: http, decisions: fakeGate('none', 0.3) });
+    const r = await src.getCues(ctx('lets add the redis npm package for caching'));
+    expect(http.calls).toBe(1);
+    expect(r.results.length).toBe(1);
+    expect(r.results[0].confidence).toBeUndefined();   // gate did not cite c2
+    expect(contradictionGateSkips({ type: 'choice', choice: 'none', probabilities: {}, confidence: 0.3 })).toBe(false);
+    expect(contradictionGateSkips({ type: 'choice', choice: 'none', probabilities: {}, confidence: 0.5 })).toBe(true);
+    expect(contradictionGateSkips({ type: 'choice', choice: 'c1', probabilities: {}, confidence: 0.99 })).toBe(false);
+  });
+
+  it('a gate failure falls through to the chat call and is logged', async () => {
+    const http = countingAdapter(HIT);
+    const lines: string[] = [];
+    const bad: DecisionProvider = { id: 'bad', model: 'x', async ask() { throw new Error('boom'); } };
+    const src = new SessionContradictionSource({ ...baseConfig, httpAdapter: http, decisions: bad, log: (m) => lines.push(m) });
+    const r = await src.getCues(ctx('lets add the redis npm package for caching'));
+    expect(http.calls).toBe(1);
+    expect(r.results.length).toBe(1);
+    expect(lines.join('\n')).toMatch(/falling through/);
+  });
+
+  it('without a decision provider nothing changes: the chat call runs, no confidence', async () => {
+    const http = countingAdapter(HIT);
+    const src = new SessionContradictionSource({ ...baseConfig, httpAdapter: http });
+    const [c] = (await src.getCues(ctx('lets add the redis npm package for caching'))).results;
+    expect(http.calls).toBe(1);
+    expect(c.confidence).toBeUndefined();
+  });
+});

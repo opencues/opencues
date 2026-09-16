@@ -131,6 +131,21 @@ draft — a coherent task, not N independent extractions.
 The watchlist rides in the SYSTEM message (stable within a session → cerebras
 prefix-caches it); the draft is the USER message.
 
+**The pre-gate (`decisions-provider: typesafe`, core 0.63.0).** With a decision
+provider configured, one Choice over the watchlist's ids + `none` runs BEFORE
+the chat call (`contradictionGateRequest`, state keyed by id — never an array,
+which the wire reads one-off). A confident `none` (≥ 0.5,
+`contradictionGateSkips`) ends the pass with no chat call; anything else runs
+the chat call unchanged, so the quote, the tip and the reconciled rewrite keep
+every grounding invariant below. A gate error falls through to the chat call:
+the gate can save a call, never lose a cue. The gate's confidence rides
+`CueResult.confidence` as data when the chat call cited the same decision.
+Measured (`company-rules-bench.mjs --gate typesafe`, 2026-09-16): 22/22
+compliant drafts skipped, 0/28 violations lost, 0 false alarms; a silent
+pause costs $0.000031 / ~270 ms instead of $0.000417 / ~395 ms, a positive
+pause ~730 ms (the gate is serial). See docs/architecture/decisions.md and
+`tests/benchmarks/decisions/GAINS.md`.
+
 ## Ingest — live holder, re-read without restart
 
 Every boot band (`adapters/{cc/v2.1,oc/v1.14,gemini/v0.41,shell/v1}/boot.ts`)
