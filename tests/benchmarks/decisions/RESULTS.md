@@ -188,6 +188,15 @@ inputs with no instruction shape), and the summon extraction / replace-detect ar
 router's saving is therefore ~0.9 chat calls per `_`, concentrated on the transform fused call (the
 largest prompt, cached but billed at the input rate on cerebras).
 
+End to end on a live host (opencode, fresh fork from this branch, the three `_` scenarios that
+pin dispatch counts, scalar off then on): 3/3 pass in both arms. With the router on, the fluid
+scenario routed `lookup 1.00 / agree 0.93 → fluid-blank` (transform never started), the
+config-intent scenario routed `settings 1.00 / agree 0.87 → config-intent` (neither chat sibling
+started), and the transform scenario (`this is bad righting fix typos _`) chose `transform 0.96`
+but its agreement noul scored 0.39, so it fell back to the fan-out (both started, as today). Route
+latencies 237 / 576 / 3605 ms — the last an outlier on a fresh host, which is why the runtime now
+gives the router a 1000 ms budget and fans out past it (no breaker trip).
+
 Reading: −24% $ per `_`, 0 answers lost, 13 misroutes of today's fan-out corrected, one introduced;
 +239 ms p50 on every `_` (the serial router in front of the first chat call, the trade ruled
 acceptable). The ledger's `_` column moves from 422 (modelled) to the measured 448 → 687.

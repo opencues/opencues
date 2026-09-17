@@ -282,6 +282,9 @@ function normalizeModelScalar(raw: string | undefined): string | undefined {
   return t;
 }
 
+/** The `_` router's latency budget: past it the pass fans out as today (docs/architecture/decisions.md § The `_` side). */
+export const UNDERSCORE_ROUTE_BUDGET_MS = 1000;
+
 function isAbortError(err: unknown): boolean {
   return !!err && typeof err === 'object' && (err as { name?: string }).name === 'AbortError';
 }
@@ -1585,9 +1588,17 @@ export class Resolver {
       && !noBlankContextConsumer(cleanWords, this.options.keywordBoundSlotIndices?.(text) ?? []);
     if (routable) {
       const chatIds = this._core!.UNDERSCORE_CHAT_SOURCE_IDS!;
+      // The router has a latency budget: past it the pass fans out as
+      // today and the route answer, if it ever lands, is dropped. A slow
+      // route (3.6 s seen once on a fresh host) must not hold the `_`
+      // hostage; a budget miss is not a failure, so the breaker stays shut.
+      const routeCtl = new AbortController();
+      const onPassAbort = (): void => routeCtl.abort();
+      controller.signal.addEventListener('abort', onPassAbort, { once: true });
+      const budget = setTimeout(() => routeCtl.abort(), UNDERSCORE_ROUTE_BUDGET_MS);
       try {
         usRouting = await this._core!.routeUnderscore!(this._decisions, text, {
-          signal: controller.signal,
+          signal: routeCtl.signal,
           log: (m: string) => this.adapter.log('debug', `Resolver: ${m}`),
           identityContext,
         });
@@ -1604,8 +1615,16 @@ export class Resolver {
           if (this._inFlightController === controller) this._inFlightController = null;
           return;
         }
-        this._routeBreaker!.trip(err);
         usRouting = null;
+        if (routeCtl.signal.aborted) {
+          this.adapter.log('debug', `Resolver: [decision][route] over the ${UNDERSCORE_ROUTE_BUDGET_MS} ms budget — fan-out`);
+          this.adapter.emitEvent?.('resolver.route', { choice: 'budget', confidence: 0, agreement: 0, sourceId: null, latencyMs: UNDERSCORE_ROUTE_BUDGET_MS, generation });
+        } else {
+          this._routeBreaker!.trip(err);
+        }
+      } finally {
+        clearTimeout(budget);
+        controller.signal.removeEventListener('abort', onPassAbort);
       }
     }
     let resolveCtx: Record<string, unknown>;

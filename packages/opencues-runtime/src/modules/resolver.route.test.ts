@@ -3,7 +3,7 @@
 // bench): which sources a routed pass dispatches, the cede fallback, the
 // breaker on failure, and that a `_`-free pass never asks the router.
 import { describe, expect, it } from 'vitest';
-import { Resolver } from './resolver';
+import { Resolver, UNDERSCORE_ROUTE_BUDGET_MS } from './resolver';
 import { ConfigLoader } from './config-loader';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
@@ -141,5 +141,32 @@ describe('Resolver — the `_` router, supersede', () => {
     await new Promise((res) => setTimeout(res, 30));
     expect(breaker.down).toBe(false);
     expect(calls).toBe(2);
+  });
+});
+
+describe('Resolver — the `_` router, latency budget', () => {
+  it('a route slower than the budget fans out without tripping the breaker', async () => {
+    const adapter = new MockAdapter({ cwd: '/proj', files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD } });
+    adapter.pushText('zephyr _');
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    const resolver = new Resolver(adapter, new HighlightState(), new DynDefs(), loader, {
+      endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 10, httpAdapter: {},
+    });
+    const fake = fakeResolver({});
+    const breaker = { down: false, healthy() { return !this.down; }, trip() { this.down = true; } };
+    const r = resolver as unknown as Record<string, unknown>;
+    r._resolver = fake; r._decisions = { id: 'fake' }; r._routeBreaker = breaker;
+    r._core = {
+      UNDERSCORE_CHAT_SOURCE_IDS: CHAT_IDS,
+      routeUnderscore(_p: unknown, _t: string, ctx: { signal: AbortSignal }) {
+        // never answers on its own; rejects when the budget aborts it, as the wire adapter does
+        return new Promise((_res, rej) => ctx.signal.addEventListener('abort', () => { const e = new Error('decision: aborted'); e.name = 'DecisionError'; rej(e); }));
+      },
+    };
+    const t0 = Date.now();
+    await resolver.resolveAndApply('zephyr _');
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(UNDERSCORE_ROUTE_BUDGET_MS - 20);
+    expect(breaker.down).toBe(false);
+    expect(fake.passes).toEqual([ALL_IDS]);
   });
 });
