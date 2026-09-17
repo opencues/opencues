@@ -203,10 +203,20 @@ first, then a PR, under the same discipline as the plan.
   `more-formal` is gated per sentence. This is a new cue shape — "of these twelve sentences, this
   one" — that nothing in OpenCues produces today. Bench: a labelled multi-sentence corpus per
   concern; gate: 0 false flags on a compliant set.
-- **Done-ness instead of a timer.** The pause is a debounce. A per-keystroke noul, "is this
-  sentence finished", is ~250 ms and a hundredth of a cent, so a cue can fire when the thought
-  ends rather than when the typing stops — the TTFR lever. Bench: real keystroke traces from the
-  harness; gate: cues that would have fired at the pause fire earlier, none fire mid-word.
+- **Done-ness instead of a timer — benched 2026-09-17, NEGATIVE, do not re-run.** The idea: at
+  ~100 ms idle ask a noul "is this message finished" and fire the pass early instead of waiting
+  the 500 ms debounce. `doneness-bench.mts` (30 unpunctuated prompts fed word by word, 241
+  prefixes, two phrasings, same session): the noul takes ~300 ms, so the pass fires at ~400 ms
+  against the 500 ms timer — at most ~100 ms to gain, and only on unpunctuated endings; and the
+  question has a ceiling, not a threshold — complete sentences the person then extended score
+  0.82 (`I want the sidebar to collapse` → `on narrow screens`), so at any threshold with usable
+  recall (93% at 0.5) 70–80% of prompts pay a wasted, superseded pass (1.3–1.7 per prompt), and
+  ~7 nouls per prompt on top. Cost sign wrong (roughly doubles the pause side for ≤ 100 ms).
+  Finished-ness is not decidable from the text; the timer is already within ~100 ms of what a
+  300 ms decision could offer. The only use the data supports is the opposite one — a HOLD at
+  the 500 ms pause when P(done) is ~0.1–0.2 (a mid-sentence stop) to skip judging a fragment —
+  which saves no money (the pause side is already zero chat calls) and is a cue-quality
+  question, not a latency one; unscheduled.
 - **Per-person calibration.** The probabilities are calibrated and dismissals are logged
   (`cue-dismissal.md`). A threshold tuned on the person's own accept / dismiss history is
   arithmetic on data we already keep, no model. The data side can be built now; the tunable and
