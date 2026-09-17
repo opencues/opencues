@@ -467,6 +467,10 @@ export function buildSourcesFromConfig(
   const sources: CueSource[] = [];
 
   const apiKeys = options.apiKeys ?? {};
+  // ONE decision provider per source build, shared by every leg that uses one
+  // (the session rail's tips / contradiction gate / ask gate, gated sentence
+  // cues). Undefined, with a log line, when the scalar is off or no key.
+  const decisions = buildDecisionProvider(options);
   const globalProvider = options.globalProvider;
   const globalModel = options.globalModel;
   // Bucket override tiers, collapsed onto resolveLLM's global tier by
@@ -631,7 +635,6 @@ export function buildSourcesFromConfig(
     if (scLlm) {
       const which = [options.enableSessionContradiction && 'contradiction', options.enableSemanticTips && 'tips', options.enableAskCues && 'ask'].filter(Boolean).join('+');
       options.log?.(`buildSources: session-cue [${which}] → LLM engine (${scLlm.provider.id}/${scLlm.model})`);
-      const decisions = buildDecisionProvider(options);
       sources.push(new SessionCueSource({
         httpAdapter: withFallback(options.httpAdapter, scLlm.fallback),
         provider: scLlm.provider,
@@ -743,6 +746,7 @@ export function buildSourcesFromConfig(
           model: resolved.model,
           maxThinking: options.maxThinking,
           sourceConfig: srcCfg,
+          decisions,
           log: options.log,
           onEvent: options.onSentenceCueEvent,
         }));

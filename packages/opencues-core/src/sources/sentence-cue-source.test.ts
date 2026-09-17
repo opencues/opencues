@@ -541,3 +541,74 @@ describe('SentenceCueSource', () => {
   });
 
 });
+
+// ── the gate (Jev plan step 4) ─────────────────────────────────────────────
+import { sentenceGateRequest } from './sentence-cue-source';
+import type { DecisionProvider } from '../decisions/types';
+
+describe('SentenceCueSource — gate', () => {
+  const baseConfig = { provider: getProvider('groq')!, endpoint: 'https://example.test/v1/chat/completions', apiKey: 'test-key', model: 'test-model' };
+  const gatedSource = { name: 'zorb-formal', scope: 'sentence' as const, priority: 85, promptText: 'Rewrite each sentence to be more zorby.', gate: 'A careful writer would rewrite this sentence to be more zorby' };
+  /** answers per sentence index: [gate, prose] */
+  function fakeGate(plan: Array<[number, number]>): DecisionProvider & { requests: number } {
+    const p = { requests: 0 } as DecisionProvider & { requests: number };
+    return Object.assign(p, {
+      id: 'fake', model: 'x',
+      async ask(req: { questions: Record<string, unknown> }) {
+        p.requests++;
+        const answers: Record<string, unknown> = {};
+        for (const id of Object.keys(req.questions)) {
+          const [kind, sid] = id.split('_'); const i = Number(sid.slice(1)) - 1;
+          const [g, pr] = plan[i] ?? [1, 1];
+          answers[id] = { type: 'noul', noul: kind === 'g' ? g : pr };
+        }
+        return { answers: answers as never, model: 'x', usage: { inputTokens: 1, outputTokens: 1 }, ms: 1 };
+      },
+    });
+  }
+  function countingAdapter(): HttpAdapter & { calls: number } {
+    const a = { calls: 0, post: async () => { a.calls++; return JSON.stringify({ choices: [{ message: { content: 'ALT: ALT-ONE zorbier version.' } }] }); } };
+    return a;
+  }
+  const text = 'first one here. second one here. third one here.';
+
+  it('builds one request per pass: two nouls per sentence, state keyed by sentence id', () => {
+    const req = sentenceGateRequest('Q?', ['a.', 'b.']);
+    assert.deepStrictEqual(req.state, { sentences: { s1: 'a.', s2: 'b.' } });
+    assert.deepStrictEqual(Object.keys(req.questions), ['g_s1', 'p_s1', 'g_s2', 'p_s2']);
+    assert.strictEqual((req.questions.g_s1.instructions as { question: string }).question, 'Q?');
+  });
+
+  it('a sentence below the gate, or not prose, cedes with no rewrite call; the rest are sent', async () => {
+    const http = countingAdapter();
+    const gate = fakeGate([[0.9, 0.9], [0.3, 0.9], [0.9, 0.2]]);
+    const src = new SentenceCueSource({ ...baseConfig, httpAdapter: http, sourceConfig: gatedSource, decisions: gate });
+    const r = await src.getCues(ctxFromText(text));
+    assert.strictEqual(gate.requests, 1);
+    assert.strictEqual(http.calls, 1);
+    assert.strictEqual(r.results.length, 1);
+    assert.strictEqual(text.slice(r.results[0].spanStart!, r.results[0].spanEnd!), 'first one here.');
+  });
+
+  it('a failed gate request sends every sentence (never loses a rewrite)', async () => {
+    const http = countingAdapter();
+    const bad: DecisionProvider = { id: 'bad', model: 'x', async ask() { throw new Error('boom'); } };
+    const src = new SentenceCueSource({ ...baseConfig, httpAdapter: http, sourceConfig: gatedSource, decisions: bad });
+    const r = await src.getCues(ctxFromText(text));
+    assert.strictEqual(http.calls, 3);
+    assert.strictEqual(r.results.length, 3);
+  });
+
+  it('no gate: line in the cue, or no decision provider → every sentence sent, no decision call', async () => {
+    const http1 = countingAdapter();
+    const gate = fakeGate([[0, 0], [0, 0], [0, 0]]);
+    const ungated = new SentenceCueSource({ ...baseConfig, httpAdapter: http1, sourceConfig: { ...gatedSource, gate: undefined }, decisions: gate });
+    await ungated.getCues(ctxFromText(text));
+    assert.strictEqual(gate.requests, 0);
+    assert.strictEqual(http1.calls, 3);
+    const http2 = countingAdapter();
+    const noProvider = new SentenceCueSource({ ...baseConfig, httpAdapter: http2, sourceConfig: gatedSource });
+    await noProvider.getCues(ctxFromText(text));
+    assert.strictEqual(http2.calls, 3);
+  });
+});

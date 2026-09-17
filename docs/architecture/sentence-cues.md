@@ -408,3 +408,17 @@ Without overrides, sentence cues inherit the global `llm-provider:`
 ---
 
 *Last updated: 2026-08-05.*
+
+## The gate (`gate:` frontmatter, core 0.65.0)
+
+A sentence-scope cue file may carry `gate: <yes/no question>` (runtime-only key for now;
+part of the standard's `questions:` block in Jev plan step 8). With
+`decisions-provider: typesafe`, `SentenceCueSource` sends ONE decision request per pass
+(`sentenceGateRequest`: state keyed by sentence id, the gate noul + a prose noul per
+sentence) and spends the rewrite call only on sentences at gate ≥ 0.5 and prose ≥ 0.3;
+the rest cede with no call. A failed gate request sends every sentence (never loses a
+rewrite). `more-formal` ships a gate; `calendar` does not and is untouched. Measured on
+the sentence-cues suite: 0 unwanted rewrites (the ungated arm had 1), 20/23 wanted
+(ungated 21/23), 29% fewer rewrite calls; a rewritten sentence waits for the serial gate
+first (+~190 ms p50) — see `tests/benchmarks/decisions/RESULTS.md` § sentence gate and
+docs/architecture/decisions.md § batching follow-up.

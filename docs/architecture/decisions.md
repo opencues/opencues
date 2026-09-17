@@ -96,6 +96,13 @@ What the session rail does for every combination, with a decision provider confi
 | no `TYPESAFE_API_KEY` | one boot log line, every leg on chat; doctor warns |
 | `decisions-provider: off` | nothing above runs; the code paths are the pre-step-0 ones |
 
+**Batching follow-up (identified in step 4).** A gate in a source other than the session
+rail is a second decision request per pass, serial in front of that source's generation call
+(+~250 ms on the sentences that still need a rewrite). The right shape is ONE decision request
+per PASS assembled by the resolver from every source's questions (tips, gates, per-sentence
+nouls), answered once, handed out. Not built; it changes the resolver's dispatch and is its own
+step.
+
 Not on the decision layer yet (deliberately): `SentenceCueSource` rewrites (step 4's
 needs-rewrite gate), `ContradictionLlmSource`'s per-sentence claim parse
 (`contradiction-cues-mode`, off by default; a "does this sentence make a checkable
@@ -112,7 +119,7 @@ No visual change at any step; confidence is carried as data and left unrendered.
 | 1 ✅ | tips matching as one Choice over the pack + none (`SemanticTipsSource.matchDecision`, core 0.62.0) | tips chat call ($0.00127, 590 ms → $0.00007, 259 ms) | `semantic-tips-bench.mjs --provider typesafe` passes the ship gate on all four packs — done 2026-09-16, rows in RESULTS.md |
 | 2 ✅ | contradiction pre-gate (`contradictionGateRequest`: Choice over the watchlist ids + none; chat call only when the gate does not skip; core 0.63.0) | contradiction call on every pause | `company-rules-bench.mjs --gate typesafe`: 22/22 silent drafts skipped, 0/28 violations lost, 0 false alarms — done 2026-09-16 |
 | 3 ✅ | one Jev request per pause in `SessionCueSource.getCuesFused` (tips Choice + contradiction gate + ask noul; `decisions-fanout`; core 0.64.0) | 2–3 chat calls per pause | `pause-bench.mjs`: 0.23 chat calls per pause instead of 2, $0.000200 vs $0.001570, p50 238 vs 418 ms, accuracy at parity — done 2026-09-17 |
-| 4 | ask-cues and needs-rewrite gates in front of their generation calls | ask call every pause; rewrite call every sentence | precision unchanged; gated-call count drops |
+| 4 ✅ | `gate:` in a cue file (runtime-only key) → `SentenceCueSource` asks it per sentence in one request per pass, rewrite call only at ≥ 0.5 and prose ≥ 0.3; `more-formal` ships one; the ask gate landed in step 3 (core 0.65.0) | rewrite call every sentence | `sentence-gate-bench.mts`: 0 noise (chat arm 1), 20/23 wanted vs chat 21/23, 29% fewer rewrite calls — done 2026-09-17; p50 on rewritten sentences +190 ms (serial gate; batching follow-up) |
 | 5 | the `_` router (design ruled separately: serial vs parallel-and-cancel) | 5 chat calls per `_` | router bench ≥ 95% on acted cases; agentic 08/09/102 |
 | 6 | contradiction detection in full (clause Choice for the span; reconcile generated lazily) | the remaining contradiction call | same benches; span exactness |
 | 7 | candidate-selection legs (replace-detect span, spelling via dictionary) | replace-detect call; part of word-cues | literal suite reproduced by code; a spelling bench |

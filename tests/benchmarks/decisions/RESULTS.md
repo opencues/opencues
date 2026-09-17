@@ -116,3 +116,36 @@ two under both arms (the ask cue's own 1-in-3 ceiling, not the gate). The border
 0.47–0.53 alone and fused, inside the ±0.05 band at the 0.5 threshold; flagged in the case
 set, not tuned around. Three repeat runs of the fused arm: p50 238 / 239 / 260 ms, identical
 accuracy.
+
+## sentence gate — step 4 (more-formal's rewrite call behind a noul)
+
+2026-09-17 · jev-1.13.0 · `sentence-gate-bench.mts`: the REAL `SentenceCueSource` built from the shipped
+`more-formal/CUE.md` (its promptText and its `gate:` line), on the sentence-cues suite (30 buffers,
+34 labelled sentences: 23 MORE_FORMAL, 11 SAME/CEDE). Scored on whether the source emitted a rewrite
+per sentence; the rewrite call itself is unchanged (its quality stays with `sentence-cues/run.ts`).
+
+```
+CHAT (today, every sentence sent)
+  rewrites wanted 23: emitted 21 (recall 0.91) · not wanted 11: emitted 1
+  rewrite (chat) calls 31 · $ per sentence 0.000385 · latency per buffer p50 314 / mean 575 ms
+  lost: "got a lot on my plate this week.", "cheers!"   noise: "The presentation went well." (SAME)
+GATED, T = 0.5 (shipped)
+  rewrites wanted 23: emitted 20 (recall 0.87) · not wanted 11: emitted 0
+  rewrite (chat) calls 22 · decision calls 30 · $ per sentence 0.000299 · latency per buffer p50 505 / mean 486 ms
+  lost: "got a lot on my plate this week.", "cheers!" (both lost by the chat arm too), "I'll wait for your reply."
+GATED, T = 0.4: identical to 0.5.   GATED, T = 0.6: recall 0.83 (also loses "we need to talk about the proposal.").
+```
+
+Gate phrasing was chosen by probe (`gate-probe.mjs`, 8 sentences × 5 shapes): "Is this sentence
+written in an informal or casual register that a more formal rewrite would improve?" separates
+best (0.83–0.86 informal, 0.27 neutral, 0.11 formal); the statement shape first shipped scored
+0.38 on a wanted sentence and the prose companion at 0.5 knocked out short imperatives ("ping me
+when ready." 0.53, "cheers!" 0.42), so the prose floor is 0.3 (a URL scores 0.06).
+
+Reading: the gate's own cost is one fuzzy sentence in 23 ("I'll wait for your reply."); it removes
+the chat arm's one false rewrite and 29% of the rewrite calls, −22% $ per sentence. Latency is
+the honest trade-off: a buffer whose sentences all cede returns in ~250 ms with no chat call
+(mean 575 → 486), but a sentence that IS rewritten now waits for the serial gate first (p50 314 →
+505 ms). The fix for that is not in this step: the sentence gates should ride the per-PASS
+decision request with the session rail's questions, which needs the resolver to assemble one
+request across sources (noted in decisions.md as the batching follow-up).

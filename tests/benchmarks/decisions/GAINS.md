@@ -95,6 +95,29 @@ Per hour of coding (scenario (a): 120 pauses, ask off), now with a measured per-
 
 The remaining $0.096/hour is the `_` side (5 chat calls per underscore), which step 5 addresses.
 
+## Step 4 — the rewrite call behind a gate (core 0.65.0)
+
+**What moved:** nothing generative. `more-formal/CUE.md` carries a `gate:` noul; one decision
+request per pass asks it (plus a prose check) for every sentence, and the rewrite call is spent only
+at ≥ 0.5. The ask-cues gate landed in step 3. The calendar cue has no gate and is untouched.
+
+Per sentence (sentence-cues suite, 34 sentences, same session):
+
+| | before (every sentence sent) | after (gated) | Δ |
+|---|---|---|---|
+| rewrite calls | 31 | 22 | −29% |
+| $ per sentence | 0.000385 | 0.000299 | −22% |
+| wanted rewrites emitted | 21/23 | 20/23 | −1 (the fuzziest sentence) |
+| unwanted rewrites emitted | 1 | 0 | −1 |
+| latency per buffer, mean | 575 ms | 486 ms | −15% |
+| latency per buffer, p50 | 314 ms | 505 ms | +61% on buffers that still need a rewrite (serial gate) |
+
+Per hour of heavy writing (scenario (d): 60 sentence rewrites on top of (a)): 60 → ~43 rewrite
+calls, ≈ −$0.007/hour. Small in dollars; the pattern (a cue file gates its own generation call) is
+what AgentRewrite / auditors reuse. The p50 regression on rewritten sentences is the cost of a
+serial gate in a separate source; folding sentence gates into the per-pass request is the
+follow-up.
+
 ## Cumulative
 
 | after step | chat calls / hour | $ / hour | saving vs baseline | pause ms | `_` ms |
@@ -103,6 +126,7 @@ The remaining $0.096/hour is the `_` side (5 chat calls per underscore), which s
 | 1 (tips) | 195 | 0.1634 | 46.8% | 461 | 422 |
 | 2 (contradiction pre-gate) | ~87 chat + 240 Jev | ≈0.111 | ≈64% (per-draft measured; per-event at the 10% not-none assumption; `_` side included) | ≈320 | 422 |
 | 3 (one request per pause) | 103 chat + 120 Jev | 0.120 (measured per-pause) | 61% | 238 p50 / 345 mean (measured) | 422 |
+| 4 (sentence gate) | (a) unchanged; (d) 60 → ~43 rewrite calls | (d) 0.146 → ≈0.139 | (d) ≈ −58% vs its baseline 0.333 | — | 422 |
 | 5 (`_` router) | — | — | — | — | modelled 643 (design A) |
 
 Modelled rows are from the cost model before the step ships and are replaced with measured

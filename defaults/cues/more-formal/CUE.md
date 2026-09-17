@@ -3,6 +3,13 @@ name: more-formal
 scope: sentence
 priority: 85
 description: Sentence-scope cue — rewrites each sentence to be more formal
+# gate — with `decisions-provider: typesafe`, a calibrated decision model
+# answers this per sentence before the rewrite call is spent; a sentence
+# below 0.5 (or one that is not prose) cedes with no call. Benched on the
+# sentence-cues suite: 0 noise (the chat arm had 1), recall 20/23 vs the
+# chat arm's 21/23, 29% of the rewrite calls spared. Inert without a
+# decision provider.
+gate: Is this sentence written in an informal or casual register that a more formal rewrite would improve?
 # Prose cue — belongs on prose surfaces, not value fields. Cede in
 # single-line fields (a browser omnibox / address bar, a search box), where
 # "make it more formal" is nonsensical. Runs everywhere else (multi-line
