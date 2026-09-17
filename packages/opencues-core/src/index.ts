@@ -580,6 +580,16 @@ export {
   type ReplaceDecision,
 } from './sources/replace-decide';
 export {
+  spellingEligible,
+  spellingDetect,
+  spellingFlag,
+  edits1,
+  spellingFixRequest,
+  spellingFix,
+  SPELLING_FLAG_THRESHOLD,
+  SPELLING_FIX_THRESHOLD,
+} from './sources/spelling-decide';
+export {
   routeUnderscore,
   decideUnderscoreRoute,
   underscoreRouteRequest,

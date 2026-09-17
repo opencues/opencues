@@ -298,3 +298,36 @@ suite (the chat detector has one), every splice reproduces the suite's value; 1 
 edits that used to get the exact splice take the fused merge instead. Three things must agree before a
 splice — the kind choice, the target choice, the generative rewrite — and every string that reaches it
 came from the buffer.
+
+## spelling as a passenger on the pause request — step 7B
+
+2026-09-17 · jev-1.13.0 · `misspelling-bench.mts` (44 drafts: 20 with one typo in context, 20 clean and
+full of odd-but-correct words — names, packages, commands, identifiers, regional spellings — and 4
+context errors reported apart), same session as the shipped spelling cue on cerebras gpt-oss-120b.
+Ruled: spelling is not the selling point; it rides the pause request at whatever recall the passenger
+gets, instead of a word-cues chat call on every pause.
+
+```
+CHAT (today's spelling cue)   typos caught 20/20 · clean drafts untouched 20/20 · their/there 1/4 · $0.0003 · 355 ms
+JEV detect (Choice over the draft's words + none), flag at ≥ 0.8
+                              typos caught 16–17/20 · wrong word 0 · clean untouched 20/20 · their/there 4/4 (not shipped as spelling)
+                              $0.00003 · 264–289 ms · misses: safly, requst, mesages, accross — confident none (0.83–0.99)
+JEV fix (Choice over the flagged word's edit-1 neighbourhood, ≤ 254 candidates ranked)
+                              right 18/20 · wrong 1 (flashs → flash) · none 1 (identicle: two edits away) · 308 ms
+E2E (real SessionCueSource, passenger only)
+                              corrected right 14/20 · wrong word 0 · wrong fix 0 · nothing 6 · clean untouched 20/20
+                              1.39 Jev requests per pause (the fix request only on a flag) · 407 ms
+```
+
+Recall probe (five shapes: words-only state, "read the letters" phrasing, two choices in one request,
+one noul per word, letters spelled out): 14–16/20, the same four misses every time, per-word noul on
+`safly` 0.06. A discriminative model judges what a token means, and to it `safly` is `safely`; the
+generative cue reproduces the word and sees the letters. A primitive limit, not a phrasing one (one
+phrasing reached 18/20 only with two suite words quoted as examples).
+
+On the pause request (`pause-bench.mjs --spelling`, 26 typo-free pauses): $0.000100 → 0.000116 per
+pause, p50 234 → 282 ms, no fix requests, tips and contradiction unchanged.
+
+Reading: ~70% of typos corrected end to end with no false correction on the odd-but-correct set,
+for +$0.000016 and ~+45 ms on the pause request and no word-cues chat call for spelling. Context
+errors (their / there) are detected 4/4 but are not spelling and are not shipped here.

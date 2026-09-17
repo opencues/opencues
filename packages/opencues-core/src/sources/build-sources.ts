@@ -471,6 +471,8 @@ export function buildSourcesFromConfig(
   // (the session rail's tips / contradiction gate / ask gate, gated sentence
   // cues). Undefined, with a log line, when the scalar is off or no key.
   const decisions = buildDecisionProvider(options);
+  /** set while walking the word-cues when the shipped spelling cue moves onto the pause request */
+  let spellingOnDecisions = false;
   const globalProvider = options.globalProvider;
   const globalModel = options.globalModel;
   // Bucket override tiers, collapsed onto resolveLLM's global tier by
@@ -630,12 +632,13 @@ export function buildSourcesFromConfig(
   // short-circuits (no ask call when a contradiction fires), so they no longer
   // overlap or evict each other. Per-type gating from the two scalars. Reuses
   // the sentence-cues LLM tier. If no LLM resolves, it simply doesn't run.
-  if (options.enableSessionContradiction || options.enableAskCues || options.enableSemanticTips) {
+  if (options.enableSessionContradiction || options.enableAskCues || options.enableSemanticTips || spellingOnDecisions) {
     const scLlm = resolveFor(options.sentenceCues);
     if (scLlm) {
-      const which = [options.enableSessionContradiction && 'contradiction', options.enableSemanticTips && 'tips', options.enableAskCues && 'ask'].filter(Boolean).join('+');
+      const which = [options.enableSessionContradiction && 'contradiction', options.enableSemanticTips && 'tips', options.enableAskCues && 'ask', spellingOnDecisions && 'spelling'].filter(Boolean).join('+');
       options.log?.(`buildSources: session-cue [${which}] → LLM engine (${scLlm.provider.id}/${scLlm.model})`);
       sources.push(new SessionCueSource({
+        enableSpelling: spellingOnDecisions,
         httpAdapter: withFallback(options.httpAdapter, scLlm.fallback),
         provider: scLlm.provider,
         endpoint: scLlm.endpoint,
@@ -767,6 +770,14 @@ export function buildSourcesFromConfig(
         // an explicit `match: .*` is required if the user really wants
         // a fall-through cue.
         if (!srcCfg.match && !srcCfg.keywords) continue;
+        // The shipped spelling cue rides the pause request as a passenger
+        // when a decision provider is set (plan step 7B): no word-cues chat
+        // call for spelling. Any other word-cue still builds as before.
+        if (srcCfg.name === 'spelling' && decisions) {
+          spellingOnDecisions = true;
+          options.log?.('buildSources: spelling → decision layer (passenger on the pause request); the spelling word-cue is not built');
+          continue;
+        }
         const resolved = resolveFor(options.wordCues, srcCfg);
         if (!resolved) {
           fallbackForLog(`word-cue '${srcCfg.name}'`, srcCfg.provider || options.wordCues?.provider || globalProvider || 'groq');

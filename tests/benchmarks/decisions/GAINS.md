@@ -179,6 +179,26 @@ Per hour of scenario (a) the `_` side goes ≈ $0.048 → ≈ $0.043 (only the t
 carries a detector). Small in dollars; the leg is about grounding: the target and the command are
 candidates, the value is read off a rewrite that had to reproduce the buffer.
 
+## Step 7B — spelling as a passenger on the pause request (core 0.69.0)
+
+**What moved:** the shipped `spelling` word-cue. With a decision provider it is not built; the pause
+request carries a Choice over the draft's words (a typo?), and a flag costs one more small request
+(the fix, from the word's edit-1 neighbourhood) and yields the same `spelling` word-cue as before.
+The word-cues chat call no longer runs for spelling (with the shipped cues it now runs only when a
+buffer contains a word the `example` cue matches).
+
+| | before (spelling word-cue) | after (passenger) | Δ |
+|---|---|---|---|
+| chat calls per pause for spelling | 1 (word-cues call, every pause with `word-cues-mode: on`) | 0 | the call |
+| Jev cost per pause | 0.000100 | 0.000116 (+ a fix request on a flag) | +$0.000016 |
+| pause p50 | 234 ms | 282 ms | +45 ms |
+| typos corrected (bench) | 20/20 | 14/20 | ruled acceptable |
+| false corrections on odd-but-correct words | 0/20 | 0/20 | parity |
+
+This call was never in scenario (a)'s ledger (the baseline counted tips ∥ contradiction only), so
+the cumulative row does not move; on a real install with `word-cues-mode: on` it is one chat call
+per pause removed — the same order as the whole pause side was before step 1.
+
 ## Cumulative
 
 | after step | chat calls / hour | $ / hour | saving vs baseline | pause ms | `_` ms |

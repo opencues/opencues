@@ -29,13 +29,14 @@
  * overloading one prompt with two jobs has regressed quality here before.
  */
 
-import type { CueContext, CueSource, CueSourceResult } from '../types';
+import type { CueContext, CueResult, CueSource, CueSourceResult } from '../types';
 import { SessionContradictionSource, type SessionContradictionSourceConfig } from '../contradiction/session-contradiction-source';
 import { ToolPromptCueSource } from './tool-prompt-source';
 import { SemanticTipsSource } from './semantic-tips-source';
 import { contradictionDecisionRequest, type ContradictionUnit, type DeferredRewrite } from '../contradiction/session-contradiction-source';
 import { dispatchDecision } from '../decisions/dispatch';
 import { DecisionBreaker } from '../decisions/breaker';
+import { spellingDetect, spellingFlag, spellingFixRequest, spellingFix } from './spelling-decide';
 import type { DecisionQuestion, DecisionAnswer, ChoiceAnswer } from '../decisions/types';
 import type { TipsCatalog } from '../tips-catalog';
 import type { SessionCommitmentsSnapshot } from '../session-commitments';
@@ -59,6 +60,16 @@ export interface SessionCueSourceConfig extends SessionContradictionSourceConfig
   readonly decisionsFanout?: boolean;
   /** the ask leg's chat call runs only when the fused ask noul ≥ this (bench: 0.7 → 39/40). */
   readonly askGateThreshold?: number;
+  /**
+   * Spelling as a passenger on the pause request (plan step 7B,
+   * spelling-decide.ts): a Choice over the draft's words flags a typo, a
+   * second small request picks the correction from its edit-1
+   * neighbourhood, and the result is a plain word-cue (`source: 'spelling'`)
+   * next to whatever the rail emits. Only meaningful with `decisions` and
+   * the fanout on; build-sources sets it in place of the shipped spelling
+   * word-cue so the word-cues chat call is not spent on spelling.
+   */
+  readonly enableSpelling?: boolean;
 }
 
 export const ASK_GATE_THRESHOLD_DEFAULT = 0.7;
@@ -103,7 +114,12 @@ export class SessionCueSource implements CueSource {
   private tripBreaker(err: { kind?: string; message?: string }): void { this.breaker.trip(err); }
 
   supports(context: CueContext): boolean {
-    return (this.contradiction?.supports(context) ?? false) || (this.tips?.supports(context) ?? false) || (this.ask?.supports(context) ?? false);
+    return (this.contradiction?.supports(context) ?? false) || (this.tips?.supports(context) ?? false) || (this.ask?.supports(context) ?? false) || this.spellingOn(context);
+  }
+
+  /** the spelling passenger runs only on the fused path with a healthy provider and at least one eligible word */
+  private spellingOn(context: CueContext): boolean {
+    return !!this.cfg.enableSpelling && !!this.cfg.decisions && (this.cfg.decisionsFanout ?? true) && this.decisionsHealthy() && context.words.length > 0 && !!(context.text ?? '').trim();
   }
 
   /** The deferred contradiction rewrite (plan step 6), for the runtime to fetch when the person goes to the cue. */
@@ -164,11 +180,14 @@ export class SessionCueSource implements CueSource {
     const empty: CueSourceResult = { results: [] };
     const text = context.text ?? '';
     const questions: Record<string, DecisionQuestion> = {};
-    let state: { draft: string; decisions?: Record<string, string>; units?: Record<string, string> } = { draft: text };
+    let state: { draft: string; decisions?: Record<string, string>; units?: Record<string, string>; words?: Record<string, string> } = { draft: text };
     const tipsOn = !!this.tips?.supports(context);
     const contraOn = !!this.contradiction?.supports(context);
     const askOn = !!this.ask?.supports(context);
     let units: ContradictionUnit[] = [];
+    const spellingOn = this.spellingOn(context);
+    const detect = spellingOn ? spellingDetect(context.words) : null;
+    if (detect) { state = { ...state, words: detect.state }; questions.typo = detect.question; }
     if (tipsOn) Object.assign(questions, this.tips!.buildDecisionQuestions(text, context.tipsCatalog as TipsCatalog));
     if (contraOn) {
       // the gate AND the unit Choice (plan step 6): on a hit the leg builds
@@ -194,24 +213,54 @@ export class SessionCueSource implements CueSource {
       return null;
     }
 
+    // The spelling passenger: a flag → one small fix request → a word-cue
+    // result that rides along with whatever the rail emits (a different word
+    // than any sentence cue; the resolver keeps both). Never a chat call.
+    const spelling = detect && answers.typo && answers.typo.type === 'choice' ? await this.spellingResult(context, answers.typo as ChoiceAnswer) : [];
+    const withSpelling = (r: CueSourceResult): CueSourceResult => spelling.length ? { ...r, results: [...r.results, ...spelling] } : r;
+
     // Contradiction first (its chat call runs only on a gate hit), then tips
     // (no call at all), then ask (its chat call only above the gate).
     if (contraOn) {
       const unit = answers.unit && answers.unit.type === 'choice' ? { answer: answers.unit as ChoiceAnswer, units } : undefined;
       const c = await this.contradiction!.getCues(context, answers.gate as ChoiceAnswer, unit).catch(() => empty);
-      if (c.results.length > 0) return c;
+      if (c.results.length > 0) return withSpelling(c);
     }
     if (tipsOn) {
       const t = this.tips!.getCuesFromDecision(context, answers);
-      if (t.results.length > 0) return t;
+      if (t.results.length > 0) return withSpelling(t);
     }
     if (askOn) {
       const a = answers.ask;
       const p = a && a.type === 'noul' ? a.noul : 0;
       const threshold = this.cfg.askGateThreshold ?? ASK_GATE_THRESHOLD_DEFAULT;
-      if (p >= threshold) { this.log(`SessionCue[fused]: ask gate ${p.toFixed(2)} ≥ ${threshold} — running the ask call`); return this.ask!.getCues(context); }
+      if (p >= threshold) { this.log(`SessionCue[fused]: ask gate ${p.toFixed(2)} ≥ ${threshold} — running the ask call`); return withSpelling(await this.ask!.getCues(context)); }
       this.log(`SessionCue[fused]: ask gate ${p.toFixed(2)} < ${threshold} — ask call skipped`);
     }
-    return empty;
+    return withSpelling(empty);
+  }
+
+  /** The flagged word's correction as a word-cue result, or nothing. A failed fix request is logged and yields nothing. */
+  private async spellingResult(context: CueContext, typo: ChoiceAnswer): Promise<CueResult[]> {
+    const i = spellingFlag(typo);
+    if (i === null) return [];
+    const typed = context.words[i];
+    if (!typed) return [];
+    const bare = typed.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '');
+    const req = spellingFixRequest(context.text ?? '', bare);
+    try {
+      const res = await dispatchDecision(this.cfg.decisions!, { state: req.state, questions: req.questions }, { signal: context.signal, leg: 'spelling-fix', log: (m) => this.log(m) });
+      const fix = spellingFix(res.answers.fix, req.candidates, bare);
+      if (!fix) { this.log(`SessionCue[spelling]: "${bare}" flagged at ${typo.confidence.toFixed(2)} but no one-edit correction (${res.answers.fix.choice} ${res.answers.fix.confidence.toFixed(2)})`); return []; }
+      this.log(`SessionCue[spelling]: "${bare}" → "${fix}" (flag ${typo.confidence.toFixed(2)}, fix ${res.answers.fix.confidence.toFixed(2)})`);
+      // the correction keeps the token's punctuation, as the word-cue path expects a whole-token alternative
+      const alt = typed.replace(bare, fix);
+      return [{ wordIndex: i, word: typed, alternatives: [alt], source: 'spelling', priority: 10, confidence: typo.confidence, metadata: { spelling: { flag: typo.confidence, fix: res.answers.fix.confidence } } }];
+    } catch (e) {
+      const err = e as Error;
+      if (err?.name === 'AbortError' || /abort/i.test(err?.message ?? '')) return [];
+      this.log(`SessionCue[spelling]: fix request failed (${err?.message}) — no correction`);
+      return [];
+    }
   }
 }

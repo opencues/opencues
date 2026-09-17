@@ -144,6 +144,17 @@ chat detector remains the path without a provider. Question text is measured; ch
 chosen as the command) is rejected by verify and costs a splice; a shortest-phrase preference would
 recover it.
 
+**Spelling after step 7B.** No dictionary: the draft's own words are the candidate list for
+detection (`spellingDetect`, ids keep the word index), and the flagged word's edit-1 neighbourhood
+(`edits1`, ranked so the 254 cap keeps deletions, transpositions and doublings) is the candidate
+list for the correction. Detection rides the pause request; the fix is one more request only on a
+flag; the result is the ordinary `spelling` word-cue (`cueSource: 'spelling'`, ✍️ note, "underscore
+to correct"). The ceiling is the primitive's: dropped-letter typos that read as the word (`safly`)
+come back as a confident `none` under every phrasing; ~80% detection, ~70% corrected end to end,
+0 false corrections on names / packages / commands. Ruled acceptable because spelling is a
+passenger, not the product. Their/there-class errors are caught 4/4 by the same question but are
+not spelling; a "wrong word" cue would be its own leg.
+
 Not on the decision layer yet (deliberately): `SentenceCueSource` rewrites (step 4's
 needs-rewrite gate), `ContradictionLlmSource`'s per-sentence claim parse
 (`contradiction-cues-mode`, off by default; a "does this sentence make a checkable
@@ -164,7 +175,7 @@ No visual change at any step; confidence is carried as data and left unrendered.
 | 5 ✅ | the `_` router, design A (serial; ruled 2026-09-17): one stacked request (5-way choice + agreement noul per chat route) in the runtime resolver before the pass, `only` restricts to the routed source, cede fallback fans out over the rest; `decisions/underscore-router.ts`, shared `DecisionBreaker` (core 0.66.0, runtime 0.41.8) | 3.42 chat calls per `_` (measured; the 5 is the maximum) | `route-bench.mts`: router 95% right on the 59% it routes; end to end 0 answers lost, 157/171 same winner (13 of the rest are today's misroutes fixed), −24% $ per `_`, +239 ms p50; live host 3/3 with the scalar on (09 → fluid only, 102 → config-intent only) — done 2026-09-17 |
 | 6 ✅ | contradiction detection in full: the fused request carries a sentence-level unit Choice next to the verdict (`contradictionDecisionRequest`); a hit builds the cue from the two answers — note = the rule statement verbatim, span = the runtime-cut sentence — with no chat call; the rewrite is fetched when the caret lands on the cue (`reconcile`, `DynDefs.resolveDeferred`) (core 0.67.0, runtime 0.41.9) | the remaining contradiction call | `contradiction-span-bench.mjs` 34/34 right rule and 34/34 right sentence (clause 25/34, rejected); `contradiction-note-bench.mjs` rule statement preferred 85% / 67% pairwise over the chat tip; pause bench 0.00 chat calls per pause at parity — done 2026-09-17 |
 | 7A ✅ | replace-detect as candidate selection: `replaceDecisionRequest` (kind / target / command over runtime-cut candidates) in parallel with fused, value from the fused rewrite's diff (`deriveReplaceValue`), then the shared `verifyReplaceDetect` gate (core 0.68.0) | the replace-detect call | `replace-bench.mts`: kind 28/28 · 21/22 · 16/16, target 28/28, 0 false diverts; e2e 21/28 spliced with 21/21 values reproduced, 0 false splices; transform literal + targeted at parity — done 2026-09-17 |
-| 7B | spelling via a dictionary (candidates at edit distance ≤ 2, Choice + "as typed") | part of word-cues | a spelling bench: misspelled-in-context + odd-but-correct with 0 corrections proposed |
+| 7B ✅ | spelling as a passenger on the pause request, no dictionary: a Choice over the draft's words flags a typo at ≥ 0.8, a second small request picks the correction from the word's edit-1 neighbourhood; the shipped `spelling` word-cue is not built with a provider (`spelling-decide.ts`, `SessionCueSource.enableSpelling`) (core 0.69.0) | the word-cues call, for spelling | `misspelling-bench.mts`: 16–17/20 typos detected, 0 wrong words, 20/20 odd-but-correct untouched; e2e 14/20 corrected, 0 false; +$0.000016 / +45 ms on the pause request — ruled "packed cheaply over the full amount", done 2026-09-17 |
 | 8 | spec: `questions:` block, chat-fallback semantics, `confidence` on a cue result | — | spec bump checklist |
 
 Every shipped step also updates **`tests/benchmarks/decisions/GAINS.md`**, the running
@@ -190,10 +201,9 @@ first, then a PR, under the same discipline as the plan.
 | kata coach `STEP` / `STATUS` (`kata.ts`) | one chat call per tick over a large stable prompt | "which step is the person on" and "is it complete": two Choices; the COACH line stays generative | prototype feature, not in the plan |
 | session-commitments supersession (`SESSION_COMMITMENTS_SUPERSEDE_SYSTEM`) | a small LLM call per distillation | "does the new decision replace an existing one, which" — Choice over ids + none | Stage A is a background producer, not per-pause |
 | subreddit-rules verdict (contradiction-cues tier 5d) | a dedicated LLM call | Choice over the fetched rule ids + none | chrome-only tier |
-| word-cues gate | the word-cues call runs on every pause (`word-cues-mode: on`) | "which of these words deserves an alternative" Choice over the words; the call only for those | 7B's neighbour; same word-list ruling |
+| word-cues gate | the word-cues call runs on every pause (`word-cues-mode: on`) | "which of these words deserves an alternative" Choice over the words; the call only for those | with spelling on the passenger (7B) the shipped defaults leave only the `example` cue on the call; a user's own word-cues would want this |
 | auditor / AgentRewrite cadence | a rewrite tick on the debounce | "has the document changed in a way that needs a pass" noul in front of the tick | the auditor path is off by default |
 | blank routing by Choice | keyword windows + shapes | the `_` router's `device` route naming WHICH registered blank (`make it louder _` → volume), grounded in the registered names | the runtime must accept a routed blank; security-audit review (a fuzzy invocation path) |
-| spelling (7B) | the catch-all word-cue | dictionary candidates at edit distance ≤ 2, Choice + "as typed" | the word-list ruling (size, core vs fetched, English-only, inert on CJK) |
 | batching | the sentence gate and the replace request are their own requests | ONE decision request per pass assembled by the resolver across sources | changes the resolver's dispatch; its own PR |
 
 ### Layer 2 — mechanics from § The five mechanics not used yet (new cues, not cheaper ones)

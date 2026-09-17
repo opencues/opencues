@@ -5,7 +5,7 @@
 // chat calls per pause, latency to decision, $ per pause, with the two
 // legs' shipped accuracy metrics scored the same way their own benches do.
 //
-// Run: TYPESAFE_API_KEY=… CEREBRAS_API_KEY=… node tests/benchmarks/decisions/pause-bench.mjs [--ask] [--arm chat|fused|both]
+// Run: TYPESAFE_API_KEY=… CEREBRAS_API_KEY=… node tests/benchmarks/decisions/pause-bench.mjs [--ask] [--spelling] [--arm chat|fused|both]
 import path from 'node:path';
 import url from 'node:url';
 import fs from 'node:fs';
@@ -15,6 +15,7 @@ const core = await import(path.join(R, 'packages/opencues-core/dist/index.js'));
 const { NodeHttpAdapter } = await import(path.join(R, 'packages/opencues-core/node-http-adapter.js'));
 const argv = process.argv.slice(2);
 const ASK = argv.includes('--ask');
+const SPELLING = argv.includes('--spelling');   // the spelling passenger on the pause request (plan step 7B)
 const ARM = argv.includes('--arm') ? argv[argv.indexOf('--arm') + 1] : 'both';
 const http = new NodeHttpAdapter({ maxSockets: 4, timeout: 30000 });
 const CEREBRAS = process.env.CEREBRAS_API_KEY, TYPESAFE = process.env.TYPESAFE_API_KEY;
@@ -84,7 +85,7 @@ function makeRail(decisions) {
   return new core.SessionCueSource({
     httpAdapter: http, provider: core.getProvider('cerebras'), model: 'gpt-oss-120b', apiKey: CEREBRAS,
     enableContradiction: true, enableSemanticTips: true, enableAsk: ASK,
-    ...(decisions ? { decisions } : {}),
+    ...(decisions ? { decisions, enableSpelling: SPELLING } : {}),
   });
 }
 const pct = (xs, p) => { const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
@@ -106,7 +107,7 @@ async function run(name, rail) {
   const rows = Object.values(usage).filter((u) => u.arm === name);
   let cost = 0, chat = 0, jev = 0;
   for (const u of rows) { const price = core.priceFor(u.providerId, u.model); if (price) cost += core.estimateRowCostUSD(u, price); if (u.providerId === 'typesafe') jev += u.calls; else chat += u.calls; }
-  console.log(`\n${name}  (${CASES.length} pauses, ask ${ASK ? 'on' : 'off'})`);
+  console.log(`\n${name}  (${CASES.length} pauses, ask ${ASK ? 'on' : 'off'}${SPELLING ? ', spelling passenger on' : ''})`);
   console.log(`  tips right ${tipRight}/${tipN} · contradiction recall ${ruleRight}/${ruleN} · false alarms ${falseAlarms}/${trapN}${borderline ? ` (+${borderline} borderline, reported not gated)` : ''}`);
   console.log(`  latency p50 ${pct(ms, 0.5)} ms · p90 ${pct(ms, 0.9)} ms · mean ${Math.round(ms.reduce((a, b) => a + b, 0) / ms.length)} ms`);
   console.log(`  calls per pause: chat ${(chat / CASES.length).toFixed(2)} · jev ${(jev / CASES.length).toFixed(2)} · $ per pause ${(cost / CASES.length).toFixed(6)}`);
