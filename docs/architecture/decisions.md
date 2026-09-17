@@ -208,11 +208,26 @@ first, then a PR, under the same discipline as the plan.
 
 ### Layer 2 — mechanics from § The five mechanics not used yet (new cues, not cheaper ones)
 
-- **Whole-document passes.** One request scores every sentence of a draft on several concerns
-  at once (clarity, hedging, a risky claim, "the sentence to fix first") for ~$0.0001. Today only
-  `more-formal` is gated per sentence. This is a new cue shape — "of these twelve sentences, this
-  one" — that nothing in OpenCues produces today. Bench: a labelled multi-sentence corpus per
-  concern; gate: 0 false flags on a compliant set.
+- **Whole-document passes — explored 2026-09-17, RESOLVED INTO RULES.md, no new feature.** The
+  idea: one request scores every sentence on several concerns and points at "this one". Three
+  benches (`wholedoc-corpus.mjs` + `wholedoc-bench.mts`, `wholedoc-context-bench.mts`,
+  `wholedoc-as-rules-bench.mts`, exploration branch `explore/decisions-wholedoc`): (1) a per-concern
+  Choice over runtime-cut sentences finds every planted issue with top-1 21/21 and a calibrated
+  `none` (hedge 0 false flags on 61; the chat model flags 33/59 on the hard concern), 260 ms and
+  $0.00005 per draft, request latency flat from 12 to 48 questions; (2) BUT a concern that needs
+  the world outside the draft does not work — "unsupported claim" stayed flagged 6/8 with the
+  backing evidence in the state, clearing only when the evidence restated the claim literally, and
+  an unrelated context raised the probabilities — so a concern must be decidable from the
+  sentence's own shape (hedging, deferral, register, wrong-word), never from whether it is true or
+  backed; (3) written as RULES.md lines ("Decide, or say what is unknown — never hedge a
+  commitment"), the real contradiction request cites the right rule and sentence 8/8 next to the
+  engineering distractors, at zero new code. So the whole-document pass IS the rules leg: a team
+  authors a concern as a rule, project over user, the note is the rule's words, the span is the
+  sentence. What it surfaced: the decision-only cue needed a gate-confidence floor
+  (`CONTRADICTION_FIRE_THRESHOLD`, 3/4 clean drafts flagged without it, 1/4 with it, planted
+  8/8 either way; shipped in core 0.69.1), and the gate names ONE rule per pause (the strongest),
+  which is the ranking working as intended. Two style rules are documented as an example for
+  RULES.md authors, not added to the nine shipped defaults (the shipped set stays lean).
 - **Done-ness instead of a timer — benched 2026-09-17, NEGATIVE, do not re-run.** The idea: at
   ~100 ms idle ask a noul "is this message finished" and fire the pass early instead of waiting
   the 500 ms debounce. `doneness-bench.mts` (30 unpunctuated prompts fed word by word, 241

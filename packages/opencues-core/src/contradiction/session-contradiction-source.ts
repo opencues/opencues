@@ -85,6 +85,16 @@ export interface SessionContradictionSourceConfig {
 }
 
 export const CONTRADICTION_GATE_THRESHOLD_DEFAULT = 0.5;
+/**
+ * The decision-only cue (plan step 6) fires only when the gate names a
+ * decision at ≥ this confidence; a lower-confidence hit runs the chat
+ * matcher as before. Engineering violations come back at 0.8+ so the
+ * company-rules bench never needed a floor; style rules ("do not hedge a
+ * commitment") sit closer to `none`, and without a floor 0.44–0.46 hits
+ * painted cues on clean drafts (wholedoc-as-rules-bench: 3/4 clean drafts
+ * flagged → 1/4 with the floor, planted 8/8 either way).
+ */
+export const CONTRADICTION_FIRE_THRESHOLD = 0.5;
 export const CONTRADICTION_GATE_NONE = 'the draft contradicts none of these: it may name a topic a decision is about while complying with it, or be unrelated';
 export const CONTRADICTION_GATE_INSTRUCTIONS = {
   question: 'The person is typing `draft` in a coding session. Which of the `decisions` (things they decided or rules they must follow) does the draft DIRECTLY go against — proposing, promising or asserting the thing it forbids — or `none`?',
@@ -238,7 +248,7 @@ export class SessionContradictionSource implements CueSource {
     // fetched by the runtime only when the person goes to the cue
     // (`reconcile`, carried as `metadata.deferredRewrite`). A `none` unit
     // (measured never, on 34 flagged pauses) falls through to the chat call.
-    if (gate && gate.choice !== 'none' && unit && unit.answer.choice !== 'none') {
+    if (gate && gate.choice !== 'none' && gate.confidence >= CONTRADICTION_FIRE_THRESHOLD && unit && unit.answer.choice !== 'none') {
       const u = unit.units.find((x) => x.id === unit!.answer.choice);
       const statement = snapshot.commitments.find((c) => c.id === gate!.choice)?.statement;
       if (u && statement && text.slice(u.start, u.end) === u.text) {
@@ -267,6 +277,8 @@ export class SessionContradictionSource implements CueSource {
         };
       }
       this.log(`SessionContradiction[decision]: unit ${unit.answer.choice} did not resolve to a live sentence — running the chat call`);
+    } else if (gate && gate.choice !== 'none' && gate.confidence < CONTRADICTION_FIRE_THRESHOLD) {
+      this.log(`SessionContradiction[gate]: ${gate.choice} at ${gate.confidence.toFixed(2)} is under the fire floor ${CONTRADICTION_FIRE_THRESHOLD} — running the chat call`);
     } else if (gate) {
       this.log('SessionContradiction[gate]: no unit answer — running the chat call');
     }

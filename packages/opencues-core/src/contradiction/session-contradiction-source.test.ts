@@ -265,6 +265,14 @@ describe('SessionContradictionSource — decision-only path (step 6)', () => {
     expect(r.results[0].cueTip).toBe('⚠ Do not add new npm dependencies');
   });
 
+  it('a gate hit under the fire floor falls through to the chat call (style rules sit close to none)', async () => {
+    const http = countingAdapter(HIT);
+    const src = new SessionContradictionSource({ ...baseConfig, httpAdapter: http, decisions: fakeDecision('c2', 's2', 0.44) });
+    const r = await src.getCues(ctx(THREE));
+    expect(http.calls).toBe(1);
+    expect(r.results[0].alternatives).toEqual(['add the redis npm package', 'ALT-REC use the built-in cache']);
+  });
+
   it('a `none` unit on a gate hit falls through to the chat call (never loses a cue)', async () => {
     const http = countingAdapter(HIT);
     const src = new SessionContradictionSource({ ...baseConfig, httpAdapter: http, decisions: fakeDecision('c2', 'none') });

@@ -195,7 +195,14 @@ unit on a gate hit falls through to the chat matcher. Measured on 34 flagged
 pauses across six rulebooks: right rule 34/34, right sentence 34/34; the real
 rail at 0.00 chat calls per pause at parity
 (`tests/benchmarks/decisions/RESULTS.md` § step 6). The chat matcher below
-remains the path without a provider, and the fallback.
+remains the path without a provider, and the fallback. **Fire floor (core 0.69.1):** the
+decision-only cue fires only when the gate names a decision at ≥ `CONTRADICTION_FIRE_THRESHOLD`
+(0.5); a lower-confidence hit runs the chat matcher as before. Engineering violations come back at
+0.8+, so the company-rules bench never needed it; style rules ("do not hedge a commitment") sit
+closer to `none`, and without the floor 0.44–0.46 hits painted cues on clean drafts
+(`tests/benchmarks/decisions/wholedoc-as-rules-bench.mts`: 3/4 → 1/4, planted 8/8 either way).
+**Style rules work through this leg unchanged** — see docs/features/session-contradiction.md
+§ Rules about how you write.
 
 ## Grounding + safety invariants
 
