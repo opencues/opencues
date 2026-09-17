@@ -149,3 +149,45 @@ the honest trade-off: a buffer whose sentences all cede returns in ~250 ms with 
 505 ms). The fix for that is not in this step: the sentence gates should ride the per-PASS
 decision request with the session rail's questions, which needs the resolver to assemble one
 request across sources (noted in decisions.md as the batching follow-up).
+
+## `_` router — step 5 (design A, serial; ruled 2026-09-17)
+
+2026-09-17 · jev-1.13.0 · `route-bench.mts`: the REAL three chat blank sources (config-intent,
+transform-blank, fluid-blank, built by `buildSourcesFromConfig` on cerebras gpt-oss-120b) behind
+the REAL core resolver, on the 171 labelled `_` cases the three pipelines' own suites provide
+(84 fluid-config, 40 fluid-blank, 40 transform-blank + 7 transform negatives). Same session, both
+arms. Scored on the runtime's own outcome per `_` — which source WON — so the arms are compared on
+agreement and on answers the routed arm lost, plus calls / $ / latency per `_`.
+
+```
+CHAT (today, the fan-out)
+  calls per _ 3.42 chat · $ per _ 0.004227 · latency p50 448 / p90 839 / mean 539 ms
+  winners: config-intent 31 · transform-blank 67 · fluid-blank 52 · none 21
+ROUTED (router first, cede fallback), T = 0.5, agreement ≥ 0.5
+  routed 101/171 (59%) · routed-then-ceded 5 · router failed 0
+  calls per _ 2.51 chat + 1.00 Jev · $ per _ 0.003212 (−24%) · latency p50 687 / p90 1205 / mean 804 ms
+  winners: config-intent 31 · transform-blank 53 · fluid-blank 66 · none 21
+  agreement: same winner 157/171 · lost answers 0 · gained 0 · different winner 14
+```
+
+The 14 different winners: 13 are lookup-labelled cases (`100 celsius in fahrenheit _`, `unicode for
+em dash _`, `hex for tomato red _`, …) where today's fan-out lets transform-blank (priority 93) win
+over fluid-blank; the router sends them to fluid, which is what the label wants. One is a real
+mis-route (`recalculate _ 4 tickets at $9 each costs $30`, transform → fluid). No `_` that had an
+answer lost it.
+
+The router alone (`--arm probe`, the 171 labels, stacked request: choice + one agreement noul per
+chat route, `route-probe-v2.mts` for the sweep): plain choice at conf ≥ 0.5 routes 68%, 93% right;
+stacked choice ∧ noul ≥ 0.5 routes 59%, 95% right (the shipped rule); at 0.7 54% / 97%, at 0.9
+44% / 99%. Of the 5 wrong at 0.5, 3 are out-of-scope settings requests (`switch the theme to dark
+mode _`) the settings classifier rejects anyway → cede → fan-out. Stacking costs +148 input tokens
+and no latency (223 vs 240 ms mean).
+
+Why the fan-out is 3.42 calls and not 5: `supports()` cedes (config-intent on prose, transform on
+inputs with no instruction shape), and the summon extraction / replace-detect are conditional. The
+router's saving is therefore ~0.9 chat calls per `_`, concentrated on the transform fused call (the
+largest prompt, cached but billed at the input rate on cerebras).
+
+Reading: −24% $ per `_`, 0 answers lost, 13 misroutes of today's fan-out corrected, one introduced;
++239 ms p50 on every `_` (the serial router in front of the first chat call, the trade ruled
+acceptable). The ledger's `_` column moves from 422 (modelled) to the measured 448 → 687.

@@ -35,6 +35,7 @@ import { ToolPromptCueSource } from './tool-prompt-source';
 import { SemanticTipsSource } from './semantic-tips-source';
 import { contradictionGateRequest } from '../contradiction/session-contradiction-source';
 import { dispatchDecision } from '../decisions/dispatch';
+import { DecisionBreaker } from '../decisions/breaker';
 import type { DecisionQuestion, DecisionAnswer, ChoiceAnswer } from '../decisions/types';
 import type { TipsCatalog } from '../tips-catalog';
 import type { SessionCommitmentsSnapshot } from '../session-commitments';
@@ -61,9 +62,8 @@ export interface SessionCueSourceConfig extends SessionContradictionSourceConfig
 }
 
 export const ASK_GATE_THRESHOLD_DEFAULT = 0.7;
-/** breaker windows after a failed decision request */
-export const DECISIONS_BREAKER_MS = 30_000;
-export const DECISIONS_BREAKER_AUTH_MS = 10 * 60_000;
+/** breaker windows after a failed decision request — re-exported from the shared breaker */
+export { DECISIONS_BREAKER_MS, DECISIONS_BREAKER_AUTH_MS } from '../decisions/breaker';
 export const ASK_GATE_QUESTION = {
   question: 'Is there an open question in `draft` that the writer should answer before sending — something a careful reader would have to ask back?',
   focus: 'A request with no specifics, a plan with an unstated dependency, a claim with no source, a choice left unmade. If `decisions` or the draft itself already answer it, it is not open.',
@@ -82,29 +82,25 @@ export class SessionCueSource implements CueSource {
   private readonly cfg: SessionCueSourceConfig;
   private readonly log: (msg: string) => void;
   /**
-   * Circuit breaker. A failed decision request (overloaded after its retry,
-   * transport, budget, auth) marks the provider down for a window; while
+   * Circuit breaker (decisions/breaker.ts — shared with the `_` router). A
+   * failed decision request marks the provider down for a window; while
    * down, every leg runs its chat path with no decision call at all, so an
    * outage costs one failed request per window, not one per leg per pause.
-   * Auth failures are not transient: a longer window, and a log line.
    */
-  private decisionsDownUntil = 0;
-  private readonly decisionsHealthy = (): boolean => Date.now() >= this.decisionsDownUntil;
+  private readonly breaker: DecisionBreaker;
+  private readonly decisionsHealthy = (): boolean => this.breaker.healthy();
 
   constructor(cfg: SessionCueSourceConfig) {
     this.cfg = cfg;
     this.log = cfg.log ?? (() => {});
+    this.breaker = new DecisionBreaker(this.log, 'SessionCue');
     const legCfg = { ...cfg, decisionsHealthy: this.decisionsHealthy };
     if (cfg.enableContradiction) this.contradiction = new SessionContradictionSource(legCfg);
     if (cfg.enableAsk) this.ask = new ToolPromptCueSource(cfg);
     if (cfg.enableSemanticTips) this.tips = new SemanticTipsSource(legCfg);
   }
 
-  private tripBreaker(err: { kind?: string; message?: string }): void {
-    const ms = err?.kind === 'auth' ? DECISIONS_BREAKER_AUTH_MS : DECISIONS_BREAKER_MS;
-    this.decisionsDownUntil = Date.now() + ms;
-    this.log(`SessionCue: decision provider down for ${Math.round(ms / 1000)}s (${err?.kind ?? 'error'}: ${err?.message}) — every leg on its chat path meanwhile`);
-  }
+  private tripBreaker(err: { kind?: string; message?: string }): void { this.breaker.trip(err); }
 
   supports(context: CueContext): boolean {
     return (this.contradiction?.supports(context) ?? false) || (this.tips?.supports(context) ?? false) || (this.ask?.supports(context) ?? false);

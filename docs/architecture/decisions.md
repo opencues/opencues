@@ -103,6 +103,19 @@ per PASS assembled by the resolver from every source's questions (tips, gates, p
 nouls), answered once, handed out. Not built; it changes the resolver's dispatch and is its own
 step.
 
+**The `_` side (step 5).** The router lives in the runtime resolver, not in a source: it decides
+which sources run, so it has to sit where the pass is assembled (`resolveAndApply`, next to the
+deterministic `undo _` filter it reuses — `ResolveOptions.only`). Core owns the question, the
+decision rule (`decideUnderscoreRoute`: chat route ∧ conf ≥ 0.5 ∧ its agreement noul ≥ 0.5) and the
+dehydrated draft; the runtime owns the breaker, the `only` filter, the cede fallback and the
+`resolver.route` / `resolver.route.ceded` events. `device` and `other` never restrict a pass
+(keyword blanks are BlankFill's before the resolver runs; prose fill-ins are fluid's to judge). The
+provider is built with the sources from the same options, and `decisions-provider` /
+`decisions-fanout` are in the build key, so flipping the scalar rebuilds without a restart (it did
+not before step 5). Design B (fire the fan-out, cancel the losers when the router answers) was
+rejected: cached-prefix chat calls finish before a 250 ms router does, and a cancelled
+non-streaming call may still be billed, so it could only ever have saved the tail.
+
 Not on the decision layer yet (deliberately): `SentenceCueSource` rewrites (step 4's
 needs-rewrite gate), `ContradictionLlmSource`'s per-sentence claim parse
 (`contradiction-cues-mode`, off by default; a "does this sentence make a checkable
@@ -120,7 +133,7 @@ No visual change at any step; confidence is carried as data and left unrendered.
 | 2 ✅ | contradiction pre-gate (`contradictionGateRequest`: Choice over the watchlist ids + none; chat call only when the gate does not skip; core 0.63.0) | contradiction call on every pause | `company-rules-bench.mjs --gate typesafe`: 22/22 silent drafts skipped, 0/28 violations lost, 0 false alarms — done 2026-09-16 |
 | 3 ✅ | one Jev request per pause in `SessionCueSource.getCuesFused` (tips Choice + contradiction gate + ask noul; `decisions-fanout`; core 0.64.0) | 2–3 chat calls per pause | `pause-bench.mjs`: 0.23 chat calls per pause instead of 2, $0.000200 vs $0.001570, p50 238 vs 418 ms, accuracy at parity — done 2026-09-17 |
 | 4 ✅ | `gate:` in a cue file (runtime-only key) → `SentenceCueSource` asks it per sentence in one request per pass, rewrite call only at ≥ 0.5 and prose ≥ 0.3; `more-formal` ships one; the ask gate landed in step 3 (core 0.65.0) | rewrite call every sentence | `sentence-gate-bench.mts`: 0 noise (chat arm 1), 20/23 wanted vs chat 21/23, 29% fewer rewrite calls — done 2026-09-17; p50 on rewritten sentences +190 ms (serial gate; batching follow-up) |
-| 5 | the `_` router (design ruled separately: serial vs parallel-and-cancel) | 5 chat calls per `_` | router bench ≥ 95% on acted cases; agentic 08/09/102 |
+| 5 ✅ | the `_` router, design A (serial; ruled 2026-09-17): one stacked request (5-way choice + agreement noul per chat route) in the runtime resolver before the pass, `only` restricts to the routed source, cede fallback fans out over the rest; `decisions/underscore-router.ts`, shared `DecisionBreaker` (core 0.66.0, runtime 0.41.8) | 3.42 chat calls per `_` (measured; the 5 is the maximum) | `route-bench.mts`: router 95% right on the 59% it routes; end to end 0 answers lost, 157/171 same winner (13 of the rest are today's misroutes fixed), −24% $ per `_`, +239 ms p50 — done 2026-09-17; agentic 08/09/102 to re-run with the scalar on |
 | 6 | contradiction detection in full (clause Choice for the span; reconcile generated lazily) | the remaining contradiction call | same benches; span exactness |
 | 7 | candidate-selection legs (replace-detect span, spelling via dictionary) | replace-detect call; part of word-cues | literal suite reproduced by code; a spelling bench |
 | 8 | spec: `questions:` block, chat-fallback semantics, `confidence` on a cue result | — | spec bump checklist |

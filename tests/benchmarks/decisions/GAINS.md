@@ -118,6 +118,30 @@ what AgentRewrite / auditors reuse. The p50 regression on rewritten sentences is
 serial gate in a separate source; folding sentence gates into the per-pass request is the
 follow-up.
 
+## Step 5 — the `_` router (core 0.66.0, runtime 0.41.8; design A ruled 2026-09-17)
+
+**What moved:** which chat blank sources a `_` dispatches. One stacked decision request (a 5-way
+choice + one agreement noul per chat route) runs first; at choice ≥ 0.5 with its noul ≥ 0.5 the
+pass dispatches only the routed source (settings → config-intent, transform → transform-blank,
+lookup → fluid-blank). Below that, `device` / `other`, a keyword-bound `_`, or a failed request →
+the full fan-out as today. A routed source that cedes is followed by the fan-out over the rest.
+The non-`_` sources (session rail, sentence cues, word cues) are never filtered.
+
+Per `_` (171 labelled underscores, real sources, same session):
+
+| | before (fan-out) | after (routed) | Δ |
+|---|---|---|---|
+| chat calls per `_` | 3.42 | 2.51 (+1 Jev) | −27% chat |
+| $ per `_` | 0.004227 | 0.003212 | −24% |
+| answers lost | — | 0 | |
+| winner agrees with today | — | 157/171 | 13 of the 14 are today's misroutes corrected (lookups transform-blank had won) |
+| latency p50 | 448 ms | 687 ms | +239 ms (serial router; accepted) |
+| latency mean | 539 ms | 804 ms | +265 ms |
+
+Per hour of scenario (a) (15 underscores): $0.063 → $0.048 on the `_` side. Small in dollars
+against the pause side; the router is also the request steps 6–7 stack their candidate questions
+on (replace-detect spans, spelling), which is why it is a serial request and not a cancel.
+
 ## Cumulative
 
 | after step | chat calls / hour | $ / hour | saving vs baseline | pause ms | `_` ms |
@@ -127,7 +151,7 @@ follow-up.
 | 2 (contradiction pre-gate) | ~87 chat + 240 Jev | ≈0.111 | ≈64% (per-draft measured; per-event at the 10% not-none assumption; `_` side included) | ≈320 | 422 |
 | 3 (one request per pause) | 103 chat + 120 Jev | 0.120 (measured per-pause) | 61% | 238 p50 / 345 mean (measured) | 422 |
 | 4 (sentence gate) | (a) unchanged; (d) 60 → ~43 rewrite calls | (d) 0.146 → ≈0.139 | (d) ≈ −58% vs its baseline 0.333 | — | 422 |
-| 5 (`_` router) | — | — | — | — | modelled 643 (design A) |
+| 5 (`_` router) | (a) 15 `_` × 3.42 → 2.51 chat + 15 Jev | (a) `_` side 0.063 → 0.048 (measured per-`_`) | (a) total ≈ 0.105/h, ≈ −66% | — | 687 p50 / 804 mean (measured; was 448 / 539) |
 
 Modelled rows are from the cost model before the step ships and are replaced with measured
 rows when it does.

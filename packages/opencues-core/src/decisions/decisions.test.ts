@@ -192,3 +192,92 @@ describe('ChatFallbackDecisionProvider', () => {
     expect(extractJsonObject('nothing')).toBeNull();
   });
 });
+
+// ── the `_` router (Jev plan step 5) ───────────────────────────────────────
+import { decideUnderscoreRoute, underscoreRouteRequest, underscoreRouteDraft, routeUnderscore, UNDERSCORE_ROUTE_SOURCES, UNDERSCORE_CHAT_SOURCE_IDS } from './underscore-router';
+import { DecisionBreaker, DECISIONS_BREAKER_MS, DECISIONS_BREAKER_AUTH_MS } from './breaker';
+import type { DecisionProvider } from './types';
+
+const routeAnswers = (choice: string, confidence: number, nouls: Partial<Record<'settings' | 'transform' | 'lookup', number>> = {}) => ({
+  route: { choice, confidence, probabilities: { [choice]: confidence } },
+  is_settings: { noul: nouls.settings ?? 0.9 },
+  is_transform: { noul: nouls.transform ?? 0.9 },
+  is_lookup: { noul: nouls.lookup ?? 0.9 },
+});
+
+describe('underscore router', () => {
+  it('the stacked request: one choice over five kinds + one agreement noul per chat route, state keyed `draft`', () => {
+    const req = underscoreRouteRequest('zephyr quark _');
+    expect(req.state).toEqual({ draft: 'zephyr quark _' });
+    expect(Object.keys(req.questions)).toEqual(['route', 'is_settings', 'is_transform', 'is_lookup']);
+    expect(Object.keys(req.questions.route.criteria)).toEqual(['settings', 'transform', 'lookup', 'device', 'other']);
+    expect(() => validateDecisionRequest(req)).not.toThrow();
+  });
+
+  it('routes only when the choice is a chat route, clears the threshold AND its noul agrees', () => {
+    expect(decideUnderscoreRoute(routeAnswers('lookup', 0.8), 1).sourceId).toBe('fluid-blank');
+    expect(decideUnderscoreRoute(routeAnswers('settings', 0.8), 1).sourceId).toBe('config-intent');
+    expect(decideUnderscoreRoute(routeAnswers('transform', 0.8), 1).sourceId).toBe('transform-blank');
+    // below threshold
+    expect(decideUnderscoreRoute(routeAnswers('lookup', 0.4), 1).sourceId).toBeNull();
+    // disagreement: the choice says transform, the transform noul says no
+    expect(decideUnderscoreRoute(routeAnswers('transform', 0.9, { transform: 0.2 }), 1).sourceId).toBeNull();
+    // device / other never restrict the pass
+    expect(decideUnderscoreRoute(routeAnswers('device', 0.99), 1).sourceId).toBeNull();
+    expect(decideUnderscoreRoute(routeAnswers('other', 0.99), 1).sourceId).toBeNull();
+    // custom threshold
+    expect(decideUnderscoreRoute(routeAnswers('lookup', 0.6), 1, 0.7).sourceId).toBeNull();
+  });
+
+  it('the chat source id set is exactly the three routed sources', () => {
+    expect([...UNDERSCORE_CHAT_SOURCE_IDS].sort()).toEqual(Object.values(UNDERSCORE_ROUTE_SOURCES).sort());
+  });
+
+  it('windows a long buffer around the `_`', () => {
+    const long = 'a'.repeat(9000) + ' zephyr _ ' + 'b'.repeat(3000);
+    const d = underscoreRouteDraft(long, 1000);
+    expect(d.length).toBe(1000);
+    expect(d).toContain('zephyr _');
+    expect(underscoreRouteDraft('short _')).toBe('short _');
+  });
+
+  it('routeUnderscore dehydrates the draft in identity safe mode before it ships, and logs the decision', async () => {
+    const seen: string[] = [];
+    const fake: DecisionProvider = {
+      id: 'fake', model: 'x',
+      async ask(req) {
+        seen.push((req.state as { draft: string }).draft);
+        return { answers: routeAnswers('lookup', 0.9) as never, model: 'x', usage: { inputTokens: 1, outputTokens: 1 }, ms: 3 };
+      },
+    };
+    const lines: string[] = [];
+    const catalog = new Map([['[ZEPHYR_NAME]', 'Quarkle']]);
+    const r = await routeUnderscore(fake, 'email Quarkle about _', { identityContext: { mode: 'safe', catalog }, log: (l) => lines.push(l) });
+    expect(seen[0]).toBe('email [ZEPHYR_NAME] about _');
+    expect(r.sourceId).toBe('fluid-blank');
+    expect(lines.some((l) => l.includes('[decision][route]') && l.includes('fluid-blank'))).toBe(true);
+    // raw mode: untouched
+    await routeUnderscore(fake, 'email Quarkle about _', { identityContext: { mode: 'raw', catalog } });
+    expect(seen[1]).toBe('email Quarkle about _');
+  });
+
+  it('routeUnderscore surfaces the provider failure (the caller owns the breaker)', async () => {
+    const bad: DecisionProvider = { id: 'bad', model: 'x', async ask() { throw new DecisionError('overloaded', 'busy'); } };
+    await expect(routeUnderscore(bad, 'x _')).rejects.toMatchObject({ kind: 'overloaded' });
+  });
+});
+
+describe('DecisionBreaker', () => {
+  it('opens a 30s window on a plain failure and a 10 min window on auth, logging once per trip', () => {
+    const lines: string[] = [];
+    const b = new DecisionBreaker((l) => lines.push(l), 'zephyr');
+    expect(b.healthy()).toBe(true);
+    b.trip({ kind: 'transport', message: 'boom' });
+    expect(b.healthy()).toBe(false);
+    expect(lines[0]).toMatch(/^zephyr: decision provider down for 30s/);
+    expect(DECISIONS_BREAKER_MS).toBe(30_000);
+    expect(DECISIONS_BREAKER_AUTH_MS).toBe(600_000);
+    b.trip({ kind: 'auth', message: 'no key' });
+    expect(lines[1]).toMatch(/down for 600s \(auth/);
+  });
+});

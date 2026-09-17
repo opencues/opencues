@@ -116,6 +116,7 @@ export {
 
 export {
   buildSourcesFromConfig,
+  buildDecisionProvider,
   type BuildSourcesOptions,
 } from './sources/build-sources';
 
@@ -568,3 +569,17 @@ export {
 } from './decisions/typesafe';
 export { ChatFallbackDecisionProvider, CHAT_FALLBACK_SYSTEM, type ChatFn } from './decisions/chat-fallback';
 export { dispatchDecision, validateDecisionRequest, applyDecisionDehydrationFloor, type DispatchDecisionContext } from './decisions/dispatch';
+export { DecisionBreaker, DECISIONS_BREAKER_MS, DECISIONS_BREAKER_AUTH_MS } from './decisions/breaker';
+export {
+  routeUnderscore,
+  decideUnderscoreRoute,
+  underscoreRouteRequest,
+  underscoreRouteDraft,
+  UNDERSCORE_ROUTE_THRESHOLD_DEFAULT,
+  UNDERSCORE_ROUTE_AGREE_THRESHOLD,
+  UNDERSCORE_ROUTE_SOURCES,
+  UNDERSCORE_CHAT_SOURCE_IDS,
+  type UnderscoreRoute,
+  type UnderscoreRouting,
+  type RouteUnderscoreContext,
+} from './decisions/underscore-router';
