@@ -175,3 +175,53 @@ The benchmark row every step reports, from `tests/benchmarks/decisions/compare.m
 the shipped bench's own accuracy metric · p50 / p90 ms · $ per call · tokens per call ·
 calls per event, for the Cerebras leg and the Jev leg in the same session. A step ships
 only at accuracy parity on the shipped gate with the cost or latency column lower.
+
+## Beyond the plan — what Jev can still do for OpenCues (written 2026-09-17, after 7A)
+
+Steps 0–7A are the SUBSTITUTION program: every place a chat call was making a decision, the
+decision moved, at parity, for a fraction of the cost. That is not the capability ceiling. What
+is left sits in three layers, ordered by how far it is from cost-saving; each row is a bench
+first, then a PR, under the same discipline as the plan.
+
+### Layer 1 — legs found on the way, same program, not moved
+
+| leg | today | on the decision layer | why it was left |
+|---|---|---|---|
+| kata coach `STEP` / `STATUS` (`kata.ts`) | one chat call per tick over a large stable prompt | "which step is the person on" and "is it complete": two Choices; the COACH line stays generative | prototype feature, not in the plan |
+| session-commitments supersession (`SESSION_COMMITMENTS_SUPERSEDE_SYSTEM`) | a small LLM call per distillation | "does the new decision replace an existing one, which" — Choice over ids + none | Stage A is a background producer, not per-pause |
+| subreddit-rules verdict (contradiction-cues tier 5d) | a dedicated LLM call | Choice over the fetched rule ids + none | chrome-only tier |
+| word-cues gate | the word-cues call runs on every pause (`word-cues-mode: on`) | "which of these words deserves an alternative" Choice over the words; the call only for those | 7B's neighbour; same word-list ruling |
+| auditor / AgentRewrite cadence | a rewrite tick on the debounce | "has the document changed in a way that needs a pass" noul in front of the tick | the auditor path is off by default |
+| blank routing by Choice | keyword windows + shapes | the `_` router's `device` route naming WHICH registered blank (`make it louder _` → volume), grounded in the registered names | the runtime must accept a routed blank; security-audit review (a fuzzy invocation path) |
+| spelling (7B) | the catch-all word-cue | dictionary candidates at edit distance ≤ 2, Choice + "as typed" | the word-list ruling (size, core vs fetched, English-only, inert on CJK) |
+| batching | the sentence gate and the replace request are their own requests | ONE decision request per pass assembled by the resolver across sources | changes the resolver's dispatch; its own PR |
+
+### Layer 2 — mechanics from § The five mechanics not used yet (new cues, not cheaper ones)
+
+- **Whole-document passes.** One request scores every sentence of a draft on several concerns
+  at once (clarity, hedging, a risky claim, "the sentence to fix first") for ~$0.0001. Today only
+  `more-formal` is gated per sentence. This is a new cue shape — "of these twelve sentences, this
+  one" — that nothing in OpenCues produces today. Bench: a labelled multi-sentence corpus per
+  concern; gate: 0 false flags on a compliant set.
+- **Done-ness instead of a timer.** The pause is a debounce. A per-keystroke noul, "is this
+  sentence finished", is ~250 ms and a hundredth of a cent, so a cue can fire when the thought
+  ends rather than when the typing stops — the TTFR lever. Bench: real keystroke traces from the
+  harness; gate: cues that would have fired at the pause fire earlier, none fire mid-word.
+- **Per-person calibration.** The probabilities are calibrated and dismissals are logged
+  (`cue-dismissal.md`). A threshold tuned on the person's own accept / dismiss history is
+  arithmetic on data we already keep, no model. The data side can be built now; the tunable and
+  any rendering of confidence wait on the visual-changes ruling.
+- **Ranking, not priority numbers.** Contradiction beats tips beats more-formal by fixed
+  priority. "Which of these cues matters most for this sentence" is a Choice, and the first
+  honest answer to the span-competition problem (see `project_contradiction_competes_for_span` —
+  advisory-channel approaches are abandoned; ranking is a different idea).
+
+### Layer 3 — what it cannot do, so it is not asked
+
+Generate text (the fused rewrite, the fluid lookup, the ask question, the reconcile); classify
+settings at the precision the shipped few-shot classifier holds (25% recall at the precision
+gate, benched); extract a string that is not in the buffer (it selects from candidates, it never
+emits). Every leg that stays on chat stays for one of these three reasons, and the ledger says
+what that costs: after 7A the pause side is zero chat calls per hour and the `_` side is the
+generative calls only.
+
