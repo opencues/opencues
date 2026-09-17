@@ -162,6 +162,23 @@ Per hour of scenario (a): the pause side is 120 Jev requests and zero chat calls
 the $0.307/h baseline. The remaining chat spend is the `_` side (step 5) and the on-demand calls (a
 rewrite when the person goes to a cue, an ask question above its gate).
 
+## Step 7A — replace-detect as candidate selection (core 0.68.0)
+
+**What moved:** the replace detector's chat call, on every transform-routed `_`. One decision
+request in its place (kind / target / command over candidates the runtime cut), in parallel with the
+fused call as before; the value comes from the fused rewrite's diff at the chosen target.
+
+| | before (chat detector) | after (decision detector) | Δ |
+|---|---|---|---|
+| detector cost per transform `_` | $0.000587 | $0.000080 | −86% |
+| detector latency (parallel to fused, not on the critical path) | 363 ms | 266 ms | |
+| false diverts on the suite | 1 | 0 | |
+| single-piece edits that get the exact splice | 28/28 | 21/28 | the rest merge, as every non-detected edit does |
+
+Per hour of scenario (a) the `_` side goes ≈ $0.048 → ≈ $0.043 (only the transform-routed share
+carries a detector). Small in dollars; the leg is about grounding: the target and the command are
+candidates, the value is read off a rewrite that had to reproduce the buffer.
+
 ## Cumulative
 
 | after step | chat calls / hour | $ / hour | saving vs baseline | pause ms | `_` ms |
@@ -173,6 +190,7 @@ rewrite when the person goes to a cue, an ask question above its gate).
 | 4 (sentence gate) | (a) unchanged; (d) 60 → ~43 rewrite calls | (d) 0.146 → ≈0.139 | (d) ≈ −58% vs its baseline 0.333 | — | 422 |
 | 5 (`_` router) | (a) 15 `_` × 3.42 → 2.51 chat + 15 Jev | (a) `_` side 0.063 → 0.048 (measured per-`_`) | (a) total ≈ 0.105/h, ≈ −66% | — | 687 p50 / 804 mean (measured; was 448 / 539) |
 | 6 (contradiction in full) | (a) 38 chat (all `_`) + 135 Jev | ≈ 0.060/h (pause 0.012 + `_` 0.048) | ≈ −80% | 250 p50 / 269 mean (measured) | 687 / 804 |
+| 7A (replace detector) | (a) ≈ 33 chat + ≈ 140 Jev | ≈ 0.055/h (pause 0.012 + `_` 0.043) | ≈ −82% | 250 / 269 | 687 / 804 |
 
 Modelled rows are from the cost model before the step ships and are replaced with measured
 rows when it does.

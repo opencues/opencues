@@ -571,6 +571,15 @@ export { ChatFallbackDecisionProvider, CHAT_FALLBACK_SYSTEM, type ChatFn } from 
 export { dispatchDecision, validateDecisionRequest, applyDecisionDehydrationFloor, type DispatchDecisionContext } from './decisions/dispatch';
 export { DecisionBreaker, DECISIONS_BREAKER_MS, DECISIONS_BREAKER_AUTH_MS } from './decisions/breaker';
 export {
+  replaceCandidates,
+  replaceDecisionRequest,
+  decideReplace,
+  deriveReplaceValue,
+  REPLACE_KIND_THRESHOLD,
+  REPLACE_TARGET_THRESHOLD,
+  type ReplaceDecision,
+} from './sources/replace-decide';
+export {
   routeUnderscore,
   decideUnderscoreRoute,
   underscoreRouteRequest,

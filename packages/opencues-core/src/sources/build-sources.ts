@@ -937,6 +937,7 @@ export function buildSourcesFromConfig(
         temperature: options.transformBlank?.temperature,
         maxThinking: options.maxThinking,
         replaceParse: options.replaceParse,
+        decisions,
         blanks: options.blanks ?? {},
         log: options.log,
         onEvent: options.onTransformBlankEvent,

@@ -763,3 +763,13 @@ observes the result).
 (3-pass retired per `EXPERIMENTS.md, Experiment 10`), the generative
 branch, and the TASK_* verdicts that route into the agent-task state
 machine.*
+
+### Replace-parse on the decision layer (core 0.68.0)
+
+With `decisions-provider: typesafe`, the detector is one decision request instead of the chat call
+(`sources/replace-decide.ts`): the runtime cuts the candidates, the request picks the kind, the target
+and the command, and the value is read off the fused rewrite's diff at the target
+(`deriveReplaceValue`). The splice inputs then pass the same `verifyReplaceDetect` gate. Result
+`metadata.pipelineMode` is `replace-splice-decision`. Numbers: `tests/benchmarks/decisions/RESULTS.md`
+§ step 7A; `prod.ts --replace-parse chat|decisions` runs the suites with either detector and applies
+the splice before judging.

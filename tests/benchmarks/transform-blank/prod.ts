@@ -28,6 +28,7 @@
  */
 
 import { TransformBlankSource } from '../../../packages/opencues-core/src/sources/transform-blank-source';
+import { TypeSafeDecisionProvider } from '../../../packages/opencues-core/src/decisions/typesafe';
 import { getProvider } from '../../../packages/opencues-core/src/llm-provider';
 import type { HttpAdapter, CueContext } from '../../../packages/opencues-core/src/types';
 import { CASES, type TransformCase } from './cases';
@@ -124,10 +125,18 @@ const PROVIDERS: Record<string, { endpoint: string; key: string | undefined; mod
   deepseek: { endpoint: 'https://api.deepseek.com/chat/completions', key: DEEPSEEK_KEY, model: DEEPSEEK_MODEL },
 };
 
-function buildSource(providerId: string): TransformBlankSource {
+/** `--replace-parse chat|decisions` — replace-parse-mode on, with the chat
+ *  detector or the decision-layer one (Jev plan step 7A; needs
+ *  TYPESAFE_API_KEY). Off by default: the bare fused pipeline. */
+function buildSource(providerId: string, replaceParse?: string): TransformBlankSource {
   const p = PROVIDERS[providerId];
   if (!p) { console.error(`Unknown provider "${providerId}". Known: ${Object.keys(PROVIDERS).join(', ')}`); process.exit(1); }
   if (!p.key) { console.error(`Set ${providerId.toUpperCase()}_API_KEY to bench provider "${providerId}".`); process.exit(1); }
+  let decisions: TypeSafeDecisionProvider | undefined;
+  if (replaceParse === 'decisions') {
+    if (!process.env.TYPESAFE_API_KEY) { console.error('--replace-parse decisions needs TYPESAFE_API_KEY'); process.exit(1); }
+    decisions = new TypeSafeDecisionProvider({ apiKey: process.env.TYPESAFE_API_KEY, httpAdapter });
+  }
   return new TransformBlankSource({
     httpAdapter,
     provider: getProvider(providerId)!,
@@ -138,7 +147,20 @@ function buildSource(providerId: string): TransformBlankSource {
     // sweep measure a hybrid-reasoning model's reduced tier (e.g. cerebras
     // qwen-3.8-27b low vs none) through the production resolution path.
     maxThinking: process.env.OPENCUES_BENCH_MAX_THINKING !== 'off',
+    replaceParse: !!replaceParse,
+    decisions,
   });
+}
+
+/** What the resolver's bounded-splice branch produces from a replace-splice
+ *  result: the target replaced by the value, the instruction + `_` removed. */
+export function applyReplaceSplice(text: string, target: string, instruction: string, value: string): string {
+  const ti = text.indexOf(target);
+  if (ti < 0) return text;
+  let out = text.slice(0, ti) + value + text.slice(ti + target.length);
+  const cmd = new RegExp(`\\s*${instruction.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*_\\s*`);
+  out = out.replace(cmd, ' ');
+  return out.replace(/\s+/g, ' ').trim();
 }
 
 async function runWithConcurrency<T, R>(items: T[], fn: (item: T, idx: number) => Promise<R>, conc: number): Promise<R[]> {
@@ -155,6 +177,7 @@ async function runWithConcurrency<T, R>(items: T[], fn: (item: T, idx: number) =
 }
 
 interface Outcome { pass: boolean; modelMs: number; judgeMs: number; output: string; }
+let splicedCount = 0;
 
 function buildContext(input: string): CueContext {
   // Production TransformBlank takes a CueContext with words array. Split
@@ -179,8 +202,14 @@ async function runOneInner(c: TransformCase, source: TransformBlankSource): Prom
   const t0 = Date.now();
   const result = await source.getCues(buildContext(c.input));
   const modelMs = Date.now() - t0;
-  const rewrite = result.results[0]?.alternatives?.[1] ?? null;
+  const r0 = result.results[0];
+  const meta = (r0?.metadata ?? {}) as { transformTarget?: string; transformInstruction?: string; pipelineMode?: string };
+  const spliced = !!(r0 && meta.transformTarget && r0.alternatives?.[1]);
+  const rewrite = spliced
+    ? applyReplaceSplice(c.input, meta.transformTarget!, meta.transformInstruction ?? '', r0!.alternatives[1])
+    : (r0?.alternatives?.[1] ?? null);
   const actualBail = result.results.length === 0 || !rewrite;
+  if (spliced) splicedCount++;
 
   const judgeInput: JudgeInput = {
     input: c.input,
@@ -200,7 +229,7 @@ async function runOneInner(c: TransformCase, source: TransformBlankSource): Prom
   lines.push(`  ${DIM}EXP    :${RESET} ${c.expected.finalText ?? '(bail)'}`);
   lines.push(`  ${DIM}ACTUAL :${RESET} ${rewrite ?? '(bailed)'}`);
   lines.push(`  ${DIM}JUDGE  :${RESET} ${j.rationale}`);
-  lines.push(`  ${DIM}TIMING :${RESET} model=${modelMs}ms  judge=${j.latencyMs}ms`);
+  lines.push(`  ${DIM}TIMING :${RESET} model=${modelMs}ms  judge=${j.latencyMs}ms${spliced ? `  ${DIM}(${meta.pipelineMode}: "${meta.transformTarget}" → "${r0!.alternatives[1]}")${RESET}` : ''}`);
   if (!pass) lines.push(`  ${YELLOW}META   :${RESET} ${JSON.stringify(result.results[0]?.metadata ?? {})}`);
   return { pass, modelMs, judgeMs: j.latencyMs, output: lines.join('\n') };
 }
@@ -214,6 +243,8 @@ async function main() {
   // Single fused pipeline on every provider; --provider selects which one
   // to measure (default cerebras).
   const provider = argVal('--provider') ?? 'cerebras';
+  const replaceParse = argVal('--replace-parse');   // chat | decisions
+  const categories = argVal('--category')?.split(',').map((x) => x.trim()).filter(Boolean);
   console.log(`${BOLD}transform-blank PROD benchmark${RESET}  ${DIM}(drives @opencues/core TransformBlankSource — no bench-local prompt)${RESET}`);
   console.log(`Provider: ${provider} ${PROVIDERS[provider]?.model ?? '?'} (fused)`);
   console.log(`Judge: groq gpt-oss-120b (pinned)`);
@@ -230,7 +261,9 @@ async function main() {
     console.log(`${DIM}--only-file: re-running ${cases.length} of ${CASES.length} cases${RESET}`);
   }
 
-  const source = buildSource(provider);
+  if (categories) { cases = cases.filter((c) => categories.includes(c.category)); console.log(`${DIM}--category: ${cases.length} cases in ${categories.join(', ')}${RESET}`); }
+  if (replaceParse) console.log(`replace-parse: ${replaceParse}`);
+  const source = buildSource(provider, replaceParse);
   const wall0 = Date.now();
   const outcomes = await runWithConcurrency(cases, c => runOne(c, source), parallel);
   const wallMs = Date.now() - wall0;
@@ -242,7 +275,7 @@ async function main() {
   const totJudge = outcomes.reduce((a, o) => a + o.judgeMs, 0);
   const byCat = new Map<string, { p: number; t: number }>();
   for (let i = 0; i < outcomes.length; i++) {
-    const c = CASES[i]; const o = outcomes[i];
+    const c = cases[i]; const o = outcomes[i];
     const s = byCat.get(c.category) ?? { p: 0, t: 0 };
     s.t++; if (o.pass) s.p++; byCat.set(c.category, s);
   }
@@ -251,11 +284,11 @@ async function main() {
     console.log(`${cat.padEnd(20)} ${s.p}/${s.t} (${((s.p / s.t) * 100).toFixed(1)}%)`);
   }
   console.log('─'.repeat(78));
-  console.log(`${BOLD}Total:${RESET}        ${passed}/${CASES.length} (${((passed / CASES.length) * 100).toFixed(1)}%)`);
-  console.log(`Avg model: ${(totModel / CASES.length).toFixed(0)}ms  Avg judge: ${(totJudge / CASES.length).toFixed(0)}ms`);
+  console.log(`${BOLD}Total:${RESET}        ${passed}/${cases.length} (${((passed / cases.length) * 100).toFixed(1)}%)${replaceParse ? `  spliced ${splicedCount}` : ''}`);
+  console.log(`Avg model: ${(totModel / cases.length).toFixed(0)}ms  Avg judge: ${(totJudge / cases.length).toFixed(0)}ms`);
   console.log(`Wall-clock total: ${(wallMs / 1000).toFixed(1)}s  (parallel=${parallel})`);
-  console.log(`Throughput: ${(CASES.length / (wallMs / 1000)).toFixed(2)} cases/sec`);
-  process.exit(passed === CASES.length ? 0 : 1);
+  console.log(`Throughput: ${(cases.length / (wallMs / 1000)).toFixed(2)} cases/sec`);
+  process.exit(passed === cases.length ? 0 : 1);
 }
 
 main().catch(e => { console.error('FATAL:', e); process.exit(2); });

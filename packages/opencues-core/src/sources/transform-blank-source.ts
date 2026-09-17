@@ -57,7 +57,10 @@ import {
 } from '../typed-sentinel';
 import { blankClaimsUnderscore } from '../blank-shapes';
 import { getDehydrator } from '../dehydrate';
-import { REPLACE_DETECT_SYSTEM_PROMPT, REPLACE_DETECT_MAX_TOKENS, parseReplaceDetect, verifyReplaceDetect, type ReplaceDetection } from './replace-detect';
+import { REPLACE_DETECT_SYSTEM_PROMPT, REPLACE_DETECT_MAX_TOKENS, parseReplaceDetect, verifyReplaceDetect, hydrateField, type ReplaceDetection } from './replace-detect';
+import { replaceDecisionRequest, decideReplace, deriveReplaceValue, type ReplaceDecision } from './replace-decide';
+import { dispatchDecision } from '../decisions/dispatch';
+import type { DecisionProvider } from '../decisions/types';
 
 // ============================================================================
 // Prompts — ported verbatim from tests/benchmarks/transform-blank/
@@ -411,6 +414,12 @@ export interface TransformBlankSourceConfig {
    *  detector can only upgrade a dispatch, never degrade one. See
    *  replace-detect.ts. */
   replaceParse?: boolean;
+  /** With `replaceParse` on, the replace detector runs as ONE decision
+   *  request instead of the chat call (Jev plan step 7A, replace-decide.ts):
+   *  the runtime cuts the candidates, the request picks the kind, the
+   *  target and the command, and the value comes from the fused rewrite's
+   *  diff. Absent → the chat detector as before. */
+  decisions?: DecisionProvider;
   /** Source priority. Default 93 — sits ABOVE FluidBlankSource (92) so
    * imperative-shaped inputs route here, BELOW BlankSource (95) so
    * keyword-bound blanks always win. */
@@ -507,6 +516,7 @@ export class TransformBlankSource implements CueSource {
   private temperatureOverride: number | undefined;
   private maxThinking: boolean;
   private replaceParse: boolean;
+  private decisions: DecisionProvider | undefined;
   private blanks: Record<string, BlankConfig>;
   private log: (msg: string) => void;
   private emit: (event: TransformBlankEvent) => void;
@@ -522,6 +532,7 @@ export class TransformBlankSource implements CueSource {
     this.temperatureOverride = config.temperature;
     this.maxThinking = config.maxThinking ?? true;
     this.replaceParse = config.replaceParse ?? false;
+    this.decisions = config.decisions;
     this.priority = config.priority ?? 93;
     this.blanks = config.blanks ?? {};
     this.log = config.log ?? (() => { /* default: silent */ });
@@ -968,13 +979,29 @@ export class TransformBlankSource implements CueSource {
     // detect) ≈ fused, since the detector emits four short lines.
     // Errors resolve to null — the fused path is never affected
     // (no-logical-landmines: the detector can only upgrade a dispatch).
-    const replaceDetectPromise: Promise<ReplaceDetection | null> | null = this.replaceParse
+    const replaceDetectPromise: Promise<ReplaceDetection | null> | null = this.replaceParse && !this.decisions
       ? this.callLLM(REPLACE_DETECT_SYSTEM_PROMPT, `INPUT: ${inputForLLM}`, REPLACE_DETECT_MAX_TOKENS, undefined, context.signal)
           .then(raw => parseReplaceDetect(raw))
           .catch((e: unknown) => {
             this.log(`TransformBlank replace-detect: dispatch failed (${e instanceof Error ? e.message : String(e)}) — fused path unaffected`);
             return null;
           })
+      : null;
+    // The same detector on the decision layer (plan step 7A): one request,
+    // in parallel with fused, over candidates cut from the same outbound
+    // text; the value is read off the fused rewrite below. A failed request
+    // resolves to null — the fused path is never affected.
+    const replaceDecisionPromise: Promise<ReplaceDecision | null> | null = this.replaceParse && this.decisions
+      ? (async () => {
+          const req = replaceDecisionRequest(inputForLLM);
+          const res = await dispatchDecision(this.decisions!, { state: req.state, questions: req.questions }, { signal: context.signal, leg: 'replace', log: (m) => this.log(`TransformBlank ${m}`) });
+          const d = decideReplace(res.answers, req.targets, req.commands);
+          this.log(`TransformBlank replace-decide: kind ${res.answers.kind.choice} ${res.answers.kind.confidence.toFixed(2)} · target ${res.answers.target.choice} ${res.answers.target.confidence.toFixed(2)} · command ${res.answers.command.choice} → ${d ? `"${preview(d.target)}" / "${d.command}"` : 'fused merge'}`);
+          return d;
+        })().catch((e: unknown) => {
+          this.log(`TransformBlank replace-decide: request failed (${e instanceof Error ? e.message : String(e)}) — fused path unaffected`);
+          return null;
+        })
       : null;
     const fusedRaw = await this.callLLM(fusedSystem, `INPUT: ${inputForLLM}`, fusedTokens, undefined, context.signal, fusedPrediction);
     const fParsedRaw = parseFused(fusedRaw);
@@ -1062,9 +1089,25 @@ export class TransformBlankSource implements CueSource {
     // command verified verbatim, both against the live value-space
     // buffer — an unverifiable detection falls through to the fused
     // whole-buffer merge below.
-    if (replaceDetectPromise) {
-      const det = await replaceDetectPromise;
-      if (det) {
+    // Decision path (step 7A): the kind and target choices named a piece;
+    // the fused rewrite must have changed exactly that piece. The verified
+    // splice inputs then go through the SAME acceptance gate as the chat
+    // detector's (verifyReplaceDetect) — one guard, two producers.
+    let det: ReplaceDetection | null = null;
+    if (replaceDecisionPromise) {
+      const d = await replaceDecisionPromise;
+      if (d) {
+        const command = hydrateField(d.command, idCtx?.catalog);
+        const target = hydrateField(d.target, idCtx?.catalog);
+        const derived = deriveReplaceValue(context.text, command, target, f.rewrite);
+        if (derived) det = { cls: 'replace', command, target: derived.target, value: derived.value };
+        else this.log(`TransformBlank replace-decide: the fused rewrite did not change exactly "${preview(target)}" — fused merge`);
+      }
+    } else if (replaceDetectPromise) {
+      det = await replaceDetectPromise;
+    }
+    if (det) {
+      {
         const verified = verifyReplaceDetect(context.text, det, {
           catalog: idCtx?.catalog,
           log: (m) => this.log(`TransformBlank ${m}`),
@@ -1083,7 +1126,7 @@ export class TransformBlankSource implements CueSource {
               transformTarget: verified.target,
               transformInstruction: verified.instruction,
               verifyVerdict: 'SKIPPED',
-              pipelineMode: 'replace-splice',
+              pipelineMode: replaceDecisionPromise ? 'replace-splice-decision' : 'replace-splice',
               pipelineLatencyMs: Date.now() - startTime,
               variantCacheHit: false,
               variantPoolSize: 0,

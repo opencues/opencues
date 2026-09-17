@@ -254,3 +254,47 @@ the sentence rewritten, or NONE), fetched by the runtime when the caret lands on
 (`DynDefs.resolveDeferred`, deduplicated, a null remembered), applied on Ctrl+Alt+↑ / `_` — instantly if
 it has landed, on arrival if not, never after an edit. Not benched for quality here: it is the same
 rewrite the matcher used to emit, now asked for on its own.
+
+## replace-detect as candidate selection — step 7A
+
+2026-09-17 · jev-1.13.0 · `replace-bench.mts` on the fluid-blank-replace suite (66 cases: 28 replace,
+22 fill, 16 none), same session as today's chat detector (`REPLACE_DETECT_SYSTEM_PROMPT` on cerebras).
+The Jev request is core's `replaceDecisionRequest`: a `kind` Choice (fill / replace / none, with
+examples that are not suite inputs), a `target` Choice over candidates the runtime cut (every word and
+2-gram, ~15 per case) and a `command` Choice over the suffix phrases ending at the `_`.
+
+```
+CHAT (today)      class right replace 28/28 · fill 22/22 · none 14/16 · target right 27/28
+                  would divert 28/28 · FALSE diverts (fill/none verified) 1 · $0.000587 · 363 ms
+JEV               kind right  replace 28/28 · fill 21/22 · none 16/16 · target right 28/28
+                  divert kind ≥ 0.5 ∧ target ≥ 0.5: 24–25/28 · ≥ 0.4: 26/28 · ≥ 0.3: 27/28 — 0 wrong targets, 0 FALSE diverts at every threshold
+                  $0.000080 · 266 ms · 1908 in
+```
+
+The first phrasing (a bare `is_replace` noul + target) separated badly (replace noul mean 0.72, min 0.33;
+fill max 0.81) and diverted 20/28. Two edits fixed it: examples per class on the `kind` Choice and a
+focus line on what "it" / "that" refers to, and the deictic rule on the target question. The one fill the
+choice still leans replace on (`8 in roman numerals _` → 8, 0.46) is the case that trips the chat
+detector too.
+
+End to end (`--arm e2e`: the REAL TransformBlankSource, fused on cerebras + the decision detector, value
+read off the fused rewrite by `deriveReplaceValue`, then the shared `verifyReplaceDetect` gate):
+
+```
+replace: spliced 21/28 (75%) · spliced value matches the suite 21/21 · target right 21/21
+fill/none: FALSE splices 0 · mean 505 ms per case
+not spliced (fused merge instead): a command chosen too long (whole sentence, contains the target),
+a low target confidence (402, 2.4.0, 12), two the fused rewrite changed beyond the target
+```
+
+Transform suites through `prod.ts --category literal,targeted --replace-parse chat|decisions`
+(instruction-first inputs, judge-scored on the final text with the splice applied):
+chat 55/57 (spliced 3) · decisions 56/57 (spliced 0 — the literal suite's targets recur inside the
+command, which the shared verify rejects on both arms). Parity on the suites; the difference is jitter
+on one targeted case.
+
+Reading: the detector chat call goes (−86% on that leg, $0.00059 → $0.00008), no false splice on the
+suite (the chat detector has one), every splice reproduces the suite's value; 1 in 4 single-piece
+edits that used to get the exact splice take the fused merge instead. Three things must agree before a
+splice — the kind choice, the target choice, the generative rewrite — and every string that reaches it
+came from the buffer.

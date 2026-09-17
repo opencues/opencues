@@ -132,6 +132,18 @@ a cue to the new path. Rulings (2026-09-17): the rule statement over a chat-writ
 67% pairwise, and free), sentences over clauses (34/34 vs 25/34 exact), fetch-on-landing over
 generate-at-detection. Authoring note: a rule over ~75 chars will truncate on an 80-column rail.
 
+**Replace-detect after step 7A.** The detector's four strings are three decisions and one
+derivation. `replaceCandidates` cuts the targets (words and 2-grams, ≤ 200) and the commands (suffix
+phrases ending at the `_`); one request answers `kind` (fill / replace / none, examples per class),
+`target` and `command`; `decideReplace` needs kind = replace ≥ 0.5 and a target ≥ 0.4 (low on purpose);
+`deriveReplaceValue` diffs the fused rewrite against the input with the command removed and accepts
+only a change that sits on the chosen target (overhanging by punctuation at most); the result goes
+through the SAME `verifyReplaceDetect` gate as the chat detector's (one guard, two producers). The
+chat detector remains the path without a provider. Question text is measured; change it with
+`replace-bench.mts`. Follow-up: a command candidate that swallows the target (the whole sentence
+chosen as the command) is rejected by verify and costs a splice; a shortest-phrase preference would
+recover it.
+
 Not on the decision layer yet (deliberately): `SentenceCueSource` rewrites (step 4's
 needs-rewrite gate), `ContradictionLlmSource`'s per-sentence claim parse
 (`contradiction-cues-mode`, off by default; a "does this sentence make a checkable
@@ -151,7 +163,8 @@ No visual change at any step; confidence is carried as data and left unrendered.
 | 4 ✅ | `gate:` in a cue file (runtime-only key) → `SentenceCueSource` asks it per sentence in one request per pass, rewrite call only at ≥ 0.5 and prose ≥ 0.3; `more-formal` ships one; the ask gate landed in step 3 (core 0.65.0) | rewrite call every sentence | `sentence-gate-bench.mts`: 0 noise (chat arm 1), 20/23 wanted vs chat 21/23, 29% fewer rewrite calls — done 2026-09-17; p50 on rewritten sentences +190 ms (serial gate; batching follow-up) |
 | 5 ✅ | the `_` router, design A (serial; ruled 2026-09-17): one stacked request (5-way choice + agreement noul per chat route) in the runtime resolver before the pass, `only` restricts to the routed source, cede fallback fans out over the rest; `decisions/underscore-router.ts`, shared `DecisionBreaker` (core 0.66.0, runtime 0.41.8) | 3.42 chat calls per `_` (measured; the 5 is the maximum) | `route-bench.mts`: router 95% right on the 59% it routes; end to end 0 answers lost, 157/171 same winner (13 of the rest are today's misroutes fixed), −24% $ per `_`, +239 ms p50; live host 3/3 with the scalar on (09 → fluid only, 102 → config-intent only) — done 2026-09-17 |
 | 6 ✅ | contradiction detection in full: the fused request carries a sentence-level unit Choice next to the verdict (`contradictionDecisionRequest`); a hit builds the cue from the two answers — note = the rule statement verbatim, span = the runtime-cut sentence — with no chat call; the rewrite is fetched when the caret lands on the cue (`reconcile`, `DynDefs.resolveDeferred`) (core 0.67.0, runtime 0.41.9) | the remaining contradiction call | `contradiction-span-bench.mjs` 34/34 right rule and 34/34 right sentence (clause 25/34, rejected); `contradiction-note-bench.mjs` rule statement preferred 85% / 67% pairwise over the chat tip; pause bench 0.00 chat calls per pause at parity — done 2026-09-17 |
-| 7 | candidate-selection legs (replace-detect span, spelling via dictionary) | replace-detect call; part of word-cues | literal suite reproduced by code; a spelling bench |
+| 7A ✅ | replace-detect as candidate selection: `replaceDecisionRequest` (kind / target / command over runtime-cut candidates) in parallel with fused, value from the fused rewrite's diff (`deriveReplaceValue`), then the shared `verifyReplaceDetect` gate (core 0.68.0) | the replace-detect call | `replace-bench.mts`: kind 28/28 · 21/22 · 16/16, target 28/28, 0 false diverts; e2e 21/28 spliced with 21/21 values reproduced, 0 false splices; transform literal + targeted at parity — done 2026-09-17 |
+| 7B | spelling via a dictionary (candidates at edit distance ≤ 2, Choice + "as typed") | part of word-cues | a spelling bench: misspelled-in-context + odd-but-correct with 0 corrections proposed |
 | 8 | spec: `questions:` block, chat-fallback semantics, `confidence` on a cue result | — | spec bump checklist |
 
 Every shipped step also updates **`tests/benchmarks/decisions/GAINS.md`**, the running
