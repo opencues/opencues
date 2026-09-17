@@ -16,7 +16,7 @@
 import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { ConfigLoader } from './config-loader';
 import type { DynDefs, WordDef } from '../state/dyn-defs';
-import { reconstructAsTyped, reconstructAsTypedWithMap } from '../state/dyn-defs';
+import { reconstructAsTyped, reconstructAsTypedWithMap, rewriteIsDeferred } from '../state/dyn-defs';
 import { dismissalTargetOf, isCueDismissed } from '../state/cue-dismissals';
 import type { HighlightState } from '../state/highlight-state';
 import type { SpanFillState } from '../state/span-fill';
@@ -285,6 +285,13 @@ function normalizeModelScalar(raw: string | undefined): string | undefined {
 /** The `_` router's latency budget: past it the pass fans out as today (docs/architecture/decisions.md § The `_` side). */
 export const UNDERSCORE_ROUTE_BUDGET_MS = 1000;
 
+function isDeferredRewrite(v: unknown): v is NonNullable<WordDef['deferredRewrite']> {
+  return !!v && typeof v === 'object'
+    && typeof (v as { statement?: unknown }).statement === 'string'
+    && typeof (v as { quote?: unknown }).quote === 'string'
+    && typeof (v as { commitmentId?: unknown }).commitmentId === 'string';
+}
+
 function isAbortError(err: unknown): boolean {
   return !!err && typeof err === 'object' && (err as { name?: string }).name === 'AbortError';
 }
@@ -523,7 +530,19 @@ export class Resolver {
      *  transaction so `undo _` can revert it; also enables the ACTION
      *  branch (undo/redo application) itself. Omit to disable both. */
     private undoJournal?: UndoJournal,
-  ) {}
+  ) {
+    // Deferred rewrites (plan step 6): the DynDefs hook Cycling calls on the
+    // press, and the caret-landing prefetch so the press is usually instant.
+    this.dynDefs.resolveDeferred = (i) => this.fetchDeferredRewrite(i);
+    this.hlState.onChange(() => {
+      if (!this.hlState.active || this.hlState.wordIndex === null) return;
+      const text = this.adapter.getText();
+      const span = this.dynDefs.findSpanContaining(this.hlState.wordIndex, splitWords(text));
+      const key = span ? span.originIdx : this.hlState.wordIndex;
+      const def = this.dynDefs.get(key);
+      if (def && rewriteIsDeferred(def)) void this.fetchDeferredRewrite(key);
+    });
+  }
 
   /** Pending config-intent transaction â opened lazily by the wrapped
    *  applyOpencuesScalar (scalar writes land at EMIT time inside core's
@@ -1081,6 +1100,44 @@ export class Resolver {
     // synchronously through BlankFill, separate from the resolver.
     const ids = sources.map(s => (s as { id?: string }).id ?? '?').join(', ');
     this.adapter.log('info', `Resolver: built with ${sources.length} sources [${ids}]`);
+  }
+
+  /** in-flight deferred-rewrite fetches, one per def object */
+  private readonly _deferredFetches = new WeakMap<WordDef, Promise<WordDef | null>>();
+  /** defs whose fetch came back empty — never asked twice */
+  private readonly _deferredFailed = new WeakSet<WordDef>();
+
+  /**
+   * Fetch a def's deferred rewrite (plan step 6) through the source that
+   * left it (`reconcileContradiction` on the session rail), and swap it into
+   * the def's second stop. Deduplicated per def; a null answer is remembered
+   * so the caret landing again does not spend another call. Resolves to the
+   * updated def, or null.
+   */
+  private fetchDeferredRewrite(key: number): Promise<WordDef | null> {
+    const def = this.dynDefs.get(key);
+    if (!def || !def.deferredRewrite) return Promise.resolve(null);
+    if (!rewriteIsDeferred(def)) return Promise.resolve(def);
+    if (this._deferredFailed.has(def)) return Promise.resolve(null);
+    const inFlight = this._deferredFetches.get(def);
+    if (inFlight) return inFlight;
+    const src = this._sources.find((x): x is { reconcileContradiction(r: WordDef['deferredRewrite'], signal?: AbortSignal): Promise<string | null> } =>
+      !!x && typeof (x as { reconcileContradiction?: unknown }).reconcileContradiction === 'function');
+    if (!src) { this._deferredFailed.add(def); return Promise.resolve(null); }
+    const t0 = Date.now();
+    const p = src.reconcileContradiction(def.deferredRewrite).then((rewrite) => {
+      const live = this.dynDefs.get(key);
+      if (live !== def) { this.adapter.log('debug', `Resolver: deferred rewrite for ${key} landed after the def moved — dropped`); return null; }
+      if (!rewrite) { this._deferredFailed.add(def); this.adapter.emitEvent?.('sentence-cue.rewrite', { wordIndex: key, ready: false, latencyMs: Date.now() - t0 }); return null; }
+      const updated: WordDef = { ...def, alternatives: [def.alternatives[0], rewrite] };
+      this.dynDefs.set(key, updated);
+      this.adapter.log('info', `Resolver: deferred rewrite ready at ${key} (${Date.now() - t0}ms)`);
+      this.adapter.emitEvent?.('sentence-cue.rewrite', { wordIndex: key, ready: true, latencyMs: Date.now() - t0 });
+      return updated;
+    }).catch(() => { this._deferredFailed.add(def); return null; })
+      .finally(() => { this._deferredFetches.delete(def); });
+    this._deferredFetches.set(def, p);
+    return p;
   }
 
   /** Stable string fingerprint of the source-affecting settings. When this
@@ -2538,6 +2595,11 @@ export class Resolver {
           noteLabels: (r.metadata as { noteLabels?: readonly string[] } | undefined)?.noteLabels,
           // Decision-sourced confidence rides along as data; nothing reads it yet.
           ...(typeof r.confidence === 'number' ? { confidence: r.confidence } : {}),
+          // A rewrite the source left for later (plan step 6): fetched by
+          // `fetchDeferredRewrite` when the caret lands here or on the press.
+          ...(isDeferredRewrite((r.metadata as { deferredRewrite?: unknown } | undefined)?.deferredRewrite)
+            ? { deferredRewrite: (r.metadata as { deferredRewrite: WordDef['deferredRewrite'] }).deferredRewrite }
+            : {}),
         });
         wrote++;
 

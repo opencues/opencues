@@ -200,7 +200,7 @@ function fctx(text: string): CueContext {
   return { text, words: text.split(/\s+/).filter(Boolean), sessionCommitments: WATCH, tipsCatalog: PACK_F, cursor: text.length };
 }
 /** answers keyed by question id; anything not listed answers none / 0 */
-function fakeFused(plan: { tip?: string; tipConf?: number; gate?: string; gateConf?: number; ask?: number }): DecisionProvider & { requests: DecisionRequest[] } {
+function fakeFused(plan: { tip?: string; tipConf?: number; gate?: string; gateConf?: number; ask?: number; unit?: string }): DecisionProvider & { requests: DecisionRequest[] } {
   const requests: DecisionRequest[] = [];
   return {
     id: 'fake', model: 'fake-1', requests,
@@ -211,7 +211,7 @@ function fakeFused(plan: { tip?: string; tipConf?: number; gate?: string; gateCo
         if (q.type === 'noul') { answers[id] = { type: 'noul', noul: plan.ask ?? 0 }; continue; }
         if (q.type !== 'choice') continue;
         const ids = Object.keys(q.criteria);
-        const want = id === 'gate' ? (plan.gate ?? 'none') : (plan.tip ?? 'none');
+        const want = id === 'gate' ? (plan.gate ?? 'none') : id === 'unit' ? (plan.unit ?? 'none') : (plan.tip ?? 'none');
         const conf = id === 'gate' ? (plan.gateConf ?? 0.9) : (plan.tipConf ?? 0.9);
         const pick = ids.includes(want) ? want : 'none';
         const probabilities: Record<string, number> = {};
@@ -231,8 +231,8 @@ describe('SessionCueSource — one decision request per pause', () => {
     const out = await src.getCues(fctx('bumped the README badge'));
     expect(d.requests.length).toBe(1);
     const req = d.requests[0];
-    expect(Object.keys(req.questions).sort()).toEqual(['ask', 'gate', 'tip0']);
-    expect(req.state).toEqual({ draft: 'bumped the README badge', decisions: { c1: 'Do not add new npm dependencies' } });
+    expect(Object.keys(req.questions).sort()).toEqual(['ask', 'gate', 'tip0', 'unit']);
+    expect(req.state).toEqual({ draft: 'bumped the README badge', decisions: { c1: 'Do not add new npm dependencies' }, units: { s1: 'bumped the README badge' } });
     // everything none / below the ask gate → no chat call at all
     expect(r.calls).toEqual({ contradiction: 0, ask: 0 });
     expect(out.results).toEqual([]);
@@ -247,6 +247,20 @@ describe('SessionCueSource — one decision request per pause', () => {
     expect(r.calls).toEqual({ contradiction: 1, ask: 0 });
     expect(out.results[0].cueTip).toBe('⚠ no new deps');
     expect(out.results[0].confidence).toBe(0.95);
+  });
+
+  it('a gate hit WITH a unit answer (step 6) lands with no chat call: note = the decision statement, rewrite deferred', async () => {
+    const d = fakeFused({ gate: 'c1', gateConf: 0.95, unit: 's1', tip: 't1', ask: 0.99 });
+    const r = router(CONTRADICTS, A_QUESTION);
+    const src = new SessionCueSource({ ...base, httpAdapter: r.adapter, enableContradiction: true, enableAsk: true, enableSemanticTips: true, decisions: d });
+    const out = await src.getCues(fctx('lets add the redis npm package'));
+    expect(d.requests.length).toBe(1);
+    expect(r.calls).toEqual({ contradiction: 0, ask: 0 });
+    expect(out.results[0].cueTip).toBe('⚠ Do not add new npm dependencies');
+    expect(out.results[0].alternatives).toEqual(['lets add the redis npm package', 'lets add the redis npm package']);
+    expect((out.results[0].metadata as { deferredRewrite: { quote: string } }).deferredRewrite.quote).toBe('lets add the redis npm package');
+    // the rail exposes the deferred rewrite to the runtime
+    r.adapter; expect(typeof src.reconcileContradiction).toBe('function');
   });
 
   it('a tip hit lands with no chat call at all', async () => {
@@ -290,7 +304,7 @@ describe('SessionCueSource — one decision request per pause', () => {
     const src = new SessionCueSource({ ...base, httpAdapter: r.adapter, enableContradiction: true, enableSemanticTips: true, decisions: d, decisionsFanout: false });
     await src.getCues(fctx('bumped the README badge'));
     expect(d.requests.length).toBe(2);
-    expect(d.requests.map((q) => Object.keys(q.questions).join(',')).sort()).toEqual(['gate', 'tip0']);
+    expect(d.requests.map((q) => Object.keys(q.questions).join(',')).sort()).toEqual(['gate,unit', 'tip0']);
   });
 });
 

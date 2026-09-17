@@ -118,6 +118,20 @@ not before step 5). Design B (fire the fan-out, cancel the losers when the route
 rejected: cached-prefix chat calls finish before a 250 ms router does, and a cancelled
 non-streaming call may still be billed, so it could only ever have saved the tail.
 
+**The contradiction leg after step 6.** Detection is two questions on the pause request (the verdict
+Choice over decision ids + `none`, the unit Choice over the draft's sentences + `none`) and no chat
+call. Grounding is structural: the cited id is an option key, the span is a sentence the runtime cut
+(`segmentSentences`), and the note is the decision's own statement. The one generative call left is
+the reconcile (`SESSION_CONTRADICTION_RECONCILE_SYSTEM`: DECISION + SENTENCE → the sentence rewritten,
+or NONE), which the runtime asks for only when the person goes to the cue: the def registers as a
+two-stop toggle whose second stop equals the first (`rewriteIsDeferred`), the caret landing on the
+span prefetches through `DynDefs.resolveDeferred` (the Resolver owns the sources), and the press
+applies the rewrite if it has landed, on arrival if not, and never after an edit. A `none` unit on a
+gate hit (never seen on 34 flagged pauses) falls through to the chat matcher, so the leg can never lose
+a cue to the new path. Rulings (2026-09-17): the rule statement over a chat-written tip (judged 85% /
+67% pairwise, and free), sentences over clauses (34/34 vs 25/34 exact), fetch-on-landing over
+generate-at-detection. Authoring note: a rule over ~75 chars will truncate on an 80-column rail.
+
 Not on the decision layer yet (deliberately): `SentenceCueSource` rewrites (step 4's
 needs-rewrite gate), `ContradictionLlmSource`'s per-sentence claim parse
 (`contradiction-cues-mode`, off by default; a "does this sentence make a checkable
@@ -136,7 +150,7 @@ No visual change at any step; confidence is carried as data and left unrendered.
 | 3 ✅ | one Jev request per pause in `SessionCueSource.getCuesFused` (tips Choice + contradiction gate + ask noul; `decisions-fanout`; core 0.64.0) | 2–3 chat calls per pause | `pause-bench.mjs`: 0.23 chat calls per pause instead of 2, $0.000200 vs $0.001570, p50 238 vs 418 ms, accuracy at parity — done 2026-09-17 |
 | 4 ✅ | `gate:` in a cue file (runtime-only key) → `SentenceCueSource` asks it per sentence in one request per pass, rewrite call only at ≥ 0.5 and prose ≥ 0.3; `more-formal` ships one; the ask gate landed in step 3 (core 0.65.0) | rewrite call every sentence | `sentence-gate-bench.mts`: 0 noise (chat arm 1), 20/23 wanted vs chat 21/23, 29% fewer rewrite calls — done 2026-09-17; p50 on rewritten sentences +190 ms (serial gate; batching follow-up) |
 | 5 ✅ | the `_` router, design A (serial; ruled 2026-09-17): one stacked request (5-way choice + agreement noul per chat route) in the runtime resolver before the pass, `only` restricts to the routed source, cede fallback fans out over the rest; `decisions/underscore-router.ts`, shared `DecisionBreaker` (core 0.66.0, runtime 0.41.8) | 3.42 chat calls per `_` (measured; the 5 is the maximum) | `route-bench.mts`: router 95% right on the 59% it routes; end to end 0 answers lost, 157/171 same winner (13 of the rest are today's misroutes fixed), −24% $ per `_`, +239 ms p50; live host 3/3 with the scalar on (09 → fluid only, 102 → config-intent only) — done 2026-09-17 |
-| 6 | contradiction detection in full (clause Choice for the span; reconcile generated lazily) | the remaining contradiction call | same benches; span exactness |
+| 6 ✅ | contradiction detection in full: the fused request carries a sentence-level unit Choice next to the verdict (`contradictionDecisionRequest`); a hit builds the cue from the two answers — note = the rule statement verbatim, span = the runtime-cut sentence — with no chat call; the rewrite is fetched when the caret lands on the cue (`reconcile`, `DynDefs.resolveDeferred`) (core 0.67.0, runtime 0.41.9) | the remaining contradiction call | `contradiction-span-bench.mjs` 34/34 right rule and 34/34 right sentence (clause 25/34, rejected); `contradiction-note-bench.mjs` rule statement preferred 85% / 67% pairwise over the chat tip; pause bench 0.00 chat calls per pause at parity — done 2026-09-17 |
 | 7 | candidate-selection legs (replace-detect span, spelling via dictionary) | replace-detect call; part of word-cues | literal suite reproduced by code; a spelling bench |
 | 8 | spec: `questions:` block, chat-fallback semantics, `confidence` on a cue result | — | spec bump checklist |
 

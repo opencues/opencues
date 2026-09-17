@@ -179,6 +179,24 @@ ask-cues runs. This removes the earlier duplication where ask-cues had its own
 contradiction-catching exception. `build-sources.ts` constructs the fused source
 whenever `enableSessionContradiction || enableAskCues`, passing per-half flags.
 
+**Detection on the decision layer (core 0.67.0, Jev plan step 6).** With the
+decision provider the source asks TWO questions on one request
+(`contradictionDecisionRequest`): the verdict Choice above, and a unit Choice
+over the draft's sentences (cut by `segmentSentences`, keyed `units.sN`). On
+a hit the cue is built from the answers with no chat call: the span is the
+chosen sentence (a substring by construction), the note is the decision's own
+statement (`⚠ <statement>`), the gate confidence rides `confidence`, and the
+result carries `metadata.deferredRewrite = { commitmentId, statement, quote }`
+with `alternatives: [sentence, sentence]`. The reconciled rewrite is fetched
+by the runtime when the caret lands on the span (`reconcile`, one small call:
+`SESSION_CONTRADICTION_RECONCILE_SYSTEM`) and applied on the press; a NONE /
+echo / failure leaves the note in place and is never asked twice. A `none`
+unit on a gate hit falls through to the chat matcher. Measured on 34 flagged
+pauses across six rulebooks: right rule 34/34, right sentence 34/34; the real
+rail at 0.00 chat calls per pause at parity
+(`tests/benchmarks/decisions/RESULTS.md` § step 6). The chat matcher below
+remains the path without a provider, and the fallback.
+
 ## Grounding + safety invariants
 
 This engine lets the model AUTHOR the contradiction (unlike the deterministic

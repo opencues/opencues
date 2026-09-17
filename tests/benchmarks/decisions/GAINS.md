@@ -142,6 +142,26 @@ Per hour of scenario (a) (15 underscores): $0.063 → $0.048 on the `_` side. Sm
 against the pause side; the router is also the request steps 6–7 stack their candidate questions
 on (replace-detect spans, spelling), which is why it is a serial request and not a cancel.
 
+## Step 6 — contradiction detection in full (core 0.67.0, runtime 0.41.9)
+
+**What moved:** the last chat call on the pause side. The fused request now carries a sentence-level
+unit Choice next to the verdict; on a hit the cue is built from the two answers (note = the rule
+statement verbatim, span = the runtime-cut sentence) with no chat call. The reconciled rewrite is
+generated only when the person goes to the cue (caret lands on the span), one small call.
+
+Per pause (`pause-bench.mjs`, 26 pauses, same session):
+
+| | before (step 3) | after (step 6) | Δ |
+|---|---|---|---|
+| chat calls per pause | 0.20 | **0.00** (+1 Jev) | the last one |
+| $ per pause | 0.000109 | 0.000100 | −8% (the hits were rare) |
+| latency p50 / mean | 238 / 345 ms | 250 / 269 ms | a flagged pause no longer waits for a chat call (~730 → ~270 ms) |
+| tips / contradiction / false alarms | 8/8 · 5/5 · 0/13 | 8/8 · 5/5 · 0/13 | parity |
+
+Per hour of scenario (a): the pause side is 120 Jev requests and zero chat calls, ≈ $0.012/h against
+the $0.307/h baseline. The remaining chat spend is the `_` side (step 5) and the on-demand calls (a
+rewrite when the person goes to a cue, an ask question above its gate).
+
 ## Cumulative
 
 | after step | chat calls / hour | $ / hour | saving vs baseline | pause ms | `_` ms |
@@ -152,6 +172,7 @@ on (replace-detect spans, spelling), which is why it is a serial request and not
 | 3 (one request per pause) | 103 chat + 120 Jev | 0.120 (measured per-pause) | 61% | 238 p50 / 345 mean (measured) | 422 |
 | 4 (sentence gate) | (a) unchanged; (d) 60 → ~43 rewrite calls | (d) 0.146 → ≈0.139 | (d) ≈ −58% vs its baseline 0.333 | — | 422 |
 | 5 (`_` router) | (a) 15 `_` × 3.42 → 2.51 chat + 15 Jev | (a) `_` side 0.063 → 0.048 (measured per-`_`) | (a) total ≈ 0.105/h, ≈ −66% | — | 687 p50 / 804 mean (measured; was 448 / 539) |
+| 6 (contradiction in full) | (a) 38 chat (all `_`) + 135 Jev | ≈ 0.060/h (pause 0.012 + `_` 0.048) | ≈ −80% | 250 p50 / 269 mean (measured) | 687 / 804 |
 
 Modelled rows are from the cost model before the step ships and are replaced with measured
 rows when it does.

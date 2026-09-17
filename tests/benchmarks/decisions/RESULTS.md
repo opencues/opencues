@@ -200,3 +200,57 @@ gives the router a 1000 ms budget and fans out past it (no breaker trip).
 Reading: −24% $ per `_`, 0 answers lost, 13 misroutes of today's fan-out corrected, one introduced;
 +239 ms p50 on every `_` (the serial router in front of the first chat call, the trade ruled
 acceptable). The ledger's `_` column moves from 422 (modelled) to the measured 448 → 687.
+
+## contradiction detection in full — step 6 (verdict + sentence on one request, note = the rule, rewrite on demand)
+
+2026-09-17 · jev-1.13.0 · rulings: note text = the rule statement verbatim ("just state the rule to keep it
+cheap"), span = sentence-level unit Choice, rewrite fetched when the caret lands on the cue.
+
+**Bench B — the span** (`contradiction-span-bench.mjs`; corpus `contradiction-corpus.mjs`: the company-rules
+bench's six rulebooks, every violating sentence embedded between two of its domain's compliant / unrelated
+sentences → 34 flagged pauses, ≥ 3 sentences each, reference span known by construction):
+
+```
+JEV/sentence   right rule 34/34 · unit = reference sentence 34/34 · outside 0 · none 0
+               unit confidence mean 0.99 / min 0.84 · 286 ms · $0.000038 per pause · 894 in
+JEV/clause     right rule 34/34 · unit = reference sentence 25/34 · inside it 9/34 · outside 0
+               unit confidence mean 0.99 / min 0.92 · 267 ms · $0.000038 per pause
+CHAT (today)   flagged 34/34 · right rule 34/34 · quote = reference 32/34 · inside 2/34 · 467 ms · $0.000579
+```
+
+Sentence-level is exact on every pause, on the same request as the verdict. Clause-level never leaves the
+right sentence but sub-picks on 9/34, which buys nothing the sentence arm lacks. Shipped: sentences, cut
+by `segmentSentences` (the sentence-cue segmenter), keyed `units.sN`.
+
+**Bench A — the note** (`contradiction-note-bench.mjs`, same 34 pauses; blind pairwise, both orders,
+two judges with thinking off):
+
+```
+                 chars mean / max   fits 80 cols   gpt-oss-120b   qwen-3.8-27b
+CHAT (today)     54 / 85            31/34          32%            15%
+RULE (verbatim)  69 / 102           27/34          85%            67%
+QUOTED           125 / 158          0/34           33%            68%
+```
+
+Both judges prefer the rule statement to the chat-written tip by a wide margin; QUOTED (rule + "you
+wrote: …") ties RULE on qwen and never fits the rail. RULE misses the 80 columns on 7/34 because some
+shipped rules run to 102 chars — an authoring note for RULES.md (keep rules under ~75 chars), not a code
+change. Shipped: `⚠ <rule statement>`.
+
+**Per pause, the real rail** (`pause-bench.mjs`, 26 pauses, same session; the FUSED arm now carries the
+unit Choice and a contradiction hit makes no chat call):
+
+```
+CHAT (today)   tips 8/8 · contradiction 5/5 · false alarms 0/13 · p50 418 / mean 513 ms · 2.00 chat per pause · $0.001600
+FUSED          tips 8/8 · contradiction 5/5 · false alarms 0/13 · p50 250 / mean 269 ms · 0.00 chat + 1.00 Jev · $0.000100
+```
+
+Step 3's fused row was 0.20 chat calls per pause (the contradiction hits); step 6 takes the pause side to
+zero chat calls. `company-rules-bench.mjs --gate typesafe` (which replays the gate then the chat matcher,
+not the source) is unchanged: 28/28 recall, 22/22 restraint, 0 lost.
+
+**The rewrite** (`SESSION_CONTRADICTION_RECONCILE_SYSTEM`): one small chat call (DECISION + SENTENCE →
+the sentence rewritten, or NONE), fetched by the runtime when the caret lands on the cue's span
+(`DynDefs.resolveDeferred`, deduplicated, a null remembered), applied on Ctrl+Alt+↑ / `_` — instantly if
+it has landed, on arrival if not, never after an edit. Not benched for quality here: it is the same
+rewrite the matcher used to emit, now asked for on its own.

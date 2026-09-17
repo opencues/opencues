@@ -33,7 +33,7 @@ import type { CueContext, CueSource, CueSourceResult } from '../types';
 import { SessionContradictionSource, type SessionContradictionSourceConfig } from '../contradiction/session-contradiction-source';
 import { ToolPromptCueSource } from './tool-prompt-source';
 import { SemanticTipsSource } from './semantic-tips-source';
-import { contradictionGateRequest } from '../contradiction/session-contradiction-source';
+import { contradictionDecisionRequest, type ContradictionUnit, type DeferredRewrite } from '../contradiction/session-contradiction-source';
 import { dispatchDecision } from '../decisions/dispatch';
 import { DecisionBreaker } from '../decisions/breaker';
 import type { DecisionQuestion, DecisionAnswer, ChoiceAnswer } from '../decisions/types';
@@ -106,6 +106,11 @@ export class SessionCueSource implements CueSource {
     return (this.contradiction?.supports(context) ?? false) || (this.tips?.supports(context) ?? false) || (this.ask?.supports(context) ?? false);
   }
 
+  /** The deferred contradiction rewrite (plan step 6), for the runtime to fetch when the person goes to the cue. */
+  reconcileContradiction(rewrite: DeferredRewrite, signal?: AbortSignal): Promise<string | null> {
+    return this.contradiction ? this.contradiction.reconcile(rewrite, signal) : Promise.resolve(null);
+  }
+
   async getCues(context: CueContext): Promise<CueSourceResult> {
     const empty: CueSourceResult = { results: [] };
     if (this.cfg.decisions && (this.cfg.decisionsFanout ?? true) && this.decisionsHealthy()) {
@@ -159,15 +164,20 @@ export class SessionCueSource implements CueSource {
     const empty: CueSourceResult = { results: [] };
     const text = context.text ?? '';
     const questions: Record<string, DecisionQuestion> = {};
-    let state: { draft: string; decisions?: Record<string, string> } = { draft: text };
+    let state: { draft: string; decisions?: Record<string, string>; units?: Record<string, string> } = { draft: text };
     const tipsOn = !!this.tips?.supports(context);
     const contraOn = !!this.contradiction?.supports(context);
     const askOn = !!this.ask?.supports(context);
+    let units: ContradictionUnit[] = [];
     if (tipsOn) Object.assign(questions, this.tips!.buildDecisionQuestions(text, context.tipsCatalog as TipsCatalog));
     if (contraOn) {
-      const g = contradictionGateRequest(text, context.sessionCommitments as SessionCommitmentsSnapshot);
-      state = { ...state, decisions: g.state.decisions };
+      // the gate AND the unit Choice (plan step 6): on a hit the leg builds
+      // its cue from the two answers with no chat call
+      const g = contradictionDecisionRequest(text, context.words, context.sessionCommitments as SessionCommitmentsSnapshot);
+      state = { ...state, decisions: g.state.decisions, units: g.state.units };
       questions.gate = g.questions.gate;
+      questions.unit = g.questions.unit;
+      units = g.units;
     }
     if (askOn) questions.ask = { type: 'noul', instructions: ASK_GATE_QUESTION };
     if (Object.keys(questions).length === 0) return empty;
@@ -187,7 +197,8 @@ export class SessionCueSource implements CueSource {
     // Contradiction first (its chat call runs only on a gate hit), then tips
     // (no call at all), then ask (its chat call only above the gate).
     if (contraOn) {
-      const c = await this.contradiction!.getCues(context, answers.gate as ChoiceAnswer).catch(() => empty);
+      const unit = answers.unit && answers.unit.type === 'choice' ? { answer: answers.unit as ChoiceAnswer, units } : undefined;
+      const c = await this.contradiction!.getCues(context, answers.gate as ChoiceAnswer, unit).catch(() => empty);
       if (c.results.length > 0) return c;
     }
     if (tipsOn) {

@@ -12,7 +12,7 @@
 
 import type { HostAdapter, KeyEvent, ProcessHandle, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
-import { DynDefs, inlineNoteText, markCycledEver, noteHintKey, type WordDef } from '../state/dyn-defs';
+import { DynDefs, inlineNoteText, markCycledEver, noteHintKey, type WordDef, rewriteIsDeferred } from '../state/dyn-defs';
 import { dismissalTargetOf, forgetOfferRemainingMs, isCueDismissed, pressDismiss } from '../state/cue-dismissals';
 import type { ConfigLoader, BlankEntry } from './config-loader';
 import { splitWords } from './navigation';
@@ -979,6 +979,21 @@ export class Cycling {
     // def from a typed pack word left with spec 0.12.
     const def = this.dynDefs.get(wordIndex);
     if (!def || def.alternatives.length <= 1) return false;
+    // A deferred rewrite (plan step 6) not yet fetched: ask for it and apply
+    // it when it lands, if the buffer is still what the press saw. Nothing
+    // happens on a null (no clean rewrite, or the call failed) — the note
+    // stays. The press is consumed either way.
+    if (rewriteIsDeferred(def)) {
+      const p = this.dynDefs.resolveDeferred?.(wordIndex);
+      if (!p) return false;
+      this.adapter.log('debug', `Cycling: fetching the deferred rewrite at ${wordIndex} on press`);
+      void p.then((updated) => {
+        if (!updated || rewriteIsDeferred(updated)) return;
+        if (this.adapter.getText() !== event.text) { this.adapter.log('debug', 'Cycling: deferred rewrite landed after an edit — not applied'); return; }
+        this.applyAltCycle(event, updated, direction, wordIndex, 'static-alts');
+      });
+      return true;
+    }
     return this.applyAltCycle(event, def, direction, wordIndex, 'static-alts');
   }
 

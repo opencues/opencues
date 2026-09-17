@@ -202,3 +202,87 @@ describe('SessionContradictionSource — decision pre-gate', () => {
     expect(c.confidence).toBeUndefined();
   });
 });
+
+// ── the decision-only path (Jev plan step 6) ──────────────────────────────
+import { contradictionDecisionRequest, SESSION_CONTRADICTION_RECONCILE_SYSTEM } from './session-contradiction-source';
+import { validateDecisionRequest } from '../decisions/dispatch';
+
+/** answers gate AND unit */
+function fakeDecision(gate: string, unit: string, conf = 0.9): DecisionProvider & { requests: DecisionRequest[] } {
+  const requests: DecisionRequest[] = [];
+  return {
+    id: 'fake', model: 'fake-1', requests,
+    async ask(req) {
+      requests.push(req);
+      const answers: Record<string, unknown> = {};
+      for (const [id, q] of Object.entries(req.questions)) {
+        if (q.type !== 'choice') continue;
+        const ids = Object.keys(q.criteria);
+        const want = id === 'gate' ? gate : unit;
+        const pick = ids.includes(want) ? want : 'none';
+        const probabilities: Record<string, number> = {};
+        for (const o of ids) probabilities[o] = o === pick ? conf : (1 - conf) / Math.max(1, ids.length - 1);
+        answers[id] = { type: 'choice', choice: pick, probabilities, confidence: conf };
+      }
+      return { answers: answers as never, model: 'fake-1', usage: { inputTokens: 5, outputTokens: 2 }, ms: 1 };
+    },
+  };
+}
+const THREE = 'The zorb tests pass. Lets add the redis npm package for caching. Standup moves to ten.';
+
+describe('SessionContradictionSource — decision-only path (step 6)', () => {
+  it('the request carries the gate AND a unit Choice over the runtime-cut sentences, keyed by id', () => {
+    const req = contradictionDecisionRequest(THREE, THREE.split(/\s+/), WATCHLIST!);
+    expect(Object.keys(req.state.units)).toEqual(['s1', 's2', 's3']);
+    expect(req.state.units.s2).toBe('Lets add the redis npm package for caching.');
+    expect(Object.keys(req.questions.unit.criteria)).toEqual(['s1', 's2', 's3', 'none']);
+    expect(THREE.slice(req.units[1].start, req.units[1].end)).toBe(req.state.units.s2);
+    expect(() => validateDecisionRequest({ state: req.state, questions: req.questions })).not.toThrow();
+  });
+
+  it('gate + unit → the cue is built from data: no chat call, note = the decision statement, span = the sentence, rewrite deferred', async () => {
+    const http = countingAdapter(HIT);
+    const d = fakeDecision('c2', 's2', 0.91);
+    const src = new SessionContradictionSource({ ...baseConfig, httpAdapter: http, decisions: d });
+    const [c] = (await src.getCues(ctx(THREE))).results;
+    expect(http.calls).toBe(0);
+    expect(d.requests.length).toBe(1);
+    expect(c.cueTip).toBe('⚠ Do not add new npm dependencies');
+    expect(THREE.slice(c.spanStart!, c.spanEnd!)).toBe('Lets add the redis npm package for caching.');
+    expect(c.alternatives).toEqual(['Lets add the redis npm package for caching.', 'Lets add the redis npm package for caching.']);
+    expect(c.confidence).toBe(0.91);
+    expect(c.metadata).toMatchObject({ deferredRewrite: { commitmentId: 'c2', statement: 'Do not add new npm dependencies', quote: 'Lets add the redis npm package for caching.' }, unit: { choice: 's2' } });
+  });
+
+  it('the fused path hands the unit answer in and makes no decision call of its own', async () => {
+    const http = countingAdapter(HIT);
+    const src = new SessionContradictionSource({ ...baseConfig, httpAdapter: http, decisions: fakeDecision('c2', 's2') });
+    const req = contradictionDecisionRequest(THREE, THREE.split(/\s+/), WATCHLIST!);
+    const gate = { type: 'choice' as const, choice: 'c2', probabilities: { c2: 0.9 }, confidence: 0.9 };
+    const unit = { answer: { type: 'choice' as const, choice: 's2', probabilities: { s2: 0.9 }, confidence: 0.9 }, units: req.units };
+    const r = await src.getCues(ctx(THREE), gate, unit);
+    expect(http.calls).toBe(0);
+    expect(r.results[0].cueTip).toBe('⚠ Do not add new npm dependencies');
+  });
+
+  it('a `none` unit on a gate hit falls through to the chat call (never loses a cue)', async () => {
+    const http = countingAdapter(HIT);
+    const src = new SessionContradictionSource({ ...baseConfig, httpAdapter: http, decisions: fakeDecision('c2', 'none') });
+    const r = await src.getCues(ctx('lets add the redis npm package for caching'));
+    expect(http.calls).toBe(1);
+    expect(r.results[0].alternatives).toEqual(['add the redis npm package', 'ALT-REC use the built-in cache']);
+  });
+
+  it('reconcile: one small chat call; NONE, an echo or a failure → null; quotes stripped', async () => {
+    const seen: string[] = [];
+    const mk = (content: string): HttpAdapter => ({ post: async (_u: string, body: string) => { seen.push(body); return JSON.stringify({ choices: [{ message: { content } }] }); } });
+    const rw = { commitmentId: 'c2', statement: 'Do not add new npm dependencies', quote: 'Lets add the redis npm package for caching.' };
+    expect(await new SessionContradictionSource({ ...baseConfig, httpAdapter: mk('"Lets use the built-in cache instead of redis."') }).reconcile(rw)).toBe('Lets use the built-in cache instead of redis.');
+    expect(seen[0]).toContain(SESSION_CONTRADICTION_RECONCILE_SYSTEM.slice(0, 40));
+    expect(seen[0]).toContain('DECISION: Do not add new npm dependencies');
+    expect(await new SessionContradictionSource({ ...baseConfig, httpAdapter: mk('NONE') }).reconcile(rw)).toBeNull();
+    expect(await new SessionContradictionSource({ ...baseConfig, httpAdapter: mk(rw.quote) }).reconcile(rw)).toBeNull();
+    const bad: HttpAdapter = { post: async () => { throw new Error('boom'); } };
+    expect(await new SessionContradictionSource({ ...baseConfig, httpAdapter: bad }).reconcile(rw)).toBeNull();
+  });
+});

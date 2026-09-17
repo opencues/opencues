@@ -60,6 +60,16 @@ export interface WordDef {
    * chat-sourced cues.
    */
   readonly confidence?: number;
+  /**
+   * A rewrite the source did NOT generate at detection (session-contradiction
+   * on the decision layer, plan step 6): what the runtime needs to fetch it —
+   * the decision's statement and the flagged sentence. While it is unfetched
+   * the def is a two-stop toggle whose second stop equals the first
+   * (`alternatives[1] === alternatives[0]`), so the note and hint read as
+   * they always did; `DynDefs.resolveDeferred` swaps the real rewrite in
+   * when the caret lands on the span, or on the press that asks for it.
+   */
+  readonly deferredRewrite?: { readonly commitmentId: string; readonly statement: string; readonly quote: string };
 }
 
 /**
@@ -433,8 +443,22 @@ function altWordsOf(def: WordDef): string[] {
   return words;
 }
 
+/** True while a def's rewrite is still to be fetched (see WordDef.deferredRewrite). */
+export function rewriteIsDeferred(def: WordDef): boolean {
+  return !!def.deferredRewrite && def.alternatives.length === 2 && def.alternatives[1] === def.alternatives[0];
+}
+
 export class DynDefs {
   private _defs = new Map<number, WordDef>();
+
+  /**
+   * Fetch a def's deferred rewrite (wired by the Resolver, which owns the
+   * sources). Resolves to the UPDATED def once the rewrite is in place, or
+   * null when there is none (no clean rewrite, call failed, def gone).
+   * Cycling calls it on the press; the Resolver calls it when the caret
+   * lands on the span so the press is usually instant.
+   */
+  resolveDeferred: ((wordIndex: number) => Promise<WordDef | null>) | null = null;
 
   /** Optional debug sink for span-lifecycle tracing (slide / prune / drop /
    *  relocate). Off unless a host wires it (debug-mode gated at the sink). Used
