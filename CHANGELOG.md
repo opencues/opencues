@@ -7,7 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed — the decision package is found where an install puts it (`@opencues/core` 0.61.1, `opencues` CLI 0.7.17)
+### Fixed — the decision package is found where an install puts it; a calendar cue with nothing to advise emits nothing (`@opencues/core` 0.61.1, `opencues` CLI 0.7.17)
+- **Calendar advisory with no heads-up:** when the calendar-context cue's reply carried no `heads up:` flag, the source still emitted a def with one alternative and no note, a gray span the caret could sit in with nothing to show and nothing to press. It now emits nothing for that sentence (logged). Scenario test in `sentence-cue-source.test.ts`.
 - `loadDecisionLegs` resolves the package by explicit file path (walking up from core’s own location to `node_modules/@opencues/decisions`, then `~/opencues-decisions`, then the bare specifier last): inside Claude Code’s compiled Bun binary a bare-specifier or directory require from a disk module does not resolve, so the first install logged "no decision package is installed" with the package sitting in the fork. `opencues doctor` also tries `~/opencues-decisions` (the checkout `setup.sh` copies from); doctor additionally looks in every CC fork's `node_modules/@opencues/decisions`, so the row agrees with the runtime without `OPENCUES_DECISIONS_PATH`.
 
 ### Added — a decision seam: calibrated selection behind one interface, the package that answers loaded by name (`@opencues/core` 0.61.0, `@opencues/runtime` 0.41.5, `opencues` CLI 0.7.16)
