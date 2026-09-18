@@ -31,7 +31,7 @@ import { threeWayMerge } from './word-diff';
 import { applyScalarAndPersist } from '../util/apply-scalar';
 import { diffSplice, fillSplice, type PendingTransaction, type UndoJournal } from '../state/undo-journal';
 import { UndoApplier } from './undo';
-import { matchDeterministicAction, resolveDeviceInvocation, segmentStart } from '@opencues/core';
+import { matchDeterministicAction, resolveDeviceInvocation, resolveDataInvocation, segmentStart } from '@opencues/core';
 
 
 /** Minimal interface MarkdownRender exposes for rich-text injection.
@@ -217,6 +217,7 @@ interface UnderscoreRoutingLike {
   readonly agreement: number;
   readonly ms: number;
   readonly device?: { blank: string; value: string; confidence: number; valueConfidence: number; top: string } | null;
+  readonly table?: { table: string; confidence: number; top: string } | null;
 }
 
 interface CueResultLike {
@@ -1696,6 +1697,28 @@ export class Resolver {
             }
           } else {
             this.adapter.log('debug', `Resolver: [decision][device] ${usRouting.device.blank} · ${usRouting.device.value} resolves to nothing under the policy — fan-out`);
+          }
+        }
+        // A DATA TABLE the same request named (row #32, data-policy.ts): the
+        // argument is captured from the draft by grammar and looked up with
+        // no model at all. It stands over a `lookup` route (that is the chat
+        // path it replaces) but never over a settings / rewrite one; a
+        // verdict whose argument fails the floor or misses the table is
+        // ignored and the pass continues as it would have.
+        if ((!usRouting.sourceId || usRouting.route === 'lookup') && usRouting.table && this.options.fillDevice) {
+          const inv = resolveDataInvocation(usRouting.table, text);
+          if (inv) {
+            const segChar = segmentStart(text, text.lastIndexOf('_'));
+            const commandStartWord = text.slice(0, segChar).split(/\s+/).filter(Boolean).length;
+            this.adapter.log('info', `Resolver: [decision][table] ${usRouting.table.table} → ${inv.keyword} "${inv.value}" (${usRouting.table.top})`);
+            if (this.options.fillDevice(text, inv, commandStartWord)) {
+              this.adapter.emitEvent?.('resolver.table', { table: usRouting.table.table, blank: inv.blank, keyword: inv.keyword, value: inv.value, confidence: usRouting.table.confidence, generation });
+              stopAllAnimations();
+              if (this._inFlightController === controller) this._inFlightController = null;
+              return;
+            }
+          } else {
+            this.adapter.log('debug', `Resolver: [decision][table] ${usRouting.table.table} captures no argument under the policy — fan-out`);
           }
         }
         if (usRouting.sourceId) {

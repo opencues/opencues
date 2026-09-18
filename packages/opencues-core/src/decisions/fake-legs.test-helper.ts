@@ -5,7 +5,7 @@
  */
 import type {
   DecisionLegs, DecisionLegContext, PauseInput, PauseVerdict, TipsVerdict, TipsEntryForDecision,
-  ContradictionVerdict, CommitmentForDecision, DecisionUnit, UnderscoreRouting, RouteContext, ReplaceVerdict, SpellingVerdict, SettingsVerdict, DeviceVerdict,
+  ContradictionVerdict, CommitmentForDecision, DecisionUnit, UnderscoreRouting, RouteContext, ReplaceVerdict, SpellingVerdict, SettingsVerdict, DeviceVerdict, TableVerdict,
 } from './legs';
 import type { DecisionProvider } from './types';
 
@@ -22,6 +22,7 @@ export interface FakeLegsPlan {
   replace?: ReplaceVerdict | null;
   settings?: SettingsVerdict | null;
   device?: DeviceVerdict | null;
+  table?: TableVerdict | null;
   /** throw from every leg */
   throws?: Error;
   /** throw from these legs only */
@@ -94,5 +95,6 @@ export function fakeLegs(plan: FakeLegsPlan = {}): FakeLegs {
     async replace(input: string): Promise<ReplaceVerdict | null> { calls.push({ leg: 'replace', args: [input] }); await wait(); fail('replace'); return plan.replace ?? null; },
     async settings(input: string): Promise<SettingsVerdict | null> { calls.push({ leg: 'settings', args: [input] }); await wait(); fail('settings'); return plan.settings ?? null; },
     async device(input: string): Promise<DeviceVerdict | null> { calls.push({ leg: 'device', args: [input] }); await wait(); fail('device'); return plan.device ?? null; },
+    async table(input: string): Promise<TableVerdict | null> { calls.push({ leg: 'table', args: [input] }); await wait(); fail('table'); return plan.table ?? null; },
   };
 }

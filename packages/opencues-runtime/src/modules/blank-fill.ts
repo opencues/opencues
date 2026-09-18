@@ -16,6 +16,8 @@ import { isBlankConfigCycleable, keywordInWindow, lineOfWords, matchBlankShape, 
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import { isSingleAnswerBlank } from '../blanks/single-answer-builtins';
+import { lookupTable } from '../blanks/tables';
+import { countryFactAvailable } from '../blanks/countries';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import type { DynDefs } from '../state/dyn-defs';
 import { BlankLoadingAnimator, parseCustomFrames, parseRgbColors, parseAnsiColors, parseFrameIntervalMs, DEFAULT_RGB_PALETTE, DEFAULT_ANSI_PALETTE, type BlankLoadingMode } from './blank-loading';
@@ -455,6 +457,16 @@ export class BlankFill {
     if (usIdx < 0) return false;
     const blank = this.configLoader.blanks.get(inv.blank);
     if (!blank) { this.adapter.log('debug', `BlankFill: decision names ${inv.blank}, which is not registered here — nothing runs`); return false; }
+    // A DATA fill (core's data-policy.ts) is probed first: the table is the
+    // last gate, and a miss falls through to the chat fan-out rather than
+    // painting the blank's own `not in the table` over the writer's phrase.
+    if (inv.action === 'get' && inv.value) {
+      const argWords = inv.value.split(/\s+/).filter(Boolean);
+      const miss = inv.blank === 'tables' ? lookupTable(inv.keyword, inv.value) === null
+        : inv.blank === 'countries' ? !countryFactAvailable(inv.keyword, argWords)
+        : false;
+      if (miss) { this.adapter.log('debug', `BlankFill: decision ${inv.blank}/${inv.keyword} "${inv.value}" is not in the table — fan-out`); return false; }
+    }
     const commandStart = Math.max(0, Math.min(commandStartWord, usIdx));
     const slot: BlankSlot = {
       index: usIdx, keyword: inv.keyword, blankName: inv.blank,

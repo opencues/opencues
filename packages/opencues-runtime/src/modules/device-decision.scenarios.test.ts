@@ -91,3 +91,58 @@ describe('BlankFill.fillFromDecision — a device verdict fills over the writer\
     expect(adapter.blankInvokeCalls.length).toBe(0);
   });
 });
+
+// ── a data fill decided on the layer (data-policy.ts) ─────────────────────
+const TABLES = `---
+type: blank
+name: tables
+blankKeywords: hex for, default port for, calc
+---
+`;
+const COUNTRIES = `---
+type: blank
+name: countries
+blankKeywords: capital of
+---
+`;
+async function setupData(text: string) {
+  const adapter = new MockAdapter({ cwd: '/proj', files: { '/mock/CUES.md': TIPS, '/proj/blanks/tables/BLANK.md': TABLES, '/proj/blanks/countries/BLANK.md': COUNTRIES }, capabilities: ['render-override', 'dim-ranges', 'highlight-range', 'file-read', 'file-write', 'force-render', 'change-source', 'blank-invoke'] });
+  const loader = new ConfigLoader(adapter);
+  await loader.load();
+  const bf = new BlankFill(adapter, loader);
+  bf.subscribe();
+  adapter.pushTextSilently?.(text) ?? adapter.pushText(text);
+  return { adapter, bf };
+}
+
+describe('BlankFill.fillFromDecision — a table verdict is probed, then fills like a shape match', () => {
+  it('a hit runs the built-in over the captured argument and consumes the phrase', async () => {
+    const text = 'zephyr. what port does postgres use _';
+    const { adapter, bf } = await setupData(text);
+    adapter.stubBlankInvoke('tables:get', 'ALT-ONE');
+    expect(bf.fillFromDecision(text, { blank: 'tables', keyword: 'default port for', action: 'get', value: 'postgres' }, 1)).toBe(true);
+    await tick(); await tick();
+    expect(adapter.blankInvokeCalls).toHaveLength(1);
+    expect(adapter.blankInvokeCalls[0]).toMatchObject({ blankName: 'tables', action: 'get', args: ['default port for', 'postgres'] });
+    expect(adapter.setTextCalls.at(-1) ?? adapter.getText()).toBe('zephyr. ALT-ONE');
+  });
+
+  it('a miss in the table runs nothing, so the resolver falls through to the chat fan-out', async () => {
+    const text = 'what port does zorbd use _';
+    const { adapter, bf } = await setupData(text);
+    expect(bf.fillFromDecision(text, { blank: 'tables', keyword: 'default port for', action: 'get', value: 'zorbd' }, 0)).toBe(false);
+    expect(bf.fillFromDecision('capital of zorbland _', { blank: 'countries', keyword: 'capital of', action: 'get', value: 'zorbland' }, 0)).toBe(false);
+    expect(bf.fillFromDecision('calculate the risk _', { blank: 'tables', keyword: 'calc', action: 'get', value: 'the risk' }, 0)).toBe(false);
+    expect(adapter.blankInvokeCalls.length).toBe(0);
+    expect(adapter.getText()).toBe(text);
+  });
+
+  it('a country fact the bundled table holds fills', async () => {
+    const text = 'whats the capital of france _';
+    const { adapter, bf } = await setupData(text);
+    adapter.stubBlankInvoke('countries:get', 'ALT-CITY');
+    expect(bf.fillFromDecision(text, { blank: 'countries', keyword: 'capital of', action: 'get', value: 'france' }, 0)).toBe(true);
+    await tick(); await tick();
+    expect(adapter.setTextCalls.at(-1) ?? adapter.getText()).toBe('ALT-CITY');
+  });
+});

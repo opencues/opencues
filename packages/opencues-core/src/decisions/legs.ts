@@ -17,6 +17,8 @@
 import type { DecisionProvider } from './types';
 import type { DeviceVerdict } from './device-policy';
 export type { DeviceVerdict } from './device-policy';
+import type { TableVerdict } from './data-policy';
+export type { TableVerdict } from './data-policy';
 
 export interface DecisionLegContext {
   readonly signal?: AbortSignal;
@@ -91,6 +93,8 @@ export interface UnderscoreRouting {
   readonly ms: number;
   /** a device blank the same request named (stacked on the route; null when the package asks none, or none was named) */
   readonly device?: DeviceVerdict | null;
+  /** an offline table the same request named (stacked on the route; null when the package asks none, or none was named) */
+  readonly table?: TableVerdict | null;
 }
 export interface RouteContext extends DecisionLegContext {
   readonly threshold?: number;
@@ -148,6 +152,13 @@ export interface DecisionLegs {
    * built-ins only) before anything is invoked. Optional.
    */
   device?(input: string, ctx?: DecisionLegContext): Promise<DeviceVerdict | null>;
+  /**
+   * The offline table a `_` asks for (a unicode symbol, a CSS colour, an
+   * HTTP status, a port, a conversion, arithmetic, a chemistry constant, a
+   * country fact). The consumer captures the argument from the draft under
+   * `data-policy.ts` and looks it up with no model at all. Optional.
+   */
+  table?(input: string, ctx?: DecisionLegContext): Promise<TableVerdict | null>;
 }
 
 /** What `loadDecisionLegs` hands the package's factory. */

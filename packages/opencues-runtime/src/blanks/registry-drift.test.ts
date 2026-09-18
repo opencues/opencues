@@ -114,7 +114,7 @@ describe('createDefaultBlanksRegistry semantics', () => {
     // registry, hosts that depended on it break silently.
     const canonical = [
       'hackernews', 'stocks', 'weather', 'claude-status',
-      'dictionary', 'crypto', 'countries',
+      'dictionary', 'crypto', 'countries', 'tables',
       'opencues', 'sentinel',
     ];
     const present = new Set(BUILTIN_BLANKS.map(b => b.name));

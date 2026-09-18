@@ -194,7 +194,7 @@ opencues/
 │   │   ├── more-formal/CUE.md     # scope: sentence — the shipped sentence-cue
 │   │   ├── spelling/CUE.md        # Lowest priority (10) — catch-all spell-check
 │   │   └── tips-{claude-code,gemini-cli,opencode,shell}/CUE.md  # Per-host situation packs for the semantic-tips matcher (tip / when: / say:)
-│   └── blanks/                    # Folder-based cue-blanks (colocated scripts + state) — 17 shipped folders
+│   └── blanks/                    # Folder-based cue-blanks (colocated scripts + state) — 18 shipped folders
 │       ├── volume/
 │       │   ├── BLANK.md           # type: blank, blankKeywords: volume, blankScript: ./volume-blank.sh
 │       │   ├── volume-blank.sh    # Blank script: get/set system volume
@@ -205,7 +205,7 @@ opencues/
 │       │   └── BrightCtl.cs
 │       ├── example/                # blankScript: ./time-blank.sh — reference/template script blank
 │       ├── gh-issues/              # impl: ./blank.js — reference/template user-shipped JS blank
-│       ├── claude-status/, countries/, crypto/, dictionary/, hackernews/, location/, model/, stocks/, weather/  # impl-by-name (no explicit `impl:`) — resolve to <PascalCase(name)>Blank in @opencues/runtime
+│       ├── claude-status/, countries/, crypto/, dictionary/, hackernews/, location/, model/, stocks/, tables/, weather/  # impl-by-name (no explicit `impl:`) — resolve to <PascalCase(name)>Blank in @opencues/runtime
 │       ├── sentinel/                # Reserved built-in — mutates ~/.cues/IDENTITY.md (opencues identity)
 │       ├── note/                    # impl: NoteBlank — runtime-only (needs injected notesMdIO); keyword add/recall/delete over ~/.cues/NOTES.md (PROTOTYPE, issue #210)
 │       └── opencues/BLANK.md       # impl: OpenCuesSettingsBlank (selector+satellite)
@@ -749,12 +749,12 @@ done
 |---|---|---|---|
 | `SPEC.md` (open-standard) | `cues-spec` | 0.12 (draft) | exported as `SPEC_VERSION` from `@opencues/core` |
 | `package.json` (monorepo root) | `opencues` | 0.1.0 | private |
-| `packages/opencues-core/` | `@opencues/core` | 0.64.0 | private |
-| `packages/opencues-runtime/` | `@opencues/runtime` | 0.41.7 | private |
+| `packages/opencues-core/` | `@opencues/core` | 0.65.0 | private |
+| `packages/opencues-runtime/` | `@opencues/runtime` | 0.41.8 | private |
 | `packages/opencues-cli/` | `opencues` (real CLI) | 0.7.17 | **PUBLISHED on npm** (0.7.15) |
 | `integrations/claude-code/` | `@opencues/claude-code` | 0.2.13 | private |
 | `integrations/opencode/` | `@opencues/opencode` | 0.2.18 | private |
-| `integrations/chrome/` | `@opencues/chrome` | 0.2.204 | private |
+| `integrations/chrome/` | `@opencues/chrome` | 0.2.205 | private |
 | `integrations/gemini-cli/` | `@opencues/gemini-cli` | 0.2.11 | private |
 | `integrations/shell/` | `@opencues/shell` | 0.2.24 | private |
 | `integrations/windows/` | `@opencues/windows` | 0.2.4 | private |

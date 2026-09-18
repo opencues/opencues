@@ -138,7 +138,7 @@ describe('createBlanks — collision-guard invariant', () => {
     // registerUserBlanksFromBundle: `if (blanksRegistry.has(blankName)) skip`.
     const wouldBeShadowed = (name: string): boolean => blanks.has(name);
 
-    for (const name of ['hackernews', 'weather', 'claude-status', 'dictionary', 'crypto', 'countries', 'stocks']) {
+    for (const name of ['hackernews', 'weather', 'claude-status', 'dictionary', 'crypto', 'countries', 'tables', 'stocks']) {
       expect(wouldBeShadowed(name)).toBe(true);
     }
   });

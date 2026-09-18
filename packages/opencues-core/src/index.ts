@@ -577,6 +577,7 @@ export {
   type ReplaceVerdict,
   type SettingsVerdict,
   type DeviceVerdict,
+  type TableVerdict,
   type UnderscoreRoute,
   type UnderscoreRouting,
   type RouteContext,
@@ -596,4 +597,5 @@ export {
 } from './decisions/typesafe';
 export { underscoreRouteDraft, UNDERSCORE_ROUTE_MAX_CHARS, spellingEligible, edits1, SPELLING_MAX_CANDIDATES, replaceCandidates, REPLACE_MAX_CANDIDATES, REPLACE_MAX_COMMAND_WORDS } from './decisions/candidates';
 export { DEVICE_POLICY, resolveDeviceInvocation, deviceCanonicalCommand, deviceArgWithinFloor, DEVICE_ARG_MAX, type DeviceAction, type DevicePolicyEntry } from './decisions/device-policy';
+export { DATA_POLICY, resolveDataInvocation, captureDataArg, dataCanonicalCommand, dataArgWithinFloor, DATA_ARG_MAX, DATA_EXPR_MAX, type DataPolicyEntry } from './decisions/data-policy';
 export { createBridgedDecisionLegs, serveDecisionLeg, serializeLegArgs, DECISION_LEG_NAMES, type DecisionLegName, type DecisionBridgeRequest, type DecisionBridgeReply, type DecisionBridgeSend } from './decisions/bridge';

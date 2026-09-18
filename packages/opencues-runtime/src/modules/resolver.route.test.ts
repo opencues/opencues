@@ -225,3 +225,66 @@ describe('Resolver — the `_` router hands a decided device to BlankFill', () =
     expect(fake.passes).toHaveLength(1);
   });
 });
+
+// ── a data table the route named (row #32, data-policy.ts) ────────────────
+describe('Resolver — the `_` router hands a decided table to BlankFill', () => {
+  function setupTable(opts: { text: string; sourceId: string | null; route?: string | null; table: string | null; fillReturns?: boolean }) {
+    const adapter = new MockAdapter({ cwd: '/proj', files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD } });
+    adapter.pushText(opts.text);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    const fills: Array<{ text: string; inv: { blank: string; keyword: string; action: string; value?: string }; commandStartWord: number }> = [];
+    const resolver = new Resolver(adapter, new HighlightState(), new DynDefs(), loader, {
+      endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 10, httpAdapter: {},
+      fillDevice: (text, inv, commandStartWord) => { fills.push({ text, inv, commandStartWord }); return opts.fillReturns ?? true; },
+    });
+    const fake = fakeResolver({});
+    const r = resolver as unknown as Record<string, unknown>;
+    r._resolver = fake;
+    r._decisions = {
+      id: 'fake',
+      async route() {
+        return { route: opts.route ?? (opts.sourceId ? 'x' : null), sourceId: opts.sourceId, choice: 'x', confidence: 0.9, agreement: 0.9, ms: 1, device: null, table: opts.table ? { table: opts.table, confidence: 0.9, top: '' } : null };
+      },
+    };
+    r._routeBreaker = { down: false, healthy() { return true; }, trip() { /* */ } };
+    r._core = { UNDERSCORE_CHAT_SOURCE_IDS: CHAT_IDS };
+    return { adapter, resolver, fake, fills };
+  }
+
+  it('a table verdict → the argument is captured from the draft, BlankFill runs the built-in, the pass ends (no LLM at all)', async () => {
+    const { resolver, fake, fills } = setupTable({ text: 'zephyr. what port does postgres use _', sourceId: null, table: 'port' });
+    await resolver.resolveAndApply('zephyr. what port does postgres use _');
+    expect(fills).toEqual([{ text: 'zephyr. what port does postgres use _', inv: { blank: 'tables', keyword: 'default port for', action: 'get', value: 'postgres' }, commandStartWord: 1 }]);
+    expect(fake.passes).toHaveLength(0);
+  });
+
+  it('a table stands over a `lookup` route (that is the chat path it replaces)', async () => {
+    const { resolver, fake, fills } = setupTable({ text: 'capital of france _', sourceId: 'fluid-blank', route: 'lookup', table: 'capital' });
+    await resolver.resolveAndApply('capital of france _');
+    expect(fills).toEqual([{ text: 'capital of france _', inv: { blank: 'countries', keyword: 'capital of', action: 'get', value: 'france' }, commandStartWord: 0 }]);
+    expect(fake.passes).toHaveLength(0);
+  });
+
+  it('a settings or rewrite route wins over a table named on the same request', async () => {
+    const { resolver, fake, fills } = setupTable({ text: 'zorb mode off _', sourceId: 'config-intent', route: 'settings', table: 'port' });
+    await resolver.resolveAndApply('zorb mode off _');
+    expect(fills).toEqual([]);
+    expect(fake.passes).toHaveLength(2);
+  });
+
+  it('a verdict the policy rejects (unknown table, an argument off the floor) falls through to the fan-out', async () => {
+    const a = setupTable({ text: 'zorb it _', sourceId: null, table: 'zorb-script' });
+    await a.resolver.resolveAndApply('zorb it _');
+    expect(a.fills).toEqual([]); expect(a.fake.passes).toHaveLength(1);
+    const b = setupTable({ text: 'what port for http://zorb _', sourceId: null, table: 'port' });
+    await b.resolver.resolveAndApply('what port for http://zorb _');
+    expect(b.fills).toEqual([]); expect(b.fake.passes).toHaveLength(1);
+  });
+
+  it('BlankFill declining (a miss in the table) → the pass continues', async () => {
+    const { resolver, fake, fills } = setupTable({ text: 'what port does zorbd use _', sourceId: null, table: 'port', fillReturns: false });
+    await resolver.resolveAndApply('what port does zorbd use _');
+    expect(fills).toHaveLength(1);
+    expect(fake.passes).toHaveLength(1);
+  });
+});
