@@ -48,6 +48,17 @@ into "exec / fetch / file-write on prompt injection" territory.
 
 Memory pointer: feedback `Fluid-config classifier is settings-only`.
 
+**Selection is a different surface from generation.** The row above is
+about THIS classifier, an LLM that emits a free string. The decision
+layer (`decisions-provider: typesafe`, `docs/architecture/decisions.md`)
+can instead pick a registered blank's NAME from a list the runtime
+enumerated and take its value from a closed list or a regex over the
+draft, never from the model. That is ruled separately, and narrowly,
+in `security-audit.md` row #32 (tiered by code identity + user trust,
+grammar-only arguments, same `_` consent + undo journal). It does not
+widen fluid-config; a source that wants user blanks goes through #32's
+gate, not through this prompt.
+
 ---
 
 ## Source placement — priority 94
