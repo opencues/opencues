@@ -582,4 +582,15 @@ export {
   UNDERSCORE_CHAT_SOURCE_IDS,
 } from './decisions/legs';
 export { loadDecisionLegs, resetDecisionPackage, DECISIONS_PACKAGE, DECISIONS_PATH_ENV, DECISIONS_DEFAULT_ENV_KEY } from './decisions/load';
+export {
+  TypeSafeDecisionProvider,
+  TYPESAFE_ENDPOINT,
+  TYPESAFE_MODELS_ENDPOINT,
+  TYPESAFE_ENV_KEY,
+  TYPESAFE_PINNED_MODEL,
+  buildTypeSafeBody,
+  parseTypeSafeBody,
+  type TypeSafeProviderConfig,
+} from './decisions/typesafe';
+export { underscoreRouteDraft, UNDERSCORE_ROUTE_MAX_CHARS, spellingEligible, edits1, SPELLING_MAX_CANDIDATES, replaceCandidates, REPLACE_MAX_CANDIDATES, REPLACE_MAX_COMMAND_WORDS } from './decisions/candidates';
 export { createBridgedDecisionLegs, serveDecisionLeg, serializeLegArgs, DECISION_LEG_NAMES, type DecisionLegName, type DecisionBridgeRequest, type DecisionBridgeReply, type DecisionBridgeSend } from './decisions/bridge';
