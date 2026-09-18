@@ -98,6 +98,8 @@ export interface UnderscoreRouting {
 }
 export interface RouteContext extends DecisionLegContext {
   readonly threshold?: number;
+  /** `table-lookups-mode: on`: the package stacks its table question on the request; off (the default) leaves it out and `UnderscoreRouting.table` is null */
+  readonly tables?: boolean;
   /** identity-context `safe` catalog: the draft is dehydrated before it ships (the floor is defence in depth, not the hook) */
   readonly identityContext?: { readonly mode: string; readonly catalog: ReadonlyMap<string, string> };
 }

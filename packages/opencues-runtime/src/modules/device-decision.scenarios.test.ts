@@ -106,8 +106,8 @@ blankKeywords: capital of
 ---
 `;
 async function setupData(text: string) {
-  const adapter = new MockAdapter({ cwd: '/proj', files: { '/mock/CUES.md': TIPS, '/proj/blanks/tables/BLANK.md': TABLES, '/proj/blanks/countries/BLANK.md': COUNTRIES }, capabilities: ['render-override', 'dim-ranges', 'highlight-range', 'file-read', 'file-write', 'force-render', 'change-source', 'blank-invoke'] });
-  const loader = new ConfigLoader(adapter);
+  const adapter = new MockAdapter({ cwd: '/proj', files: { '/mock/CUES.md': TIPS, '/proj/blanks/tables/BLANK.md': TABLES, '/proj/blanks/countries/BLANK.md': COUNTRIES, '/proj/OPENCUES.md': '---\ntable-lookups-mode: on\n---\n' }, capabilities: ['render-override', 'dim-ranges', 'highlight-range', 'file-read', 'file-write', 'force-render', 'change-source', 'blank-invoke'] });
+  const loader = new ConfigLoader(adapter, { settingsFile: '/proj/OPENCUES.md' });
   await loader.load();
   const bf = new BlankFill(adapter, loader);
   bf.subscribe();

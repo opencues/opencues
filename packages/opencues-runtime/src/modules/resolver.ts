@@ -1666,6 +1666,7 @@ export class Resolver {
       // today and the route answer, if it ever lands, is dropped. A slow
       // route (3.6 s seen once on a fresh host) must not hold the `_`
       // hostage; a budget miss is not a failure, so the breaker stays shut.
+      const tableLookupsOn = (this.configLoader.opencuesState.settings.get('table-lookups-mode') ?? 'off').trim().toLowerCase() === 'on';
       const routeCtl = new AbortController();
       const onPassAbort = (): void => routeCtl.abort();
       controller.signal.addEventListener('abort', onPassAbort, { once: true });
@@ -1675,6 +1676,7 @@ export class Resolver {
           signal: routeCtl.signal,
           log: (m: string) => this.adapter.log('debug', `Resolver: ${m}`),
           identityContext,
+          tables: tableLookupsOn,
         });
         this.adapter.emitEvent?.('resolver.route', { choice: usRouting.choice, confidence: usRouting.confidence, agreement: usRouting.agreement, sourceId: usRouting.sourceId, latencyMs: usRouting.ms, generation });
         // A DEVICE the same request named (row #32): resolve it under the
@@ -1705,7 +1707,7 @@ export class Resolver {
         // path it replaces) but never over a settings / rewrite one; a
         // verdict whose argument fails the floor or misses the table is
         // ignored and the pass continues as it would have.
-        if ((!usRouting.sourceId || usRouting.route === 'lookup') && usRouting.table && this.options.fillDevice) {
+        if (tableLookupsOn && (!usRouting.sourceId || usRouting.route === 'lookup') && usRouting.table && this.options.fillDevice) {
           const inv = resolveDataInvocation(usRouting.table, text);
           if (inv) {
             const segChar = segmentStart(text, text.lastIndexOf('_'));

@@ -1924,14 +1924,14 @@ describe('tables blank routing (shapes from defaults/blanks/tables/BLANK.md)', (
   const REPO_ROOT = resolvePath(__dirname, '../../../..');
   const TABLES_MD = readFileSync(resolvePath(REPO_ROOT, 'defaults/blanks/tables/BLANK.md'), 'utf8');
 
-  async function tablesSetup(stdout = 'ALT-ONE') {
+  async function tablesSetup(stdout = 'ALT-ONE', scalar = 'on') {
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/CUES.md': TIPS, '/proj/blanks/tables/BLANK.md': TABLES_MD },
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/tables/BLANK.md': TABLES_MD, '/proj/OPENCUES.md': `---\ntable-lookups-mode: ${scalar}\n---\n` },
       capabilities: ['render-override', 'dim-ranges', 'highlight-range', 'file-read', 'file-write', 'force-render', 'change-source', 'blank-invoke'],
     });
     adapter.stubBlankInvoke('tables:get', stdout);
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/OPENCUES.md' });
     await loader.load();
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();
@@ -1972,6 +1972,14 @@ describe('tables blank routing (shapes from defaults/blanks/tables/BLANK.md)', (
     await new Promise(r => setTimeout(r, 0));
     expect(adapter.blankInvokeCalls.length).toBe(0);
     expect(adapter.getText()).toBe(text);
+  });
+
+  it('`table-lookups-mode: off` (the default) leaves the blank unregistered: its keywords claim nothing', async () => {
+    const { adapter } = await tablesSetup('ALT-ONE', 'off');
+    adapter.pushText('hex for tomato _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(0);
+    expect(adapter.getText()).toBe('hex for tomato _');
   });
 
   it('prior sentence survives: only the lookup segment is consumed', async () => {

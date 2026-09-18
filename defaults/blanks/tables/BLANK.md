@@ -14,6 +14,9 @@ blankReadOnly: true
 blankShapes: [{"pattern":"^unicode for\\s+(.+?)\\s*\\??\\s*_$","action":"get","valueGroup":1},{"pattern":"^(?:hex|rgb) for\\s+(.+?)\\s*\\??\\s*_$","action":"get","valueGroup":1},{"pattern":"^http status(?: for)?\\s+(.+?)\\s*\\??\\s*_$","action":"get","valueGroup":1},{"pattern":"^mime type(?: for)?\\s+(.+?)\\s*\\??\\s*_$","action":"get","valueGroup":1},{"pattern":"^(?:default port(?: for)?|port for)\\s+(.+?)\\s*\\??\\s*_$","action":"get","valueGroup":1},{"pattern":"^convert\\s+(-?\\d[\\d.,]*\\s*°?\\s*\\S.*?)\\s*\\??\\s*_$","action":"get","valueGroup":1},{"pattern":"^calc(?:ulate)?\\s+(.*?\\d.*?)\\s*\\??\\s*_$","action":"get","valueGroup":1},{"pattern":"^(?:atomic (?:number|mass)|boiling point|melting point|ph) of\\s+(.+?)\\s*\\??\\s*_$","action":"get","valueGroup":1}]
 ---
 
+Gated by `table-lookups-mode` in OPENCUES.md (off by default): while off this
+blank is not registered at all, and the `_` route asks no table question.
+
 Implementation: built-in `TablesBlank` in `@opencues/runtime`
 (`packages/opencues-runtime/src/blanks/tables.ts`). One blank, eight
 OFFLINE tables (`tables-data.ts`): the lookups people type with a `_`

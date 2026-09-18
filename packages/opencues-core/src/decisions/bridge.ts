@@ -108,7 +108,7 @@ export function createBridgedDecisionLegs(send: DecisionBridgeSend, init: { id?:
     tipsMatch: (text: string, entries: ReadonlyArray<TipsEntryForDecision>, ctx?: DecisionLegContext) => call<TipsVerdict | null>('tipsMatch', [text, entries], ctx),
     contradictionGate: (text: string, commitments: ReadonlyArray<CommitmentForDecision>, units: ReadonlyArray<DecisionUnit>, ctx?: DecisionLegContext) => call<ContradictionVerdict>('contradictionGate', [text, commitments, units], ctx),
     sentenceGate: (gate: string, sentences: ReadonlyArray<string>, ctx?: DecisionLegContext) => call<ReadonlyArray<readonly [number, number]>>('sentenceGate', [gate, sentences], ctx),
-    route: (text: string, ctx?: RouteContext) => call<UnderscoreRouting>('route', [text, ctx ? { threshold: ctx.threshold, identityContext: ctx.identityContext } : {}], ctx),
+    route: (text: string, ctx?: RouteContext) => call<UnderscoreRouting>('route', [text, ctx ? { threshold: ctx.threshold, identityContext: ctx.identityContext, tables: ctx.tables } : {}], ctx),
     replace: (input: string, ctx?: DecisionLegContext) => call<ReplaceVerdict | null>('replace', [input], ctx),
     settings: (input: string, ctx?: DecisionLegContext) => call<SettingsVerdict | null>('settings', [input], ctx),
     device: (input: string, ctx?: DecisionLegContext) => call<DeviceVerdict | null>('device', [input], ctx),
