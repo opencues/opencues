@@ -48,8 +48,8 @@ function requirePackage(log?: (m: string) => void): { pkg: DecisionPackage | nul
   // package is found by path — walking up from this file's own location to
   // the nearest node_modules/@opencues/decisions — before the bare specifier
   // is tried as the last resort.
-  const fs = require('fs') as typeof import('fs');             // BROWSER-SAFE-ALLOW: node only past the guard above
-  const path = require('path') as typeof import('path');       // BROWSER-SAFE-ALLOW: node only past the guard above
+  const fs = require('node:fs') as typeof import('node:fs');             // BROWSER-SAFE-ALLOW: node only past the guard above
+  const path = require('node:path') as typeof import('node:path');       // BROWSER-SAFE-ALLOW: node only past the guard above
   const entryOf = (dir: string): string | null => {
     for (const rel of ['dist/index.js', 'index.js']) { const f = path.join(dir, rel); if (fs.existsSync(f)) return f; }
     return null;
@@ -66,7 +66,7 @@ function requirePackage(log?: (m: string) => void): { pkg: DecisionPackage | nul
   }
   // the checkout setup.sh copies the package FROM, for processes that run
   // outside a host fork (doctor, the benches, a plain node script)
-  try { const os = require('os') as typeof import('os'); const f = entryOf(path.join(os.homedir(), 'opencues-decisions')); if (f) candidates.push(f); } catch { /* no os module: skip */ }   // BROWSER-SAFE-ALLOW: node only past the guard above
+  try { const os = require('node:os') as typeof import('node:os'); const f = entryOf(path.join(os.homedir(), 'opencues-decisions')); if (f) candidates.push(f); } catch { /* no os module: skip */ }   // BROWSER-SAFE-ALLOW: node only past the guard above
   candidates.push(DECISIONS_PACKAGE);
   for (const c of candidates) {
     try { const pkg = req(c) as DecisionPackage; cached = { pkg, from: c }; return cached; }
