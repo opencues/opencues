@@ -31,6 +31,7 @@ import { ConfigIntentSource, type ConfigIntentSourceConfig } from './config-inte
 import { SentenceCueSource, type SentenceCueSourceConfig } from './sentence-cue-source';
 import { ContradictionLlmSource } from '../contradiction/contradiction-llm-source';
 import { SessionCueSource } from './session-cue-source';
+import { loadDecisionLegs, type DecisionLegs } from '../decisions/load';
 import { BankHolidayProvider } from '../contradiction/bank-holidays';
 import { WeatherProvider } from '../contradiction/weather';
 import { TflProvider } from '../contradiction/tfl';
@@ -241,6 +242,17 @@ export interface BuildSourcesOptions {
    *  `CueContext.tipsCatalog`. Defaults to false; flip on via OPENCUES.md
    *  `tips-mode: semantic`. */
   enableSemanticTips?: boolean;
+  /**
+   * `decisions-provider` scalar. A name the installed decision package knows builds its legs
+   * from `apiKeys.TYPESAFE_API_KEY` and hands it to the legs that have moved
+   * to it (step 1: the tips matcher). Off, or no key → every leg keeps its
+   * chat call, and a log line says why.
+   */
+  decisionsProvider?: string;
+  /** `decisions-fanout` (default on): one decision request per pause vs one per leg. */
+  decisionsFanout?: boolean;
+  /** the ask leg's chat call runs only when the fused ask noul ≥ this (default 0.7). */
+  askGateThreshold?: number;
   /** Host-provided GET for the contradiction world-data caches (bank holidays,
    *  weather). Chrome passes a service-worker-routed fetch (a content-script
    *  fetch is blocked by the host page's CSP); native hosts omit it → global fetch. */
@@ -425,6 +437,17 @@ export function combineWordSources(srcs: SourceConfig[]): SourceConfig {
  * - blanks: keyword-bound entries → BlankSource. Free-form `_` →
  *   FluidBlankSource (always-on base layer; no mode scalar).
  */
+/**
+ * The decision legs for the sources that use them, from the
+ * `decisions-provider` scalar and the key bag: the decision PACKAGE is
+ * loaded by name (decisions/load.ts). Undefined (with one log line naming
+ * why) keeps every leg on its chat call. Built once per source build, so
+ * every leg shares one instance and one keep-alive adapter.
+ */
+export function buildDecisionProvider(options: Pick<BuildSourcesOptions, 'decisionsProvider' | 'apiKeys' | 'httpAdapter' | 'log'>): DecisionLegs | undefined {
+  return loadDecisionLegs({ which: options.decisionsProvider ?? 'off', apiKeys: options.apiKeys ?? {}, httpAdapter: options.httpAdapter, log: options.log });
+}
+
 export function buildSourcesFromConfig(
   cuesConfig: CuesMdConfig | undefined,
   _blanksConfig: CuesMdConfig | undefined,
@@ -433,6 +456,12 @@ export function buildSourcesFromConfig(
   const sources: CueSource[] = [];
 
   const apiKeys = options.apiKeys ?? {};
+  // ONE decision provider per source build, shared by every leg that uses one
+  // (the session rail's tips / contradiction gate / ask gate, gated sentence
+  // cues). Undefined, with a log line, when the scalar is off or no key.
+  const decisions = buildDecisionProvider(options);
+  /** set while walking the word-cues when the shipped spelling cue moves onto the pause request */
+  let spellingOnDecisions = false;
   const globalProvider = options.globalProvider;
   const globalModel = options.globalModel;
   // Bucket override tiers, collapsed onto resolveLLM's global tier by
@@ -592,12 +621,13 @@ export function buildSourcesFromConfig(
   // short-circuits (no ask call when a contradiction fires), so they no longer
   // overlap or evict each other. Per-type gating from the two scalars. Reuses
   // the sentence-cues LLM tier. If no LLM resolves, it simply doesn't run.
-  if (options.enableSessionContradiction || options.enableAskCues || options.enableSemanticTips) {
+  if (options.enableSessionContradiction || options.enableAskCues || options.enableSemanticTips || spellingOnDecisions) {
     const scLlm = resolveFor(options.sentenceCues);
     if (scLlm) {
-      const which = [options.enableSessionContradiction && 'contradiction', options.enableSemanticTips && 'tips', options.enableAskCues && 'ask'].filter(Boolean).join('+');
+      const which = [options.enableSessionContradiction && 'contradiction', options.enableSemanticTips && 'tips', options.enableAskCues && 'ask', spellingOnDecisions && 'spelling'].filter(Boolean).join('+');
       options.log?.(`buildSources: session-cue [${which}] → LLM engine (${scLlm.provider.id}/${scLlm.model})`);
       sources.push(new SessionCueSource({
+        enableSpelling: spellingOnDecisions,
         httpAdapter: withFallback(options.httpAdapter, scLlm.fallback),
         provider: scLlm.provider,
         endpoint: scLlm.endpoint,
@@ -607,6 +637,9 @@ export function buildSourcesFromConfig(
         enableContradiction: !!options.enableSessionContradiction,
         enableAsk: !!options.enableAskCues,
         enableSemanticTips: !!options.enableSemanticTips,
+        decisions,
+        decisionsFanout: options.decisionsFanout ?? true,
+        askGateThreshold: options.askGateThreshold,
         log: (m) => options.log?.(m),
       }));
     } else {
@@ -705,6 +738,7 @@ export function buildSourcesFromConfig(
           model: resolved.model,
           maxThinking: options.maxThinking,
           sourceConfig: srcCfg,
+          decisions,
           log: options.log,
           onEvent: options.onSentenceCueEvent,
         }));
@@ -725,6 +759,14 @@ export function buildSourcesFromConfig(
         // an explicit `match: .*` is required if the user really wants
         // a fall-through cue.
         if (!srcCfg.match && !srcCfg.keywords) continue;
+        // The shipped spelling cue rides the pause request as a passenger
+        // when a decision provider is set (plan step 7B): no word-cues chat
+        // call for spelling. Any other word-cue still builds as before.
+        if (srcCfg.name === 'spelling' && decisions) {
+          spellingOnDecisions = true;
+          options.log?.('buildSources: spelling → decision layer (passenger on the pause request); the spelling word-cue is not built');
+          continue;
+        }
         const resolved = resolveFor(options.wordCues, srcCfg);
         if (!resolved) {
           fallbackForLog(`word-cue '${srcCfg.name}'`, srcCfg.provider || options.wordCues?.provider || globalProvider || 'groq');
@@ -895,6 +937,7 @@ export function buildSourcesFromConfig(
         temperature: options.transformBlank?.temperature,
         maxThinking: options.maxThinking,
         replaceParse: options.replaceParse,
+        decisions,
         blanks: options.blanks ?? {},
         log: options.log,
         onEvent: options.onTransformBlankEvent,

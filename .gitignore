@@ -29,3 +29,6 @@ integrations/android/
 # External clone — not part of this repo.
 tester/
 integrations/windows/ui/
+
+# local Jev working notes (process for building decision requests) — never committed
+Jev.md

@@ -1005,6 +1005,10 @@ module.exports = async function doctor(argv, ctx) {
       if (adapter.transport === 'cli' || !adapter.envKeyName) continue;
       s.ok(keyLabel(`${adapter.envKeyName} (LLM)`, adapter.envKeyName), !!sourceOf(adapter.envKeyName));
     }
+    // Decision provider key  — a separate seam from the
+    // LLM providers, so it is not in listProviders(). Shown as a plain
+    // key row; the layer is inert until `decisions-provider: typesafe`.
+    s.ok(keyLabel('TYPESAFE_API_KEY (decisions, optional)', 'TYPESAFE_API_KEY'), !!sourceOf('TYPESAFE_API_KEY'));
     // Non-LLM service keys — kept hardcoded; one entry today (FINNHUB
     // for the stocks blank). Lift into a SERVICE_KEYS registry when
     // there's a second one. NOTE: script-facing keys still come from
@@ -1101,6 +1105,24 @@ module.exports = async function doctor(argv, ctx) {
           msg: `${modelScalarName}: "${modelScalarRaw}" is a fall-through sentinel — runtime treats it as unset and dispatches with ${row.model || 'the provider default'}. Delete this line if you want the global llm-model + provider default, or replace it with a real model name.`,
         });
       }
+    }
+    // Decision seam — separate from the buckets, one scalar. The package
+    // that answers is loaded by name (core: decisions/load.ts). Shows what
+    // the runtime will actually do: on + package + key → the package's
+    // model; anything missing → every leg stays on chat (the runtime logs
+    // the same line at boot).
+    {
+      const dp = scalars['decisions-provider'] ?? 'off';
+      const fanout = (scalars['decisions-fanout'] ?? 'on') !== 'off';
+      let pkg = null;
+      for (const spec of [process.env.OPENCUES_DECISIONS_PATH, '@opencues/decisions'].filter(Boolean)) { try { pkg = require(spec); break; } catch { /* next */ } }
+      const envKey = (pkg && pkg.envKey) || 'TYPESAFE_API_KEY';
+      const hasKey = !!(process.env[envKey] || (envKeysMod ? envKeysMod.readCuesEnvFile()[envKey] : undefined));
+      if (dp === 'off') s.info('decisions:', 'off · every decision leg on its chat call (a decision package + decisions-provider: <name> moves tips / contradiction gate / sentence gate / `_` routing off chat)');
+      else if (!pkg || typeof pkg.createDecisionLegs !== 'function') s.warn('decisions:', `${dp} requested but no decision package is installed (@opencues/decisions or OPENCUES_DECISIONS_PATH) → every decision leg stays on its chat call`);
+      else if (pkg.providers && !pkg.providers.includes(dp)) s.warn('decisions:', `"${dp}" is not a provider the installed decision package knows (${pkg.providers.join(' | ')}) → chat`);
+      else if (!hasKey) s.warn('decisions:', `${dp} requested but ${envKey} not found → every decision leg stays on its chat call`);
+      else s.info('decisions:', `${dp} · ${pkg.pinnedModel || 'package model'} · ${fanout ? 'one request per pause' : 'one request per leg'} (tips matcher, contradiction gate, sentence gate, \`_\` router, replace detector, spelling)`);
     }
     s.render();
   }

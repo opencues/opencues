@@ -230,6 +230,38 @@ any `when:` line, or the catalogue renderer. Prompt wording is fragile on
 qwen: one added sentence cost four cases. Write a candidate pack to a file
 and bench it with `--pack-file` before touching `defaults/`.
 
+## The decision path (`decisions-provider`)
+
+With a decision package installed (docs/architecture/decisions.md) the
+MATCHING leg runs on a calibrated decision model instead of the chat call.
+`SemanticTipsSource` takes `decisions: DecisionLegs`; `match` hands the leg
+the draft and the catalogue as `{id, when, tip, command}` (`entriesForDecision`)
+and gets back the best entry with a probability, or `none`. Nothing the model
+returns is text:
+
+- the cited id is a catalogue id by construction (grounding 2);
+- the solution is the entry's own command (`entryCommand`), so grounding 3
+  holds by construction; a prose tip stays advisory (`[original]` alone);
+- the quote is the caret's sentence (`sentenceAt`), or the whole draft;
+- the note is the pack's `say:` line, as on the chat path;
+- the confidence rides `CueResult.confidence` as data; no renderer reads it.
+
+Fires at `confidence ≥ 0.5` (`TIPS_DECISION_THRESHOLD_DEFAULT`) with
+hysteresis: probabilities jitter between identical requests, so once an
+entry has fired on a draft it holds while it stays the top non-none option at
+≥ 0.4 on a continuation of that draft (typed forward, backspaced, same caret
+sentence) for 60 s (`TIPS_HYSTERESIS`, `TIPS_HYSTERESIS_TTL_MS`); a fresh
+fire still needs 0.5. A typed trigger (the draft already carries the
+entry's command) is the package's pre-check: such an entry is not offered,
+and a null verdict is logged as "every entry pre-checked out".
+
+With `decisions-fanout: on` (the default once a package is set) the tips
+verdict does not travel alone: `SessionCueSource.getCuesFused` asks ONE pause
+request carrying every leg and hands this leg its verdict
+(`getCuesFromVerdict`). Same assembly, one fewer round trip per pause. Gate:
+`semantic-tips-bench.mjs --provider typesafe --pack <host>` must pass the
+same ship gate as the chat arm (needs the package installed).
+
 ## What it deliberately does not do
 
 - No token matching, anywhere. The static layer (`ConfigLoader.cueMap`,

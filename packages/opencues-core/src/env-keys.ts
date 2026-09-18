@@ -105,8 +105,11 @@ export function augmentApiKeysFromEnv(
   if (typeof process === 'undefined' || !process.versions?.node) return [];
   const filled: Array<{ envKeyName: string; source: Exclude<KeySource, 'host'> }> = [];
   const fileEnv = readCuesEnvFile();
-  for (const adapter of listProviders()) {
-    const name = adapter.envKeyName;
+  // The decision package's key rides the same bag. It is not an LLM
+  // provider so it is not in listProviders(); listed here by name
+  // (decisions/load.ts: DECISIONS_DEFAULT_ENV_KEY).
+  const names = [...listProviders().map((a) => a.envKeyName), 'TYPESAFE_API_KEY'];
+  for (const name of names) {
     if (!name || bag[name]) continue;
     const fromShell = process.env[name]; // BROWSER-SAFE-ALLOW: guarded by typeof process above
     if (fromShell) {

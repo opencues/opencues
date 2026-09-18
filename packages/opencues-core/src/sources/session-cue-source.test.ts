@@ -188,3 +188,188 @@ describe('SessionCueSource — contradiction and tips run in parallel; contradic
     expect(calls).toEqual({ contradiction: 1, tips: 1, ask: 1 });
   });
 });
+
+// ── the fused per-pause request (decision layer) ────────────────────────
+import { buildTipsCatalog } from '../tips-catalog';
+import { fakeLegs, type FakeLegsPlan } from '../decisions/fake-legs.test-helper';
+import { DecisionError } from '../decisions/types';
+
+const PACK_F = buildTipsCatalog([{ id: 'zeta', words: {
+  '/zap': { tip: 'ALT-ONE zap resets the zorb', when: 'wants to begin again from nothing', say: 'ALT-SAY beginning again? /zap', alts: [] },
+} }]);
+function fctx(text: string): CueContext {
+  return { text, words: text.split(/\s+/).filter(Boolean), sessionCommitments: WATCH, tipsCatalog: PACK_F, cursor: text.length };
+}
+/** a verdict per leg; anything not listed answers none / 0 */
+function fakeFused(plan: { tip?: string; tipConf?: number; gate?: string; gateConf?: number; ask?: number; unit?: string }) {
+  const p: FakeLegsPlan = {
+    tips: { choice: plan.tip ?? 'none', confidence: plan.tipConf ?? 0.9 },
+    contradiction: { choice: plan.gate ?? 'none', confidence: plan.gateConf ?? 0.9, unit: plan.unit ? { choice: plan.unit, confidence: plan.gateConf ?? 0.9 } : undefined },
+    ask: plan.ask ?? 0,
+  };
+  return fakeLegs(p);
+}
+
+describe('SessionCueSource — one decision request per pause', () => {
+  it('sends ONE pause call carrying the tips entries, the watchlist + units and the ask flag', async () => {
+    const d = fakeFused({});
+    const r = router(CONTRADICTS, A_QUESTION);
+    const src = new SessionCueSource({ ...base, httpAdapter: r.adapter, enableContradiction: true, enableAsk: true, enableSemanticTips: true, decisions: d });
+    const out = await src.getCues(fctx('bumped the README badge'));
+    expect(d.calls.length).toBe(1);
+    expect(d.calls[0].leg).toBe('pause');
+    const input = d.pauseInputs[0];
+    expect(input.text).toBe('bumped the README badge');
+    expect(input.tips?.map((e) => e.id)).toEqual(['t1']);
+    expect(input.contradiction?.commitments).toEqual([{ id: 'c1', statement: 'Do not add new npm dependencies' }]);
+    expect(input.contradiction?.units.map((u) => u.text)).toEqual(['bumped the README badge']);
+    expect(input.ask).toBe(true);
+    expect(input.spelling).toBe(false);
+    // everything none / below the ask gate → no chat call at all
+    expect(r.calls).toEqual({ contradiction: 0, ask: 0 });
+    expect(out.results).toEqual([]);
+  });
+
+  it('a gate hit runs the contradiction chat call and wins; no second decision call, no ask call', async () => {
+    const d = fakeFused({ gate: 'c1', gateConf: 0.95, tip: 't1', ask: 0.99 });
+    const r = router(CONTRADICTS, A_QUESTION);
+    const src = new SessionCueSource({ ...base, httpAdapter: r.adapter, enableContradiction: true, enableAsk: true, enableSemanticTips: true, decisions: d });
+    const out = await src.getCues(fctx('lets add the redis npm package'));
+    expect(d.calls.length).toBe(1);
+    expect(r.calls).toEqual({ contradiction: 1, ask: 0 });
+    expect(out.results[0].cueTip).toBe('⚠ no new deps');
+    expect(out.results[0].confidence).toBe(0.95);
+  });
+
+  it('a gate hit WITH a unit answer (step 6) lands with no chat call: note = the decision statement, rewrite deferred', async () => {
+    const d = fakeFused({ gate: 'c1', gateConf: 0.95, unit: 's1', tip: 't1', ask: 0.99 });
+    const r = router(CONTRADICTS, A_QUESTION);
+    const src = new SessionCueSource({ ...base, httpAdapter: r.adapter, enableContradiction: true, enableAsk: true, enableSemanticTips: true, decisions: d });
+    const out = await src.getCues(fctx('lets add the redis npm package'));
+    expect(d.calls.length).toBe(1);
+    expect(r.calls).toEqual({ contradiction: 0, ask: 0 });
+    expect(out.results[0].cueTip).toBe('⚠ Do not add new npm dependencies');
+    expect(out.results[0].alternatives).toEqual(['lets add the redis npm package', 'lets add the redis npm package']);
+    expect((out.results[0].metadata as { deferredRewrite: { quote: string } }).deferredRewrite.quote).toBe('lets add the redis npm package');
+    // the rail exposes the deferred rewrite to the runtime
+    expect(typeof src.reconcileContradiction).toBe('function');
+  });
+
+  it('a tip hit lands with no chat call at all', async () => {
+    const d = fakeFused({ tip: 't1', tipConf: 0.8 });
+    const r = router(CONTRADICTS, A_QUESTION);
+    const src = new SessionCueSource({ ...base, httpAdapter: r.adapter, enableContradiction: true, enableAsk: true, enableSemanticTips: true, decisions: d });
+    const out = await src.getCues(fctx('lets begin again on the zorb'));
+    expect(r.calls).toEqual({ contradiction: 0, ask: 0 });
+    expect(out.results[0].alternatives).toEqual(['lets begin again on the zorb', '/zap']);
+    expect(out.results[0].confidence).toBe(0.8);
+  });
+
+  it('the ask chat call runs only above the ask gate', async () => {
+    const r1 = router(CONTRADICTS, A_QUESTION);
+    const low = new SessionCueSource({ ...base, httpAdapter: r1.adapter, enableContradiction: true, enableAsk: true, enableSemanticTips: true, decisions: fakeFused({ ask: 0.4 }) });
+    await low.getCues(fctx('do the thing'));
+    expect(r1.calls.ask).toBe(0);
+    const r2 = router(CONTRADICTS, A_QUESTION);
+    const high = new SessionCueSource({ ...base, httpAdapter: r2.adapter, enableContradiction: true, enableAsk: true, enableSemanticTips: true, decisions: fakeFused({ ask: 0.85 }) });
+    const out = await high.getCues(fctx('do the thing'));
+    expect(r2.calls.ask).toBe(1);
+    expect(out.results.length).toBeGreaterThan(0);
+  });
+
+  it('a failed fused request falls back to the CHAT path in the same pause (the legs do not re-ask the provider)', async () => {
+    const flaky = fakeLegs({ throws: new Error('boom') });
+    const r = router(CONTRADICTS, A_QUESTION);
+    const lines: string[] = [];
+    const src = new SessionCueSource({ ...base, httpAdapter: r.adapter, enableContradiction: true, enableSemanticTips: true, decisions: flaky, log: (m) => lines.push(m) });
+    const out = await src.getCues(fctx('lets add the redis npm package'));
+    expect(lines.join('\n')).toMatch(/falling back to the chat path/);
+    expect(flaky.calls.length).toBe(1);
+    expect(r.calls.contradiction).toBe(2);     // tips + contradiction chat calls
+    expect(out.results[0].cueTip).toBe('⚠ no new deps');
+  });
+
+  it('decisionsFanout: off keeps one decision call per leg', async () => {
+    const d = fakeFused({});
+    const r = router(CONTRADICTS, A_QUESTION);
+    const src = new SessionCueSource({ ...base, httpAdapter: r.adapter, enableContradiction: true, enableSemanticTips: true, decisions: d, decisionsFanout: false });
+    await src.getCues(fctx('bumped the README badge'));
+    expect(d.calls.map((c) => c.leg).sort()).toEqual(['contradictionGate', 'tipsMatch']);
+  });
+});
+
+// ── review fixes: breaker, per-leg ask gate ──────────────────────────────
+describe('SessionCueSource — circuit breaker and per-leg ask gate', () => {
+  it('a failed fused request trips the breaker: the SAME pause and the next run every leg on chat with no further decision call', async () => {
+    const down = fakeLegs({ throws: new DecisionError('overloaded', 'typesafe: overloaded') });
+    const r = router(CONTRADICTS, A_QUESTION);
+    const lines: string[] = [];
+    const src = new SessionCueSource({ ...base, httpAdapter: r.adapter, enableContradiction: true, enableSemanticTips: true, decisions: down, log: (m) => lines.push(m) });
+    const out = await src.getCues(fctx('lets add the redis npm package'));
+    expect(down.calls.length).toBe(1);                      // the fused request only; the legs did NOT retry the provider
+    expect(r.calls.contradiction).toBe(2);                  // chat path ran: the tips AND contradiction chat calls (the router counts both as non-ask)
+    expect(out.results[0].cueTip).toBe('⚠ no new deps');
+    expect(lines.join('\n')).toMatch(/decision provider down for 30s/);
+    await src.getCues(fctx('bumped the README badge'));
+    expect(down.calls.length).toBe(1);                      // still down: no decision call on the next pause either
+    expect(r.calls.contradiction).toBe(4);
+  });
+
+  it('an auth failure trips the breaker for the long window', async () => {
+    const bad = fakeLegs({ throws: new DecisionError('auth', 'typesafe: Unauthorized') });
+    const r = router(CONTRADICTS, A_QUESTION);
+    const lines: string[] = [];
+    const src = new SessionCueSource({ ...base, httpAdapter: r.adapter, enableSemanticTips: true, decisions: bad, log: (m) => lines.push(m) });
+    await src.getCues(fctx('lets begin again on the zorb'));
+    expect(lines.join('\n')).toMatch(/down for 600s \(auth/);
+  });
+
+  it('fanout off + healthy provider: the ask call is still gated by its own leg', async () => {
+    const d = fakeFused({ ask: 0.2 });
+    const r = router(CONTRADICTS, A_QUESTION);
+    const src = new SessionCueSource({ ...base, httpAdapter: r.adapter, enableAsk: true, decisions: d, decisionsFanout: false });
+    const out = await src.getCues(fctx('do the thing'));
+    expect(d.calls.map((c) => c.leg)).toEqual(['askGate']);
+    expect(r.calls.ask).toBe(0);
+    expect(out.results).toEqual([]);
+  });
+});
+
+// ── the spelling passenger (decision layer) ─────────────────────────────
+describe('SessionCueSource — the spelling passenger', () => {
+  const TEXT = 'the zorb tests pass but the reconect logic is flaky';
+  const sctx = (): CueContext => ({ text: TEXT, words: TEXT.split(' '), cursor: TEXT.length });
+  const http: HttpAdapter & { calls: number } = { calls: 0, post: async () => { http.calls++; return JSON.stringify({ choices: [{ message: { content: '[]' } }] }); } };
+  const sbase = { ...base, enableContradiction: false, enableAsk: false, enableSemanticTips: false, httpAdapter: http };
+
+  it('a spelling verdict → a word-cue result at that index, the typed punctuation kept, no chat call', async () => {
+    http.calls = 0;
+    const d = fakeLegs({ spelling: { wordIndex: 6, fix: 'reconnect', flag: 0.95, fixConfidence: 0.9 } });
+    const src = new SessionCueSource({ ...sbase, decisions: d, enableSpelling: true });
+    expect(src.supports(sctx())).toBe(true);
+    const r = await src.getCues(sctx());
+    expect(d.calls.length).toBe(1);
+    expect(d.pauseInputs[0].spelling).toBe(true);
+    expect(http.calls).toBe(0);
+    expect(r.results.map((x) => ({ wordIndex: x.wordIndex, word: x.word, alternatives: x.alternatives, source: x.source }))).toEqual([{ wordIndex: 6, word: 'reconect', alternatives: ['reconnect'], source: 'spelling' }]);
+    expect(r.results[0].confidence).toBe(0.95);
+  });
+
+  it('no verdict, a verdict on a missing word, or an echo → nothing, and never a chat call', async () => {
+    for (const spelling of [null, { wordIndex: 99, fix: 'x', flag: 0.9, fixConfidence: 0.9 }, { wordIndex: 6, fix: 'reconect', flag: 0.9, fixConfidence: 0.9 }]) {
+      http.calls = 0;
+      const r = await new SessionCueSource({ ...sbase, decisions: fakeLegs({ spelling }), enableSpelling: true }).getCues(sctx());
+      expect(r.results).toEqual([]);
+      expect(http.calls).toBe(0);
+    }
+  });
+
+  it('without the passenger the pause input carries spelling: false and the rail does not run on spelling alone', async () => {
+    const d = fakeLegs({ spelling: { wordIndex: 6, fix: 'reconnect', flag: 0.95, fixConfidence: 0.9 } });
+    const src = new SessionCueSource({ ...sbase, decisions: d });
+    expect(src.supports(sctx())).toBe(false);
+    const r = await src.getCues(sctx());
+    expect(r.results).toEqual([]);
+    expect(d.pauseInputs.every((i) => !i.spelling)).toBe(true);
+  });
+});

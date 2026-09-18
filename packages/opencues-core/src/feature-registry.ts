@@ -591,6 +591,36 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
 
+  // ── Decision provider ────────────────────────────────────────────
+  //
+  // A DECISION model answers typed questions with calibrated probabilities
+  // and never generates text. It is a separate seam from the LLM buckets
+  // (packages/opencues-core/src/decisions/) and this is its ONE scalar. The
+  // package that answers is loaded by name (decisions/load.ts); without one
+  // installed every leg keeps its chat call. `off` is the default.
+  {
+    scalar: 'decisions-provider',
+    group: 'LLM routing',
+    camelCase: 'decisionsProvider',
+    description: 'Calibrated decision model for the deciding legs (tips matching, contradiction gate, sentence gate, the `_` router, the replace detector, spelling). Needs the decision package installed and its key (`typesafe` → TYPESAFE_API_KEY). Separate from the LLM buckets: it never generates text. See docs/architecture/decisions.md.',
+    menuTip: 'Route decisions (which tip, which rule, whether to spend a rewrite call, which blank a `_` wants) through a calibrated decision model instead of a chat call. Needs the decision package and its key.',
+    values: [
+      { id: 'off',      description: 'Default — every decision stays on the chat provider it uses today' },
+      { id: 'typesafe', description: 'TypeSafe System One via the decision package (TYPESAFE_API_KEY)' },
+    ],
+  },
+  {
+    scalar: 'decisions-fanout',
+    group: 'LLM routing',
+    camelCase: 'decisionsFanout',
+    description: 'With a decision provider on: one decision request per pause carrying every leg\'s question (tips, contradiction gate, ask gate) instead of one request per leg. Off keeps one call per leg. Inert when decisions-provider is off.',
+    menuTip: 'One decision request per pause (tips + contradiction gate + ask gate together) or one per leg.',
+    values: [
+      { id: 'on',  description: 'Default — one fused request per pause' },
+      { id: 'off', description: 'One decision request per leg (steps 1–2 shape)' },
+    ],
+  },
+
   // ── Provider routing ─────────────────────────────────────────────
   //
   // Three buckets, one knob each. Surfaces map to buckets as follows:

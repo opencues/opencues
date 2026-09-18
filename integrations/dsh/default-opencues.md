@@ -43,6 +43,25 @@ max-thinking: on
 #   off          : always the fused whole-buffer path (saves the call).
 replace-parse-mode: on
 
+# decisions-provider — a calibrated DECISION model for the deciding
+# legs (which tip fits, which rule is contradicted, whether a rewrite
+# call is worth spending). It answers typed questions with probabilities
+# and never generates text, so it is a separate seam from the LLM
+# buckets above, not a fourth one. See docs/architecture/decisions.md.
+#   off      (default): every decision stays on the chat provider it
+#                       uses today.
+#   typesafe          : TypeSafe System One through the installed decision
+#                       package (@opencues/decisions + TYPESAFE_API_KEY).
+#                       Without the package every leg stays on chat.
+decisions-provider: off
+
+# decisions-fanout — with a decision provider on, ONE decision request per
+# pause carries every leg's question (which tip, which decision is
+# contradicted, is there an open question) instead of one request per leg.
+#   on  (default): one fused request per pause.
+#   off          : one decision request per leg.
+decisions-fanout: on
+
 # Forwards a low-fan-out, sanitized snapshot of the focused field
 # (label, placeholder, aria-*, input type, page title, page url
 # origin+path, meta description) to the fluid-blank LLM call ONLY,

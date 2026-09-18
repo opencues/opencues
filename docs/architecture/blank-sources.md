@@ -296,6 +296,15 @@ primitive already pays for.
 
 ---
 
+## The `_` router
+
+With a decision package installed (`decisions-provider`), the runtime resolver asks the `route`
+leg before a `_` pass and dispatches only the routed chat source (config-intent / transform-blank / fluid-blank);
+otherwise the three fan out as described above. The sources are unchanged — the filter is the
+resolver's `only` option, and a routed source that cedes is followed by the fan-out over the
+rest, so routing never loses an answer; a route past `UNDERSCORE_ROUTE_BUDGET_MS` (1 s) fans out
+without tripping the breaker. See `docs/architecture/decisions.md` § Legs.
+
 ## Related docs
 
 - [`transform-blank.md`](transform-blank.md) — TransformBlank pipeline

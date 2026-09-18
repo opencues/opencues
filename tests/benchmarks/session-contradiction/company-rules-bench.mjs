@@ -23,6 +23,11 @@
 // compliance nudge that wrongly accuses people gets turned off in a week.
 //
 // Run: CEREBRAS_API_KEY=… node tests/benchmarks/session-contradiction/company-rules-bench.mjs [--gen gemma]
+//      [--gate typesafe]  adds a GATED arm (decision layer): the source's exact pre-gate request
+//                         (`contradictionGateRequest`, one Choice over ids + none) runs first on
+//                         TypeSafe; the chat call replays only when the gate does not skip. Reports
+//                         chat calls saved, violations lost to the gate, per-arm latency and $.
+//                         Needs TYPESAFE_API_KEY.
 
 import path from 'node:path';
 import url from 'node:url';
@@ -32,6 +37,19 @@ const scMod = await import(path.join(R, 'packages/opencues-core/dist/contradicti
 const { NodeHttpAdapter } = await import(path.join(R, 'packages/opencues-core/node-http-adapter.js'));
 const http = new NodeHttpAdapter({ maxSockets: 4, timeout: 30000 });
 
+const GATE = process.argv.includes('--gate') ? process.argv[process.argv.indexOf('--gate') + 1] : null;
+// the decision arm needs the decision package installed (@opencues/decisions or OPENCUES_DECISIONS_PATH) and its key
+const decisions = GATE ? core.loadDecisionLegs({ which: GATE, apiKeys: process.env, httpAdapter: http, log: (m) => console.error(m) }) : null;
+if (GATE && !decisions) { console.error(`--gate ${GATE}: no decision legs (see the line above)`); process.exit(2); }
+// per-arm usage, priced from core's table (the meter reports every dispatchChat / dispatchDecision)
+const usage = {};
+let usageArm = null;
+core.registerUsageSink((u) => {
+  if (!usageArm) return;
+  const k = `${usageArm}|${u.providerId}/${u.model}`;
+  const row = usage[k] ?? (usage[k] = { arm: usageArm, providerId: u.providerId, model: u.model, calls: 0, promptTokens: 0, cachedTokens: 0, completionTokens: 0 });
+  row.calls++; row.promptTokens += u.promptTokens; row.cachedTokens += u.cachedTokens; row.completionTokens += u.completionTokens;
+});
 const genArg = process.argv.includes('--gen') ? process.argv[process.argv.indexOf('--gen') + 1] : '';
 const GEN = genArg === 'gemma'
   ? { provider: core.getProvider('cerebras'), model: 'gemma-4-31b', key: process.env.CEREBRAS_API_KEY, name: 'cerebras/gemma-4-31b' }
@@ -237,30 +255,61 @@ async function runFRAMED(domain, text) {
 }
 
 // ── score ───────────────────────────────────────────────────────────────────
+// GATED: the source's own gate request on the decision provider, then the
+// SOURCE replay only when the gate did not skip. Same skip rule as the source
+// (`contradictionGateSkips`). Timing = gate ms + chat ms when it ran.
+async function runGATED(domain, text) {
+  const snap = snapshotOf(domain);
+  const t0 = Date.now();
+  let gate;
+  try {
+    const res = await core.dispatchDecision(decisions, scMod.contradictionGateRequest(text, snap), { leg: 'contradiction-gate' });
+    gate = res.answers.gate;
+  } catch (e) { return { ...(await runSOURCE(domain, text)), gateErrored: true, ms: Date.now() - t0 }; }
+  if (scMod.contradictionGateSkips(gate)) return { flagged: false, skipped: true, gate, ms: Date.now() - t0 };
+  const r = await runSOURCE(domain, text);
+  return { ...r, gate, ms: Date.now() - t0 };
+}
+
 const L = (...a) => process.stderr.write(a.join(' ') + '\n');
 L(`company-rules bench — matcher ${GEN.name}, deterministic scoring (no judge)\n`);
 
+const ARMS = decisions ? ['SOURCE', 'FRAMED', 'GATED'] : ['SOURCE', 'FRAMED'];
 const totals = {};
-for (const arm of ['SOURCE', 'FRAMED']) totals[arm] = { flag: 0, flagT: 0, right: 0, silent: 0, silentT: 0, err: 0 };
+for (const arm of ARMS) totals[arm] = { flag: 0, flagT: 0, right: 0, silent: 0, silentT: 0, err: 0, skipped: 0, lost: 0, ms: 0, n: 0 };
 
 for (const domain of DOMAINS) {
   L(`── ${domain.id}  (${domain.rules.length} rules, ${domain.cases.length} drafts)`);
   for (const c of domain.cases) {
     const wantId = c.want ? `c${domain.rules.findIndex((r) => r.id === c.want) + 1}` : null;
-    const [a, b] = await Promise.all([runSOURCE(domain, c.s), runFRAMED(domain, c.s)]);
-    for (const [arm, r] of [['SOURCE', a], ['FRAMED', b]]) {
+    const timed = async (arm, fn) => { usageArm = arm; const t0 = Date.now(); const r = await fn(); return { ...r, ms: r.ms ?? Date.now() - t0 }; };
+    // arms run sequentially so per-arm usage attribution and latency are clean
+    const a = await timed('SOURCE', () => runSOURCE(domain, c.s));
+    const b = await timed('FRAMED', () => runFRAMED(domain, c.s));
+    const g = decisions ? await timed('GATED', () => runGATED(domain, c.s)) : null;
+    usageArm = null;
+    for (const [arm, r] of [['SOURCE', a], ['FRAMED', b], ...(g ? [['GATED', g]] : [])]) {
       const t = totals[arm];
+      t.n++; t.ms += r.ms;
       if (r.errored) t.err++;
+      if (r.skipped) { t.skipped++; if (wantId) t.lost++; }
       if (wantId) { t.flagT++; if (r.flagged) { t.flag++; if (r.cited === wantId) t.right++; } }
       else { t.silentT++; if (!r.flagged) t.silent++; }
     }
-    const mark = (r) => !c.want ? (r.flagged ? '✗FALSE-ALARM' : '✓') : (r.flagged ? (r.cited === wantId ? '✓' : `~wrong-rule(${r.cited})`) : '✗missed');
-    L(`   [${(c.want ?? 'silent').padEnd(6)}] src ${mark(a).padEnd(14)} framed ${mark(b).padEnd(14)} | ${c.s.slice(0, 62)}`);
+    const mark = (r) => !c.want ? (r.flagged ? '✗FALSE-ALARM' : (r.skipped ? '✓skip' : '✓')) : (r.flagged ? (r.cited === wantId ? '✓' : `~wrong-rule(${r.cited})`) : (r.skipped ? '✗LOST(gate)' : '✗missed'));
+    L(`   [${(c.want ?? 'silent').padEnd(6)}] src ${mark(a).padEnd(14)} framed ${mark(b).padEnd(14)}${g ? ` gated ${mark(g).padEnd(14)}` : ''} | ${c.s.slice(0, 62)}`);
   }
 }
 
 L('\n' + '='.repeat(86));
 for (const [arm, t] of Object.entries(totals)) {
-  L(`${arm.padEnd(7)} recall ${t.flag}/${t.flagT} · right-rule ${t.right}/${t.flag || 0} · restraint ${t.silent}/${t.silentT}${t.silentT - t.silent ? `  (${t.silentT - t.silent} FALSE ALARM${t.silentT - t.silent > 1 ? 'S' : ''})` : '  (0 false alarms)'}${t.err ? ` · errors ${t.err}` : ''}`);
+  L(`${arm.padEnd(7)} recall ${t.flag}/${t.flagT} · right-rule ${t.right}/${t.flag || 0} · restraint ${t.silent}/${t.silentT}${t.silentT - t.silent ? `  (${t.silentT - t.silent} FALSE ALARM${t.silentT - t.silent > 1 ? 'S' : ''})` : '  (0 false alarms)'}${t.err ? ` · errors ${t.err}` : ''}${arm === 'GATED' ? ` · chat calls skipped ${t.skipped}/${t.n} · violations lost to the gate ${t.lost}` : ''} · mean ${Math.round(t.ms / t.n)}ms`);
+}
+// per-arm cost from the meter's own price table
+for (const row of Object.values(usage)) {
+  const price = core.priceFor(row.providerId, row.model);
+  const cost = price ? core.estimateRowCostUSD(row, price) : null;
+  const t = totals[row.arm];
+  L(`${row.arm.padEnd(7)} ${row.providerId}/${row.model}: ${row.calls} calls · ${Math.round(row.promptTokens / row.calls)} in / ${Math.round(row.completionTokens / row.calls)} out per call · ${cost === null ? 'unpriced' : `$${cost.toFixed(4)} total, $${(cost / t.n).toFixed(6)} per draft`}`);
 }
 process.exit(0);

@@ -116,6 +116,7 @@ export {
 
 export {
   buildSourcesFromConfig,
+  buildDecisionProvider,
   type BuildSourcesOptions,
 } from './sources/build-sources';
 
@@ -532,3 +533,52 @@ export {
   type HarnessDispatch,
   type HarnessBridgeInfo,
 } from './providers/harness-bridge';
+
+// Decision seam — calibrated decision models behind one interface,
+// separate from the LLM providers; the package that answers is loaded by
+// name. See decisions/types.ts, decisions/legs.ts, docs/architecture/decisions.md.
+export {
+  DecisionError,
+  DECISION_LIMITS,
+  type DecisionValue,
+  type NoulQuestion,
+  type ChoiceQuestion,
+  type ScoreQuestion,
+  type DecisionQuestion,
+  type NoulAnswer,
+  type ChoiceAnswer,
+  type ScoreAnswer,
+  type DecisionAnswer,
+  type AnswersFor,
+  type DecisionRequest,
+  type DecisionResult,
+  type DecisionUsage,
+  type DecisionContext,
+  type DecisionErrorKind,
+  type DecisionProvider,
+} from './decisions/types';
+export { ChatFallbackDecisionProvider, CHAT_FALLBACK_SYSTEM, type ChatFn } from './decisions/chat-fallback';
+export { dispatchDecision, validateDecisionRequest, applyDecisionDehydrationFloor, type DispatchDecisionContext } from './decisions/dispatch';
+export { DecisionBreaker, DECISIONS_BREAKER_MS, DECISIONS_BREAKER_AUTH_MS } from './decisions/breaker';
+export { deriveReplaceValue } from './sources/replace-value';
+export {
+  type DecisionLegs,
+  type DecisionLegContext,
+  type DecisionLegsFactory,
+  type DecisionLegsFactoryOptions,
+  type PauseInput,
+  type PauseVerdict,
+  type TipsEntryForDecision,
+  type TipsVerdict,
+  type CommitmentForDecision,
+  type DecisionUnit,
+  type ContradictionVerdict,
+  type SpellingVerdict,
+  type ReplaceVerdict,
+  type UnderscoreRoute,
+  type UnderscoreRouting,
+  type RouteContext,
+  UNDERSCORE_ROUTE_SOURCES,
+  UNDERSCORE_CHAT_SOURCE_IDS,
+} from './decisions/legs';
+export { loadDecisionLegs, resetDecisionPackage, DECISIONS_PACKAGE, DECISIONS_PATH_ENV, DECISIONS_DEFAULT_ENV_KEY } from './decisions/load';

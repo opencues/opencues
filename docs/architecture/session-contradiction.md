@@ -131,38 +131,30 @@ draft — a coherent task, not N independent extractions.
 The watchlist rides in the SYSTEM message (stable within a session → cerebras
 prefix-caches it); the draft is the USER message.
 
-## Ingest — live holder, re-read without restart
+**The pre-gate (`decisions-provider`).** With a decision package installed
+(docs/architecture/decisions.md) the source asks the `contradictionGate` leg
+BEFORE the chat call with the draft, the watchlist as `{id, statement}` and the
+draft's sentences cut by `segmentSentences` (`contradictionUnits`, keyed
+`s1…`). A confident `none` (≥ 0.5, `contradictionGateSkips`) ends the pass with
+no chat call; a gate error falls through to the chat call: the gate can save a
+call, never lose a cue. The gate's confidence rides `CueResult.confidence` as
+data when the chat call cited the same decision.
 
-Every boot band (`adapters/{cc/v2.1,oc/v1.14,gemini/v0.41,shell/v1}/boot.ts`)
-calls `buildSessionCommitmentsIngest(log, { cwd: host.cwd })` (`boot-common.ts`)
-— an mtime-gated 4 s re-read of the watchlist into a live holder passed to the
-`Resolver` as `options.sessionCommitments`. The ingest resolves the same scoped
-path the producer writes (`<cues>/session-commitments/<key>.json` for the boot
-cwd), falling back to the flat file when the scoped one is absent; a path change
-between polls (flat → scoped once the first watchlist lands) is handled by
-tracking `lastPath` alongside `lastMtimeMs`. The resolver forwards the holder
-(gated by `session-contradiction-mode`) onto every `CueContext` as
-`sessionCommitments`, so a re-ingest applies without a host restart. Missing
-file → empty holder → the source stays silent (the documented inert mode).
-
-## Rendering — a passive sentence-cue at priority 88
-
-A flag is emitted as a passive `sentence-cue:session-contradiction` result:
-`alternatives: [offendingSentence, reconciledRewrite]`, a char-range span,
-priority **88** (a sibling of the deterministic contradiction cue at 87; its
-passive cue evicts `more-formal` at 85 on overlap). The resolver registers a
-passive DynDef at `currentIndex: 0` — the buffer keeps the user's draft; the
-`⚠` tip surfaces (inline or secondary, per `inline-cues-mode`) and
-`Ctrl+Alt+↑` swaps in the reconciled rewrite. **Never auto-splices.**
-
-**Fused with ask-cues** (`sources/session-cue-source.ts`): both this matcher and
-the ask-cues source (`ToolPromptCueSource`, `❓`) consume the same distilled
-session and compete for the sentence under the cursor, so they're wrapped in one
-`SessionCueSource` (priority 88) that runs contradiction and tips **in parallel** (since core 0.60.4; contradiction wins when it fires) and the ask leg only when neither flagged: if the
-contradiction matcher emits a flag, ask-cues is skipped for that pass; otherwise
-ask-cues runs. This removes the earlier duplication where ask-cues had its own
-contradiction-catching exception. `build-sources.ts` constructs the fused source
-whenever `enableSessionContradiction || enableAskCues`, passing per-half flags.
+**Detection on the decision layer.** The same verdict may name a UNIT. On a
+hit at ≥ `CONTRADICTION_FIRE_THRESHOLD` (0.5) with a unit, the cue is built from
+data with no chat call: the span is the chosen sentence (a substring by
+construction), the note is the decision's own statement (`⚠ <statement>`), and
+the result carries `metadata.deferredRewrite = { commitmentId, statement, quote }`
+with `alternatives: [sentence, sentence]`. The reconciled rewrite is fetched by
+the runtime when the caret lands on the span (`reconcile`, one small call:
+`SESSION_CONTRADICTION_RECONCILE_SYSTEM`) and applied on the press; a NONE /
+echo / failure leaves the note in place and is never asked twice. A hit under
+the fire floor, or with a `none` unit, runs the chat matcher: engineering
+violations come back confidently, style rules ("do not hedge a commitment") sit
+closer to `none`, and without the floor low-confidence hits painted cues on
+clean drafts. The chat matcher below remains the path without a package, and
+the fallback. **Style rules work through this leg unchanged** — see docs/features/session-contradiction.md
+§ Rules about how you write.
 
 ## Grounding + safety invariants
 

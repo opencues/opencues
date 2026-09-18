@@ -408,3 +408,16 @@ Without overrides, sentence cues inherit the global `llm-provider:`
 ---
 
 *Last updated: 2026-08-05.*
+
+## The gate (`gate:` frontmatter)
+
+A sentence-scope cue file may carry `gate: <yes/no question>` (runtime-only key
+for now). With a decision package installed (docs/architecture/decisions.md),
+`SentenceCueSource` asks the `sentenceGate` leg once per pass with the gate line
+and every sentence (the dehydrated text, the same bytes the rewrite call would
+carry) and spends the rewrite call only on sentences at gate ≥ 0.5
+(`SENTENCE_GATE_THRESHOLD_DEFAULT`) and prose ≥ 0.3 (`SENTENCE_PROSE_THRESHOLD`,
+low on purpose: short imperatives are exactly what a formality cue exists for; a
+URL or a code line is not); the rest cede with no call. A failed gate sends every
+sentence (never loses a rewrite). `more-formal` ships a gate; `calendar` does not
+and is untouched. A rewritten sentence waits for the serial gate first.
