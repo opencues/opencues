@@ -1120,7 +1120,8 @@ module.exports = async function doctor(argv, ctx) {
       // it there) and the default checkout dir setup.sh copies FROM.
       const os = require('os');
       const forkDirs = (() => { try { return require('fs').readdirSync(path.join(os.homedir(), '.opencues', 'forks')).map((d) => path.join(os.homedir(), '.opencues', 'forks', d, 'node_modules', '@opencues', 'decisions')); } catch { return []; } })();
-      const specs = [process.env.OPENCUES_DECISIONS_PATH, '@opencues/decisions', path.join(os.homedir(), 'opencues-decisions'), ...forkDirs].filter(Boolean);
+      const entryOf = (d) => { for (const rel of ['dist/index.js', 'index.js']) { const f = path.join(d, rel); if (require('fs').existsSync(f)) return f; } return d; };
+      const specs = [process.env.OPENCUES_DECISIONS_PATH, '@opencues/decisions', path.join(os.homedir(), 'opencues-decisions'), ...forkDirs].filter(Boolean).map(entryOf);
       for (const spec of specs) { try { pkg = require(spec); break; } catch { /* next */ } }
       const envKey = (pkg && pkg.envKey) || 'TYPESAFE_API_KEY';
       const hasKey = !!(process.env[envKey] || (envKeysMod ? envKeysMod.readCuesEnvFile()[envKey] : undefined));

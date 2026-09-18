@@ -6,8 +6,9 @@
  * owns the provider, the questions and the thresholds; core owns the seam
  * (types, dispatch chokepoint, breaker) and the sources that consume a
  * verdict. Resolution order: `OPENCUES_DECISIONS_PATH` (a directory or an
- * entry file), then `@opencues/decisions` from the usual module paths, then
- * `~/opencues-decisions` (the checkout the installers copy from).
+ * entry file), then the `@opencues/decisions` installed next to this core (found
+ * by path from this file), then `~/opencues-decisions` (the checkout the
+ * installers copy from), then the bare specifier.
  * Nothing found → one log line, every leg on its chat path.
  *
  * Native hosts only: in a page (chrome, dsh's client half) the key would
@@ -41,13 +42,32 @@ function requirePackage(log?: (m: string) => void): { pkg: DecisionPackage | nul
   if (typeof process === 'undefined' || !process.versions?.node) { cached = { pkg: null, from: 'browser host' }; return cached; }
   const req = typeof require === 'function' ? require : null;   // BROWSER-SAFE-ALLOW: node only past the guard above
   if (!req) { cached = { pkg: null, from: 'no require' }; return cached; }
+  // Candidates are EXPLICIT FILES wherever possible: inside a host's compiled
+  // runtime (Claude Code's Bun binary) a bare specifier or a directory require
+  // from a disk module does not resolve the way it does under node, so the
+  // package is found by path — walking up from this file's own location to
+  // the nearest node_modules/@opencues/decisions — before the bare specifier
+  // is tried as the last resort.
+  const fs = require('fs') as typeof import('fs');             // BROWSER-SAFE-ALLOW: node only past the guard above
+  const path = require('path') as typeof import('path');       // BROWSER-SAFE-ALLOW: node only past the guard above
+  const entryOf = (dir: string): string | null => {
+    for (const rel of ['dist/index.js', 'index.js']) { const f = path.join(dir, rel); if (fs.existsSync(f)) return f; }
+    return null;
+  };
   const candidates: string[] = [];
   const envPath = process.env[DECISIONS_PATH_ENV];   // BROWSER-SAFE-ALLOW: node only past the guard above
-  if (envPath) candidates.push(envPath);
-  candidates.push(DECISIONS_PACKAGE);
+  if (envPath) candidates.push((fs.existsSync(envPath) && fs.statSync(envPath).isDirectory() ? entryOf(envPath) : null) ?? envPath);
+  // the installed package next to this core: <…>/node_modules/@opencues/decisions
+  let dir = typeof __dirname === 'string' ? __dirname : '';
+  for (let i = 0; dir && i < 8; i++) {
+    const f = entryOf(path.join(dir, 'node_modules', '@opencues', 'decisions'));
+    if (f) { candidates.push(f); break; }
+    const up = path.dirname(dir); if (up === dir) break; dir = up;
+  }
   // the checkout setup.sh copies the package FROM, for processes that run
   // outside a host fork (doctor, the benches, a plain node script)
-  try { const os = require('os') as typeof import('os'); candidates.push(os.homedir() + '/opencues-decisions'); } catch { /* no os module: skip */ }   // BROWSER-SAFE-ALLOW: node only past the guard above
+  try { const os = require('os') as typeof import('os'); const f = entryOf(path.join(os.homedir(), 'opencues-decisions')); if (f) candidates.push(f); } catch { /* no os module: skip */ }   // BROWSER-SAFE-ALLOW: node only past the guard above
+  candidates.push(DECISIONS_PACKAGE);
   for (const c of candidates) {
     try { const pkg = req(c) as DecisionPackage; cached = { pkg, from: c }; return cached; }
     catch (e) { log?.(`decisions: ${c} not loadable (${(e as Error).message.split('\n')[0]})`); }
