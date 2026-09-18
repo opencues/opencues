@@ -274,3 +274,130 @@ describe('SemanticTipsSource — trailing whitespace is not content', () => {
     expect(c.alternatives).toEqual(['lets begin again on the zorb', '/zap']);   // the original is the content, not the spaces
   });
 });
+
+// ── the decision path (decision layer) ─────────────────────────────────
+// A scripted DecisionLegs stands in for the decision package: these tests
+// pin what the source DOES with a verdict (assembly from an id + probability,
+// the threshold, the hysteresis). The package's own tests pin the questions.
+import { lastSentence, entriesForDecision } from './semantic-tips-source';
+import { fakeLegs } from '../decisions/fake-legs.test-helper';
+
+describe('SemanticTipsSource — decision matcher', () => {
+  it('hands the leg the catalogue as {id, when, tip, command} and the draft, and never makes a chat call', async () => {
+    const d = fakeLegs({ tips: { choice: 't1', confidence: 0.9 } });
+    const src = new SemanticTipsSource({ ...baseConfig, httpAdapter: { post: async () => { throw new Error('chat must not be called'); } }, decisions: d });
+    const r = await src.getCues(ctx('ok this is a mess, lets begin again on the zorb'));
+    expect(d.calls.length).toBe(1);
+    expect(d.calls[0].leg).toBe('tipsMatch');
+    expect(d.calls[0].args[0]).toBe('ok this is a mess, lets begin again on the zorb');
+    const entries = d.calls[0].args[1] as ReturnType<typeof entriesForDecision>;
+    expect(entries.map((e) => e.id)).toEqual(['t1', 't2', 't3']);
+    expect(entries[0].when).toBe('wants to begin again from nothing');
+    expect(entries[0].command).toBe('/zap');
+    expect(r.results.length).toBe(1);
+  });
+
+  it('assembles a command tip from the pack: whole-buffer span, [original, /command], the say: line, confidence as data', async () => {
+    const src = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: fakeLegs({ tips: { choice: 't1', confidence: 0.83 } }) });
+    const text = 'ok this is a mess, lets begin again on the zorb';
+    const [c] = (await src.getCues(ctx(text))).results;
+    expect(c.alternatives).toEqual([text, '/zap']);
+    expect(c.spanStart).toBe(0);
+    expect(c.spanEnd).toBe(text.length);
+    expect(c.cueTip).toBe('💡 ALT-SAY beginning again? /zap resets the zorb');
+    expect(c.confidence).toBe(0.83);
+    expect((c.metadata as { tip: { command: boolean; why: string } }).tip.command).toBe(true);
+  });
+
+  it('holds below the threshold, and on none', async () => {
+    const low = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: fakeLegs({ tips: { choice: 't1', confidence: 0.4 } }) });
+    expect((await low.getCues(ctx('lets begin again on the zorb'))).results).toEqual([]);
+    const custom = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: fakeLegs({ tips: { choice: 't1', confidence: 0.4 } }), tipsThreshold: 0.3 });
+    expect((await custom.getCues(ctx('lets begin again on the zorb'))).results.length).toBe(1);
+    const none = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: fakeLegs({ tips: { choice: 'none', confidence: 0.95 } }) });
+    expect((await none.getCues(ctx('the zorb field on the invoice should be a decimal'))).results).toEqual([]);
+  });
+
+  it('a leg that pre-checked every entry out (null verdict) is logged and yields nothing', async () => {
+    const lines: string[] = [];
+    const src = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: fakeLegs({ tips: null }), log: (m) => lines.push(m) });
+    expect((await src.getCues(ctx('run /zap before we continue'))).results).toEqual([]);
+    expect(lines.join('\n')).toMatch(/pre-checked out/);
+  });
+
+  it('a prose tip is advisory: [original] alone, the flagged span is the cursor sentence', async () => {
+    const src = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: fakeLegs({ tips: { choice: 't3', confidence: 0.77 } }) });
+    const text = 'the zorb landed. why is this so spendy today';
+    const [c] = (await src.getCues(ctx(text))).results;
+    expect(c.alternatives).toEqual(['why is this so spendy today']);
+    expect(text.slice(c.spanStart!, c.spanEnd!)).toBe('why is this so spendy today');
+    expect(c.cueTip).toBe('💡 ALT-THREE quux is spendy');
+    expect(c.confidence).toBe(0.77);
+  });
+
+  it('a decision failure is logged and yields no cue, never a throw', async () => {
+    const lines: string[] = [];
+    const src = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: fakeLegs({ throws: new Error('boom') }), log: (m) => lines.push(m) });
+    expect((await src.getCues(ctx('lets begin again on the zorb'))).results).toEqual([]);
+    expect(lines.join('\n')).toMatch(/match failed/);
+  });
+
+  it('lastSentence: the cursor sentence, or the whole draft', () => {
+    expect(lastSentence('one. two three')).toBe('two three');
+    expect(lastSentence('one! two?  ')).toBe('two?');
+    expect(lastSentence('just one line')).toBe('just one line');
+    expect(lastSentence('first line\nsecond line')).toBe('second line');
+    expect(lastSentence('ends here.')).toBe('ends here.');
+  });
+});
+
+// ── review fix: the note attaches to the CURSOR's sentence, not the last one ──
+import { sentenceAt } from './semantic-tips-source';
+describe('sentenceAt', () => {
+  const t = 'first thing here. second thing here. third thing here';
+  it('picks the sentence containing the cursor, the last one at the end or when unknown', () => {
+    expect(sentenceAt(t, 3)).toBe('first thing here.');
+    expect(sentenceAt(t, 25)).toBe('second thing here.');
+    expect(sentenceAt(t, t.length)).toBe('third thing here');
+    expect(sentenceAt(t)).toBe('third thing here');
+    expect(sentenceAt(t, -1)).toBe('third thing here');
+    expect(sentenceAt('one line only', 4)).toBe('one line only');
+    expect(sentenceAt('line one\nline two\nline three', 12)).toBe('line two');
+  });
+  it('a prose tip with a mid-buffer cursor attaches to that sentence', async () => {
+    const src = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: fakeLegs({ tips: { choice: 't3', confidence: 0.77 } }) });
+    const text = 'why is this so spendy today. the zorb landed.';
+    const [c] = (await src.getCues({ ...ctx(text), cursor: 5 })).results;
+    expect(text.slice(c.spanStart!, c.spanEnd!)).toBe('why is this so spendy today.');
+  });
+});
+
+// ── the flicker fix: hysteresis at the threshold ─────────────────────────
+describe('SemanticTipsSource — hysteresis', () => {
+  /** legs whose confidence for t1 follows a script, one value per call */
+  const scripted = (confs: number[]) => fakeLegs({ tips: { choice: 't1', confidence: 0.5 }, tipsScript: confs });
+  const draft = 'lets begin again on the zorb';
+
+  it('a tip that fired holds through a dip to 0.4 on the same draft, and releases below it', async () => {
+    const src = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: scripted([0.52, 0.46, 0.41, 0.38, 0.52]) });
+    const fired = async (t: string) => (await src.getCues(ctx(t))).results.length;
+    expect(await fired(draft)).toBe(1);                 // 0.52: fires
+    expect(await fired(draft + ' ')).toBe(1);           // 0.46: held (continuation)
+    expect(await fired(draft + ' n')).toBe(1);          // 0.41: held
+    expect(await fired(draft + ' no')).toBe(0);         // 0.38: below the lower band → released
+    expect(await fired(draft + ' now')).toBe(1);        // 0.52: fires again on its own
+  });
+
+  it('does not hold on a different draft, and never fires fresh below the threshold', async () => {
+    const src = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: scripted([0.52, 0.46, 0.46]) });
+    expect((await src.getCues(ctx(draft))).results.length).toBe(1);
+    expect((await src.getCues(ctx('the zorb field on the invoice is wrong'))).results.length).toBe(0);   // new draft: 0.46 < 0.5, not held
+    expect((await src.getCues(ctx('some other zorb thing entirely'))).results.length).toBe(0);
+  });
+
+  it('holds when the cursor sentence is unchanged even if the text before it changed', async () => {
+    const src = new SemanticTipsSource({ ...baseConfig, httpAdapter: makeMockAdapter('[]'), decisions: scripted([0.52, 0.44]) });
+    expect((await src.getCues({ ...ctx('intro. ' + draft), cursor: 100 })).results.length).toBe(1);
+    expect((await src.getCues({ ...ctx('a new intro here. ' + draft), cursor: 100 })).results.length).toBe(1);
+  });
+});

@@ -86,6 +86,17 @@ export interface SourceConfig {
    * is off (no catalog → the source cedes). Only meaningful with `scope: sentence`.
    */
   usesCalendarContext?: boolean;
+  /**
+   * `gate:` — a yes/no question a calibrated decision model answers about each
+   * sentence BEFORE the cue's rewrite call is spent (decision layer,
+   * docs/architecture/decisions.md). Phrased so a yes means "spend the call":
+   * `gate: a careful writer would rewrite this sentence to be more formal`.
+   * A sentence below the threshold cedes without a chat call. Absent → every
+   * sentence is sent, as before. Runtime-only key for now (it becomes part of
+   * the standard's `questions:` block in step 8); inert without a decision
+   * provider. Only meaningful with `scope: sentence`.
+   */
+  gate?: string;
 
   /** Model override for this source */
   model?: string;
@@ -1002,6 +1013,8 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   /** `uses-calendar-context: true` — feed the ingested calendar to this
    *  sentence-cue. See SourceConfig.usesCalendarContext. */
   usesCalendarContext?: boolean;
+  /** `gate: <yes/no question>` — see SourceConfig.gate. */
+  gate?: string;
   model?: string;
   /** Per-cue provider override (groq | openrouter | gemini | openai). */
   provider?: string;
@@ -1114,6 +1127,7 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'type': fm.type = value as SingleCueFrontmatter['type']; break;
       case 'scope': fm.scope = value as SourceConfig['scope']; break;
       case 'uses-calendar-context': case 'usesCalendarContext': fm.usesCalendarContext = value === 'true'; break;
+      case 'gate': fm.gate = value; break;
       case 'parser': fm.parser = value as BlankParser; break;
       case 'priority': fm.priority = parseInt(value, 10) || undefined; break;
       case 'match': fm.match = value; break;
@@ -1428,6 +1442,7 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.parser) source.parser = frontmatter.parser;
       if (frontmatter.scope) source.scope = frontmatter.scope;
       if (frontmatter.usesCalendarContext) source.usesCalendarContext = true;
+      if (frontmatter.gate) source.gate = frontmatter.gate;
       if (frontmatter.maxTokens !== undefined) source.maxTokens = frontmatter.maxTokens;
       if (frontmatter.temperature !== undefined) source.temperature = frontmatter.temperature;
       if (frontmatter.onField) source.onField = frontmatter.onField;

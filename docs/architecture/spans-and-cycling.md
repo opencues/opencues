@@ -1043,3 +1043,16 @@ contract. The suite has grown substantially since this was last
 counted (74 files, 1399+ tests as of 2026-07 — treat any specific
 count here as a snapshot, not a ceiling) — every behaviour described
 above is pinned by at least one test.
+
+## Deferred alternatives
+
+A passive sentence-cue def may register with a rewrite it does not have yet:
+`WordDef.deferredRewrite` (what to fetch it with) and `alternatives[1] ===
+alternatives[0]` (`rewriteIsDeferred`). The note and hint read as a two-stop
+toggle; `Cycling.cycleStaticAlts` asks `DynDefs.resolveDeferred` on the press
+and applies the updated def when the fetch lands (only if the buffer is still
+the one the press saw); the Resolver prefetches on `HighlightState.onChange`
+when the caret lands inside the span, so the press is usually instant. Today's
+only producer is the session-contradiction leg on the decision layer
+(docs/architecture/session-contradiction.md § Detection on the decision layer).
+

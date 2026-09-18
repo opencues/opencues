@@ -513,6 +513,21 @@ for dep in acorn acorn-walk; do
     echo "  ⚠ cannot resolve $dep from packages/opencues-runtime — JS user blanks will be disabled in this fork"
   fi
 done
+# The decision package (optional, loaded by name: core's decisions/load.ts
+# requires `@opencues/decisions` from the fork's node_modules). Copied from
+# OPENCUES_DECISIONS_DIR (default ~/opencues-decisions) when that checkout
+# has a built dist/; absent → every decision leg stays on its chat path and
+# the boot log says so. Never part of the public repo.
+DECISIONS_DIR="${OPENCUES_DECISIONS_DIR:-$HOME/opencues-decisions}"
+if [ -d "$DECISIONS_DIR/dist" ] && [ -f "$DECISIONS_DIR/package.json" ]; then
+  rm -rf "$OC_NM_DIR/decisions"
+  mkdir -p "$OC_NM_DIR/decisions"
+  cp -r "$DECISIONS_DIR/dist" "$OC_NM_DIR/decisions/dist"
+  cp "$DECISIONS_DIR/package.json" "$OC_NM_DIR/decisions/package.json"
+  echo "  ✓ decision package copied from $DECISIONS_DIR"
+else
+  rm -rf "$OC_NM_DIR/decisions"
+fi
 end_step
 
 # ─── 6. Install CC-specific support files (statusline + settings.json) ─

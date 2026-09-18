@@ -165,7 +165,7 @@ export interface VerifiedReplace {
  *  values, so verification runs in value space even when the outbound
  *  text was dehydrated. Unknown tokens are left alone (they'll fail
  *  the substring check and the caller falls back to fused — safe). */
-function hydrateField(s: string, catalog: ReadonlyMap<string, string> | undefined): string {
+export function hydrateField(s: string, catalog: ReadonlyMap<string, string> | undefined): string {
   if (!catalog || catalog.size === 0 || !s.includes('[')) return s;
   let out = s;
   for (const [token, value] of catalog) out = out.split(token).join(value);

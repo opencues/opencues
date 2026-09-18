@@ -24,6 +24,14 @@ export interface CueResult {
   /** Per-alternative cue-tips (keyed by alternative word) */
   altCueTips?: Record<string, string>;
 
+  /**
+   * How sure the source is that this cue applies, 0..1, when it came from a
+   * calibrated decision model (docs/architecture/decisions.md). DATA ONLY:
+   * carried on the result and on the render directive, read by no renderer
+   * yet. A chat-sourced cue leaves it undefined.
+   */
+  confidence?: number;
+
   /** Source identifier (e.g., 'tips', 'grammar', 'math', 'factual') */
   source: string;
 

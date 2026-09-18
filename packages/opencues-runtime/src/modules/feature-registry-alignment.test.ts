@@ -38,6 +38,9 @@ const SETTINGS_MAP_ONLY: ReadonlySet<string> = new Set([
   'contradictionCuesMode',   // consumed in resolver.ts:enableContradictionCues
   'integrationWeaveMode', // consumed in blank-fill.ts applyAsyncFill weave gate
                           // (read from settings map; no resolver/typed field)
+  'decisionsFanout',    // consumed in resolver.ts (buildSources decisionsFanout) — plain on/off
+  'decisionsProvider',  // consumed by the decision layer's boot wiring only
+                        // (the decision seam: the scalar is read by build-sources, not by a typed state field)
   'maxThinking',        // consumed in resolver.ts (buildSources maxThinking)
                         // + boot-common buildAgentLLMResolver; a plain
                         // on/off toggle, no narrow-typed consumer needs it.

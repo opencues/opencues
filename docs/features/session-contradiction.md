@@ -51,6 +51,24 @@ edited file is never touched by re-seeding, so deleting a default is permanent
 in practice (the opt-out for ALL of them is emptying the bullets, not deleting
 the file, which would reseed on the next install).
 
+### Rules about how you write
+
+A rule does not have to be about facts. The same line can name a habit you
+want caught, and with a decision package installed (`decisions-provider`)
+the cue lands on the sentence that has it, with the rule as the note:
+
+```markdown
+- Decide, or say what is unknown — never hedge a decision, a commitment or a status.
+- Never defer or point away from something the reader needs ("will add later", "see attached").
+```
+
+"I think we can probably still make Friday" gets `⚠ Decide, or say what is
+unknown …` on that sentence. Two limits worth knowing: one rule per pause (the strongest; the
+next surfaces once the first sentence is fixed), and a rule that needs the
+world outside the draft ("no claim without evidence") does not work — the
+model judges what a sentence *says*, not whether it is *true*. These two are
+an example, not defaults; add them if they are your habits.
+
 Two honest boundaries: this **flags, it does not block** — it is a nudge at
 typing time, not a gate (use CI for gates), and rules are dismissible like any
 cue. And **keep the list curated** — the watchlist caps at 24 entries and

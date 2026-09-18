@@ -763,3 +763,17 @@ observes the result).
 (3-pass retired per `EXPERIMENTS.md, Experiment 10`), the generative
 branch, and the TASK_* verdicts that route into the agent-task state
 machine.*
+
+### Replace-parse on the decision layer
+
+With a decision package installed (docs/architecture/decisions.md), the detector
+is the `replace` leg instead of the chat call, in parallel with the fused call
+on the same outbound input: the leg returns the target substring and the command
+phrase (both cut from the input, never model text), and the value is read off the
+fused rewrite's diff at the target (`sources/replace-value.ts:deriveReplaceValue`:
+the changed region must sit on the target, overhanging by punctuation at most).
+The splice inputs then pass the same `verifyReplaceDetect` gate. Result
+`metadata.pipelineMode` is `replace-splice-decision`. A failed request resolves
+to null and the fused merge path is unaffected. `prod.ts --replace-parse
+chat|decisions` runs the suites with either detector and applies the splice
+before judging (the decisions arm needs the package installed).

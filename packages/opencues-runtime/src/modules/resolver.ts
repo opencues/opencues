@@ -16,7 +16,7 @@
 import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { ConfigLoader } from './config-loader';
 import type { DynDefs, WordDef } from '../state/dyn-defs';
-import { reconstructAsTyped, reconstructAsTypedWithMap } from '../state/dyn-defs';
+import { reconstructAsTyped, reconstructAsTypedWithMap, rewriteIsDeferred } from '../state/dyn-defs';
 import { dismissalTargetOf, isCueDismissed } from '../state/cue-dismissals';
 import type { HighlightState } from '../state/highlight-state';
 import type { SpanFillState } from '../state/span-fill';
@@ -180,6 +180,11 @@ export interface ResolverOptions {
 
 interface CuesCoreLike {
   buildSourcesFromConfig(c: unknown, b: unknown, o: unknown): unknown[];
+  /** The `_` router (decision layer, docs/architecture/decisions.md). All
+   *  optional so an older core bundle simply never routes. */
+  buildDecisionProvider?(o: unknown): unknown;
+  DecisionBreaker?: new (log: (line: string) => void, who?: string) => { healthy(): boolean; trip(err: unknown): void };
+  UNDERSCORE_CHAT_SOURCE_IDS?: ReadonlySet<string>;
   createResolver(sources: unknown[], opts: unknown): { resolve(ctx: unknown, opts?: unknown): Promise<{ results: CueResultLike[] }> };
   /** Whitelist an ambient down to its privacy-safe SHAPE booleans
    *  (`singleLine`/`disposable`) — forwarded unconditionally for field-kind
@@ -188,11 +193,23 @@ interface CuesCoreLike {
   structuralAmbientOnly?(a: unknown): { singleLine?: boolean; disposable?: boolean } | undefined;
 }
 
+/** What the router returns (core's `UnderscoreRouting`, duck-typed). */
+interface UnderscoreRoutingLike {
+  readonly route: string | null;
+  readonly sourceId: string | null;
+  readonly choice: string;
+  readonly confidence: number;
+  readonly agreement: number;
+  readonly ms: number;
+}
+
 interface CueResultLike {
   wordIndex: number;
   word: string;
   alternatives: string[];
   cueTip?: string;
+  /** decision-sourced confidence, 0..1; data only (docs/architecture/decisions.md) */
+  confidence?: number;
   altCueTips?: Record<string, string>;
   /** Multi-word span in CHARACTER offsets â set by FluidBlankSource WIPE mode. */
   spanStart?: number;
@@ -264,6 +281,16 @@ function normalizeModelScalar(raw: string | undefined): string | undefined {
   return t;
 }
 
+/** The `_` router's latency budget: past it the pass fans out as today (docs/architecture/decisions.md § The `_` side). */
+export const UNDERSCORE_ROUTE_BUDGET_MS = 1000;
+
+function isDeferredRewrite(v: unknown): v is NonNullable<WordDef['deferredRewrite']> {
+  return !!v && typeof v === 'object'
+    && typeof (v as { statement?: unknown }).statement === 'string'
+    && typeof (v as { quote?: unknown }).quote === 'string'
+    && typeof (v as { commitmentId?: unknown }).commitmentId === 'string';
+}
+
 function isAbortError(err: unknown): boolean {
   return !!err && typeof err === 'object' && (err as { name?: string }).name === 'AbortError';
 }
@@ -313,6 +340,11 @@ export const SENTENCE_CUE_SYNTHETIC_KEY_BASE = 2_000_000;
 export class Resolver {
   private _resolver: { resolve(ctx: unknown, opts?: unknown): Promise<{ results: CueResultLike[] }> } | null = null;
   private _sources: unknown[] = [];
+  /** The decision provider for the `_` router (null when `decisions-provider`
+   *  is off, no key, or the core bundle predates it). Built with the sources
+   *  from the same options, so the scalar flip rebuilds it too. */
+  private _decisions: { route(text: string, ctx: unknown): Promise<UnderscoreRoutingLike> } | null = null;
+  private _routeBreaker: { healthy(): boolean; trip(err: unknown): void } | null = null;
   private _httpAdapter: unknown = null;
   /** Cached `@opencues/core` module handle (loaded lazily in buildSources).
    *  Used at resolve time for the pure `structuralAmbientOnly` whitelist. */
@@ -497,7 +529,19 @@ export class Resolver {
      *  transaction so `undo _` can revert it; also enables the ACTION
      *  branch (undo/redo application) itself. Omit to disable both. */
     private undoJournal?: UndoJournal,
-  ) {}
+  ) {
+    // Deferred rewrites (plan step 6): the DynDefs hook Cycling calls on the
+    // press, and the caret-landing prefetch so the press is usually instant.
+    this.dynDefs.resolveDeferred = (i) => this.fetchDeferredRewrite(i);
+    this.hlState.onChange(() => {
+      if (!this.hlState.active || this.hlState.wordIndex === null) return;
+      const text = this.adapter.getText();
+      const span = this.dynDefs.findSpanContaining(this.hlState.wordIndex, splitWords(text));
+      const key = span ? span.originIdx : this.hlState.wordIndex;
+      const def = this.dynDefs.get(key);
+      if (def && rewriteIsDeferred(def)) void this.fetchDeferredRewrite(key);
+    });
+  }
 
   /** Pending config-intent transaction â opened lazily by the wrapped
    *  applyOpencuesScalar (scalar writes land at EMIT time inside core's
@@ -906,6 +950,12 @@ export class Resolver {
       // Semantic tips: opt-in (`tips-mode: semantic`); the catalogue is forwarded
       // below under the SAME read, so the source and its input can't drift.
       enableSemanticTips: settings.get('tips-mode') !== 'off',
+      // `decisions-provider` (default off): the calibrated decision model
+      // for the legs that have moved to it (tips matching first). Same
+      // settings-map read as the registry scalar; build-sources resolves the
+      // key and logs when it cannot build one.
+      decisionsProvider: settings.get('decisions-provider') ?? 'off',
+      decisionsFanout: (settings.get('decisions-fanout') ?? 'on') !== 'off',
       worldDataFetch: this.options.worldDataFetch,
       pageLocation: this.options.pageLocation,
       weatherLocation: settings.get('weather-location'),
@@ -1028,6 +1078,14 @@ export class Resolver {
     }
 
     this._sources = sources;
+    // The `_` router's legs: same options as the sources, so the same
+    // scalar / key gates apply and build-sources' own log line names why no
+    // decision package was loaded. One breaker, shared shape with the session
+    // rail's (core's DecisionBreaker), so an outage costs one failed route.
+    this._decisions = (cuesCore.buildDecisionProvider?.(buildOpts) as { route(text: string, ctx: unknown): Promise<UnderscoreRoutingLike> } | undefined) ?? null;
+    this._routeBreaker = this._decisions && cuesCore.DecisionBreaker
+      ? new cuesCore.DecisionBreaker((m) => this.adapter.log('info', `Resolver: ${m}`), 'route')
+      : null;
     this._resolver = cuesCore.createResolver(sources, {
       // Parallel: all sources run concurrently. Total latency = max(source
       // times) instead of sum. The merge-by-priority happens after all
@@ -1041,6 +1099,44 @@ export class Resolver {
     // synchronously through BlankFill, separate from the resolver.
     const ids = sources.map(s => (s as { id?: string }).id ?? '?').join(', ');
     this.adapter.log('info', `Resolver: built with ${sources.length} sources [${ids}]`);
+  }
+
+  /** in-flight deferred-rewrite fetches, one per def object */
+  private readonly _deferredFetches = new WeakMap<WordDef, Promise<WordDef | null>>();
+  /** defs whose fetch came back empty — never asked twice */
+  private readonly _deferredFailed = new WeakSet<WordDef>();
+
+  /**
+   * Fetch a def's deferred rewrite (plan step 6) through the source that
+   * left it (`reconcileContradiction` on the session rail), and swap it into
+   * the def's second stop. Deduplicated per def; a null answer is remembered
+   * so the caret landing again does not spend another call. Resolves to the
+   * updated def, or null.
+   */
+  private fetchDeferredRewrite(key: number): Promise<WordDef | null> {
+    const def = this.dynDefs.get(key);
+    if (!def || !def.deferredRewrite) return Promise.resolve(null);
+    if (!rewriteIsDeferred(def)) return Promise.resolve(def);
+    if (this._deferredFailed.has(def)) return Promise.resolve(null);
+    const inFlight = this._deferredFetches.get(def);
+    if (inFlight) return inFlight;
+    const src = this._sources.find((x): x is { reconcileContradiction(r: WordDef['deferredRewrite'], signal?: AbortSignal): Promise<string | null> } =>
+      !!x && typeof (x as { reconcileContradiction?: unknown }).reconcileContradiction === 'function');
+    if (!src) { this._deferredFailed.add(def); return Promise.resolve(null); }
+    const t0 = Date.now();
+    const p = src.reconcileContradiction(def.deferredRewrite).then((rewrite) => {
+      const live = this.dynDefs.get(key);
+      if (live !== def) { this.adapter.log('debug', `Resolver: deferred rewrite for ${key} landed after the def moved — dropped`); return null; }
+      if (!rewrite) { this._deferredFailed.add(def); this.adapter.emitEvent?.('sentence-cue.rewrite', { wordIndex: key, ready: false, latencyMs: Date.now() - t0 }); return null; }
+      const updated: WordDef = { ...def, alternatives: [def.alternatives[0], rewrite] };
+      this.dynDefs.set(key, updated);
+      this.adapter.log('info', `Resolver: deferred rewrite ready at ${key} (${Date.now() - t0}ms)`);
+      this.adapter.emitEvent?.('sentence-cue.rewrite', { wordIndex: key, ready: true, latencyMs: Date.now() - t0 });
+      return updated;
+    }).catch(() => { this._deferredFailed.add(def); return null; })
+      .finally(() => { this._deferredFetches.delete(def); });
+    this._deferredFetches.set(def, p);
+    return p;
   }
 
   /** Stable string fingerprint of the source-affecting settings. When this
@@ -1070,6 +1166,10 @@ export class Resolver {
       s.get('transform-blank-provider') ?? '', s.get('transform-blank-model') ?? '', s.get('transform-blank-endpoint') ?? '',
       s.get('fluid-config-provider') ?? '', s.get('fluid-config-model') ?? '', s.get('fluid-config-endpoint') ?? '',
       s.get('sentence-cues-provider') ?? '', s.get('sentence-cues-model') ?? '', s.get('sentence-cues-endpoint') ?? '',
+      // Decision layer: the provider is built with the sources, so a flip
+      // of either scalar has to rebuild (was missing until plan step 5:
+      // `decisions-provider: off → typesafe` needed a host restart).
+      s.get('decisions-provider') ?? '', s.get('decisions-fanout') ?? '',
       // Universal-Integration: chrome's adapter answers per-current-target.
       // When focus moves between a contenteditable (cycling) and a normal
       // input (no cycling), the build key flips and sources rebuild on
@@ -1516,10 +1616,76 @@ export class Resolver {
     // ask, a contradiction parse per sentence). Restrict the pass up front.
     const usIdxForOnly = allowBlanks ? text.lastIndexOf('_') : -1;
     const deterministicAction = usIdxForOnly >= 0 && text.slice(usIdxForOnly + 1).trim() === '' ? matchDeterministicAction(text.slice(0, usIdxForOnly)) : null;
-    const only = deterministicAction ? (id: string) => id === 'config-intent' : undefined;
+    let only: ((id: string) => boolean) | undefined = deterministicAction ? (id: string) => id === 'config-intent' : undefined;
     if (only) this.adapter.log('debug', `Resolver: deterministic ${deterministicAction!.action} — dispatching config-intent only`);
+    // Identity context, computed once: the router and the sources ship the
+    // same dehydrated bytes (docs/architecture/hydration-dehydration.md).
+    const identityContext = this.configLoader.opencuesState.identityContextMode !== 'off'
+      ? {
+          fields: this.configLoader.identity.fields,
+          catalog: this.configLoader.identity.catalog,
+          mode: this.configLoader.opencuesState.identityContextMode,
+        }
+      : undefined;
+    // THE `_` ROUTER (decision layer; design A — serial, ruled 2026-09-17).
+    // With a decision provider, one stacked decision request decides which
+    // chat blank source owns this `_` and the pass dispatches only that one;
+    // every non-`_` source (session rail, sentence cues, word cues) is
+    // untouched by the filter. Below threshold, disagreement, a keyword-
+    // bound `_` (BlankFill's, deterministic) or a failed request → the full
+    // fan-out as today. A routed source that cedes is followed by the fan-
+    // out over the rest (below), so the router costs a round trip at most,
+    // never an answer. Adds the router's ~250 ms in front of the first chat
+    // call; the accepted trade for 5 → 1–2 calls (GAINS.md § Step 5).
+    let usRouting: UnderscoreRoutingLike | null = null;
+    const routable = !only && !early && usIdxForOnly >= 0 && !!this._decisions && !!this._routeBreaker?.healthy()
+      && !!this._core?.UNDERSCORE_CHAT_SOURCE_IDS
+      && cleanWords.includes('_')
+      && !noBlankContextConsumer(cleanWords, this.options.keywordBoundSlotIndices?.(text) ?? []);
+    if (routable) {
+      const chatIds = this._core!.UNDERSCORE_CHAT_SOURCE_IDS!;
+      // The router has a latency budget: past it the pass fans out as
+      // today and the route answer, if it ever lands, is dropped. A slow
+      // route (3.6 s seen once on a fresh host) must not hold the `_`
+      // hostage; a budget miss is not a failure, so the breaker stays shut.
+      const routeCtl = new AbortController();
+      const onPassAbort = (): void => routeCtl.abort();
+      controller.signal.addEventListener('abort', onPassAbort, { once: true });
+      const budget = setTimeout(() => routeCtl.abort(), UNDERSCORE_ROUTE_BUDGET_MS);
+      try {
+        usRouting = await this._decisions!.route(text, {
+          signal: routeCtl.signal,
+          log: (m: string) => this.adapter.log('debug', `Resolver: ${m}`),
+          identityContext,
+        });
+        this.adapter.emitEvent?.('resolver.route', { choice: usRouting.choice, confidence: usRouting.confidence, agreement: usRouting.agreement, sourceId: usRouting.sourceId, latencyMs: usRouting.ms, generation });
+        if (usRouting.sourceId) {
+          const routed = usRouting.sourceId;
+          only = (id: string) => !chatIds.has(id) || id === routed;
+        }
+      } catch (err) {
+        // A supersede abort arrives wrapped as a transport DecisionError, so
+        // the signal, not the error's name, says whether this pass is dead.
+        if (controller.signal.aborted || isAbortError(err)) {
+          stopAllAnimations();
+          if (this._inFlightController === controller) this._inFlightController = null;
+          return;
+        }
+        usRouting = null;
+        if (routeCtl.signal.aborted) {
+          this.adapter.log('debug', `Resolver: [decision][route] over the ${UNDERSCORE_ROUTE_BUDGET_MS} ms budget — fan-out`);
+          this.adapter.emitEvent?.('resolver.route', { choice: 'budget', confidence: 0, agreement: 0, sourceId: null, latencyMs: UNDERSCORE_ROUTE_BUDGET_MS, generation });
+        } else {
+          this._routeBreaker!.trip(err);
+        }
+      } finally {
+        clearTimeout(budget);
+        controller.signal.removeEventListener('abort', onPassAbort);
+      }
+    }
+    let resolveCtx: Record<string, unknown>;
     try {
-      result = early ? opts.preResolved! : await this._resolver.resolve({
+      result = early ? opts.preResolved! : await this._resolver.resolve(resolveCtx = {
         text,
         words: cleanWords,
         domain: 'claude-code',
@@ -1571,13 +1737,7 @@ export class Resolver {
         // in-memory Map at the ConfigLoader (no IO), so forwarding it
         // unconditionally costs nothing. blankContext below KEEPS the
         // gate â that one is a network/script fetch.
-        identityContext: this.configLoader.opencuesState.identityContextMode !== 'off'
-          ? {
-              fields: this.configLoader.identity.fields,
-              catalog: this.configLoader.identity.catalog,
-              mode: this.configLoader.opencuesState.identityContextMode,
-            }
-          : undefined,
+        identityContext,
         // Ambient blank-context. Provider call is cache-backed; runs
         // on every resolve so OPENCUES.md flips are picked up without
         // host restart. When mode is off the provider returns
@@ -1656,6 +1816,20 @@ export class Resolver {
         // dropped on generation mismatch.
         signal: controller.signal,
       }, { onSourceResult, only });
+      // Cede fallback: the routed source answered nothing (a wrong route,
+      // or a right route the source itself rejected — an out-of-scope
+      // settings request, a transform with nothing to act on). Run the
+      // other chat sources now, as the fan-out would have; the non-`_`
+      // sources already ran and are not repeated.
+      if (usRouting?.sourceId && generation === this._generation && !controller.signal.aborted
+          && !result.results.some((r) => r.source === usRouting!.sourceId)) {
+        const routed = usRouting.sourceId;
+        const chatIds = this._core!.UNDERSCORE_CHAT_SOURCE_IDS!;
+        this.adapter.log('debug', `Resolver: routed source ${routed} ceded — fan-out over the rest`);
+        this.adapter.emitEvent?.('resolver.route.ceded', { sourceId: routed, generation });
+        const rest = await this._resolver.resolve(resolveCtx!, { only: (id: string) => chatIds.has(id) && id !== routed });
+        result = { ...result, results: [...result.results, ...rest.results] };
+      }
     } catch (err) {
       stopAllAnimations();
       // AbortError on supersede is expected â don't surface as a logical
@@ -2418,6 +2592,13 @@ export class Resolver {
           // Per-alternative display labels (ask-cues) → the rotating note shows
           // legible option labels instead of prefix-identical sentence snippets.
           noteLabels: (r.metadata as { noteLabels?: readonly string[] } | undefined)?.noteLabels,
+          // Decision-sourced confidence rides along as data; nothing reads it yet.
+          ...(typeof r.confidence === 'number' ? { confidence: r.confidence } : {}),
+          // A rewrite the source left for later (plan step 6): fetched by
+          // `fetchDeferredRewrite` when the caret lands here or on the press.
+          ...(isDeferredRewrite((r.metadata as { deferredRewrite?: unknown } | undefined)?.deferredRewrite)
+            ? { deferredRewrite: (r.metadata as { deferredRewrite: WordDef['deferredRewrite'] }).deferredRewrite }
+            : {}),
         });
         wrote++;
 

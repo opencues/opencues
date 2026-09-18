@@ -61,6 +61,7 @@
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { SentenceCallCache } from './sentence-call-cache';
+import type { DecisionLegs } from '../decisions/legs';
 import { SourceConfig } from '../cues-md';
 import { inferFieldCompat } from '../host-compat';
 import { describeLLMCall, dispatchChat, type ProviderAdapter } from '../llm-provider';
@@ -309,8 +310,21 @@ export interface SentenceCueSourceConfig {
   maxThinking?: boolean;
   log?: (msg: string) => void;
   onEvent?: (event: SentenceCueEvent) => void;
+  /** With `sourceConfig.gate` set: the decision provider that answers the gate
+   *  per sentence before the rewrite call (plan step 4). Absent → no gate. */
+  decisions?: DecisionLegs;
+  /** spend the rewrite call at gate ≥ this. 0.6 on the shipped more-formal line
+   *  (sentence-gate-bench.mts: see RESULTS.md for the sweep). */
+  gateThreshold?: number;
 }
 
+export const SENTENCE_GATE_THRESHOLD_DEFAULT = 0.5;
+/** the companion prose check: URLs, code lines, list bullets, headings cede
+ *  regardless of the gate. The floor is LOW on purpose: short imperatives
+ *  ("ping me when ready.", "cheers!") score 0.42–0.55 on "is this prose" and
+ *  are exactly the sentences a formality cue exists for; a URL scores 0.06.
+ *  The calendar cue has no gate so it never sees this. */
+export const SENTENCE_PROSE_THRESHOLD = 0.3;
 export class SentenceCueSource implements CueSource {
   readonly id: string;
   readonly priority: number;
@@ -327,8 +341,12 @@ export class SentenceCueSource implements CueSource {
   private sourceConfig: SourceConfig;
   private log: (msg: string) => void;
   private emit: (event: SentenceCueEvent) => void;
+  private decisions?: DecisionLegs;
+  private gateThreshold: number;
 
   constructor(config: SentenceCueSourceConfig) {
+    this.decisions = config.decisions;
+    this.gateThreshold = config.gateThreshold ?? SENTENCE_GATE_THRESHOLD_DEFAULT;
     this.httpAdapter = config.httpAdapter;
     this.provider = config.provider;
     this.endpoint = config.endpoint;
@@ -431,11 +449,36 @@ export class SentenceCueSource implements CueSource {
       ? getDehydrator(idCtx.catalog, (m) => this.log(`SentenceCue[${this.sourceConfig.name}]: ${m}`))
       : undefined;
 
+    // THE GATE (plan step 4): with `gate:` in the cue file and a decision
+    // provider, one decision request per pass asks the cue's question and
+    // the prose check for EVERY sentence; a sentence below either threshold
+    // cedes here and its rewrite call is never spent. The outbound text is
+    // the dehydrated sentence, the same bytes the rewrite call would carry.
+    // A failed gate request lets every sentence through — the gate can save
+    // a call, never lose a rewrite.
+    const gated = new Set<number>();
+    if (this.sourceConfig.gate && this.decisions && !context.signal?.aborted) {
+      const outboundAll = spans.map((sp) => { const d = dehydrator?.dehydrate(sp.text); return d?.changed ? d.text : sp.text; });
+      try {
+        const probs = await this.decisions.sentenceGate(this.sourceConfig.gate, outboundAll, { signal: context.signal, log: (m) => this.log(m) });
+        spans.forEach((sp, i) => {
+          const [gv, pv] = probs[i] ?? [1, 1];
+          if (gv < this.gateThreshold || pv < SENTENCE_PROSE_THRESHOLD) { gated.add(i); this.log(`SentenceCue[${this.sourceConfig.name}]: gate ${gv.toFixed(2)} / prose ${pv.toFixed(2)} — "${sp.text.slice(0, 32)}…" ceded, no rewrite call`); }
+        });
+        if (gated.size > 0) this.log(`SentenceCue[${this.sourceConfig.name}]: gate spared ${gated.size}/${spans.length} rewrite call(s)`);
+      } catch (e) {
+        const err = e as Error;
+        if (err?.name === 'AbortError' || /abort/i.test(err?.message ?? '')) return { results: [], timing: Date.now() - t0, model: this.model };
+        this.log(`SentenceCue[${this.sourceConfig.name}]: gate failed (${err?.message}) — every sentence sent`);
+      }
+    }
+
     const matched: Array<string[] | 'ceded' | null> = await mapWithConcurrency(
       spans,
       SENTENCE_CUE_CONCURRENCY,
-      async (span) => {
+      async (span, si) => {
         if (context.signal?.aborted) return null;
+        if (gated.has(si)) return 'ceded';
         try {
           const budget = this.sourceConfig.maxTokens ?? estimateSentenceCueBudget([span.text.length]);
           const dSpan = dehydrator?.dehydrate(span.text);
