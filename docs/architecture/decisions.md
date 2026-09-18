@@ -105,8 +105,10 @@ change at any leg.
 
 `decisions-provider: <name>` (default `off`) names a provider the installed
 decision package knows. `loadDecisionLegs` requires
-`OPENCUES_DECISIONS_PATH` (a directory or entry file) and then
-`@opencues/decisions`; the package exports:
+`OPENCUES_DECISIONS_PATH` (a directory or entry file), then
+`@opencues/decisions`, then `~/opencues-decisions` (the checkout the installers
+copy from; `opencues doctor` also looks in every CC fork's `node_modules`); the
+package exports:
 
 ```ts
 export const providers: string[];            // the names it accepts

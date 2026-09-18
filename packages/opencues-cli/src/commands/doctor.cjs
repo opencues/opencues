@@ -1115,13 +1115,19 @@ module.exports = async function doctor(argv, ctx) {
       const dp = scalars['decisions-provider'] ?? 'off';
       const fanout = (scalars['decisions-fanout'] ?? 'on') !== 'off';
       let pkg = null;
-      for (const spec of [process.env.OPENCUES_DECISIONS_PATH, '@opencues/decisions'].filter(Boolean)) { try { pkg = require(spec); break; } catch { /* next */ } }
+      // Same resolution order as core's decisions/load.ts, plus the places an
+      // install puts the package: every CC fork's node_modules (setup.sh copies
+      // it there) and the default checkout dir setup.sh copies FROM.
+      const os = require('os');
+      const forkDirs = (() => { try { return require('fs').readdirSync(path.join(os.homedir(), '.opencues', 'forks')).map((d) => path.join(os.homedir(), '.opencues', 'forks', d, 'node_modules', '@opencues', 'decisions')); } catch { return []; } })();
+      const specs = [process.env.OPENCUES_DECISIONS_PATH, '@opencues/decisions', path.join(os.homedir(), 'opencues-decisions'), ...forkDirs].filter(Boolean);
+      for (const spec of specs) { try { pkg = require(spec); break; } catch { /* next */ } }
       const envKey = (pkg && pkg.envKey) || 'TYPESAFE_API_KEY';
       const hasKey = !!(process.env[envKey] || (envKeysMod ? envKeysMod.readCuesEnvFile()[envKey] : undefined));
       if (dp === 'off') s.info('decisions:', 'off · every decision leg on its chat call (a decision package + decisions-provider: <name> moves tips / contradiction gate / sentence gate / `_` routing off chat)');
-      else if (!pkg || typeof pkg.createDecisionLegs !== 'function') s.warn('decisions:', `${dp} requested but no decision package is installed (@opencues/decisions or OPENCUES_DECISIONS_PATH) → every decision leg stays on its chat call`);
-      else if (pkg.providers && !pkg.providers.includes(dp)) s.warn('decisions:', `"${dp}" is not a provider the installed decision package knows (${pkg.providers.join(' | ')}) → chat`);
-      else if (!hasKey) s.warn('decisions:', `${dp} requested but ${envKey} not found → every decision leg stays on its chat call`);
+      else if (!pkg || typeof pkg.createDecisionLegs !== 'function') s.raw('decisions:', `${dp} requested but no decision package is installed (@opencues/decisions or OPENCUES_DECISIONS_PATH) → every decision leg stays on its chat call`);
+      else if (pkg.providers && !pkg.providers.includes(dp)) s.raw('decisions:', `"${dp}" is not a provider the installed decision package knows (${pkg.providers.join(' | ')}) → chat`);
+      else if (!hasKey) s.raw('decisions:', `${dp} requested but ${envKey} not found → every decision leg stays on its chat call`);
       else s.info('decisions:', `${dp} · ${pkg.pinnedModel || 'package model'} · ${fanout ? 'one request per pause' : 'one request per leg'} (tips matcher, contradiction gate, sentence gate, \`_\` router, replace detector, spelling)`);
     }
     s.render();

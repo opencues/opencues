@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the decision package is found where an install puts it (`@opencues/core` 0.61.1, `opencues` CLI 0.7.17)
+- `loadDecisionLegs` and `opencues doctor` also try `~/opencues-decisions` (the checkout `setup.sh` copies from); doctor additionally looks in every CC fork's `node_modules/@opencues/decisions`, so the row agrees with the runtime without `OPENCUES_DECISIONS_PATH`.
+
 ### Added — a decision seam: calibrated selection behind one interface, the package that answers loaded by name (`@opencues/core` 0.61.0, `@opencues/runtime` 0.41.5, `opencues` CLI 0.7.16)
 - **The seam** (`packages/opencues-core/src/decisions/`): a DECISION model answers typed `noul` / `choice` / `score` questions with calibrated probabilities and never generates text, so it is a separate seam from the LLM providers (never in `PROVIDERS`, never a fourth bucket) behind ONE scalar, `decisions-provider: off | typesafe` (default off) plus `decisions-fanout: on | off`. `dispatchDecision` is the single chokepoint (validate → PII floor over every string in the state → ask → usage meter → `[decision][leg]` log line), `DecisionBreaker` the shared circuit breaker, `ChatFallbackDecisionProvider` the vendor-neutral provider. `opencues doctor` shows the effective resolution.
 - **Legs, not questions** (`decisions/legs.ts`): the sources hand a `DecisionLegs` object the thing to judge and get back a verdict over inputs the runtime supplied — ids, probabilities, spans — never a question, never text. The package that implements the legs is loaded by name (`decisions/load.ts`: `OPENCUES_DECISIONS_PATH`, then `@opencues/decisions`); without one, every leg keeps its chat path and one boot line says so. The reference package is private.

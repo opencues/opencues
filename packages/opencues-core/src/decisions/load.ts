@@ -6,7 +6,8 @@
  * owns the provider, the questions and the thresholds; core owns the seam
  * (types, dispatch chokepoint, breaker) and the sources that consume a
  * verdict. Resolution order: `OPENCUES_DECISIONS_PATH` (a directory or an
- * entry file), then `@opencues/decisions` from the usual module paths.
+ * entry file), then `@opencues/decisions` from the usual module paths, then
+ * `~/opencues-decisions` (the checkout the installers copy from).
  * Nothing found → one log line, every leg on its chat path.
  *
  * Native hosts only: in a page (chrome, dsh's client half) the key would
@@ -44,6 +45,9 @@ function requirePackage(log?: (m: string) => void): { pkg: DecisionPackage | nul
   const envPath = process.env[DECISIONS_PATH_ENV];   // BROWSER-SAFE-ALLOW: node only past the guard above
   if (envPath) candidates.push(envPath);
   candidates.push(DECISIONS_PACKAGE);
+  // the checkout setup.sh copies the package FROM, for processes that run
+  // outside a host fork (doctor, the benches, a plain node script)
+  try { const os = require('os') as typeof import('os'); candidates.push(os.homedir() + '/opencues-decisions'); } catch { /* no os module: skip */ }   // BROWSER-SAFE-ALLOW: node only past the guard above
   for (const c of candidates) {
     try { const pkg = req(c) as DecisionPackage; cached = { pkg, from: c }; return cached; }
     catch (e) { log?.(`decisions: ${c} not loadable (${(e as Error).message.split('\n')[0]})`); }
