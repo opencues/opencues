@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — chrome runs the decision legs through the native-messaging host (`@opencues/core` 0.62.0, `@opencues/runtime` 0.41.6, `@opencues/chrome` 0.2.203)
+- **Bridged decision legs** (`packages/opencues-core/src/decisions/bridge.ts`): `createBridgedDecisionLegs(send)` turns a message channel into a `DecisionLegs`; `serveDecisionLeg(legs, req)` is the other end. What crosses is DATA only: the leg name, its arguments and the verdict — never a question, template or key. The page runs its own PII floor over every string in the arguments before they leave it (the host has no identity catalog); a host failure comes back typed and is rethrown as a `DecisionError` with its kind, so the page's breaker classifies an auth failure on the host as it would locally.
+- **Chrome wiring**: the content script builds the bridged legs over `chrome.runtime.sendMessage` and hands them to the runtime (`ResolverOptions.decisionLegs`, used by `buildSources` when `decisions-provider` is on); the service worker relays `opencues:decision` to the native host (`decision` / `decision-result`, F6 sender check, 10 s tier); `host.cjs` loads `@opencues/decisions` once per provider with `TYPESAFE_API_KEY` from its own environment / `~/.cues/.env` and answers. The key is deliberately NOT in the host's `API_KEY_VARS`: it never reaches `chrome.storage` or the page. No host → a typed transport failure → every leg on chat for the breaker window, as before.
+- Tests: `bridge.test.ts` (round-trip of every leg, Map catalog on the wire, the page floor, typed failures, abort, unknown leg); `background.test.ts` decision relay.
+
+
 ### Fixed — the decision package is found where an install puts it; a calendar cue with nothing to advise emits nothing (`@opencues/core` 0.61.1, `opencues` CLI 0.7.17, `@opencues/chrome` 0.2.202)
 - **Chrome bundle:** the loader's node requires use the `node:` specifiers the chrome esbuild externalises (`fs`/`path`/`os` bare names broke the content-script build); chrome rebuilt on the new core.
 - **Calendar advisory with no heads-up:** when the calendar-context cue's reply carried no `heads up:` flag, the source still emitted a def with one alternative and no note, a gray span the caret could sit in with nothing to show and nothing to press. It now emits nothing for that sentence (logged). Scenario test in `sentence-cue-source.test.ts`.

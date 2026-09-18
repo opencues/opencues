@@ -40,6 +40,7 @@ export default defineConfig({
       'src/usage-meter.test.ts',
       'src/decisions/decisions.test.ts',
       'src/decisions/load.test.ts',
+      'src/decisions/bridge.test.ts',
       'src/providers/harness-bridge.test.ts',
     ],
     // Never discover into git worktrees (`.claude/worktrees/`) — stale repo

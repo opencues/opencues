@@ -130,6 +130,14 @@ export interface HostInfo extends CommonHostInfo {
    * whatever existed before the conversation started, which for a feature
    * about "decisions made earlier in this session" is always empty.
    */
+  /**
+   * Decision legs bridged to the native-messaging host (core's
+   * `createBridgedDecisionLegs` over `chrome.runtime.sendMessage`). The
+   * package and its key live in the host process; the page sends leg
+   * arguments and receives verdicts. Absent (no host) → every decision
+   * leg stays on chat.
+   */
+  decisionLegs?: unknown;
   sessionCommitments?: {
     commitments: Array<{ id: string; category: string; statement: string }>;
     summary?: string;
@@ -487,6 +495,7 @@ export function boot(host: HostInfo): BootResult {
     httpAdapter: unknown;
     calendarContext?: HostInfo['calendarContext'];
     sessionCommitments?: HostInfo['sessionCommitments'];
+    decisionLegs?: unknown;
     missingKeyFallbackMessage?: string;
     formatLLMErrorAsSubstitute?: (reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'model-not-found' | 'insufficient-credits' | 'bad-request', err?: Error) => string;
   } = {
@@ -504,6 +513,7 @@ export function boot(host: HostInfo): BootResult {
     httpAdapter: host.httpAdapter,
     calendarContext: host.calendarContext,
     sessionCommitments: host.sessionCommitments,
+    decisionLegs: host.decisionLegs,
   };
   if (true) {
     // Pass resolverOpts by reference (NOT spread) so updateLlmConfig's

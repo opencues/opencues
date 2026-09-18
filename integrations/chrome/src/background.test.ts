@@ -540,3 +540,38 @@ describe('storage.onChanged — deferToChromeHost flip reconnects the native hos
     expect(connectNativeCalls).toBe(1);
   });
 });
+
+describe('opencues:decision relay', () => {
+  it('refuses a non-internal sender and never touches the port', async () => {
+    const { response } = dispatchMessage({ type: 'opencues:decision', which: 'typesafe', leg: 'askGate', args: ['x'] }, EVIL_SENDER);
+    const r = await response as { ok: boolean; error: { kind: string; message: string } };
+    expect(r.ok).toBe(false);
+    expect(r.error.message).toMatch(/sender not internal/);
+    expect(lastCreatedPort?.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('no host → a typed transport failure the page breaker can classify', async () => {
+    lastCreatedPort!.onDisconnect.fire();
+    const { response } = dispatchMessage({ type: 'opencues:decision', which: 'typesafe', leg: 'askGate', args: ['x'] }, INTERNAL_SENDER);
+    const r = await response as { ok: boolean; error: { kind: string } };
+    expect(r).toMatchObject({ ok: false, error: { kind: 'transport' } });
+  });
+
+  it('happy path — forwards leg + args + which to the host, returns the host reply verbatim', async () => {
+    const { response } = dispatchMessage({ type: 'opencues:decision', which: 'typesafe', leg: 'sentenceGate', args: ['Q?', ['a.', 'b.']] }, INTERNAL_SENDER);
+    const sent = lastCreatedPort!.postMessage.mock.calls[0][0] as { type: string; requestId: string; which: string; leg: string; args: unknown[] };
+    expect(sent).toMatchObject({ type: 'decision', which: 'typesafe', leg: 'sentenceGate', args: ['Q?', ['a.', 'b.']] });
+    lastCreatedPort!.onMessage.fire({ type: 'decision-result', requestId: sent.requestId, reply: { ok: true, verdict: [[0.9, 0.1], [0.2, 0.9]], id: 'typesafe', model: 'ALT-MODEL' } });
+    const r = await response as { ok: boolean; verdict: unknown; model: string };
+    expect(r.ok).toBe(true);
+    expect(r.verdict).toEqual([[0.9, 0.1], [0.2, 0.9]]);
+    expect(r.model).toBe('ALT-MODEL');
+  });
+
+  it('a host disconnect mid-request fails the pending decision', async () => {
+    const { response } = dispatchMessage({ type: 'opencues:decision', which: 'typesafe', leg: 'askGate', args: ['x'] }, INTERNAL_SENDER);
+    lastCreatedPort!.onDisconnect.fire();
+    const r = await response as { ok: boolean; error: { kind: string; message: string } };
+    expect(r).toMatchObject({ ok: false, error: { kind: 'transport', message: 'native host disconnected' } });
+  });
+});
