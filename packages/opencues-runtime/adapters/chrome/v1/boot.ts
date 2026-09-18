@@ -553,6 +553,7 @@ export function boot(host: HostInfo): BootResult {
         }
       },
       keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
+      fillDevice: (text: string, inv: { blank: string; keyword: string; action: 'get' | 'set' | 'step'; value?: string }, commandStartWord: number) => shared.blankFill.fillFromDecision(text, inv, commandStartWord),
       externallySuppressed: (text: string) => kataCoach.shouldSuppressResolve(text),
     }), spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,
     undefined, undefined, shared.undoJournal);

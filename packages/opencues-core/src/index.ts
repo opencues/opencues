@@ -576,6 +576,7 @@ export {
   type SpellingVerdict,
   type ReplaceVerdict,
   type SettingsVerdict,
+  type DeviceVerdict,
   type UnderscoreRoute,
   type UnderscoreRouting,
   type RouteContext,
@@ -594,4 +595,5 @@ export {
   type TypeSafeProviderConfig,
 } from './decisions/typesafe';
 export { underscoreRouteDraft, UNDERSCORE_ROUTE_MAX_CHARS, spellingEligible, edits1, SPELLING_MAX_CANDIDATES, replaceCandidates, REPLACE_MAX_CANDIDATES, REPLACE_MAX_COMMAND_WORDS } from './decisions/candidates';
+export { DEVICE_POLICY, resolveDeviceInvocation, deviceCanonicalCommand, deviceArgWithinFloor, DEVICE_ARG_MAX, type DeviceAction, type DevicePolicyEntry } from './decisions/device-policy';
 export { createBridgedDecisionLegs, serveDecisionLeg, serializeLegArgs, DECISION_LEG_NAMES, type DecisionLegName, type DecisionBridgeRequest, type DecisionBridgeReply, type DecisionBridgeSend } from './decisions/bridge';

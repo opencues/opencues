@@ -47,6 +47,11 @@ export interface BlankSlot {
    *  location _") — clearing the command span starts here, not at the
    *  keyword. */
   readonly commandStart?: number;
+  /** Set when the slot came from a DECISION verdict (device-policy.ts) rather
+   *  than a keyword or shape in the buffer: the writer's own phrase stands
+   *  where a keyword would, so the whole command span is consumed and a bare
+   *  get keeps the blank's keyword as its label. */
+  readonly decision?: boolean;
 }
 
 export class BlankFill {
@@ -433,6 +438,36 @@ export class BlankFill {
    * stdout into the `_` position when the call returns. The pendingScripts
    * dedupe stops repeated spawns for the same (text, slotIndex) pair.
    */
+  /**
+   * A fill DECIDED on the decision layer (core's device-policy.ts, security-
+   * audit row #32): the resolver's `_` route named a shipped device blank and
+   * a closed value / a grammar-captured argument. Synthesize the slot a shape
+   * match would have produced for the canonical command and run it through
+   * the same dispatch — same script, same undo capture, same clearing — over
+   * the writer's own phrase ("make it louder _" → "volume 46%"). Returns
+   * false when nothing runs (unknown blank, no `_`, capability missing).
+   */
+  fillFromDecision(text: string, inv: { blank: string; keyword: string; action: 'get' | 'set' | 'step'; value?: string }, commandStartWord: number): boolean {
+    if (!this.adapter.capabilities.includes('spawn-process') && !this.adapter.capabilities.includes('blank-invoke')) return false;
+    const cleaned = text.replace(/[\u200B\u200C]/g, '');
+    const words = cleaned.split(/\s+/).filter(Boolean);
+    const usIdx = words.lastIndexOf('_');
+    if (usIdx < 0) return false;
+    const blank = this.configLoader.blanks.get(inv.blank);
+    if (!blank) { this.adapter.log('debug', `BlankFill: decision names ${inv.blank}, which is not registered here — nothing runs`); return false; }
+    const commandStart = Math.max(0, Math.min(commandStartWord, usIdx));
+    const slot: BlankSlot = {
+      index: usIdx, keyword: inv.keyword, blankName: inv.blank,
+      keywordStart: commandStart, keywordEnd: Math.max(commandStart, usIdx - 1), proximity: 0,
+      shapeAction: inv.action, shapeValue: inv.value, commandStart, decision: true,
+    };
+    this.adapter.log('info', `BlankFill: decision fill ${inv.blank}/${inv.action}${inv.value ? '=' + inv.value : ''} over "${words.slice(commandStart, usIdx).join(' ')} _"`);
+    // the dispatch's staleness guards compare against the last text seen
+    this._lastInputText = text;
+    this.maybeRunScripts(text, [slot]);
+    return true;
+  }
+
   private maybeRunScripts(text: string, slots: readonly BlankSlot[]): void {
     if (slots.length > 0) this.adapter.log('debug', `BlankFill: ${slots.length} slot(s) on text-change`, slots);
     // Chrome (and other sandboxed hosts) advertise 'blank-invoke' instead
@@ -1046,6 +1081,10 @@ export class BlankFill {
       // so "volume 150 _" lands as "volume 100%". The typed value word(s)
       // between keyword and `_` are consumed by the clearEnd override below.
       primaryFill = `${slot.keyword} ${primaryFill}`;
+    } else if (slot.decision && !isErrResult && !(slot.shapeValue !== undefined && slot.shapeValue.length > 0)) {
+      // A decided bare get ("where am i _" → location): the phrase is consumed
+      // below, so the keyword becomes the label the way a typed set renders.
+      primaryFill = `${slot.keyword} ${primaryFill}`;
     }
 
     // FILL is the only mode. The destructive replace dials (blankReplace /
@@ -1073,7 +1112,7 @@ export class BlankFill {
     // fills at the cursor.
     const shapeCapturedArg = slot.shapeValue !== undefined && slot.shapeValue.length > 0;
     const clearsCommandSpan = !isErrResult
-      && (typedAction !== undefined || hasIntegration || shapeCapturedArg);
+      && (typedAction !== undefined || hasIntegration || shapeCapturedArg || slot.decision === true);
     // Shaped slots clear from the start of the matched command SEGMENT
     // (commandStart) — for trailing-keyword shapes the captured arg precedes
     // the keyword, and clearing from keywordStart would strand the arg next
