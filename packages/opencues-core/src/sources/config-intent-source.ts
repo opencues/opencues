@@ -66,6 +66,7 @@ import { BlankConfig } from '../cues-md';
 import { describeLLMCall, dispatchChat, getProvider, listProviders, type ProviderAdapter } from '../llm-provider';
 import { classifyLlmError, type FluidBlankErrorReason } from './fluid-blank-source';
 import { getDehydrator, type CompiledDehydrator } from '../dehydrate';
+import type { DecisionLegs } from '../decisions/legs';
 import { postProcessContext } from '../identity-context';
 import {
   FEATURES,
@@ -1294,6 +1295,18 @@ export interface ConfigIntentSourceConfig {
    */
   formatErrorAsSubstitute?: (reason: FluidBlankErrorReason, err?: Error, ctx?: { provider?: string; model?: string; endpoint?: string }) => string;
   /**
+   * Decision legs (docs/architecture/decisions.md). With a package that has
+   * a `settings` leg, a `_` that names a setting is decided there — which
+   * registry scalar, which listed value — and applied with NO chat call when
+   * the verdict clears `SETTINGS_DECISION_THRESHOLD` and validates against
+   * the registry exactly as a chat verdict would. Anything else (a low
+   * verdict, `none`, a provider bucket, a leg failure) runs the chat
+   * classifier as before: the leg can save the call, never lose a change.
+   */
+  decisions?: DecisionLegs;
+  /** apply a settings verdict at ≥ this; below it the chat classifier decides */
+  settingsDecisionThreshold?: number;
+  /**
    * Host id (chrome / claude-code / opencode / …). When set, host-scoped
    * FEATURES (those with a `hostScope`) are included in the classifier's
    * choice space ONLY on a matching host — a CLI host never sees chrome's
@@ -1356,6 +1369,9 @@ export function summonPhraseStart(text: string): number {
   return segmentStart(text, u >= 0 ? u : text.length);
 }
 
+/** apply a settings verdict at ≥ this (settings bench: 100% precision from 0.5 on every suite) */
+export const SETTINGS_DECISION_THRESHOLD = 0.5;
+
 export class ConfigIntentSource implements CueSource {
   readonly id = 'config-intent';
   readonly priority: number;
@@ -1377,6 +1393,8 @@ export class ConfigIntentSource implements CueSource {
   private formatErrorAsSubstitute: ((reason: FluidBlankErrorReason, err?: Error, ctx?: { provider?: string; model?: string; endpoint?: string }) => string) | undefined;
   /** Host id (chrome/claude-code/…), used to host-scope the feature list. */
   private hostName: string | undefined;
+  private decisions: DecisionLegs | undefined;
+  private settingsThreshold: number;
   /** Verdict-level gates (see ConfigIntentSourceConfig). */
   private allowConfigVerdicts: boolean;
   private allowActionVerdicts: boolean;
@@ -1431,6 +1449,8 @@ export class ConfigIntentSource implements CueSource {
     this.formatErrorAsSubstitute = config.formatErrorAsSubstitute;
     this.hostName = config.hostName;
     this.allowConfigVerdicts = config.allowConfigVerdicts ?? true;
+    this.decisions = config.decisions;
+    this.settingsThreshold = config.settingsDecisionThreshold ?? SETTINGS_DECISION_THRESHOLD;
     this.allowActionVerdicts = config.allowActionVerdicts ?? false;
     // Swap the universal feature block for this host's — includes any
     // host-scoped features (e.g. chrome's statusbar-position) ONLY on the
@@ -1519,7 +1539,11 @@ export class ConfigIntentSource implements CueSource {
     // repeat triggers separately; this gate handles the FIRST trigger
     // on any new prose buffer. See LIKELY_INTENT_KEYWORDS for the
     // exhaustive list + the rationale for the conservative shape.
-    if (!hasLikelyIntent(context.text)) {
+    // With a settings leg the keyword gate has no job: the leg IS the cheap
+    // check, and it reads phrasings that carry no registry keyword at all
+    // ("less console noise", "forget everything about me") — the gate
+    // rejected 15 of 20 stress phrasings the leg decides correctly.
+    if (!this.decisions?.settings && !hasLikelyIntent(context.text)) {
       this.log(`ConfigIntent: ceding — no likely-intent keyword in buffer (gate-skip, no LLM call)`);
       return { results: [], timing: Date.now() - t0, model: this.model };
     }
@@ -1557,20 +1581,65 @@ export class ConfigIntentSource implements CueSource {
       this.log(`ConfigIntent: dehydrated ${dText.spans.length} value(s) → tokens (outbound PII scrub)`);
     }
 
-    const spanStartPromise = this.resolveCommandSpanStart(context.text, context.signal, dehydrator, idCtx?.catalog);
-    spanStartPromise.catch(() => {});
+    // With a settings leg, a buffer with no settings keyword is usually prose
+    // the leg will cede on; its summon call (tier 3, bare commands only)
+    // would be spent for nothing, so it is kicked AFTER the verdict instead
+    // (serial on such hits, overlapped on keyword-bearing commands as before).
+    const deferSummon = !!this.decisions?.settings && !hasLikelyIntent(context.text);
+    let spanStartPromise = deferSummon ? null : this.resolveCommandSpanStart(context.text, context.signal, dehydrator, idCtx?.catalog);
+    spanStartPromise?.catch(() => {});
+
+    // THE SETTINGS LEG (decision layer): which scalar, which listed value,
+    // decided over the same outbound text the classifier would see. A
+    // verdict at ≥ the threshold that validates against the registry is
+    // applied below with no chat call; a `none`, a low verdict or a failed
+    // request falls through to the classifier unchanged. Provider buckets
+    // are never decided here (their apply path probes the provider first).
+    let raw = '';
+    let verdict: ConfigIntentVerdict | null = null;
+    if (this.decisions?.settings && this.allowConfigVerdicts && !context.signal?.aborted) {
+      try {
+        const v = await this.decisions.settings(outboundText, { signal: context.signal, log: (m) => this.log(`ConfigIntent ${m}`) });
+        if (v && v.confidence >= this.settingsThreshold) {
+          const candidate: ConfigIntentVerdict = { kind: 'setting', setting: v.setting, value: v.value, confidence: v.confidence };
+          const check = validateAgainstRegistry(candidate, this.hostName);
+          if (check.ok) { verdict = candidate; this.log(`ConfigIntent[decision]: ${v.setting} → ${v.value} (setting ${v.confidence.toFixed(2)}, value ${v.valueConfidence.toFixed(2)}) — no chat call`); }
+          else this.log(`ConfigIntent[decision]: ${v.setting} → ${v.value} rejected by the registry (${check.reason}) — running the classifier`);
+        } else if (!hasLikelyIntent(context.text)) {
+          // The leg answered `none` and the buffer carries no provider / model
+          // / settings keyword: cede here. The classifier recovers nothing the
+          // leg misses on such phrasings (settings-source-bench: both miss
+          // the same two), and running it serially after the leg cost 300 ms
+          // and $0.0012 on every prose `_` in a fan-out pass.
+          this.log(`ConfigIntent[decision]: ${v ? `${v.setting} at ${v.confidence.toFixed(2)} under ${this.settingsThreshold}` : 'none'}, no likely-intent keyword — ceding, no chat call`);
+          this.emit({ type: 'completed', verdict: { kind: 'none', confidence: v ? 1 - v.confidence : 1 }, applied: false, latencyMs: Date.now() - t0 });
+          return { results: [], timing: Date.now() - t0, model: this.model };
+        } else {
+          // a keyword is present (a provider name, "model", …): the classifier
+          // decides — provider buckets are never decided by the leg
+          this.log(`ConfigIntent[decision]: ${v ? `${v.setting} at ${v.confidence.toFixed(2)} under ${this.settingsThreshold}` : 'none'} — a settings keyword is present, running the classifier`);
+        }
+      } catch (e) {
+        const err = e as Error;
+        if (err?.name === 'AbortError' || /abort/i.test(err?.message ?? '')) return { results: [], timing: Date.now() - t0, model: this.model };
+        this.log(`ConfigIntent[decision]: settings leg failed (${err?.message}) — running the classifier`);
+      }
+    }
+
+    if (!spanStartPromise) { spanStartPromise = this.resolveCommandSpanStart(context.text, context.signal, dehydrator, idCtx?.catalog); spanStartPromise.catch(() => {}); }
 
     // VARIANT POOL — cache raw LLM response. Re-run parse/validate/
     // apply on hit so the verdict's side effect (applyScalar for
     // SETTING/PROVIDER verdicts) still fires. Idempotent at the
     // scalar level — re-applying the same value is a no-op write.
     const cacheKey = this._computeCacheKey(context);
-    const variantChoice = this._selectVariant(cacheKey);
+    const variantChoice = verdict ? null : this._selectVariant(cacheKey);
 
-    let raw: string;
-    if (variantChoice.kind === 'cache') {
-      this.log(`ConfigIntent: variant-cache HIT — serving cached response (pool size ${variantChoice.others.length + 1})`);
-      raw = variantChoice.rewrite;
+    if (verdict) {
+      // decided above: no chat call, no variant pool
+    } else if (variantChoice!.kind === 'cache') {
+      this.log(`ConfigIntent: variant-cache HIT — serving cached response (pool size ${variantChoice!.others.length + 1})`);
+      raw = variantChoice!.rewrite;
     } else {
       try {
       // Per-feature `fluid-config-max-tokens:` override; 128 default
@@ -1611,7 +1680,7 @@ export class ConfigIntentSource implements CueSource {
     }
     }
 
-    const verdict = parseConfigIntentOutput(raw);
+    if (!verdict) verdict = parseConfigIntentOutput(raw);
     if (verdict.kind === 'none') {
       this.log(`ConfigIntent: NONE (${Date.now() - t0}ms) — ceding to next source`);
       this.emit({ type: 'completed', verdict, applied: false, latencyMs: Date.now() - t0 });

@@ -575,6 +575,7 @@ export {
   type ContradictionVerdict,
   type SpellingVerdict,
   type ReplaceVerdict,
+  type SettingsVerdict,
   type UnderscoreRoute,
   type UnderscoreRouting,
   type RouteContext,

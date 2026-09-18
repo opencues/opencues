@@ -22,11 +22,11 @@
  * classifies an auth failure on the host exactly as it would locally.
  */
 import { DecisionError, type DecisionErrorKind } from './types';
-import type { DecisionLegs, DecisionLegContext, PauseInput, PauseVerdict, TipsEntryForDecision, TipsVerdict, CommitmentForDecision, DecisionUnit, ContradictionVerdict, UnderscoreRouting, RouteContext, ReplaceVerdict } from './legs';
+import type { DecisionLegs, DecisionLegContext, PauseInput, PauseVerdict, TipsEntryForDecision, TipsVerdict, CommitmentForDecision, DecisionUnit, ContradictionVerdict, UnderscoreRouting, RouteContext, ReplaceVerdict, SettingsVerdict } from './legs';
 import { getOutboundDehydrationGuard } from '../llm-provider';
 
-export type DecisionLegName = 'pause' | 'askGate' | 'tipsMatch' | 'contradictionGate' | 'sentenceGate' | 'route' | 'replace';
-export const DECISION_LEG_NAMES: ReadonlyArray<DecisionLegName> = ['pause', 'askGate', 'tipsMatch', 'contradictionGate', 'sentenceGate', 'route', 'replace'];
+export type DecisionLegName = 'pause' | 'askGate' | 'tipsMatch' | 'contradictionGate' | 'sentenceGate' | 'route' | 'replace' | 'settings';
+export const DECISION_LEG_NAMES: ReadonlyArray<DecisionLegName> = ['pause', 'askGate', 'tipsMatch', 'contradictionGate', 'sentenceGate', 'route', 'replace', 'settings'];
 
 /** The wire shapes. `args` are the leg's positional arguments, made JSON-safe. */
 export interface DecisionBridgeRequest { readonly leg: DecisionLegName; readonly args: ReadonlyArray<unknown> }
@@ -110,6 +110,7 @@ export function createBridgedDecisionLegs(send: DecisionBridgeSend, init: { id?:
     sentenceGate: (gate: string, sentences: ReadonlyArray<string>, ctx?: DecisionLegContext) => call<ReadonlyArray<readonly [number, number]>>('sentenceGate', [gate, sentences], ctx),
     route: (text: string, ctx?: RouteContext) => call<UnderscoreRouting>('route', [text, ctx ? { threshold: ctx.threshold, identityContext: ctx.identityContext } : {}], ctx),
     replace: (input: string, ctx?: DecisionLegContext) => call<ReplaceVerdict | null>('replace', [input], ctx),
+    settings: (input: string, ctx?: DecisionLegContext) => call<SettingsVerdict | null>('settings', [input], ctx),
   };
 }
 
@@ -131,6 +132,10 @@ export async function serveDecisionLeg(legs: DecisionLegs, req: DecisionBridgeRe
       case 'sentenceGate': verdict = await legs.sentenceGate(args[0] as string, args[1] as string[], { log }); break;
       case 'route': { const c = (args[1] ?? {}) as RouteContext; verdict = await legs.route(args[0] as string, { threshold: c.threshold, identityContext: c.identityContext, log }); break; }
       case 'replace': verdict = await legs.replace(args[0] as string, { log }); break;
+      case 'settings': {
+        if (!legs.settings) return { ok: false, error: { kind: 'shape', message: 'the host package has no settings leg' } };
+        verdict = await legs.settings(args[0] as string, { log }); break;
+      }
     }
     return { ok: true, verdict: serializeLegArgs([verdict])[0], id: legs.id, model: legs.model };
   } catch (e) {

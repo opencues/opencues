@@ -94,6 +94,18 @@ export interface RouteContext extends DecisionLegContext {
   readonly identityContext?: { readonly mode: string; readonly catalog: ReadonlyMap<string, string> };
 }
 
+/** A settings verdict: a registry scalar and one of its listed values, or null when the draft names no setting. */
+export interface SettingsVerdict {
+  readonly setting: string;
+  readonly value: string;
+  /** confidence the draft asks for THIS setting */
+  readonly confidence: number;
+  /** confidence the draft wants THIS value of it */
+  readonly valueConfidence: number;
+  /** the top options, for the log */
+  readonly top: string;
+}
+
 /** A replace decision: the exact target substring of the input and the command phrase, both cut from the input. */
 export interface ReplaceVerdict { readonly target: string; readonly command: string; readonly kind: 'replace'; readonly confidence: number; readonly summary: string }
 
@@ -117,6 +129,14 @@ export interface DecisionLegs {
   route(text: string, ctx?: RouteContext): Promise<UnderscoreRouting>;
   /** the replace detector over the outbound input; null = no single-substring edit */
   replace(input: string, ctx?: DecisionLegContext): Promise<ReplaceVerdict | null>;
+  /**
+   * The settings change a `_` asks for: which registry scalar, which listed
+   * value. Only FEATURES / MENU_TUNABLES at their listed values (never a
+   * provider bucket, never a free number); the consumer validates the
+   * verdict against the registry before it applies anything. Optional: a
+   * package that has no settings leg leaves the chat classifier in place.
+   */
+  settings?(input: string, ctx?: DecisionLegContext): Promise<SettingsVerdict | null>;
 }
 
 /** What `loadDecisionLegs` hands the package's factory. */
