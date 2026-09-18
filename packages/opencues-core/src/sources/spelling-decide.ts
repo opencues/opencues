@@ -98,17 +98,21 @@ export function edits1(w: string): string[] {
 }
 
 /** The fix request for one flagged word. */
-export function spellingFixRequest(draft: string, word: string): { state: { draft: string; word: string; candidates: Record<string, string> }; questions: { fix: ChoiceQuestion }; candidates: string[] } {
+export function spellingFixRequest(draft: string, word: string): { state: { draft: string; word: string }; questions: { fix: ChoiceQuestion }; candidates: string[] } {
   const candidates = edits1(word.toLowerCase());
-  const map: Record<string, string> = {}; const criteria: Record<string, string> = {};
-  candidates.forEach((c, i) => { map[`c${i + 1}`] = c; criteria[`c${i + 1}`] = `\`candidates.c${i + 1}\``; });
+  // The candidates ARE the option text (criteria), not a state map referenced by
+  // path: the map + `\`candidates.cN\`` references doubled every candidate on
+  // the wire (8.9k tokens per request); as plain option text the same request is
+  // 4.6k at the same accuracy (typo-correct probe, 19/20 both ways).
+  const criteria: Record<string, string> = {};
+  candidates.forEach((c, i) => { criteria[`c${i + 1}`] = c; });
   criteria.none = 'none of the candidates is the word the writer meant';
   return {
-    state: { draft, word, candidates: map },
+    state: { draft, word },
     questions: {
       fix: {
         type: 'choice',
-        instructions: { question: 'The writer typed `word` in `draft`, and it is misspelled. Which candidate in `candidates` is the correctly spelled word they meant?', focus: 'Pick the real English word that fits the sentence. `none` only if no candidate is a real word that fits.' },
+        instructions: { question: 'The writer typed `word` in `draft`, and it is misspelled. Which option is the correctly spelled word they meant?', focus: 'Pick the real English word that fits the sentence. `none` only if no option is a real word that fits.' },
         criteria,
       },
     },

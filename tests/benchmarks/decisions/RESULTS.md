@@ -331,3 +331,18 @@ pause, p50 234 → 282 ms, no fix requests, tips and contradiction unchanged.
 Reading: ~70% of typos corrected end to end with no false correction on the odd-but-correct set,
 for +$0.000016 and ~+45 ms on the pause request and no word-cues chat call for spelling. Context
 errors (their / there) are detected 4/4 but are not spelling and are not shipped here.
+
+### the fix request, lean (core 0.69.2)
+
+2026-09-18 · jev-1.13.0 · 20 typos in context, both shapes in one session. The shipped request carried
+its candidates as a state map AND a `\`candidates.cN\`` reference per option, so every candidate
+crossed the wire twice. With the candidates as the option text and the state at `{ draft, word }`:
+
+```
+map + path references   right 17/20 · 9090 in tok · $0.000382 · p50 297 ms · mean 338 ms
+candidates as options   right 17/20 · 4527 in tok · $0.000190 · p50 256 ms · mean 286 ms
+```
+
+Misses are the same words either way (flashs, responce, enviroment). Rule for the ambiguous shape:
+a candidate list the model must read in full belongs in the criteria, not in the state — a path
+reference is only cheaper when the state is read once and referenced many times.

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — the spelling fix request carries its candidates as option text (`@opencues/core` 0.69.2)
+- **Lean fix request** (Jev plan step 7B follow-up): `spellingFixRequest` no longer ships a `candidates` state map referenced by path from every option; the edit-1 candidates ARE the option text and the state is `{ draft, word }`. The map doubled every candidate on the wire. Same session, 20 typos: 17/20 either way, 9,090 → 4,527 input tokens, $0.000382 → $0.000190 per fix request (−50%), p50 297 → 256 ms. Pinned by test: the criteria values are the candidates in order, the state keys are `['draft', 'word']`.
+- Found by `tests/benchmarks/decisions/verify-costs.mts` (exploration branch), a meter-priced pass over every decision request and the chat leg beside it.
+
 ### Fixed — the decision-only contradiction cue needs the gate at ≥ 0.5 before it paints (`@opencues/core` 0.69.1)
 - **Fire floor** (`CONTRADICTION_FIRE_THRESHOLD = 0.5`): the step 6 cue now fires only when the gate names a decision at ≥ 0.5; a lower-confidence hit runs the chat matcher as before. Engineering rules never needed it (violations come back at 0.8+, company-rules bench unchanged: 5/5 on the pause bench, 34/34 on the span bench); style rules sit closer to `none`, and without the floor 0.44–0.46 hits painted cues on clean drafts (`wholedoc-as-rules-bench.mts`: 3/4 clean drafts flagged → 1/4, planted 8/8 either way).
 - **Docs:** RULES.md can carry rules about how you write ("never hedge a commitment", "never defer what the reader needs") — the whole-document pass explored on 2026-09-17 resolved into the rules leg with no new feature; `docs/features/session-contradiction.md` § Rules about how you write, `docs/architecture/decisions.md` § Beyond the plan.

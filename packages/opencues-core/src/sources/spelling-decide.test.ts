@@ -55,6 +55,11 @@ describe('spelling-decide — pure pieces', () => {
     const req = spellingFixRequest('Zephr is here', 'Zephr');
     assert.ok(req.candidates.includes('zephyr'));
     assert.doesNotThrow(() => validateDecisionRequest(req));
+    // lean shape: the candidates are the option text, the state carries only the draft and the word
+    assert.deepStrictEqual(Object.keys(req.state), ['draft', 'word']);
+    const crit = req.questions.fix.criteria as Record<string, string>;
+    assert.deepStrictEqual(req.candidates.map((_, i) => crit[`c${i + 1}`]), req.candidates);
+    assert.ok(crit.none);
     const id = `c${req.candidates.indexOf('zephyr') + 1}`;
     assert.strictEqual(spellingFix(choice(id, 0.9), req.candidates, 'Zephr'), 'Zephyr');
     assert.strictEqual(spellingFix(choice(id, 0.9), req.candidates, 'zephr'), 'zephyr');
@@ -78,8 +83,7 @@ function fakeDecisions(plan: { typo?: string; typoConf?: number; fix?: string; f
       if (qs.typo) return { answers: { typo: choice(plan.typo ?? 'none', plan.typoConf ?? 0.95) } as never, model: 'x', usage: { inputTokens: 1, outputTokens: 1 }, ms: 1 };
       if (qs.fix) {
         if (plan.fixThrows) throw new Error('boom');
-        const st = req.state as { candidates: Record<string, string> };
-        const id = Object.entries(st.candidates).find(([, v]) => v === plan.fix)?.[0] ?? 'none';
+        const id = Object.entries(qs.fix.criteria ?? {}).find(([, v]) => v === plan.fix)?.[0] ?? 'none';
         return { answers: { fix: choice(id, plan.fixConf ?? 0.9) } as never, model: 'x', usage: { inputTokens: 1, outputTokens: 1 }, ms: 1 };
       }
       throw new Error('unexpected request');

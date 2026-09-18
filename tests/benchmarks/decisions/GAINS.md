@@ -199,6 +199,12 @@ This call was never in scenario (a)'s ledger (the baseline counted tips ∥ cont
 the cumulative row does not move; on a real install with `word-cues-mode: on` it is one chat call
 per pause removed — the same order as the whole pause side was before step 1.
 
+**Follow-up (core 0.69.2):** the fix request shipped its candidates twice (a state map + a path
+reference per option). With the candidates as option text and the state at `{ draft, word }`:
+17/20 → 17/20 on the same 20 typos, 9,090 → 4,527 tokens, $0.000382 → $0.000190 per fix request,
+p50 297 → 256 ms. The fix request only runs on a flag (~1 in 3 pauses with a typo), so the
+per-pause figure is unchanged; on a flag the pause's Jev spend halves.
+
 ## Cumulative
 
 | after step | chat calls / hour | $ / hour | saving vs baseline | pause ms | `_` ms |
