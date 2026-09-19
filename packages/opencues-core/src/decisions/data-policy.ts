@@ -297,7 +297,7 @@ export function captureDataArg(table: string, draft: string): string | null {
   // a buffer calculator: only what follows the keyword is an inline argument; text before it on the same line is the buffer
   if (entry.arg === 'buffer' && entry.keywords) {
     const low = arg.toLowerCase();
-    for (const k of [...entry.keywords].sort((a, b) => b.length - a.length)) { const at = low.lastIndexOf(k); if (at >= 0) { arg = arg.slice(at + k.length).trim(); break; } }
+    for (const k of [...entry.keywords].sort((a, b) => b.length - a.length)) { const at = low.indexOf(k); if (at >= 0) { arg = arg.slice(at + k.length).trim(); break; } }
   }
   // a buffer calculator: `make this lower case`, `turn it into a slug`, `this text as title case` are the command, not the input
   if (entry.arg === 'buffer') arg = arg.replace(/^(?:(?:make|turn|put|convert|change|render|format)\s+(?:this|it|that|the text|the above|everything)\s*(?:into|to|in|as)?|(?:this|it|that|the text|the above)\s*(?:into|to|in|as)?)\s*/i, '').replace(/^(?:for|of|on|this|the text)\s+/i, '');
