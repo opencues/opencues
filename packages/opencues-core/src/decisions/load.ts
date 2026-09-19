@@ -27,6 +27,12 @@ export interface LoadDecisionLegsOptions {
   readonly apiKeys: Readonly<Record<string, string | undefined>>;
   readonly httpAdapter: unknown;
   readonly log?: (msg: string) => void;
+  /**
+   * Legs the HOST built (a browser host's bridge to its native process,
+   * decisions/bridge.ts). Used as-is when the scalar is on: the package and
+   * the key live on the other end, so nothing is loaded here.
+   */
+  readonly legs?: DecisionLegs;
 }
 
 interface DecisionPackage { createDecisionLegs?: DecisionLegsFactory; envKey?: string; providers?: ReadonlyArray<string> }
@@ -79,6 +85,7 @@ function requirePackage(log?: (m: string) => void): { pkg: DecisionPackage | nul
 export function loadDecisionLegs(options: LoadDecisionLegsOptions): DecisionLegs | undefined {
   const which = options.which;
   if (!which || which === 'off') return undefined;
+  if (options.legs) { options.log?.(`buildSources: decisions → ${options.legs.id}/${options.legs.model} (host bridge)`); return options.legs; }
   const { pkg, from } = requirePackage(options.log);
   if (!pkg || typeof pkg.createDecisionLegs !== 'function') {
     options.log?.(`buildSources: decisions-provider ${which} but no decision package is installed (${from}) → decision legs stay on chat`);

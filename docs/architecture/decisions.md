@@ -120,8 +120,22 @@ export function createDecisionLegs(o: { which; apiKey; httpAdapter; log }): Deci
 Nothing installed, an unknown name, or no key → one log line at boot
 (`buildSources: decisions-provider … → decision legs stay on chat`) and
 every leg on its chat path. `opencues doctor` shows the same resolution.
-Native hosts only: a page (chrome, dsh's client half) has no package and no
-key; those hosts reach a decision package through their host bridge later.
+
+**Browser hosts bridge to a native process** (`decisions/bridge.ts`). A page
+has no package and no key, so chrome's content script builds
+`createBridgedDecisionLegs(send)`, a `DecisionLegs` whose every leg is one
+message out (`opencues:decision` → the service worker → the native-messaging
+host as `decision`) and one verdict back, and hands it to the runtime as
+`ResolverOptions.decisionLegs`; `loadDecisionLegs` uses host-built legs as-is
+when the scalar is on. The host runs `serveDecisionLeg` over the legs it
+loaded (`host.cjs`, once per provider, key from its own environment /
+`~/.cues/.env`, never sent to the page). What crosses is data only: leg name,
+arguments, verdict. The page runs the PII floor over every string in the
+arguments before they leave it, since the host has no identity catalog. A host
+failure comes back typed (`{ ok: false, error: { kind } }`) and is rethrown as
+a `DecisionError` of that kind, so the breaker behaves as on a native host; no
+host at all is a transport failure → chat for the window. dsh's client half
+can take the same bridge over its node half.
 
 The reference package is private (`opencues/decisions`); it carries the
 provider, the question templates, the thresholds, the benches and the
@@ -150,7 +164,9 @@ numbers. The seam above is what a second package targets.
 
 `dispatchDecision`'s PII floor is defence in depth for the decision channel,
 the way `dispatchChat`'s floor is for chat (`hydration-dehydration.md`
-row 11). The router dehydrates the draft window before it ships in identity
+row 11). On a browser host the same floor runs on the PAGE side of the
+bridge (`bridge.ts`), before the leg arguments leave the page; the native
+host holds the key and never forwards it. The router dehydrates the draft window before it ships in identity
 `safe` mode. Selection over registered BLANKS by a decision leg (a device or
 data tool named by the `_` request) is ruled in `security-audit.md` row #32
 and is not wired in this version.

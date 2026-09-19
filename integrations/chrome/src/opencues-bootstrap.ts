@@ -26,7 +26,7 @@ import type {
 import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common';
 import { createTrustGate } from './trust-gate';
 import { applySiteCompatFilter as siteFilter } from './site-filter';
-import { parseSingleCueMd, listProviders, buildCalendarContextSnapshot, pageClaimedBy, pageClaimedByOther } from '@opencues/core';
+import { parseSingleCueMd, listProviders, buildCalendarContextSnapshot, pageClaimedBy, pageClaimedByOther, createBridgedDecisionLegs } from '@opencues/core';
 import { ChromeUserBlank } from './user-blank-loader';
 import { createBlankInvoke } from '@opencues/runtime/dist/src/blanks';
 import { wordDiff } from '@opencues/runtime/dist/src/modules/word-diff';
@@ -2825,10 +2825,23 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   // No seed step — readFile() resolves bake-time constants directly
   // for read-only paths, and writable paths (OPENCUES.md) persist
   // through chrome.storage only when they're actually written.
+  // Decision legs over the native-messaging host (core's decisions/bridge.ts).
+  // The package + TYPESAFE_API_KEY live in the host process; the page ships
+  // leg ARGUMENTS (after its own PII floor) and gets VERDICTS. The scalar the
+  // page read rides along so the host loads the package for that provider.
+  // With no host, the relay answers a typed transport failure and the
+  // runtime's breaker keeps every leg on chat for a window — the same
+  // fall-through as a native host with a dead key.
+  const decisionLegs = createBridgedDecisionLegs(async (req) => {
+    const which = bootResult?.getSetting('decisions-provider') ?? 'off';
+    return chrome.runtime.sendMessage({ type: 'opencues:decision', which, leg: req.leg, args: req.args });
+  }, { id: 'chrome-host', model: 'bridge' });
+
   bootResult = boot({
     hostVersion: '0.1.0',
     cwd: ROOT,
     calendarContext: calendarContextHolder,
+    decisionLegs,
     getText: () => currentTarget ? readTargetText(currentTarget) : '',
     getCursorOffset: readCursorOffset,
     // Both setText and pushText route through diffWriteText so the

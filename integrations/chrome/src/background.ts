@@ -276,6 +276,19 @@ interface WriteFileResultMessage {
   ok: boolean;
   error?: string;
 }
+/** A decision leg for the native host (core's decisions/bridge.ts wire shape). */
+interface DecisionRequestFromContent {
+  type: 'opencues:decision';
+  /** the `decisions-provider` scalar the page read, so the host loads the package for it */
+  which: string;
+  leg: string;
+  args: unknown[];
+}
+interface DecisionResultMessage {
+  type: 'decision-result';
+  requestId: string;
+  reply: { ok: true; verdict: unknown; id?: string; model?: string } | { ok: false; error: { kind: string; message: string } };
+}
 
 let nativePort: chrome.runtime.Port | null = null;
 let nextRequestId = 1;
@@ -285,6 +298,10 @@ type WriteFilePending = (msg: WriteFileResultMessage) => void;
 const pending: Map<string, ExecPending> = new Map();
 const pendingUserBlank: Map<string, UserBlankPending> = new Map();
 const pendingWriteFile: Map<string, WriteFilePending> = new Map();
+type DecisionPending = (msg: DecisionResultMessage) => void;
+const pendingDecision: Map<string, DecisionPending> = new Map();
+/** one tier above the host's own request timeout; a decision that has not answered by then has already lost its pause */
+const DECISION_TIMEOUT_MS = 10_000;
 
 function failPending(reason: string): void {
   for (const [id, resolve] of pending) {
@@ -298,6 +315,10 @@ function failPending(reason: string): void {
   for (const [id, resolve] of pendingWriteFile) {
     resolve({ type: 'write-file-result', requestId: id, ok: false, error: reason });
   }
+  for (const [id, resolve] of pendingDecision) {
+    resolve({ type: 'decision-result', requestId: id, reply: { ok: false, error: { kind: 'transport', message: reason } } });
+  }
+  pendingDecision.clear();
   pendingWriteFile.clear();
 }
 
@@ -368,6 +389,15 @@ function connectNativeHost(): void {
       if (resolve) {
         pendingWriteFile.delete(wfr.requestId);
         resolve(wfr);
+      }
+      return;
+    }
+    const dr = raw as DecisionResultMessage;
+    if (dr.type === 'decision-result' && typeof dr.requestId === 'string') {
+      const resolve = pendingDecision.get(dr.requestId);
+      if (resolve) {
+        pendingDecision.delete(dr.requestId);
+        resolve(dr);
       }
       return;
     }
@@ -476,6 +506,38 @@ chrome.runtime.onMessage.addListener((message: UserBlankInvokeRequestFromContent
   } catch (err) {
     pendingUserBlank.delete(requestId);
     sendResponse({ ok: false, error: 'postMessage failed: ' + String(err) });
+  }
+  return true;
+});
+
+// Content scripts ask the SW to run a DECISION LEG on the native host
+// (core's decisions/bridge.ts): the package and its key live in the host
+// process, the page sends leg arguments and receives a verdict. Same relay
+// shape as write-file. No host → a typed transport failure, which the
+// page's breaker turns into "every leg on chat" for a window.
+chrome.runtime.onMessage.addListener((message: DecisionRequestFromContent, _sender, sendResponse) => {
+  if (message?.type !== 'opencues:decision') return false;
+  if (!isInternalSender(_sender)) {
+    sendResponse({ ok: false, error: { kind: 'transport', message: 'sender not internal — refused (F6)' } });
+    return true;
+  }
+  if (!nativePort) {
+    sendResponse({ ok: false, error: { kind: 'transport', message: 'native host not connected — install via `opencues install chrome-host`' } });
+    return true;
+  }
+  const requestId = String(nextRequestId++);
+  pendingDecision.set(requestId, (result) => sendResponse(result.reply));
+  setTimeout(() => {
+    const resolve = pendingDecision.get(requestId);
+    if (!resolve) return;
+    pendingDecision.delete(requestId);
+    resolve({ type: 'decision-result', requestId, reply: { ok: false, error: { kind: 'transport', message: 'SW-side timeout' } } });
+  }, DECISION_TIMEOUT_MS);
+  try {
+    nativePort.postMessage({ type: 'decision', requestId, which: message.which, leg: message.leg, args: message.args });
+  } catch (err) {
+    pendingDecision.delete(requestId);
+    sendResponse({ ok: false, error: { kind: 'transport', message: 'postMessage failed: ' + String(err) } });
   }
   return true;
 });

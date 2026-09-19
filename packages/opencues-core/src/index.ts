@@ -582,3 +582,4 @@ export {
   UNDERSCORE_CHAT_SOURCE_IDS,
 } from './decisions/legs';
 export { loadDecisionLegs, resetDecisionPackage, DECISIONS_PACKAGE, DECISIONS_PATH_ENV, DECISIONS_DEFAULT_ENV_KEY } from './decisions/load';
+export { createBridgedDecisionLegs, serveDecisionLeg, serializeLegArgs, DECISION_LEG_NAMES, type DecisionLegName, type DecisionBridgeRequest, type DecisionBridgeReply, type DecisionBridgeSend } from './decisions/bridge';

@@ -134,6 +134,14 @@ export interface ResolverOptions {
    *  (subreddit rules). Chrome passes a `location` getter; native hosts omit
    *  (no page) → the tier stays silent. */
   readonly pageLocation?: () => { origin: string; pathname: string } | null;
+  /**
+   * Decision legs the HOST built — a browser host's bridge to its native
+   * process (core's decisions/bridge.ts). With `decisions-provider` on,
+   * build-sources uses them as-is instead of loading a package here (a
+   * page has no package and no key). Absent → the package is loaded by
+   * name on native hosts, and a browser host stays on chat.
+   */
+  readonly decisionLegs?: unknown;
   /** Same â inject the resolver build directly (mostly for testing). */
   readonly resolverFactory?: (cuesConfig: unknown, blanksConfig: unknown, opts: unknown) => unknown;
   /**
@@ -956,6 +964,7 @@ export class Resolver {
       // key and logs when it cannot build one.
       decisionsProvider: settings.get('decisions-provider') ?? 'off',
       decisionsFanout: (settings.get('decisions-fanout') ?? 'on') !== 'off',
+      decisionLegs: this.options.decisionLegs,
       worldDataFetch: this.options.worldDataFetch,
       pageLocation: this.options.pageLocation,
       weatherLocation: settings.get('weather-location'),

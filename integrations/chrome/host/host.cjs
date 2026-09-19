@@ -77,7 +77,9 @@ function loadCore() {
     try {
       const pkg = JSON.parse(fs.readFileSync(path.join(c, 'package.json'), 'utf8'));
       const main = pkg.main || 'dist/index.js';
-      return require(path.join(c, main));
+      const mod = require(path.join(c, main));
+      loadCore.dir = c;
+      return mod;
     } catch { /* try next */ }
   }
   throw new Error('opencues-host: cannot locate @opencues/core; tried: ' + candidates.join(', '));
@@ -231,6 +233,51 @@ function handleMessage(msg) {
   if (msg.type === 'user-blank-invoke') return handleUserBlankInvoke(msg);
   if (msg.type === 'log') return handleLog(msg);
   if (msg.type === 'write-file') return handleWriteFile(msg);
+  if (msg.type === 'decision') return handleDecision(msg);
+}
+
+// ─── Decision legs (host-side, core's decisions/bridge.ts) ──────────────
+//
+// The page has no decision package and no key: chrome's content script
+// bridges every decision leg here (background.ts relays `opencues:decision`
+// as `decision`). The package (`@opencues/decisions`, private) and
+// TYPESAFE_API_KEY live in THIS process — the key is deliberately NOT in
+// API_KEY_VARS, so it never reaches chrome.storage or the page. The page
+// runs its own PII floor over the leg arguments before they leave it; the
+// package's `dispatchDecision` runs the meter + the [decision] log here.
+// Loaded once per `which`; a load failure is a typed reply the page's
+// breaker classifies, never a crash of the host.
+const decisionLegsByProvider = new Map();
+function decisionLegsFor(which) {
+  if (decisionLegsByProvider.has(which)) return decisionLegsByProvider.get(which);
+  let legs = null;
+  try {
+    const { NodeHttpAdapter } = require(path.join(loadCore.dir, 'node-http-adapter.js'));
+    legs = core.loadDecisionLegs({
+      which,
+      apiKeys: process.env,
+      httpAdapter: new NodeHttpAdapter({ maxSockets: 4, timeout: 30000 }),
+      log: (m) => handleLog({ level: 'debug', msg: `[chrome-host] ${m}` }),
+    }) || null;
+  } catch (e) {
+    handleLog({ level: 'warn', msg: `[chrome-host] decision package failed to load: ${e && e.message || e}` });
+  }
+  decisionLegsByProvider.set(which, legs);
+  return legs;
+}
+function handleDecision(msg) {
+  const requestId = msg.requestId;
+  if (typeof requestId !== 'string') return;
+  const reply = (body) => sendMessage({ type: 'decision-result', requestId, reply: body });
+  const which = typeof msg.which === 'string' ? msg.which : 'off';
+  if (which === 'off') { reply({ ok: false, error: { kind: 'shape', message: 'decisions-provider is off' } }); return; }
+  const legs = decisionLegsFor(which);
+  if (!legs) { reply({ ok: false, error: { kind: 'auth', message: `no decision package / key for ${which} in the chrome-host (see /tmp/opencues.log)` } }); return; }
+  const leg = typeof msg.leg === 'string' ? msg.leg : '';
+  const args = Array.isArray(msg.args) ? msg.args : [];
+  core.serveDecisionLeg(legs, { leg, args }, (m) => handleLog({ level: 'debug', msg: `[chrome-host] ${m}` }))
+    .then(reply)
+    .catch((e) => reply({ ok: false, error: { kind: 'transport', message: String(e && e.message || e) } }));
 }
 
 // Write a file under CUE_ROOT on chrome's behalf. Used by the in-page

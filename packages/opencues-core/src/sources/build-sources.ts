@@ -251,6 +251,8 @@ export interface BuildSourcesOptions {
   decisionsProvider?: string;
   /** `decisions-fanout` (default on): one decision request per pause vs one per leg. */
   decisionsFanout?: boolean;
+  /** Legs the host built (a browser host's bridge to its native process); used as-is when the scalar is on. */
+  decisionLegs?: DecisionLegs;
   /** the ask leg's chat call runs only when the fused ask noul ≥ this (default 0.7). */
   askGateThreshold?: number;
   /** Host-provided GET for the contradiction world-data caches (bank holidays,
@@ -444,8 +446,8 @@ export function combineWordSources(srcs: SourceConfig[]): SourceConfig {
  * why) keeps every leg on its chat call. Built once per source build, so
  * every leg shares one instance and one keep-alive adapter.
  */
-export function buildDecisionProvider(options: Pick<BuildSourcesOptions, 'decisionsProvider' | 'apiKeys' | 'httpAdapter' | 'log'>): DecisionLegs | undefined {
-  return loadDecisionLegs({ which: options.decisionsProvider ?? 'off', apiKeys: options.apiKeys ?? {}, httpAdapter: options.httpAdapter, log: options.log });
+export function buildDecisionProvider(options: Pick<BuildSourcesOptions, 'decisionsProvider' | 'apiKeys' | 'httpAdapter' | 'log' | 'decisionLegs'>): DecisionLegs | undefined {
+  return loadDecisionLegs({ which: options.decisionsProvider ?? 'off', apiKeys: options.apiKeys ?? {}, httpAdapter: options.httpAdapter, log: options.log, legs: options.decisionLegs });
 }
 
 export function buildSourcesFromConfig(
