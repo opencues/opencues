@@ -598,3 +598,27 @@ describe('SentenceCueSource — gate', () => {
     assert.strictEqual(http2.calls, 3);
   });
 });
+
+// ── a calendar-context cue with nothing to advise emits nothing ────────────
+describe('SentenceCueSource — calendar advisory', () => {
+  const baseConfig = { provider: getProvider('groq')!, endpoint: 'https://example.test/v1/chat/completions', apiKey: 'test-key', model: 'test-model' };
+  const calendarCue = { name: 'zorb-calendar', scope: 'sentence' as const, priority: 90, promptText: 'Flag clashes.', usesCalendarContext: true };
+
+  it('a reply with a heads-up → a passive advisory: [original] alone + a ⚠ note', async () => {
+    const http = makeMockAdapter([{ match: 'zorb at ten', content: 'ALT: zorb at ten — heads up: clashes with ALT-EVENT.' }]);
+    const src = new SentenceCueSource({ ...baseConfig, httpAdapter: http, sourceConfig: calendarCue });
+    const r = await src.getCues(ctxFromText('zorb at ten.'));
+    assert.strictEqual(r.results.length, 1);
+    assert.deepStrictEqual(r.results[0].alternatives, ['zorb at ten.']);
+    assert.strictEqual(r.results[0].cueTip, '⚠ clashes with ALT-EVENT');
+  });
+
+  it('a reply with NO heads-up emits nothing (never a gray span with no note and nothing to press)', async () => {
+    const lines: string[] = [];
+    const http = makeMockAdapter([{ match: 'zorb at ten', content: 'ALT: Zorb at ten, then.' }]);
+    const src = new SentenceCueSource({ ...baseConfig, httpAdapter: http, sourceConfig: calendarCue, log: (m) => lines.push(m) });
+    const r = await src.getCues(ctxFromText('zorb at ten.'));
+    assert.deepStrictEqual(r.results, []);
+    assert.ok(lines.some((l) => /no heads-up/.test(l)));
+  });
+});

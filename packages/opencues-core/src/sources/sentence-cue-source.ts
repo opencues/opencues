@@ -544,6 +544,11 @@ export class SentenceCueSource implements CueSource {
       if (this.sourceConfig.usesCalendarContext) {
         const m = alts[0]?.match(/heads up:\s*(.+)$/i) ?? alts[0]?.match(/—\s*(.+)$/);
         if (m && m[1]) tip = `⚠ ${m[1].trim().replace(/[.\s]+$/, '')}`;
+        // No heads-up in the reply → nothing to advise. Emitting anyway made a
+        // def with one alternative and no note: a gray span the caret could sit
+        // in with nothing to show and nothing to press (seen 2026-09-18 on a
+        // plain "let me know if you need anything" sentence).
+        if (!tip) { this.log(`SentenceCue[${this.sourceConfig.name}]: reply carried no heads-up — no advisory for "${span.text.slice(0, 32)}…"`); continue; }
       }
       // A calendar-conflict cue is a pure ADVISORY (⚠ heads-up) — passive, NOT
       // cycleable. Its `alts[0]` is the sentence with the heads-up appended;

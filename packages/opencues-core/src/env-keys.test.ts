@@ -22,8 +22,8 @@ import {
 } from './env-keys';
 import { listProviders } from './llm-provider';
 
-// Every env var the module can read — cleared before each test, restored after.
-const ALL_ENV_KEYS = listProviders().map((p) => p.envKeyName).filter(Boolean);
+// every key the bag reads: the LLM providers' plus the decision package's (env-keys.ts lists it by name)
+const ALL_ENV_KEYS = [...listProviders().map((p) => p.envKeyName).filter(Boolean), 'TYPESAFE_API_KEY'];
 
 let tmpHome: string;
 const savedEnv: Record<string, string | undefined> = {};
