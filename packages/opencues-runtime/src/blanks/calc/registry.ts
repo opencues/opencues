@@ -9,8 +9,10 @@ import type { Calculator } from './types';
 import { DATES } from './dates';
 import { TIMEZONES } from './timezones';
 import { NUMBERS } from './numbers';
+import { MONEY } from './money';
+import { PHYSICS } from './physics';
 
-export const CALCULATORS: readonly Calculator[] = [...DATES, ...TIMEZONES, ...NUMBERS];
+export const CALCULATORS: readonly Calculator[] = [...DATES, ...TIMEZONES, ...NUMBERS, ...MONEY, ...PHYSICS];
 
 const byKeyword: Array<[string, Calculator]> = CALCULATORS.flatMap((c) => c.keywords.map((k) => [k.toLowerCase(), c] as [string, Calculator])).sort((a, b) => b[0].length - a[0].length);
 const byId = new Map(CALCULATORS.map((c) => [c.id, c]));
