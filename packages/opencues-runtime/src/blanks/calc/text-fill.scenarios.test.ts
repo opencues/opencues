@@ -64,6 +64,10 @@ describe('buffer calculators through BlankFill', () => {
     const a = await setup('zorb flumph\n\n  blorp zorb\n\nflumph\nupper case _');
     expect(last(a)).toBe('ZORB FLUMPH\n\n  BLORP ZORB\n\nFLUMPH');
   });
+  it('text before the keyword on the same line is the buffer, not an inline argument', async () => {
+    const a = await setup('zorb flumph\n\n+44 7700 900123 upper case _');
+    expect(last(a)).toBe('ZORB FLUMPH\n\n+44 7700 900123');
+  });
   it('a wrap with its column parameter', async () => {
     const a = await setup('zorb flumph blorp zorb flumph blorp\nwrap at 12 _');
     expect(last(a)).toBe('zorb flumph\nblorp zorb\nflumph blorp');

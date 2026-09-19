@@ -581,8 +581,23 @@ export class BlankFill {
       // command segment.
       const bufferCalc = slot.blankName === 'tables' ? calculatorForDispatchKeyword(slot.keyword, slot.shapeValue ?? '') : null;
       if (bufferCalc?.arg === 'buffer') {
-        const segChar = segmentStart(cleaned, cleaned.lastIndexOf('_'));
-        contextWords.push(cleaned.slice(0, segChar), slot.shapeValue ?? '');
+        // The buffer is everything before the KEYWORD, not before the segment:
+        // `+44 7700 900123 title case _` on the last line of a draft means the
+        // whole draft, and the number is part of it. Only words written AFTER
+        // the keyword are an inline argument.
+        const usChar = cleaned.lastIndexOf('_');
+        let cut = segmentStart(cleaned, usChar);
+        let inline = slot.shapeValue ?? '';
+        const head = cleaned.slice(0, usChar).toLowerCase();
+        for (const k of [...bufferCalc.keywords].sort((a, b) => b.length - a.length)) {
+          const at = head.lastIndexOf(k);
+          if (at >= 0 && (at === 0 || /\s/.test(head[at - 1]))) {
+            cut = at;
+            inline = cleaned.slice(at + k.length, usChar).trim().replace(/^for\s+/i, '');
+            break;
+          }
+        }
+        contextWords.push(cleaned.slice(0, cut), inline);
       } else if (slot.shapeAction === 'get' && slot.shapeValue) {
         // Shaped get: the shape's valueGroup capture IS the arg. For
         // keyword-first shapes this equals the positional walk below; for
