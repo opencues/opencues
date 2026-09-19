@@ -35,7 +35,7 @@ import { ToolPromptCueSource } from './tool-prompt-source';
 import { SemanticTipsSource } from './semantic-tips-source';
 import { contradictionUnits, type DeferredRewrite } from '../contradiction/session-contradiction-source';
 import { DecisionBreaker } from '../decisions/breaker';
-import type { PauseInput, SpellingVerdict } from '../decisions/legs';
+import type { PauseInput, SpellingVerdict, OfferVerdict } from '../decisions/legs';
 import { entriesForDecision } from './semantic-tips-source';
 import type { TipsCatalog } from '../tips-catalog';
 import type { SessionCommitmentsSnapshot } from '../session-commitments';
@@ -69,9 +69,20 @@ export interface SessionCueSourceConfig extends SessionContradictionSourceConfig
    * word-cue so the word-cues chat call is not spent on spelling.
    */
   readonly enableSpelling?: boolean;
+  /**
+   * Blank offers (`blank-offers-mode`): on a pause with no `_`, the package
+   * stacks its table / device / settings questions when the draft could
+   * mean one, and a hit becomes a passive note on the draft's last sentence
+   * carrying the computed answer — `📎 5432 (underscore to apply)` — so the
+   * `_` gesture is learnt from the product. Only the deterministic kinds are
+   * ever offered. Only meaningful with `decisions` and the fanout on.
+   */
+  readonly enableOffer?: boolean;
 }
 
 export const ASK_GATE_THRESHOLD_DEFAULT = 0.7;
+/** the offer note's priority: above a tip (86) on the same sentence, below a session contradiction (88) */
+export const OFFER_PRIORITY = 87;
 /** breaker windows after a failed decision request — re-exported from the shared breaker */
 export { DECISIONS_BREAKER_MS, DECISIONS_BREAKER_AUTH_MS } from '../decisions/breaker';
 
@@ -108,7 +119,12 @@ export class SessionCueSource implements CueSource {
   private tripBreaker(err: { kind?: string; message?: string }): void { this.breaker.trip(err); }
 
   supports(context: CueContext): boolean {
-    return (this.contradiction?.supports(context) ?? false) || (this.tips?.supports(context) ?? false) || (this.ask?.supports(context) ?? false) || this.spellingOn(context);
+    return (this.contradiction?.supports(context) ?? false) || (this.tips?.supports(context) ?? false) || (this.ask?.supports(context) ?? false) || this.spellingOn(context) || this.offerOn(context);
+  }
+
+  /** a blank offer is asked only on the fused path, on a draft with no `_` and at least one sentence */
+  private offerOn(context: CueContext): boolean {
+    return !!this.cfg.enableOffer && !!this.cfg.decisions && (this.cfg.decisionsFanout ?? true) && this.decisionsHealthy() && !!(context.text ?? '').trim() && !context.words.includes('_');
   }
 
   /** the spelling passenger runs only on the fused path with a healthy provider and at least one eligible word */
@@ -177,6 +193,7 @@ export class SessionCueSource implements CueSource {
     const contraOn = !!this.contradiction?.supports(context);
     const askOn = !!this.ask?.supports(context);
     const spellingOn = this.spellingOn(context);
+    const offerOn = this.offerOn(context);
     const snapshot = context.sessionCommitments as SessionCommitmentsSnapshot | undefined;
     const units = contraOn ? contradictionUnits(text, context.words) : [];
     const input: PauseInput = {
@@ -187,8 +204,9 @@ export class SessionCueSource implements CueSource {
       contradiction: contraOn && snapshot ? { commitments: snapshot.commitments.map((c) => ({ id: c.id, statement: c.statement })), units } : undefined,
       ask: askOn,
       spelling: spellingOn,
+      offer: offerOn,
     };
-    if (!input.tips && !input.contradiction && !askOn && !spellingOn) return empty;
+    if (!input.tips && !input.contradiction && !askOn && !spellingOn && !offerOn) return empty;
 
     let verdict;
     try {
@@ -206,7 +224,12 @@ export class SessionCueSource implements CueSource {
     // rail emits (a different word than any sentence cue; the resolver
     // keeps both). Never a chat call.
     const spelling = verdict.spelling ? this.spellingResult(context, verdict.spelling) : [];
-    const withSpelling = (r: CueSourceResult): CueSourceResult => spelling.length ? { ...r, results: [...r.results, ...spelling] } : r;
+    // The blank offer rides the same way: its own passive note on the last
+    // sentence, next to whatever the rail emits (the resolver keeps the
+    // higher priority where two claim one sentence).
+    const offer = offerOn && verdict.offer ? this.offerResult(context, verdict.offer) : [];
+    const riders = [...spelling, ...offer];
+    const withSpelling = (r: CueSourceResult): CueSourceResult => riders.length ? { ...r, results: [...r.results, ...riders] } : r;
 
     // Contradiction first (its chat call runs only on a gate hit under the
     // fire floor), then tips (no call at all), then ask (its chat call only
@@ -226,6 +249,37 @@ export class SessionCueSource implements CueSource {
       this.log(`SessionCue[fused]: ask gate ${p.toFixed(2)} < ${threshold} — ask call skipped`);
     }
     return withSpelling(empty);
+  }
+
+  /**
+   * The offer as a passive TOGGLE note on the draft's last sentence:
+   * alternatives [sentence, what `_` applies], so the ordinary `_`-on-note
+   * gesture (cycling) applies it and the hint reads `(underscore to apply)`.
+   * A device or a control applies by putting the `_` there — the sentence
+   * plus ` _` — so the blank machinery runs exactly as if the person had
+   * typed it (the setting is written, the tool runs). A table's answer is
+   * computed by the RUNTIME (it holds the tables): the result carries the
+   * verdict in `metadata.offer` and the resolver fills the second stop and
+   * the note, or drops the offer on a miss.
+   */
+  private offerResult(context: CueContext, v: OfferVerdict): CueResult[] {
+    const units = contradictionUnits(context.text ?? '', context.words);
+    const last = units[units.length - 1];
+    if (!last || !last.text.trim()) return [];
+    const wordIndex = Math.max(0, (context.text ?? '').slice(0, last.start).split(/\s+/).filter(Boolean).length);
+    const base = { wordIndex, word: context.words[wordIndex] ?? last.text.split(/\s+/)[0], source: 'sentence-cue:offer', priority: OFFER_PRIORITY, spanStart: last.start, spanEnd: last.end };
+    const meta = { sentenceCue: { cueName: 'offer' }, offer: v, offerSentence: last.text };
+    if (v.kind === 'table') {
+      this.log(`SessionCue[offer]: table ${v.table.table} (${v.table.top}) on "${last.text.slice(0, 40)}…" — the runtime answers`);
+      return [{ ...base, alternatives: [last.text], metadata: meta }];
+    }
+    const label = v.kind === 'device'
+      ? `${v.device.blank} ${v.device.value}`
+      : v.control.kind === 'setting' ? `${v.control.setting} ${v.control.value}`
+        : v.control.kind === 'provider' ? `${v.control.scope}-llm-provider ${v.control.provider}${v.control.model ? `:${v.control.model}` : ''}`
+          : `${v.control.action}${v.control.count > 1 ? ` ×${v.control.count}` : ''}`;
+    this.log(`SessionCue[offer]: ${label} on "${last.text.slice(0, 40)}…"`);
+    return [{ ...base, alternatives: [last.text, `${last.text} _`], cueTip: `📎 ${label}`, metadata: meta }];
   }
 
   /** The flagged word's correction as a word-cue result. The correction keeps the token's punctuation, as the word-cue path expects a whole-token alternative. */

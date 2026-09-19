@@ -52,6 +52,18 @@ export interface SpellingVerdict {
   readonly fixConfidence: number;
 }
 
+/**
+ * A blank offer: on a pause with no `_`, the deterministic thing the draft's
+ * last request could be answered by — an offline table, a shipped device
+ * tool, a setting — so the runtime can show the computed answer as a note
+ * and `_` applies it. Only these kinds exist: the note is there because the
+ * answer is in hand, never as "this looks like a blank".
+ */
+export type OfferVerdict =
+  | { readonly kind: 'table'; readonly table: TableVerdict }
+  | { readonly kind: 'device'; readonly device: DeviceVerdict }
+  | { readonly kind: 'control'; readonly control: ControlVerdict };
+
 export interface PauseInput {
   readonly text: string;
   readonly words: ReadonlyArray<string>;
@@ -65,6 +77,8 @@ export interface PauseInput {
   readonly spelling?: boolean;
   /** the caret, for the sentence a prose tip attaches to */
   readonly cursor?: number;
+  /** blank offers on → the package stacks its table / device / settings questions when the draft could mean one */
+  readonly offer?: boolean;
 }
 
 export interface PauseVerdict {
@@ -75,6 +89,8 @@ export interface PauseVerdict {
   readonly ask: number | null;
   /** a correction, or null (not asked, no flag, or no one-edit correction) */
   readonly spelling: SpellingVerdict | null;
+  /** the deterministic thing the draft's last request could be answered by, or null (not asked, nothing offered) */
+  readonly offer?: OfferVerdict | null;
   /** true when every leg pre-checked out and no request was sent */
   readonly empty: boolean;
 }

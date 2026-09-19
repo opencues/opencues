@@ -571,6 +571,7 @@ export {
   type DecisionLegsFactoryOptions,
   type PauseInput,
   type PauseVerdict,
+  type OfferVerdict,
   type TipsEntryForDecision,
   type TipsVerdict,
   type CommitmentForDecision,
