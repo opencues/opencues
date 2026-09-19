@@ -1836,6 +1836,8 @@ export function buildSharedRuntime(
     log: msg => log('debug', msg),
     playHostAnimation: opts.glimmerHostAnimation,
   });
+  // A note that lands mid-transition waits for the settle repaint.
+  dimRender.holdInlineNotesWhile(() => glimmer.active);
   if (!opts.glimmerHostAnimation) {
     // textOverride path only makes sense when the runtime itself
     // generates frames — host-owned animation never has an override to

@@ -689,6 +689,9 @@ export function boot(host: HostInfo): BootResult {
     const override = glimmer.getTextOverride(ctx.text);
     return override !== null ? { textOverride: override } : null;
   });
+  // A note that lands mid-transition waits for the settle repaint (the
+  // input box would otherwise grow a line under a still-churning word).
+  dimRender.holdInlineNotesWhile(() => glimmer.active);
 
   // Routing is deterministic (blankShapes) — the old LLM BlankIntent gate
   // was retired.

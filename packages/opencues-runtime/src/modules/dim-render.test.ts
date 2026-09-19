@@ -608,6 +608,21 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     });
   }
 
+  it('holds the inline note while the glimmer is active and paints it on the settle repaint (the note arrives at the END of the transition, never mid-scramble)', () => {
+    const { dynDefs, dimRender } = setup(BUFFER);
+    seedContradictionDef(dynDefs);
+    let glimmering = true;
+    dimRender.holdInlineNotesWhile(() => glimmering);
+    // mid-transition: the span still paints (highlight / dim stay aligned, the override is 1:1), the note does not
+    const mid = dimRender.compute({ text: BUFFER, cursor: 14, externalHighlights: [] });
+    expect(mid?.inlineNote).toBeUndefined();
+    expect(mid?.highlight).toEqual({ start: 11, end: 19 });
+    // the settle repaint: same ctx, hold released → the note lands
+    glimmering = false;
+    const settled = dimRender.compute({ text: BUFFER, cursor: 14, externalHighlights: [] });
+    expect(settled?.inlineNote?.text).toBe("⚠ the 19th is a Friday, not Saturday");
+  });
+
   it('emits an inline note AND auto-selects the span (highlight) when the cursor is inside it', () => {
     const { dynDefs, dimRender } = setup(BUFFER);
     seedContradictionDef(dynDefs);

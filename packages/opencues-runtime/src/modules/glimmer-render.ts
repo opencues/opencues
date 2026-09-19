@@ -179,7 +179,9 @@ export class GlimmerRender {
           startOffset: Math.max(0, startOffset), finalText, durationMs,
         });
         this._hostAnim = h;
-        h.settled?.then(() => { if (this._hostAnim === h) this._hostAnim = null; });
+        // On a natural finish, one repaint so anything held for the
+        // transition (DimRender's inline notes) lands without a keystroke.
+        h.settled?.then(() => { if (this._hostAnim === h) { this._hostAnim = null; this._repaint(); } });
         this.opts.log?.(`glimmer: host animation start (len=${finalText.length}, ms=${durationMs})`);
       } catch (err) {
         // A failed host animation is a lost cosmetic, never a lost
