@@ -178,14 +178,45 @@ Plain phrasings: `what's 255 in hex _`, `spell out 1e9 _`, `average of 3, 5, 8
 and 13 _`, `what are the odds of 3 heads in 5 flips _`, `permutations of 3
 from 10 _`.
 
-### 5. Percent & money (planned)
+### 5. Percent & money ✅ (19 calculators)
 
-`20% off 85`, `85 is what percent of 340`, `percent change 80 to 92`, `tip 15%
-on 64.20`, `split 143 four ways`, `120 plus vat` (the rate is the `vat-rate`
-tunable, never a guess), `compound 1000 at 5% for 10 years`, `monthly payment
-on 250000 at 6% over 30 years`, `doubling time at 7%`, `margin cost 40 sell
-60`, `80000 a year per hour`, `unit price 6 for 4.20`, `cagr 100 to 250 over 5
-years`. All closed-form. Never exchange rates or inflation (live data).
+All closed-form. The VAT rate is the `vat-rate` tunable (default 20, in the
+settings menu under Blanks); a rate written in the command wins. Never
+exchange rates or inflation (live data).
+
+| you type | you get |
+|---|---|
+| `20% off 85 _` | `68 (saves 17)` |
+| `85 is what percent of 340 _` | `25%` |
+| `percent change 80 to 92 _` | `+15% (80 → 92, +12)` |
+| `85 plus 20% _` | `102 (+17)` |
+| `tip 15% on 64.20 _` | `tip 9.63 · total 73.83` |
+| `tip 20% on 100 split 4 ways _` | `tip 20 · total 120 · 30 each (4 ways)` |
+| `split 143 four ways _` | `35.75 each (4 ways)` |
+| `split 143 four ways with 15% tip _` | `41.11 each (4 ways, total 164.45 with 15% tip)` |
+| `120 plus vat _` | `144 (20% VAT: 24)` |
+| `120 ex vat _` | `100 (20% VAT: 20)` |
+| `vat on 120 _` | `24 (20% of 120 → 144 inc)` |
+| `120 plus 19% vat _` | `142.80 (19% VAT: 22.80)` |
+| `compound 1000 at 5% for 10 years _` | `1,628.89 (interest 628.89, yearly)` |
+| `simple interest 1000 at 5% for 3 years _` | `150 (total 1,150)` |
+| `monthly payment on 250000 at 6% over 30 years _` | `1,498.88/month (total 539,595.47, interest 289,595.47)` |
+| `apr to monthly 12% _` | `1% per month (12.68% effective annual)` |
+| `doubling time at 7% _` | `10.24 years (rule of 72: 10.3)` |
+| `margin cost 40 sell 60 _` | `margin 33.33% · markup 50% · profit 20` |
+| `break even fixed 5000 price 25 cost 10 _` | `334 units (333.3 → revenue 8,350)` |
+| `80000 a year per hour _` | `38.46/h (40 h/wk, 52 wk)` |
+| `35 an hour per year _` | `72,800/yr (40 h/wk, 52 wk) · 6,066.67/month` |
+| `unit price 6 for 4.20 _` | `0.70 each` |
+| `discount to reach 85 from 100 _` | `15% off` |
+| `cagr 100 to 250 over 5 years _` | `20.11%/yr` |
+
+Plain phrasings: `what's 120 ex vat _`, `85 out of 340 _`, `invest 5000 at 7%
+for 20 years monthly _`, `mortgage 300000 at 4.5% over 25 years _`, `years to
+double at 5% _`, `45k a year hourly _`.
+
+Not claimed: `off the record _`, `split the difference _`, `tip of the iceberg
+_`, `at what cost _`.
 
 ### 6. Text metrics & transforms (planned)
 
@@ -196,15 +227,64 @@ _`, `snake case _`, `sort lines _`, `dedupe lines _`, `wrap at 80 _`,
 `initials of _`, `acronym for _`). A transform is the same gesture as a rewrite
 request, with a deterministic result; `undo _` reverts it.
 
-### 7. Encodings & geometry / physics (planned)
+### 7. Geometry, physics, fitness & media ✅ (32 calculators) · encodings (planned)
 
-`base64 for hello`, `decode base64 aGVsbG8=`, `url encode a b&c`, `html
-escape`, `uuid`, `random 1 to 100`, `dice 2d6`, `json pretty`, `unix
-permissions 755`, `cidr 10.0.0.0/22`, `color contrast #fff #777`; `area of a
-circle radius 4`, `hypotenuse 3 4`, `volume of a sphere radius 2`, `bmi 80kg
-1.8m`, `pace 5k in 24:30`, `kwh cost 1500w for 3h at 0.28`, `speed of light`,
-`gravity on mars`, `note for 440hz`, `aspect ratio 1920x1080`, `download time
-2gb at 50mbps`.
+| you type | you get |
+|---|---|
+| `area of a circle radius 4 _` | `50.27 (π × 4²)` |
+| `area of a rectangle 3 by 4 _` | `12 (3 × 4)` |
+| `area of a triangle base 3 height 4 _` | `6 (½ × 3 × 4)` |
+| `circumference of a circle radius 4 _` | `25.13 (2π × 4)` |
+| `volume of a sphere radius 2 _` | `33.51 (4⁄3 π × 2³)` |
+| `volume of a cylinder radius 2 height 5 _` | `62.83 (π × 2² × 5)` |
+| `surface area of a sphere radius 2 _` | `50.27 (4π × 2²)` |
+| `hypotenuse 3 4 _` | `5` |
+| `missing side hypotenuse 5 side 3 _` | `4` |
+| `distance between (1,2) and (4,6) _` | `5` |
+| `30 degrees in radians _` | `0.5236 (π/6)` |
+| `sin of 30 degrees _` | `0.5` |
+| `slope 3 in 12 _` | `14.04° (25% grade, 1 in 4)` |
+| `bmi 80kg 1.8m _` | `24.7 (normal, 18.5–24.9)` |
+| `bmi 180 lb 5ft 11 _` | `25.1 (overweight, 25–29.9)` |
+| `bmr male 80kg 180cm 35 _` | `1,755 kcal/day (Mifflin-St Jeor) · ×1.55 moderate 2,720` |
+| `heart rate zones at 35 _` | `max 185 · z1 93–111 · z2 111–130 · z3 130–148 · z4 148–167 · z5 167–185` |
+| `pace 5k in 24:30 _` | `4:54 /km (7:53 /mi) · 12.24 km/h` |
+| `pace marathon in 3:30:00 _` | `4:59 /km (8:01 /mi) · 12.06 km/h` |
+| `speed 10km in 48 min _` | `12.5 km/h (7.77 mph, 4:48 /km)` |
+| `fuel 400 km at 6.5 l/100km _` | `26 L (400 km at 6.5 L/100 km)` |
+| `35 mpg to l/100km _` | `6.72 L/100 km (US gallon); 8.07 UK` |
+| `kinetic energy 2kg at 3m/s _` | `9 J (½ × 2 × 3²)` |
+| `free fall 5 seconds _` | `122.63 m, 49.05 m/s (no air resistance)` |
+| `ohms law 12v 4 ohm _` | `3 A · 36 W (V = I R)` |
+| `watts from 230v 3a _` | `690 W (230 V × 3 A)` |
+| `kwh cost 1500w for 3h at 0.28 _` | `4.5 kWh = 1.26 (at 0.28/kWh)` |
+| `speed of light _` | `299,792,458 m/s (c; ≈ 3.0 × 10⁸ m/s, 1 079 252 849 km/h)` |
+| `absolute zero _` | `−273.15 °C (0 K, −459.67 °F)` |
+| `gravity on mars _` | `3.72 m/s² (0.38 g); escape velocity 5.03 km/s; day 24 h 37 min; year 687 days` |
+| `weight on the moon 80kg _` | `13.21 kg-equivalent on moon (129.6 N)` |
+| `half-life remaining 100g after 3 half-lives _` | `12.5 g (100 × ½³)` |
+| `half-life 5730 years after 10000 years _` | `29.83% remains (1.75 half-lives)` |
+| `decibels 90 plus 90 _` | `93.01 dB (two equal sources add 3 dB)` |
+| `wavelength of 440hz _` | `77.95 cm in air (sound); 681.35 km (radio)` |
+| `note for 440hz _` | `A4 (440 Hz, A = 440)` |
+| `frequency of C5 _` | `523.25 Hz (midi 72)` |
+| `bpm 120 _` | `500 ms per beat · ¼ 125 ms · bar (4/4) 2 s` |
+| `aspect ratio 1920x1080 _` | `16:9 (1.78)` |
+| `scale 1920x1080 to width 1280 _` | `1280×720` |
+| `dpi 300 at 6x4 inches _` | `1800×1200 px` |
+| `download time 2gb at 50mbps _` | `5 min 20 s (2 GB at 50 Mbit/s)` |
+
+Plain phrasings: `what's the area of a circle radius 4 _`, `escape velocity of
+earth _`, `distance to the moon _`, `how long to download 700mb at 20mbps _`,
+`cost to run 2kw for 5 hours at 0.30 _`.
+
+Not claimed: `the area of concern _`, `a slippery slope _`, `scale it back _`,
+`the speed of the rollout _`, `note to self _`.
+
+**Encodings (planned):** `base64 for hello`, `decode base64 aGVsbG8=`, `url
+encode a b&c`, `html escape`, `uuid`, `random 1 to 100`, `dice 2d6`, `json
+pretty`, `unix permissions 755`, `cidr 10.0.0.0/22`, `color contrast #fff
+#777`.
 
 **Not shipped, by ruling (2026-09-19):** password / passphrase generators,
 hashes (md5, sha*), JWT decoding — attack surface, however convenient.
@@ -216,7 +296,7 @@ hashes (md5, sha*), JWT decoding — attack surface, however convenient.
 | | keyword form | plain phrasing |
 |---|---|---|
 | LLM calls | 0 | 0 on a hit (the `_` route request you already pay for names the calculator) |
-| tokens | 0 | the table question rides the route request: ≈ +3k prompt tokens when `table-lookups-mode` is on |
+| tokens | 0 | the table question rides the route request: ≈ +6k prompt tokens at 122 ids when `table-lookups-mode` is on |
 | latency | a shape match | the route request (~280 ms) |
 | off | the `tables` blank is not registered | the question is left off the request |
 

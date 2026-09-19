@@ -238,6 +238,11 @@ max-concurrent-auditors: 0
 # handles however many packs stack up. off = one call with everything.
 tips-shard-size: 50
 
+# The VAT / sales-tax rate (%) the tables blank's money calculators use
+# (`120 plus vat _`, `120 ex vat _`, `vat on 120 _`) when the command
+# names none. A rate written in the command (`120 plus 19% vat _`) wins.
+vat-rate: 20
+
 # Visual feedback while a `_` blank waits for its source (LLM call,
 # script invocation, HTTP fetch). The slot's character animates through
 # a short progression so the user can see "something is happening" —

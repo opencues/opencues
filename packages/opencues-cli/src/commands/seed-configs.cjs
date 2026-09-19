@@ -386,7 +386,7 @@ module.exports = function seedConfigs(argv, ctx) {
       const srcHash = bodyHash(srcContent);
       const untouched = shippedBodies[key] === bodyHash(dstContent);
       const refreshBody = untouched && shippedBodies[key] !== srcHash;
-      const merged = mergeShippedMd(srcContent, dstContent, { refreshBody });
+      const merged = mergeShippedMd(srcContent, dstContent, { refreshBody, name });
       if (merged !== dstContent) {
         fs.writeFileSync(dstMd, merged);
         mdRefreshed.push([key, refreshBody ? 'shipped body refreshed (never edited); user fields preserved' : 'contract fields refreshed; user fields preserved']);
@@ -1027,10 +1027,25 @@ function readShippedBodies(dir) {
 function writeShippedBodies(dir, record) {
   fs.writeFileSync(path.join(dir, SHIPPED_BODIES_FILE), JSON.stringify(record, null, 2) + '\n');
 }
-function mergeShippedMd(defaultsContent, userContent, { refreshBody = false } = {}) {
+// Per-blank contract extensions: shipped blanks whose ROUTING GRAMMAR is
+// the product, not a customisation. The `tables` blank's `blankKeywords` /
+// `blankShapes` are generated from the runtime's calculator registry and
+// pinned to it by a drift test (packages/opencues-runtime/src/blanks/calc/
+// blank-md-drift.test.ts); a seeded copy that kept last month's shapes
+// would route to calculators the installed runtime has and miss the new
+// ones (September 2026: family (b) shipped and an existing install kept
+// the 84-shape file). Same for `model`, whose shapes ARE its modes.
+const SHIPPED_MD_CONTRACT_FIELDS_BY_NAME = {
+  tables: new Set(['blankKeywords', 'blankShapes']),
+  model: new Set(['blankKeywords', 'blankShapes']),
+};
+
+function mergeShippedMd(defaultsContent, userContent, { refreshBody = false, name = '' } = {}) {
   const d = splitFrontmatter(defaultsContent);
   const u = splitFrontmatter(userContent);
   const KEY_RE = /^([a-zA-Z][a-zA-Z0-9_-]*):\s*(.*)$/;
+  const byName = SHIPPED_MD_CONTRACT_FIELDS_BY_NAME[name];
+  const isContract = (key) => SHIPPED_MD_CONTRACT_FIELDS.has(key) || (byName !== undefined && byName.has(key));
 
   // Pull user's frontmatter keys (top-level only, skip comments/blanks).
   const userValues = new Map();
@@ -1047,7 +1062,7 @@ function mergeShippedMd(defaultsContent, userContent, { refreshBody = false } = 
     const m = !line.startsWith(' ') && !line.startsWith('\t') ? line.match(KEY_RE) : null;
     if (!m) { out.push(line); continue; }
     const key = m[1];
-    if (SHIPPED_MD_CONTRACT_FIELDS.has(key)) {
+    if (isContract(key)) {
       out.push(line);  // contract field — always from defaults
     } else if (userValues.has(key)) {
       out.push(`${key}: ${userValues.get(key)}`);
@@ -1065,7 +1080,7 @@ function mergeShippedMd(defaultsContent, userContent, { refreshBody = false } = 
   const extras = [];
   for (const [k, v] of userValues) {
     if (matched.has(k) || defaultsHasTopLevelKey(d.fm, k)) continue;
-    if (SHIPPED_MD_CONTRACT_FIELDS.has(k)) continue;
+    if (isContract(k)) continue;
     extras.push(`${k}: ${v}`);
   }
   if (extras.length > 0) {

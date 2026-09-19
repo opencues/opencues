@@ -144,7 +144,7 @@ export const DATES: readonly Calculator[] = [
     run(arg, ctx) { const p = twoDates(arg, ctx); if (!p) return null; let n = 0; const [a, b] = p[0] <= p[1] ? p : [p[1], p[0]]; for (let t = a.getTime(); t < b.getTime(); t += DAY) { const wd = new Date(t).getUTCDay(); if (wd !== 0 && wd !== 6) n++; } return `${n} working days (Mon–Fri, no holidays counted)`; } },
   { id: 'weekday-of', family: 'dates', keywords: ['weekday of', 'day of the week for', 'day of the week was', 'day of the week is', 'what day was', 'what day is'], arg: 'segment', example: ['weekday of 14 july 1789', 'Tuesday (14 Jul 1789)'], miss: 'cannot read the date',
     run(arg, ctx) { const p = parseDateLoose(arg, ctx); if (!p) return null; const w = WEEKDAYS[p.date.getUTCDay()]; return `${w[0].toUpperCase()}${w.slice(1)} (${fmtDate(p.date).slice(4)})`; } },
-  { id: 'date-plus', family: 'dates', keywords: ['from today', 'after', 'before'], arg: 'segment', keywordIsArg: true, phrase: new RegExp(String.raw`^(?:${NUM})\s*(?:days?|weeks?|months?|years?)\s+(?:from|after|before)\s+\S.*$|^\S.*\s+(?:plus|minus)\s+(?:${NUM})\s*(?:days?|weeks?|months?|years?)$`, 'i'), example: ['90 days from today', 'Fri 18 Dec 2026'], miss: 'cannot read the offset',
+  { id: 'date-plus', family: 'dates', keywords: ['from today'], arg: 'segment', keywordIsArg: true, phrase: new RegExp(String.raw`^(?:${NUM})\s*(?:days?|weeks?|months?|years?)\s+(?:from|after|before)\s+\S.*$|^\S.*\s+(?:plus|minus)\s+(?:${NUM})\s*(?:days?|weeks?|months?|years?)$`, 'i'), example: ['90 days from today', 'Fri 18 Dec 2026'], miss: 'cannot read the offset',
     run(arg, ctx) {
       // `90 days from today`, `3 weeks from friday`, `2 months after 1 jan`, `date plus 45 days`, `45 days ago`
       const s = arg.toLowerCase().trim();
