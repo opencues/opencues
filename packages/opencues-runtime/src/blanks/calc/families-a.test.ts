@@ -7,8 +7,10 @@ import { CALCULATORS, calculatorForKeyword, calculatorById } from './registry';
 
 // Saturday 19 September 2026, 12:30 in London (BST, UTC+1) → 11:30Z
 const NOW = new Date('2026-09-19T11:30:00.000Z');
-const ctx: CalcContext = { now: () => NOW, timeZone: 'Europe/London', setting: () => undefined, random: () => 0.5 };
+const ctx: CalcContext = { now: () => NOW, timeZone: 'Europe/London', setting: () => undefined, random: () => 0.5, command: '' };
 const run = (id: string, arg: string) => calculatorById(id)!.run(arg, ctx);
+/** the buffer a metric / transform example runs over */
+export const SAMPLE = 'The quick brown fox jumps over the lazy dog. The dog sleeps.';
 
 describe('registry', () => {
   it('ids are unique, every keyword resolves to its calculator, longest keyword wins', () => {
@@ -21,9 +23,13 @@ describe('registry', () => {
     for (const c of CALCULATORS) {
       const [input, want] = c.example;
       const kw = c.keywords.find((k) => input.toLowerCase().startsWith(k)) ?? '';
-      const rest = input.slice(kw.length).trim();
+      const rest = input.slice(kw.length).trim().replace(/^for\s+/, c.inlineArg ? '' : 'for ');
       const arg = c.keywordIsArg ? input : rest;
-      const got = c.run(c.arg === 'none' ? '' : arg, ctx);
+      let got: string | null;
+      if (c.arg === 'buffer') {
+        const inline = !!c.inlineArg && rest.length > 0;
+        got = c.run(inline ? rest : (c.exampleBuffer ?? SAMPLE), { ...ctx, command: inline ? '' : rest });
+      } else got = c.run(c.arg === 'none' ? '' : arg, ctx);
       if (c.generator || c.id === 'unix-now' || c.id === 'iso-now') { expect(got, c.id).not.toBeNull(); continue; }
       expect(got, `${c.id}: "${input}"`).toBe(want);
     }
@@ -70,6 +76,7 @@ describe('dates', () => {
     expect(run('since', '1 jan 2026')).toBe('261 days (37.3 weeks)');
     expect(run('time-plus', '45 minutes')).toBe('13:15');
     expect(run('time-plus', '12 hours')).toBe('00:30 Sun 20 Sept');
+    expect(run('time-plus', 'time in 45 minutes')).toBe('13:15');
     expect(run('age', '14 march 1990')).toBe('36 years (since 14 Mar 1990)');
     expect(run('week-number', '19 september 2026')).toBe('week 38 of 2026');
     expect(run('day-of-year', '')).toBe('day 262 of 365');
@@ -117,6 +124,7 @@ describe('timezones', () => {
     expect(run('overlap', 'london and sydney')).toBe('no overlap of 9–5 (sydney is +9 h from london)');
     expect(run('overlap', 'london and new york')).toBe('14:00–17:00 london = 09:00–12:00 new york (3 h of 9–5)');
     expect(run('meeting-at', '3pm london for new york tokyo')).toBe('London 15:00 · New York 10:00 · Tokyo 23:00');
+    expect(run('convert-time', 'meeting in london 21:30 time in sf')).toBe('13:30 Sat 19 Sept in sf (GMT-7, UTC-07:00)');
     expect(run('time-in', 'zorbville')).toBeNull();
   });
 });

@@ -16,7 +16,7 @@ import { isBlankConfigCycleable, keywordInWindow, lineOfWords, matchBlankShape, 
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import { isSingleAnswerBlank } from '../blanks/single-answer-builtins';
-import { lookupTable, configureCalcEnv } from '../blanks/tables';
+import { lookupTable, configureCalcEnv, calculatorForDispatchKeyword } from '../blanks/tables';
 import { countryFactAvailable } from '../blanks/countries';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import type { DynDefs } from '../state/dyn-defs';
@@ -317,6 +317,21 @@ export class BlankFill {
     return slots;
   }
 
+  /**
+   * The `_` word indices a blank will actually FIRE on — `scan()` narrowed
+   * by the same gate the dispatch applies: a shaped blank claims only on a
+   * shape match. This is what the resolver's keyword-bound check must read;
+   * a raw `scan()` counts a keyword hit without a shape as a claim, and with
+   * the tables blank's hundreds of keywords that skipped the `_` router on
+   * any prose containing one (`what's 120 ex vat _` lost its route).
+   */
+  claimedSlotIndices(text: string): readonly number[] {
+    return this.scan(text).filter((s) => {
+      const cfg = this.configLoader.blanks.get(s.blankName) as { blankShapes?: unknown[] } | undefined;
+      return !(cfg?.blankShapes?.length) || s.shapeAction !== undefined;
+    }).map((s) => s.index);
+  }
+
   private onTextChange(e: TextChangeEvent): void {
     let keepArmed = false;
     try {
@@ -558,7 +573,32 @@ export class BlankFill {
       // 495-char garbage fill. Bounding context to (keywordEnd, `_`) keeps it
       // to the actual argument; prior lines and any trailing text are excluded.
       const contextWords: string[] = [];
-      if (slot.shapeAction === 'get' && slot.shapeValue) {
+      // A `tables` BUFFER calculator (`word count _`, `title case _`, `slug for
+      // X _`) is invoked as [the text before the command, raw; the captured
+      // argument]: the blank decides which of the two is its input
+      // (blanks/calc/types.ts `inlineArg`). Newlines are kept for the
+      // line-based transforms; the prior text is everything before the
+      // command segment.
+      const bufferCalc = slot.blankName === 'tables' ? calculatorForDispatchKeyword(slot.keyword, slot.shapeValue ?? '') : null;
+      if (bufferCalc?.arg === 'buffer') {
+        // The buffer is everything before the KEYWORD, not before the segment:
+        // `+44 7700 900123 title case _` on the last line of a draft means the
+        // whole draft, and the number is part of it. Only words written AFTER
+        // the keyword are an inline argument.
+        const usChar = cleaned.lastIndexOf('_');
+        let cut = segmentStart(cleaned, usChar);
+        let inline = slot.shapeValue ?? '';
+        const head = cleaned.slice(0, usChar).toLowerCase();
+        for (const k of [...bufferCalc.keywords].sort((a, b) => b.length - a.length)) {
+          const at = head.lastIndexOf(k);
+          if (at >= 0 && (at === 0 || /\s/.test(head[at - 1]))) {
+            cut = at;
+            inline = cleaned.slice(at + k.length, usChar).trim().replace(/^for\s+/i, '');
+            break;
+          }
+        }
+        contextWords.push(cleaned.slice(0, cut), inline);
+      } else if (slot.shapeAction === 'get' && slot.shapeValue) {
         // Shaped get: the shape's valueGroup capture IS the arg. For
         // keyword-first shapes this equals the positional walk below; for
         // trailing-keyword shapes ("east finchley iceland location _") the
@@ -1044,6 +1084,12 @@ export class BlankFill {
     // dismissible (so the user can cycle back to `_`).
     const rawLines = fillValue.split(/\n/).map(s => s.trim()).filter(Boolean);
     if (rawLines.length === 0) return;
+    // A single-answer blank's card is the WHOLE text, blank lines and indent
+    // included: a tables transform over a draft (`title case _` on an email)
+    // returns the paragraphs it was given, and the trim-and-drop split above
+    // would fold every paragraph break into one line. Keep the raw text
+    // (minus a trailing newline) for those; the split stays for list blanks.
+    const singleAnswerText = fillValue.replace(/\n+$/, '');
     // A single-answer blank returns ONE answer whose lines together form a
     // card (location's `map`, claude-status, model, note) — join them into a
     // single fill instead of treating each line as a rival cycleable
@@ -1056,7 +1102,7 @@ export class BlankFill {
     // upgrading user's BLANK.md, so the flag would otherwise never reach them).
     // List blanks (hackernews) are neither and keep the split behaviour.
     const lines = isSingleAnswerBlank(slot.blankName, blank?.blankMultilineIsAnswer) && rawLines.length > 1
-      ? [rawLines.join('\n')]
+      ? [singleAnswerText]
       : rawLines;
     let primaryFill = lines[0];
     const isDismissible = blank?.blankDismissible === true;
@@ -1128,13 +1174,19 @@ export class BlankFill {
     // keyword-clear path (blankClearKeywords); plain `_` in prose just
     // fills at the cursor.
     const shapeCapturedArg = slot.shapeValue !== undefined && slot.shapeValue.length > 0;
+    // A `tables` TRANSFORM over the buffer (`title case _`, `sort lines _`,
+    // no inline argument): the result REPLACES the text before the command
+    // and the command itself — the same gesture as a rewrite request, with a
+    // deterministic result; the undo journal reverts it like any fill.
+    const transformCalc = slot.blankName === 'tables' ? calculatorForDispatchKeyword(slot.keyword, slot.shapeValue ?? '') : null;
+    const replacesBuffer = !isErrResult && transformCalc?.arg === 'buffer' && transformCalc.transform === true && !(transformCalc.inlineArg && shapeCapturedArg);
     const clearsCommandSpan = !isErrResult
-      && (typedAction !== undefined || hasIntegration || shapeCapturedArg || slot.decision === true);
+      && (typedAction !== undefined || hasIntegration || shapeCapturedArg || slot.decision === true || replacesBuffer);
     // Shaped slots clear from the start of the matched command SEGMENT
     // (commandStart) — for trailing-keyword shapes the captured arg precedes
     // the keyword, and clearing from keywordStart would strand the arg next
     // to an output that already embeds it.
-    const clearStart = clearsCommandSpan ? (slot.commandStart ?? slot.keywordStart) : slot.keywordStart;
+    const clearStart = replacesBuffer ? 0 : clearsCommandSpan ? (slot.commandStart ?? slot.keywordStart) : slot.keywordStart;
     const { clearEnd } = clearsCommandSpan
       ? { clearEnd: slot.index - 1 }
       : (isErrResult ? { clearEnd: undefined } : computeFillRange(blank ?? {}, slot));

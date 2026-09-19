@@ -243,6 +243,10 @@ tips-shard-size: 50
 # names none. A rate written in the command (`120 plus 19% vat _`) wins.
 vat-rate: 20
 
+# Words per minute the tables blank uses for `reading time _` (and the
+# read estimate in `word count _`). 238 is the average adult silent rate.
+reading-wpm: 238
+
 # Visual feedback while a `_` blank waits for its source (LLM call,
 # script invocation, HTTP fetch). The slot's character animates through
 # a short progression so the user can see "something is happening" —

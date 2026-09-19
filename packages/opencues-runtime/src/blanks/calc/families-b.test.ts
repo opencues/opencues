@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { CalcContext } from './types';
 import { calculatorById } from './registry';
 
-const ctx = (settings: Record<string, string> = {}): CalcContext => ({ now: () => new Date('2026-09-19T11:30:00.000Z'), timeZone: 'Europe/London', setting: (k) => settings[k], random: () => 0.5 });
+const ctx = (settings: Record<string, string> = {}): CalcContext => ({ now: () => new Date('2026-09-19T11:30:00.000Z'), timeZone: 'Europe/London', setting: (k) => settings[k], random: () => 0.5, command: '' });
 const run = (id: string, arg: string, c: CalcContext = ctx()) => calculatorById(id)!.run(arg, c);
 
 describe('money', () => {

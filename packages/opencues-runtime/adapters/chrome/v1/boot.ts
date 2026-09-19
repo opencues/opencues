@@ -552,7 +552,7 @@ export function boot(host: HostInfo): BootResult {
           case 'bad-request':        return '[OpenCues: provider returned 400 (bad request) — check the Model name matches the selected Provider in the popup]';
         }
       },
-      keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
+      keywordBoundSlotIndices: (text: string) => shared.blankFill.claimedSlotIndices(text),
       fillDevice: (text: string, inv: { blank: string; keyword: string; action: 'get' | 'set' | 'step'; value?: string }, commandStartWord: number) => shared.blankFill.fillFromDecision(text, inv, commandStartWord),
       externallySuppressed: (text: string) => kataCoach.shouldSuppressResolve(text),
     }), spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,

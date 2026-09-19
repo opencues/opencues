@@ -20,6 +20,8 @@ export interface CalcContext {
   readonly setting: (name: string) => string | undefined;
   /** `crypto.getRandomValues`-backed uniform in [0, 1) */
   readonly random: () => number;
+  /** for a buffer calculator: the words captured after the keyword (`count of the` → `the`, `wrap at 80` → `80`); '' otherwise */
+  readonly command: string;
 }
 
 export type CalcFamily = 'dates' | 'timezones' | 'numbers' | 'money' | 'text' | 'encodings' | 'physics' | 'tables';
@@ -46,6 +48,8 @@ export interface Calculator {
    * A metric or lookup keeps the prior text and fills after it.
    */
   readonly transform?: boolean;
+  /** A buffer calculator that also takes its input inline (`slug for My Blog Post _`, `base64 for hello _`): a captured argument IS the input and the fill is a normal one; without it the text before the command is. Off: a captured argument is a parameter (`ctx.command`) and the input is always the buffer (`count of the _`, `wrap at 80 _`). */
+  readonly inlineArg?: boolean;
   /** The argument may be empty (`easter _` = this year, `quarter _` = today). */
   readonly optionalArg?: boolean;
   /**
@@ -61,6 +65,8 @@ export interface Calculator {
   readonly keywordIsArg?: boolean;
   /** Non-idempotent (`uuid`, `random`): never cached, the value is not replayed by undo. */
   readonly generator?: boolean;
+  /** for a buffer calculator: the text the example runs over (the registry test's default sample otherwise) */
+  readonly exampleBuffer?: string;
   /** one worked example per calculator, `<keyword> <arg> _` → answer; pinned by the registry test and quoted in BLANK.md */
   readonly example: readonly [input: string, answer: string];
   /** the word the blank paints on a miss (`cannot parse the dates`) */

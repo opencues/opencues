@@ -908,6 +908,18 @@ export const MENU_TUNABLES: readonly MenuTunableSpec[] = [
     ],
   },
   {
+    scalar: 'reading-wpm',
+    group: 'Blanks',
+    menuTip: 'Words per minute the tables blank uses for `reading time _` and the read estimate in `word count _`.',
+    values: [
+      { id: '238', description: 'Default — the average adult silent reading rate' },
+      { id: '150', description: 'Slow / careful reading, or a second language' },
+      { id: '200', description: 'A common editorial estimate' },
+      { id: '300', description: 'A fast reader' },
+      { id: '400', description: 'Skimming' },
+    ],
+  },
+  {
     scalar: 'tips-shard-size',
     group: 'Voice & navigation',
     menuTip: 'Situations per semantic-tips call. The catalogue is cut on section boundaries and each shard is its own parallel call: a small model abstains as one list grows (qwen: 34 lines 19/20, 55 lines 16/20). off = one call with everything.',
