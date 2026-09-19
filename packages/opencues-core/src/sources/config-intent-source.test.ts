@@ -1309,3 +1309,71 @@ describe('matchDeterministicAction — a settings verb or question stem before t
     assert.strictEqual(matchDeterministicAction('Paris undo')?.action, 'undo');
   });
 });
+
+// ── the settings leg (decision layer) ─────────────────────────────────────
+import { fakeLegs } from '../decisions/fake-legs.test-helper';
+
+describe('ConfigIntentSource — the settings leg', () => {
+  const baseConfig = { provider: getProvider('groq')!, endpoint: 'https://example.test/v1/chat/completions', apiKey: 'test-key', model: 'test-model' };
+  /** counts chat calls; answers the classifier with NONE and the summon with nothing usable */
+  function countingChat(): HttpAdapter & { calls: number } {
+    const a = { calls: 0, post: async () => { a.calls++; return JSON.stringify({ choices: [{ message: { content: 'VERDICT: NONE\nCONFIDENCE: 0.9' } }] }); } };
+    return a;
+  }
+  const verdict = (setting: string, value: string, confidence = 0.9) => ({ setting, value, confidence, valueConfidence: 0.9, top: `${setting} ${confidence}` });
+  function mk(http: HttpAdapter, legs: ReturnType<typeof fakeLegs> | undefined, calls: Array<[string, string]>, extra: Record<string, unknown> = {}) {
+    return new ConfigIntentSource({ ...baseConfig, httpAdapter: http, applyScalar: (s, v) => { calls.push([s, v]); }, decisions: legs, ...extra });
+  }
+
+  it('a confident, registry-valid verdict applies with NO chat classifier call — even when no settings keyword is in the buffer', async () => {
+    const http = countingChat(); const calls: Array<[string, string]> = [];
+    const legs = fakeLegs({ settings: verdict('debug-mode', 'off') });
+    const r = await mk(http, legs, calls).getCues(ctxFromText('less console noise _'));
+    assert.deepStrictEqual(calls, [['debug-mode', 'off']]);
+    assert.strictEqual(legs.calls.filter((c) => c.leg === 'settings').length, 1);
+    assert.strictEqual(r.results.length, 1);
+    assert.strictEqual(r.results[0].cueTip, 'debug-mode → off');
+    // the summon-span resolution may spend one small chat call; the CLASSIFIER never runs (its NONE would have applied nothing)
+    assert.ok(http.calls <= 1);
+  });
+
+  it('none + no settings keyword → cedes with no chat call at all', async () => {
+    const http = countingChat(); const calls: Array<[string, string]> = [];
+    const r = await mk(http, fakeLegs({ settings: null }), calls).getCues(ctxFromText('capital of zorbland _'));
+    assert.deepStrictEqual(r.results, []);
+    assert.deepStrictEqual(calls, []);
+    assert.strictEqual(http.calls, 0);
+  });
+
+  it('none + a settings keyword (a provider switch) → the chat classifier decides', async () => {
+    const http = countingChat(); const calls: Array<[string, string]> = [];
+    await mk(http, fakeLegs({ settings: null }), calls).getCues(ctxFromText('switch to cerebras _'));
+    assert.ok(http.calls >= 1);
+    assert.deepStrictEqual(calls, []);
+  });
+
+  it('a verdict under the threshold, one the registry rejects, or a failed leg → the chat classifier runs', async () => {
+    const plans = [fakeLegs({ settings: verdict('debug-mode', 'off', 0.3) }), fakeLegs({ settings: verdict('zorb-mode', 'on') }), fakeLegs({ throwFrom: ['settings'] })];
+    for (const [i, legs] of plans.entries()) {
+      ConfigIntentSource.resetVariantPoolForTest();
+      const http = countingChat(); const calls: Array<[string, string]> = [];
+      await mk(http, legs, calls).getCues(ctxFromText(`enable debug logging, take ${i} _`));
+      assert.ok(http.calls >= 1, 'classifier ran');
+      assert.deepStrictEqual(calls, []);
+    }
+  });
+
+  it('fluid-config-mode off: the leg is never asked', async () => {
+    const http = countingChat(); const calls: Array<[string, string]> = [];
+    const legs = fakeLegs({ settings: verdict('debug-mode', 'off') });
+    await mk(http, legs, calls, { allowConfigVerdicts: false }).getCues(ctxFromText('less console noise _'));
+    assert.strictEqual(legs.calls.length, 0);
+    assert.deepStrictEqual(calls, []);
+  });
+
+  it('without legs the keyword gate still spares the chat call on prose', async () => {
+    const http = countingChat(); const calls: Array<[string, string]> = [];
+    await mk(http, undefined, calls).getCues(ctxFromText('less console noise _'));
+    assert.strictEqual(http.calls, 0);
+  });
+});

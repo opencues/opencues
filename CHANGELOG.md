@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — a settings change is decided on the decision layer; the chat classifier is the fall-through (`@opencues/core` 0.63.0)
+- **The `settings` leg** (`DecisionLegs.settings`, optional): which registry scalar a `_` asks to change and which LISTED value. `ConfigIntentSource` asks it first; a verdict at ≥ `SETTINGS_DECISION_THRESHOLD` (0.5) that passes `validateAgainstRegistry` applies through the same write path as before with no chat call. Provider buckets are never decided by the leg (their apply path probes the provider and resets the sibling model): a leg `none` with a settings keyword in the buffer runs the classifier as before; a leg `none` with no keyword cedes with no chat call. With a leg present the keyword pre-gate is bypassed (it rejected phrasings the leg decides: "less console noise", "forget everything about me"), and the summon-span call on bare commands is kicked after the verdict instead of concurrently, so a prose `_` in a fan-out pass spends nothing.
+- Measured through the real source on the fluid-config suites (package bench, same session): recall 97.5 / 94.7 / 80% vs the classifier's 80 / 42 / 25%, 0 false positives on every suite, $ per `_` on the source −39% on main; on a settings command one Jev request (300–840 ms) instead of the 8.5k-token chat call (300 ms – 3.6 s live).
+- The bridge (chrome) carries the new leg; a package without it leaves the classifier in place.
+
+
 ### Changed — the TypeSafe provider adapter and the candidate-cutting utilities are public (`@opencues/core` 0.62.1)
 - `decisions/typesafe.ts` (`TypeSafeDecisionProvider`: endpoint, bearer key, body shape, error classification, one retry on overload, the model pin) is a vendor HTTP adapter with no template in it, the same category as the LLM provider adapters, so it lives in core again; `decisions-provider: typesafe` is a value the public repo can now serve given a package that supplies the legs. `decisions/candidates.ts` holds what a leg OFFERS the model (`underscoreRouteDraft`, `spellingEligible`, `edits1`, `replaceCandidates`): product policy, not question wording. What a package asks about them stays in the package.
 

@@ -68,6 +68,7 @@ thresholds inside the leg) is the package's. The interface:
 | `sentenceGate(gate, sentences)` | the cue's `gate:` line and every sentence of the pass | `[gate, prose]` probabilities per sentence | `SentenceCueSource`: a sentence under either threshold cedes with no rewrite call |
 | `route(text)` | the draft around the `_` | an `UnderscoreRouting`: the chat source to restrict to, or null for the fan-out | the runtime resolver's `only` filter |
 | `replace(input)` | the outbound transform input | a `ReplaceVerdict` `{target, command}` cut from the input, or null | `TransformBlankSource`: the value is read off the fused rewrite's diff (`deriveReplaceValue`) and the splice passes `verifyReplaceDetect` |
+| `settings(input)` (optional) | the outbound `_` text | a `SettingsVerdict` `{setting, value, confidence, valueConfidence}` over FEATURES / MENU_TUNABLES at listed values, or null | `ConfigIntentSource`: at ≥ 0.5 and registry-valid it applies with no chat call; a `none` with a settings keyword runs the classifier (provider buckets stay there), a `none` without one cedes |
 
 Every leg goes through `dispatchDecision` inside the package, so the
 chokepoint is the same whoever asks. A leg THROWS on a failed request; the
@@ -108,6 +109,7 @@ change at any leg.
 - **Router**: a routed source that cedes is followed by the fan-out over the
   rest, so routing costs a round trip at most, never an answer.
 - **Replace**: `metadata.pipelineMode: 'replace-splice-decision'`.
+- **Settings**: the verdict goes through `validateAgainstRegistry` and `applyOpenCuesScalar` exactly as a chat verdict; the keyword pre-gate is bypassed when the leg exists; the summon-span call is deferred to after the verdict on keyword-less buffers.
 
 ## Loading a package
 

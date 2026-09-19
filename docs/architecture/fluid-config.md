@@ -48,6 +48,14 @@ into "exec / fetch / file-write on prompt injection" territory.
 
 Memory pointer: feedback `Fluid-config classifier is settings-only`.
 
+**The settings leg (decision layer).** With a decision package installed,
+`ConfigIntentSource` asks the package's `settings` leg before the classifier:
+which registry scalar, which listed value, one request. A verdict at ≥ 0.5 that
+passes `validateAgainstRegistry` applies with no chat call; the classifier runs
+only on a `none` with a settings keyword in the buffer (provider switches stay
+there) or when the leg fails. Same codomain, same write path, same validator:
+the threat model above is unchanged. See `docs/architecture/decisions.md`.
+
 **Selection is a different surface from generation.** The row above is
 about THIS classifier, an LLM that emits a free string. The decision
 layer (`decisions-provider: typesafe`, `docs/architecture/decisions.md`)

@@ -5,7 +5,7 @@
  */
 import type {
   DecisionLegs, DecisionLegContext, PauseInput, PauseVerdict, TipsVerdict, TipsEntryForDecision,
-  ContradictionVerdict, CommitmentForDecision, DecisionUnit, UnderscoreRouting, RouteContext, ReplaceVerdict, SpellingVerdict,
+  ContradictionVerdict, CommitmentForDecision, DecisionUnit, UnderscoreRouting, RouteContext, ReplaceVerdict, SpellingVerdict, SettingsVerdict,
 } from './legs';
 import type { DecisionProvider } from './types';
 
@@ -20,6 +20,7 @@ export interface FakeLegsPlan {
   sentenceGate?: ReadonlyArray<readonly [number, number]> | ((sentences: ReadonlyArray<string>) => ReadonlyArray<readonly [number, number]>);
   route?: Partial<UnderscoreRouting>;
   replace?: ReplaceVerdict | null;
+  settings?: SettingsVerdict | null;
   /** throw from every leg */
   throws?: Error;
   /** throw from these legs only */
@@ -90,5 +91,6 @@ export function fakeLegs(plan: FakeLegsPlan = {}): FakeLegs {
       return { route, sourceId: r.sourceId ?? (route === 'settings' ? 'config-intent' : route === 'transform' ? 'transform-blank' : route === 'lookup' ? 'fluid-blank' : null), choice: r.choice ?? (route ?? 'other'), confidence: r.confidence ?? 0.9, agreement: r.agreement ?? 0.9, probabilities: r.probabilities ?? {}, ms: r.ms ?? 1 };
     },
     async replace(input: string): Promise<ReplaceVerdict | null> { calls.push({ leg: 'replace', args: [input] }); await wait(); fail('replace'); return plan.replace ?? null; },
+    async settings(input: string): Promise<SettingsVerdict | null> { calls.push({ leg: 'settings', args: [input] }); await wait(); fail('settings'); return plan.settings ?? null; },
   };
 }

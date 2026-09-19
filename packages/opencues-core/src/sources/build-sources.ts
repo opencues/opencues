@@ -887,6 +887,7 @@ export function buildSourcesFromConfig(
         formatErrorAsSubstitute: options.formatLLMErrorAsSubstitute,
         hostName: options.hostName,
         allowConfigVerdicts,
+        decisions,
         allowActionVerdicts,
       }));
     }
