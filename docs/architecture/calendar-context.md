@@ -117,6 +117,21 @@ events read as "today" after midnight.
   on the **status line**, so no keystroke is needed to see it; ignore it to
   dismiss. Priority 90 sits above default cues (e.g. the formalizer at 85) so a
   calendar conflict wins the sentence claim.
+- **Cue on the decision layer (September 2026):** with a decision package that
+  has an **`availability` leg** (`DecisionLegs.availability`), the cue makes no
+  chat call and the calendar is not on the wire at all. `SentenceCueSource`
+  keeps only the sentences that name a day or a time
+  (`captureAvailabilityRef` in `packages/opencues-core/src/calendar-availability.ts`
+  resolves `today` / `tomorrow` / `Monday` / `next weekend` / `the 22nd` and a
+  time point, range or part of the day against the clock), asks ONE noul per
+  such sentence from the sentence alone ("does it state the writer's
+  availability or propose a day / time?"), and at ≥ `AVAILABILITY_THRESHOLD`
+  computes the clash locally (`findClashes`) and writes the same `⚠ heads up:`
+  note with the real titles (`renderHeadsUp`; nothing to hydrate). The LLM
+  path above is the fall-through for a failed or absent leg. Private bench
+  (`availability-bench.mts`): 25/25 and 19/20 holdout at 1 false heads-up vs the
+  chat cue's 21/25 and 17/20 at 6 (a past event, someone else's schedule, an
+  opening hour); ~50× cheaper per sentence.
 
 ### Model routing
 

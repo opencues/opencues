@@ -604,6 +604,7 @@ export function buildSourcesFromConfig(
         tfl,
         communityRules,                           // Tier 5d — page-scoped subreddit rules
         worldDataFetch: options.worldDataFetch,   // Tier 5c — per-query journey geocoding
+        decisions,                                // a `claims` leg replaces the per-sentence parse
         log: (m) => options.log?.(m),
       }));
     } else {

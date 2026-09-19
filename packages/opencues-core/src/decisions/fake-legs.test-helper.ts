@@ -5,7 +5,7 @@
  */
 import type {
   DecisionLegs, DecisionLegContext, PauseInput, PauseVerdict, TipsVerdict, TipsEntryForDecision,
-  ContradictionVerdict, CommitmentForDecision, DecisionUnit, UnderscoreRouting, RouteContext, ReplaceVerdict, SpellingVerdict, SettingsVerdict, DeviceVerdict, TableVerdict,
+  ContradictionVerdict, CommitmentForDecision, DecisionUnit, UnderscoreRouting, RouteContext, ReplaceVerdict, SpellingVerdict, SettingsVerdict, DeviceVerdict, TableVerdict, ClaimSentence, ClaimVerdict,
 } from './legs';
 import type { DecisionProvider } from './types';
 
@@ -23,6 +23,10 @@ export interface FakeLegsPlan {
   settings?: SettingsVerdict | null;
   device?: DeviceVerdict | null;
   table?: TableVerdict | null;
+  /** the claims verdicts, or a function of the sentences asked */
+  claims?: ReadonlyArray<ClaimVerdict> | ((sentences: ReadonlyArray<ClaimSentence>) => ReadonlyArray<ClaimVerdict>);
+  /** availability per sentence asked (by id), default 0 */
+  availability?: Readonly<Record<string, number>> | ((sentences: ReadonlyArray<ClaimSentence>) => ReadonlyArray<number>);
   /** throw from every leg */
   throws?: Error;
   /** throw from these legs only */
@@ -96,5 +100,13 @@ export function fakeLegs(plan: FakeLegsPlan = {}): FakeLegs {
     async settings(input: string): Promise<SettingsVerdict | null> { calls.push({ leg: 'settings', args: [input] }); await wait(); fail('settings'); return plan.settings ?? null; },
     async device(input: string): Promise<DeviceVerdict | null> { calls.push({ leg: 'device', args: [input] }); await wait(); fail('device'); return plan.device ?? null; },
     async table(input: string): Promise<TableVerdict | null> { calls.push({ leg: 'table', args: [input] }); await wait(); fail('table'); return plan.table ?? null; },
+    async claims(sentences: ReadonlyArray<ClaimSentence>): Promise<ReadonlyArray<ClaimVerdict>> {
+      calls.push({ leg: 'claims', args: [sentences] }); await wait(); fail('claims');
+      const c = plan.claims; return typeof c === 'function' ? c(sentences) : (c ?? []);
+    },
+    async availability(sentences: ReadonlyArray<ClaimSentence>): Promise<ReadonlyArray<number>> {
+      calls.push({ leg: 'availability', args: [sentences] }); await wait(); fail('availability');
+      const a = plan.availability; return typeof a === 'function' ? a(sentences) : sentences.map((s) => a?.[s.id] ?? 0);
+    },
   };
 }

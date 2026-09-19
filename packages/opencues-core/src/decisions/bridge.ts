@@ -22,11 +22,11 @@
  * classifies an auth failure on the host exactly as it would locally.
  */
 import { DecisionError, type DecisionErrorKind } from './types';
-import type { DecisionLegs, DecisionLegContext, PauseInput, PauseVerdict, TipsEntryForDecision, TipsVerdict, CommitmentForDecision, DecisionUnit, ContradictionVerdict, UnderscoreRouting, RouteContext, ReplaceVerdict, SettingsVerdict, DeviceVerdict, TableVerdict } from './legs';
+import type { DecisionLegs, DecisionLegContext, PauseInput, PauseVerdict, TipsEntryForDecision, TipsVerdict, CommitmentForDecision, DecisionUnit, ContradictionVerdict, UnderscoreRouting, RouteContext, ReplaceVerdict, SettingsVerdict, DeviceVerdict, TableVerdict, ClaimSentence, ClaimVerdict } from './legs';
 import { getOutboundDehydrationGuard } from '../llm-provider';
 
-export type DecisionLegName = 'pause' | 'askGate' | 'tipsMatch' | 'contradictionGate' | 'sentenceGate' | 'route' | 'replace' | 'settings' | 'device' | 'table';
-export const DECISION_LEG_NAMES: ReadonlyArray<DecisionLegName> = ['pause', 'askGate', 'tipsMatch', 'contradictionGate', 'sentenceGate', 'route', 'replace', 'settings', 'device', 'table'];
+export type DecisionLegName = 'pause' | 'askGate' | 'tipsMatch' | 'contradictionGate' | 'sentenceGate' | 'route' | 'replace' | 'settings' | 'device' | 'table' | 'claims' | 'availability';
+export const DECISION_LEG_NAMES: ReadonlyArray<DecisionLegName> = ['pause', 'askGate', 'tipsMatch', 'contradictionGate', 'sentenceGate', 'route', 'replace', 'settings', 'device', 'table', 'claims', 'availability'];
 
 /** The wire shapes. `args` are the leg's positional arguments, made JSON-safe. */
 export interface DecisionBridgeRequest { readonly leg: DecisionLegName; readonly args: ReadonlyArray<unknown> }
@@ -113,6 +113,8 @@ export function createBridgedDecisionLegs(send: DecisionBridgeSend, init: { id?:
     settings: (input: string, ctx?: DecisionLegContext) => call<SettingsVerdict | null>('settings', [input], ctx),
     device: (input: string, ctx?: DecisionLegContext) => call<DeviceVerdict | null>('device', [input], ctx),
     table: (input: string, ctx?: DecisionLegContext) => call<TableVerdict | null>('table', [input], ctx),
+    claims: (sentences: ReadonlyArray<ClaimSentence>, ctx?: DecisionLegContext) => call<ReadonlyArray<ClaimVerdict>>('claims', [sentences], ctx),
+    availability: (sentences: ReadonlyArray<ClaimSentence>, ctx?: DecisionLegContext) => call<ReadonlyArray<number>>('availability', [sentences], ctx),
   };
 }
 
@@ -145,6 +147,14 @@ export async function serveDecisionLeg(legs: DecisionLegs, req: DecisionBridgeRe
       case 'table': {
         if (!legs.table) return { ok: false, error: { kind: 'shape', message: 'the host package has no table leg' } };
         verdict = await legs.table(args[0] as string, { log }); break;
+      }
+      case 'claims': {
+        if (!legs.claims) return { ok: false, error: { kind: 'shape', message: 'the host package has no claims leg' } };
+        verdict = await legs.claims(args[0] as ClaimSentence[], { log }); break;
+      }
+      case 'availability': {
+        if (!legs.availability) return { ok: false, error: { kind: 'shape', message: 'the host package has no availability leg' } };
+        verdict = await legs.availability(args[0] as ClaimSentence[], { log }); break;
       }
     }
     return { ok: true, verdict: serializeLegArgs([verdict])[0], id: legs.id, model: legs.model };
