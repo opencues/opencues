@@ -47,6 +47,14 @@ export interface CountriesBlankOptions {
   readonly data?: Record<string, CountryFacts>;
 }
 
+/** True when the bundled table holds this fact for this country — the decision-fill probe (blank-fill.ts): a miss falls through to the chat fan-out instead of painting `not found`. */
+export function countryFactAvailable(keyword: string, context: readonly string[], data: Record<string, CountryFacts> = COUNTRIES): boolean {
+  const fact = pickFact(keyword);
+  const country = pickCountry(keyword, [...context]);
+  if (!fact || !country) return false;
+  return data[normKey(country)] !== undefined;
+}
+
 export class CountriesBlank implements Blank {
   readonly name = 'countries';
   readonly readOnly = true;

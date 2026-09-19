@@ -47,6 +47,7 @@ defaults/
     ├── note/BLANK.md            # keyword add/recall/delete (PROTOTYPE, issue #210)
     ├── hackernews/BLANK.md
     ├── countries/BLANK.md
+    ├── tables/BLANK.md          # eight offline tables (unicode, colour, http, mime, port, convert, calc, chemistry) — no LLM, shape-gated
     ├── crypto/BLANK.md
     ├── dictionary/BLANK.md
     ├── claude-status/BLANK.md

@@ -23,6 +23,7 @@ export { DictionaryBlank, type DictionaryBlankOptions } from './dictionary';
 export { LocationBlank, type LocationBlankOptions } from './location';
 export { CryptoBlank, type CryptoBlankOptions } from './crypto';
 export { CountriesBlank, type CountriesBlankOptions } from './countries';
+export { TablesBlank, TABLE_KEYWORDS, tableFor, lookupUnicode, lookupColour, lookupHttp, lookupMime, lookupPort, convertUnits, evalMath, lookupChemistry, type TableName } from './tables';
 export { ClaudeStatusBlank, type ClaudeStatusBlankOptions } from './claude-status';
 export { NoteBlank, type NoteBlankOptions, type NoteCaps } from './note';
 export { ModelBlank, type ModelBlankOptions } from './model';
@@ -40,6 +41,7 @@ import { DictionaryBlank } from './dictionary';
 import { LocationBlank } from './location';
 import { CryptoBlank } from './crypto';
 import { CountriesBlank } from './countries';
+import { TablesBlank } from './tables';
 import { ClaudeStatusBlank } from './claude-status';
 import { NoteBlank } from './note';
 import { ModelBlank } from './model';
@@ -201,6 +203,7 @@ export const BUILTIN_BLANKS: readonly BuiltinBlankSpec[] = [
   { name: 'dictionary',    factory: ctx => new DictionaryBlank({ fetchFn: ctx.fetchFn }) },
   { name: 'crypto',        factory: ctx => new CryptoBlank({ fetchFn: ctx.fetchFn }) },
   { name: 'countries',     factory: () => new CountriesBlank() },
+  { name: 'tables',        factory: () => new TablesBlank() },
 
   // NOTE: the legacy bespoke LLM blanks `answer` + `prompt` were removed
   // (June 2026). They were direct-to-Groq HTTP clients that bypassed the

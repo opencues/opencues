@@ -62,6 +62,17 @@ decisions-provider: off
 #   off          : one decision request per leg.
 decisions-fanout: on
 
+# table-lookups-mode — offline data tables on `_`: `hex for tomato _`,
+# `http status for not found _`, `default port for postgres _`,
+# `convert 5 miles to km _`, `calc 17 * 23 _`, `atomic number of gold _`.
+# A table answers; no LLM call. With a decision provider on, a plain
+# phrasing (`what port does postgres use _`) reaches the same table through
+# the `_` route.
+#   off (default): the tables blank is not registered and the `_` route
+#                  asks no table question (its +1.2k tokens per `_` stay off).
+#   on           : the tables answer on `_`.
+table-lookups-mode: off
+
 # Forwards a low-fan-out, sanitized snapshot of the focused field
 # (label, placeholder, aria-*, input type, page title, page url
 # origin+path, meta description) to the fluid-blank LLM call ONLY,

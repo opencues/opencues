@@ -59,7 +59,8 @@ TypeScript classes living in
 | `stocks` | `StocksBlank` | Live stock prices via Finnhub |
 | `weather` | `WeatherBlank` | Forecast via Open-Meteo |
 | `opencues` | `OpenCuesSettingsBlank` | Read/write `CUES.md` frontmatter scalars |
-| `countries` | `CountriesBlank` | Country lookup |
+| `countries` | `CountriesBlank` | Country lookup (offline table) |
+| `tables` | `TablesBlank` | **`table-lookups-mode: on`** (off by default). Eight offline tables, no LLM: `unicode for em dash _`, `hex for tomato _`, `http status for not found _`, `mime type for png _`, `default port for postgres _`, `convert 5 miles to km _`, `calc 17 * 23 _`, `atomic number of gold _` (also `atomic mass of`, `boiling point of`, `melting point of`, `ph of`). `convert` / `calc` claim the `_` only when a number follows, so `convert this to markdown _` stays a rewrite. With a decision package, a plain phrasing (`what port does postgres use _`) reaches the same table through the `_` route |
 | `crypto` | `CryptoBlank` | Live crypto prices |
 | `dictionary` | `DictionaryBlank` | Word definitions |
 

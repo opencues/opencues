@@ -1211,9 +1211,14 @@ export class ConfigLoader {
     const navigableWords = new Set<string>();
     const blanksByWord = new Map<string, BlankEntry>();
 
+    const tableLookupsOn = (opencuesState.settings.get('table-lookups-mode') ?? 'off').trim().toLowerCase() === 'on';
     const addBlank = (name: string, blank: BlankConfig): void => {
       if (blank.enabled === false) return;
       const lcName = name.toLowerCase();
+      // `table-lookups-mode: off` (the default) leaves the shipped `tables`
+      // built-in unregistered: its keywords claim nothing and a decided table
+      // fill finds no blank and declines. Toggling reloads here.
+      if (lcName === 'tables' && !tableLookupsOn) return;
       navigableWords.add(lcName);
       blanksByWord.set(lcName, { name: lcName, blank });
       // Each blankKeyword maps to the same blank entry.

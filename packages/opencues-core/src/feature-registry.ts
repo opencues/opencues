@@ -523,6 +523,21 @@ export const FEATURES: readonly FeatureSpec[] = [
       { id: 'spaced',    description: 'Markdown-friendly — `_` only triggers after you type a following space; bare `_…_` stays inert' },
     ],
   },
+  // Table lookups: the `tables` built-in (unicode / colour / http / mime /
+  // port / convert / calc / chemistry) and, with a decision provider on, the
+  // `table` question on the `_` route request. Off by default: the tables
+  // are ~16 KB of bundle and the question is +1.2k tokens on every `_`.
+  {
+    scalar: 'table-lookups-mode',
+    group: 'Blanks',
+    camelCase: 'tableLookupsMode',
+    description: 'Offline data tables on `_` (`hex for tomato _`, `http status for not found _`, `default port for postgres _`, `convert 5 miles to km _`, `calc 17 * 23 _`, `atomic number of gold _`): a table answers, no LLM. With a decision provider on, a plain phrasing (`what port does postgres use _`) reaches the same table through the `_` route; off also drops that question from the route request. See docs/features/cue-blanks.md.',
+    menuTip: 'Answer unicode / colour / http / mime / port / unit / arithmetic / chemistry lookups from an offline table on `_`, with no LLM call.',
+    values: [
+      { id: 'off', description: 'Default — the `tables` blank is not registered and the `_` route asks no table question' },
+      { id: 'on',  description: 'The tables answer keyword lookups; with a decision provider on, plain phrasings too' },
+    ],
+  },
   {
     scalar: 'tips-mode',
     group: 'Voice & navigation',

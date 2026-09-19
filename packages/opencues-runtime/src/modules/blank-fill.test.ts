@@ -1914,6 +1914,82 @@ describe('model blank routing (shapes from defaults/blanks/model/BLANK.md)', () 
   });
 });
 
+// ─── Tables blank routing — shapes drift-pinned to the SHIPPED BLANK.md ───
+//
+// `tables` is shape-gated with a NUMBER requirement on `convert` / `calc`,
+// because both are ordinary imperative verbs ("convert this to markdown _"
+// belongs to TransformBlank). These journeys load the REAL file so a loosened
+// shape that starts swallowing rewrite requests fails here.
+describe('tables blank routing (shapes from defaults/blanks/tables/BLANK.md)', () => {
+  const REPO_ROOT = resolvePath(__dirname, '../../../..');
+  const TABLES_MD = readFileSync(resolvePath(REPO_ROOT, 'defaults/blanks/tables/BLANK.md'), 'utf8');
+
+  async function tablesSetup(stdout = 'ALT-ONE', scalar = 'on') {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/tables/BLANK.md': TABLES_MD, '/proj/OPENCUES.md': `---\ntable-lookups-mode: ${scalar}\n---\n` },
+      capabilities: ['render-override', 'dim-ranges', 'highlight-range', 'file-read', 'file-write', 'force-render', 'change-source', 'blank-invoke'],
+    });
+    adapter.stubBlankInvoke('tables:get', stdout);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/OPENCUES.md' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    return { adapter };
+  }
+
+  it.each([
+    ['hex for tomato _', 'hex for', ['tomato']],
+    ['rgb for tomato _', 'rgb for', ['tomato']],
+    ['unicode for em dash _', 'unicode for', ['em', 'dash']],
+    ['http status for not found _', 'http status for', ['not', 'found']],
+    ['http status 418 _', 'http status', ['418']],
+    ['mime type for png _', 'mime type for', ['png']],
+    ['default port for postgres _', 'default port for', ['postgres']],
+    ['convert 5 miles to km _', 'convert', ['5', 'miles', 'to', 'km']],
+    ['calc 17 * 23 _', 'calc', ['17', '*', '23']],
+    ['calculate 15% of 240 _', 'calculate', ['15%', 'of', '240']],
+    ['atomic number of gold _', 'atomic number of', ['gold']],
+    ['boiling point of water _', 'boiling point of', ['water']],
+  ])('"%s" dispatches keyword %s with the captured argument', async (text, keyword, arg) => {
+    const { adapter } = await tablesSetup();
+    adapter.pushText(text);
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(1);
+    expect(adapter.blankInvokeCalls[0]).toMatchObject({ blankName: 'tables', action: 'get', args: [keyword, ...arg] });
+    // The argument is captured → the command span is consumed → the answer stands alone.
+    expect(adapter.getText()).toBe('ALT-ONE');
+  });
+
+  it.each([
+    'convert this to markdown _',
+    'convert to json _',
+    'calculate the risk _',
+    'please convert the list above _',
+  ])('"%s" is NOT claimed (no number: a rewrite request, not a table lookup)', async (text) => {
+    const { adapter } = await tablesSetup();
+    adapter.pushText(text);
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(0);
+    expect(adapter.getText()).toBe(text);
+  });
+
+  it('`table-lookups-mode: off` (the default) leaves the blank unregistered: its keywords claim nothing', async () => {
+    const { adapter } = await tablesSetup('ALT-ONE', 'off');
+    adapter.pushText('hex for tomato _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(0);
+    expect(adapter.getText()).toBe('hex for tomato _');
+  });
+
+  it('prior sentence survives: only the lookup segment is consumed', async () => {
+    const { adapter } = await tablesSetup();
+    adapter.pushText('hii world. hex for tomato _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.getText()).toBe('hii world. ALT-ONE');
+  });
+});
+
 // ─── Registry miss — config present, implementation absent ────────────────
 //
 // ~/.cues is shared across hosts but bundles are per-host, so a BLANK.md
