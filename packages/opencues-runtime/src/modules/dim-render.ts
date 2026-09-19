@@ -46,6 +46,7 @@ function defSpanLive(def: WordDef, text: string): boolean {
 
 export class DimRender {
   private _unsub: Unsubscribe | null = null;
+  private _holdNotes: (() => boolean) | null = null;
 
   constructor(
     private adapter: HostAdapter,
@@ -58,6 +59,21 @@ export class DimRender {
 
   subscribe(): void {
     this._unsub = this.adapter.onRender(ctx => this.compute(ctx));
+  }
+
+  /**
+   * Hold every inline note while `pred()` is true. Wired to the glimmer's
+   * `active`: a cue that lands during the arrival scramble (the pause
+   * request finishes 250–650 ms into a 1 s transition) would otherwise
+   * paint its note line under a word that is still churning — on Claude
+   * Code the input box grows a line mid-animation and the text jumps. The
+   * glimmer's settle repaint (`cancel(true)` → forceRender) runs this
+   * handler once more with the hold released, so the note arrives at the
+   * end of the glimmer, never during it. Dims and the highlight are not
+   * held: the override is 1:1 in length, so they stay aligned.
+   */
+  holdInlineNotesWhile(pred: () => boolean): void {
+    this._holdNotes = pred;
   }
 
   unsubscribe(): void {
@@ -503,6 +519,8 @@ export class DimRender {
       }
       highlight = { start: cursorSpanLogical.start, end: cursorSpanLogical.end };
     }
+
+    if (inlineNote && this._holdNotes !== null && this._holdNotes()) inlineNote = undefined;
 
     if (!highlight && dimRanges.length === 0 && !inlineNote) {
       // Self-diagnosing invariant (Sep 2026, the viewport-slice bug class):
