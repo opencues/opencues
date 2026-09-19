@@ -38,6 +38,9 @@
 export const SINGLE_ANSWER_BUILTIN_BLANKS: ReadonlySet<string> = new Set([
   'location',
   'model',
+  // `tables`: every calculator answer is one line or one card (a meeting
+  // across zones, a multi-line text transform), never a list to cycle.
+  'tables',
 ]);
 
 /**

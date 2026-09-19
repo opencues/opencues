@@ -16,7 +16,7 @@ import { isBlankConfigCycleable, keywordInWindow, lineOfWords, matchBlankShape, 
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import { isSingleAnswerBlank } from '../blanks/single-answer-builtins';
-import { lookupTable } from '../blanks/tables';
+import { lookupTable, configureCalcEnv } from '../blanks/tables';
 import { countryFactAvailable } from '../blanks/countries';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import type { DynDefs } from '../state/dyn-defs';
@@ -150,6 +150,11 @@ export class BlankFill {
     private glimmer?: GlimmerRender,
   ) {
     if (blankLoading) this._loading = blankLoading;
+    // The tables blank's calculators read OPENCUES.md scalars (`vat-rate`,
+    // `reading-wpm`) through this reader: the blank registry is built by
+    // the host bootstrap before a ConfigLoader exists, and BlankFill is on
+    // every band, so this is where the two meet.
+    configureCalcEnv({ setting: (name) => this.configLoader.opencuesState.settings.get(name) });
   }
 
   /** Record a fill into the undo journal (no-op without a journal).

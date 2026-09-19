@@ -17,6 +17,11 @@
  */
 import type { Blank } from './types';
 import { CSS_COLOURS, UNICODE_NAMES, HTTP_STATUS, HTTP_ALIASES, MIME_TYPES, DEFAULT_PORTS, ELEMENTS, SUBSTANCES, UNITS } from './tables-data';
+import { calculatorForKeyword, calculatorForPhrase, PHRASE_KEYWORD } from './calc/registry';
+import { calcContext } from './calc/env';
+export { CALCULATORS, calculatorForKeyword, calculatorById, calculatorForPhrase, PHRASE_KEYWORD } from './calc/registry';
+export { configureCalcEnv } from './calc/env';
+export type { Calculator, CalcContext, CalcArgFrom, CalcFamily } from './calc/types';
 
 export type TableName = 'unicode' | 'colour' | 'http' | 'mime' | 'port' | 'convert' | 'math' | 'chemistry';
 
@@ -165,6 +170,18 @@ export function lookupChemistry(keyword: string, q: string): string | null {
 /** The answer for a keyword + argument, or null when the table has none (also the decision-fill probe in blank-fill.ts). */
 export function lookupTable(keyword: string, arg: string): string | null {
   const kw = keyword.toLowerCase();
+  if (kw === PHRASE_KEYWORD) {
+    const calc = calculatorForPhrase(arg);
+    if (!calc) return null;
+    try { return calc.run(arg.trim(), calcContext()); } catch { return null; }
+  }
+  const calc = calculatorForKeyword(kw);
+  if (calc) {
+    if (calc.arg !== 'none' && !arg && !calc.optionalArg) return null;
+    const bare = arg.toLowerCase();
+    const input = calc.keywordIsArg && !calc.keywords.some((k) => bare.includes(k)) && !(calc.phrase && calc.phrase.test(arg.trim())) ? `${kw} ${arg}`.trim() : arg;
+    try { return calc.run(input, calcContext()); } catch { return null; }
+  }
   const table = tableFor(kw);
   if (!table || !arg) return null;
   let out: string | null = null;
@@ -187,7 +204,10 @@ export class TablesBlank implements Blank {
   readonly readOnly = true;
   async get(keyword?: string, context?: string[]): Promise<string> {
     const kw = keyword ?? '';
-    const arg = (context ?? []).join(' ').trim();
+    const calc = kw.toLowerCase() === PHRASE_KEYWORD ? calculatorForPhrase((context ?? []).join(' ')) : calculatorForKeyword(kw);
+    // a buffer-argument calculator gets the prior text raw (newlines kept) as context[0]
+    const arg = calc?.arg === 'buffer' ? (context ?? [])[0] ?? '' : (context ?? []).join(' ').trim();
+    if (calc) return lookupTable(kw, arg) ?? `${arg ? `${arg.slice(0, 40)}: ` : ''}${calc.miss}`;
     const table = tableFor(kw);
     if (!table) return '';
     return lookupTable(kw, arg) ?? `${arg}: ${MISS[table]}`;

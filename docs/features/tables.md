@@ -1,0 +1,234 @@
+---
+last_updated: 2026-09-19
+---
+
+# Tables & calculators
+
+`table-lookups-mode: on` (off by default) turns the `_` into an offline
+reference desk: eight bundled data tables and a library of pure-code
+calculators answer with **no LLM call, no network, and no way to be wrong the
+way a generated answer can** — the answer is a table row or arithmetic over the
+words you typed. When the thing you asked isn't in the table, nothing fires and
+the `_` falls through to the normal lookup, so a miss costs nothing.
+
+Two ways in:
+
+- **Keyword forms**, always: a shape in `defaults/blanks/tables/BLANK.md`
+  claims the `_` (`hex for tomato _`, `days between 3 march and 19 september _`).
+  Zero LLM, works without a decision package.
+- **Plain phrasings**, with `decisions-provider` on: the `_` route names the
+  calculator (`what's the postgres port _`, `how old is someone born 14 march
+  1990 _`), a grammar captures the operands from your own words, and the same
+  code answers. The model only ever picks an id; it never emits the argument.
+
+Every answer replaces the command and stands alone (`hex for tomato _` →
+`tomato: #ff6347`); prior prose survives (`ok done. hex for tomato _` → `ok
+done. tomato: #ff6347`). `undo _` reverts a fill like any other.
+
+The demo-friendly rule of thumb: **if the answer is the same in ten years, it
+belongs here.** Anything live (prices, weather, rates) stays on the network
+blanks; anything opinion-shaped stays generative.
+
+---
+
+## The seven families
+
+Shipped families carry ✅; the rest are on the plan (`docs/architecture/decisions.md`
+§ Table, and the private package's roadmap) and follow the same three gates:
+a closed id, grammar-captured operands, the table or parser as the last gate.
+
+### 1. Reference tables ✅ (the original eight)
+
+| you type | you get |
+|---|---|
+| `unicode for em dash _` | `em dash: — U+2014` |
+| `unicode for copyright sign _` | `copyright sign: © U+00A9` |
+| `hex for tomato _` | `tomato: #ff6347` |
+| `rgb for #1e90ff _` | `#1e90ff: rgb(30, 144, 255)` |
+| `http status for not found _` | `404 Not Found` |
+| `http status 418 _` | `418 I'm a teapot` |
+| `mime type for png _` | `png: image/png` |
+| `default port for postgres _` | `postgres: 5432` |
+| `convert 5 miles to km _` | `5 miles = 8.04672 km` |
+| `convert 100 celsius to fahrenheit _` | `100 celsius = 212 fahrenheit` |
+| `how many feet in a mile _` | `1 mile = 5280 feet` |
+| `calc 17 * 23 _` | `17 * 23 = 391` |
+| `calc 15% of 240 _` | `15% of 240 = 36` |
+| `calc pi to 5 decimals _` | `pi to 5 decimals = 3.14159` |
+| `atomic number of gold _` | `Gold (Au): atomic number 79` |
+| `boiling point of water _` | `water: boils at 100 °C` |
+| `ph of lemon juice _` | `lemon juice: pH 2` |
+
+Country facts live on the sibling `countries` blank and are named by the same
+route: `capital of france _`, `what money do they use in brazil _`, `how many
+people live in japan _`, `what do they speak in switzerland _`.
+
+Plain phrasings that reach the same rows: `what port does redis use _`, `which
+http code for too many requests _`, `how do i type a degree symbol _`, `what's
+the content type for json _`, `at what temperature does water boil _`, `how
+acidic is vinegar _`.
+
+`convert` and `calc` only claim the `_` when a number follows, so `convert this
+to markdown _` and `calculate the risk _` stay rewrite requests.
+
+### 2. Dates & durations ✅ (20 calculators)
+
+Calendar arithmetic on whole days (a DST change never makes a day 23 hours
+long); the clock is the host's. Dates read the way people write them:
+`2024-03-01`, `14 july 1789`, `march 3rd`, `3/3/2024` (day first), `today`,
+`tomorrow`, `friday` (the next one), `next saturday`, `christmas`, `new year`,
+`halloween`.
+
+| you type | you get |
+|---|---|
+| `days between 3 march and 19 september _` | `200 days (28.6 weeks)` |
+| `working days between 1 sep and 30 sep _` | `21 working days (Mon–Fri, no holidays counted)` |
+| `weekday of 14 july 1789 _` | `Tuesday (14 Jul 1789)` |
+| `90 days from today _` | `Fri 18 Dec 2026` |
+| `3 weeks from friday _` | `Fri 16 Oct 2026` |
+| `2 months after 31 jan 2026 _` | `Tue 31 Mar 2026` |
+| `45 days ago _` | `Wed 5 Aug 2026` |
+| `weeks until christmas _` | `13.9 weeks (97 days, Fri 25 Dec 2026)` |
+| `days since 1 jan _` | `261 days (37.3 weeks)` |
+| `in 45 minutes _` | `13:15` |
+| `3 hours from now _` | `15:30` |
+| `duration 3 hours 20 minutes plus 1 hour 55 _` | `5 h 15 min` |
+| `age if born 14 march 1990 _` | `36 years (since 14 Mar 1990)` |
+| `iso week of 19 september _` | `week 38 of 2026` |
+| `day of year _` | `day 262 of 365` |
+| `leap year 2100 _` | `2100 is not a leap year` |
+| `quarter _` | `Q3 2026` |
+| `easter _` | `Sun 28 Mar 2027` (the next one) |
+| `last friday of october _` | `Fri 30 Oct 2026` |
+| `second tuesday of november 2026 _` | `Tue 10 Nov 2026` |
+| `unix time _` | `1789817400` |
+| `unix 1700000000 _` | `Tue 14 Nov 2023 22:13:20 UTC` |
+| `iso now _` | `2026-09-19T11:30:00.000Z` |
+| `seconds in 3 days _` | `259200 seconds (4320 minutes, 72 hours)` |
+
+Plain phrasings: `how many days between 3 march and 19 september _`, `what day
+of the week was 14 july 1789 _`, `how long until new year _`, `how old is
+someone born 14 march 1990 _`, `when is easter _`, `when is the last friday of
+october _`, `what date is timestamp 1700000000 _`, `what day number is today _`.
+
+Not claimed (prose that merely uses a keyword): `in the end _`, `after the
+meeting _`, `the last one _`, `first draft _`, `until then _`, `since you asked _`.
+
+### 3. Timezones ✅ (6 calculators)
+
+ICU (`Intl.DateTimeFormat`) does offsets and daylight saving; the only data is
+a ~330-entry map from the names people type (cities, `est`, `cet`, `ist`,
+`aest`, `utc+5`, an IANA name) to a zone.
+
+| you type | you get |
+|---|---|
+| `time in tokyo _` | `20:30 Sat 19 Sept (GMT+9, UTC+09:00)` |
+| `3pm london in tokyo _` | `23:00 Sat 19 Sept in tokyo (GMT+9, UTC+09:00)` |
+| `9am est to utc _` | `13:00 Sat 19 Sept in utc (UTC, UTC+00:00)` |
+| `utc offset of tokyo _` | `UTC+09:00 (Asia/Tokyo, GMT+9)` |
+| `is it dst in london _` | `yes — BST, UTC+01:00 (standard is UTC+00:00)` |
+| `is it dst in tokyo _` | `no — Asia/Tokyo does not observe daylight saving (UTC+09:00)` |
+| `overlap between london and new york _` | `14:00–17:00 london = 09:00–12:00 new york (3 h of 9–5)` |
+| `overlap between london and sydney _` | `no overlap of 9–5 (sydney is +9 h from london)` |
+| `meeting at 3pm london for new york tokyo _` | `London 15:00 · New York 10:00 · Tokyo 23:00` |
+
+Plain phrasings: `what time is it in sydney _`, `timezone of lisbon _`,
+`daylight saving in sydney _`, `call at 10am berlin with sydney _`.
+
+### 4. Number formatting & number theory ✅ (26 calculators)
+
+| you type | you get |
+|---|---|
+| `1234567 in words _` | `one million, two hundred and thirty-four thousand, five hundred and sixty-seven` |
+| `1e9 in words _` | `one billion` |
+| `2024 in roman numerals _` | `MMXXIV` |
+| `MCMXCIV in numbers _` | `MCMXCIV = 1994` |
+| `255 in hex _` | `0xff (binary 11111111, octal 377)` |
+| `10 in binary _` | `0b1010 (hex 0xa, octal 12)` |
+| `0b1011 in decimal _` | `11` |
+| `3/8 as a decimal _` | `0.375` |
+| `0.375 as a fraction _` | `3/8` |
+| `2.5 as a fraction _` | `2 1/2 (5/2)` |
+| `3/8 as a percent _` | `37.5%` |
+| `123456 in scientific notation _` | `1.23456e5 (1.23456 × 10^5)` |
+| `round 3.14159 to 2 decimals _` | `3.14` |
+| `round 1234 to the nearest hundred _` | `1200` |
+| `0.00123456 to 3 significant figures _` | `0.00123` |
+| `ordinal for 22 _` | `22nd` |
+| `1234567 with commas _` | `1,234,567` |
+| `2500000 in millions _` | `2.5 million` |
+| `2500000 in lakhs _` | `25 lakh` |
+| `factorial of 10 _` | `3,628,800` |
+| `is 97 prime _` | `97 is prime` |
+| `is 91 prime _` | `91 is not prime (7 × 13)` |
+| `prime factors of 360 _` | `2 × 2 × 2 × 3 × 3 × 5 (2³ · 3² · 5)` |
+| `gcd of 48 and 180 _` | `12` |
+| `lcm of 4 and 6 _` | `12` |
+| `fibonacci 20 _` | `6,765` |
+| `cube root of 27 _` | `3` |
+| `4th root of 81 _` | `3` |
+| `log base 2 of 1024 _` | `10` |
+| `mean of 3 5 8 13 _` | `7.25` |
+| `stats of 3 5 8 13 _` | `mean 7.25 · median 6.5 · sd 4.35 · min 3 · max 13 · n 4` |
+| `sum of 1 to 100 _` | `5050` |
+| `5 choose 2 _` | `10 combinations (20 permutations)` |
+| `probability of 3 heads in 5 flips _` | `31.25% (10/32) exactly · 50% at least 3` |
+
+Plain phrasings: `what's 255 in hex _`, `spell out 1e9 _`, `average of 3, 5, 8
+and 13 _`, `what are the odds of 3 heads in 5 flips _`, `permutations of 3
+from 10 _`.
+
+### 5. Percent & money (planned)
+
+`20% off 85`, `85 is what percent of 340`, `percent change 80 to 92`, `tip 15%
+on 64.20`, `split 143 four ways`, `120 plus vat` (the rate is the `vat-rate`
+tunable, never a guess), `compound 1000 at 5% for 10 years`, `monthly payment
+on 250000 at 6% over 30 years`, `doubling time at 7%`, `margin cost 40 sell
+60`, `80000 a year per hour`, `unit price 6 for 4.20`, `cagr 100 to 250 over 5
+years`. All closed-form. Never exchange rates or inflation (live data).
+
+### 6. Text metrics & transforms (planned)
+
+Metrics over the text before the command (`word count _`, `character count _`,
+`reading time _` at the `reading-wpm` tunable, `sentence count _`, `longest
+word _`) and deterministic transforms that replace it (`title case _`, `slug
+_`, `snake case _`, `sort lines _`, `dedupe lines _`, `wrap at 80 _`,
+`initials of _`, `acronym for _`). A transform is the same gesture as a rewrite
+request, with a deterministic result; `undo _` reverts it.
+
+### 7. Encodings & geometry / physics (planned)
+
+`base64 for hello`, `decode base64 aGVsbG8=`, `url encode a b&c`, `html
+escape`, `uuid`, `random 1 to 100`, `dice 2d6`, `json pretty`, `unix
+permissions 755`, `cidr 10.0.0.0/22`, `color contrast #fff #777`; `area of a
+circle radius 4`, `hypotenuse 3 4`, `volume of a sphere radius 2`, `bmi 80kg
+1.8m`, `pace 5k in 24:30`, `kwh cost 1500w for 3h at 0.28`, `speed of light`,
+`gravity on mars`, `note for 440hz`, `aspect ratio 1920x1080`, `download time
+2gb at 50mbps`.
+
+**Not shipped, by ruling (2026-09-19):** password / passphrase generators,
+hashes (md5, sha*), JWT decoding — attack surface, however convenient.
+
+---
+
+## What it costs
+
+| | keyword form | plain phrasing |
+|---|---|---|
+| LLM calls | 0 | 0 on a hit (the `_` route request you already pay for names the calculator) |
+| tokens | 0 | the table question rides the route request: ≈ +3k prompt tokens when `table-lookups-mode` is on |
+| latency | a shape match | the route request (~280 ms) |
+| off | the `tables` blank is not registered | the question is left off the request |
+
+Bundle size: ~16 KB of data tables plus the calculator code. No network
+permissions, nothing leaves the machine.
+
+---
+
+## Where the pieces live
+
+- `packages/opencues-runtime/src/blanks/tables.ts` — the blank + the eight tables (`tables-data.ts`, generated by `scripts/gen-tables-data.mjs`).
+- `packages/opencues-runtime/src/blanks/calc/` — the calculator registry (`registry.ts`), the injected context (`env.ts`: clock, zone, settings, randomness), one file per family. Every calculator carries one worked example; the registry test runs all of them on a fixed clock.
+- `defaults/blanks/tables/BLANK.md` — the shapes (84) and keywords (210, longest-first). `blank-md-drift.test.ts` types every example through BlankFill against this file.
+- `packages/opencues-core/src/decisions/data-policy.ts` — what the decision leg may name and the grammar that captures each argument (security-audit row #32). `calc-policy-drift.test.ts` pins it to the registry id for id.
+- `docs/architecture/decisions.md` § Table — the leg, the probe, and why a wrong argument is structurally a miss.
