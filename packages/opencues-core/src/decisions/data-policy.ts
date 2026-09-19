@@ -279,8 +279,13 @@ export function captureDataArg(table: string, draft: string): string | null {
   if (entry.arg === 'none') return '';
   // a calculator keeps commas and colons (`1,234`, `15:00`); the plain tables never needed them
   let arg = seg.replace(/[?!]+\s*$/, '').replace(entry.floor === 'calc' || entry.floor === 'raw' ? /[;]+/g : /[,;:]+/g, ' ');
+  // a buffer calculator: only what follows the keyword is an inline argument; text before it on the same line is the buffer
+  if (entry.arg === 'buffer' && entry.keywords) {
+    const low = arg.toLowerCase();
+    for (const k of [...entry.keywords].sort((a, b) => b.length - a.length)) { const at = low.indexOf(k); if (at >= 0) { arg = arg.slice(at + k.length).trim(); break; } }
+  }
   // the calculator's own keyword goes first (before the scaffold strip can break a multi-word one), wherever it sits
-  if (entry.keywords && !entry.keepKeyword) {
+  if (entry.keywords && !entry.keepKeyword && entry.arg !== 'buffer') {
     const esc = (k: string) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     for (const k of [...entry.keywords].sort((a, b) => b.length - a.length)) {
       const re = new RegExp(String.raw`(?:^|\s)${esc(k)}(?=\s|$)`, 'i');
@@ -294,11 +299,6 @@ export function captureDataArg(table: string, draft: string): string | null {
   arg = lead(arg.replace(/\s+/g, ' ').trim());
   // a phrase-routed calculator (`85 is what percent of 340`, `80000 a year per hour`) needs its phrase intact: only the leading scaffold goes
   if (entry.keyword !== 'table') arg = lead(arg.replace(entry.strip, ' ').replace(/\s+/g, ' ').trim());
-  // a buffer calculator: only what follows the keyword is an inline argument; text before it on the same line is the buffer
-  if (entry.arg === 'buffer' && entry.keywords) {
-    const low = arg.toLowerCase();
-    for (const k of [...entry.keywords].sort((a, b) => b.length - a.length)) { const at = low.indexOf(k); if (at >= 0) { arg = arg.slice(at + k.length).trim(); break; } }
-  }
   // a buffer calculator: `make this lower case`, `turn it into a slug`, `this text as title case` are the command, not the input
   if (entry.arg === 'buffer') arg = arg.replace(/^(?:(?:make|turn|put|convert|change|render|format)\s+(?:this|it|that|the text|the above|everything)\s*(?:into|to|in|as)?|(?:this|it|that|the text|the above)\s*(?:into|to|in|as)?)\s*/i, '').replace(/^(?:for|of|on|this|the text)\s+/i, '');
   if (!arg && entry.optional) return '';
