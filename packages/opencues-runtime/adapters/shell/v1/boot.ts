@@ -252,7 +252,7 @@ export function boot(host: HostInfo): BootResult {
     debounceMs: host.llmDebounceMs ?? 500,
     missingKeyFallbackMessage: hasAnyKey ? undefined : NATIVE_HOST_MISSING_KEY_MESSAGE,
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
-    keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
+    keywordBoundSlotIndices: (text: string) => shared.blankFill.claimedSlotIndices(text),
     fillDevice: (text: string, inv: { blank: string; keyword: string; action: 'get' | 'set' | 'step'; value?: string }, commandStartWord: number) => shared.blankFill.fillFromDecision(text, inv, commandStartWord),
     // Calendar-context: native read of the shared calendar.json snapshot
     // ($OPENCUES_HOME first, then ~/.cues), refreshed on a timer. Live

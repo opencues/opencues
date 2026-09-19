@@ -74,6 +74,23 @@ describe('buffer calculators through BlankFill', () => {
     const a = await setup('title case _');
     expect(last(a)).toBe('title case [err] nothing to case');
   });
+  it('an inline parameter form (`repeat 3 times for ab`) reaches the calculator with an empty buffer', async () => {
+    const a = await setup('repeat 3 times for ab _');
+    expect(last(a)).toBe('ababab');
+    const b = await setup('random number between 1 and 1 _');
+    expect(last(b)).toBe('1');
+  });
+  it('a keyword in prose with no shape match is NOT a claim: claimedSlotIndices() is empty, so the `_` router stays in play', async () => {
+    // `ex vat` is a tables keyword; without a number leading the segment the shape does not match. Before this,
+    // the resolver read the raw scan() slot as keyword-bound → no route request for the `_`.
+    const a = await setup("what's 120 ex vat _");
+    expect(a.blankInvokeCalls).toHaveLength(0);
+    const loader = new ConfigLoader(a, { settingsFile: '/proj/OPENCUES.md' });
+    await loader.load();
+    const bf = new BlankFill(a, loader);
+    expect(bf.claimedSlotIndices("what's 120 ex vat _")).toEqual([]);
+    expect(bf.claimedSlotIndices('120 ex vat _')).toEqual([3]);
+  });
   it('prose using a transform word is not claimed', async () => {
     for (const text of ['please reverse the decision _', 'sort of tired _', 'the slug crawled _', 'repeat after me _']) {
       const a = await setup(text);

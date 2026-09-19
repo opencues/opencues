@@ -143,7 +143,7 @@ export const DATES: readonly Calculator[] = [
   { id: 'working-days-between', family: 'dates', keywords: ['working days between', 'business days between', 'weekdays between'], arg: 'segment', example: ['working days between 1 sep 2026 and 30 sep 2026', '21 working days (Mon–Fri, no holidays counted)'], miss: 'cannot read two dates',
     run(arg, ctx) { const p = twoDates(arg, ctx); if (!p) return null; let n = 0; const [a, b] = p[0] <= p[1] ? p : [p[1], p[0]]; for (let t = a.getTime(); t < b.getTime(); t += DAY) { const wd = new Date(t).getUTCDay(); if (wd !== 0 && wd !== 6) n++; } return `${n} working days (Mon–Fri, no holidays counted)`; } },
   { id: 'weekday-of', family: 'dates', keywords: ['weekday of', 'day of the week for', 'day of the week was', 'day of the week is', 'what day was', 'what day is'], arg: 'segment', example: ['weekday of 14 july 1789', 'Tuesday (14 Jul 1789)'], miss: 'cannot read the date',
-    run(arg, ctx) { const p = parseDateLoose(arg, ctx); if (!p) return null; const w = WEEKDAYS[p.date.getUTCDay()]; return `${w[0].toUpperCase()}${w.slice(1)} (${fmtDate(p.date).slice(4)})`; } },
+    run(arg, ctx) { const p = parseDateLoose(arg, ctx, true); if (!p) return null; const w = WEEKDAYS[p.date.getUTCDay()]; return `${w[0].toUpperCase()}${w.slice(1)} (${fmtDate(p.date).slice(4)})`; } },
   { id: 'date-plus', family: 'dates', keywords: ['from today'], arg: 'segment', keywordIsArg: true, phrase: new RegExp(String.raw`^(?:${NUM})\s*(?:days?|weeks?|months?|years?)\s+(?:from|after|before)\s+\S.*$|^\S.*\s+(?:plus|minus)\s+(?:${NUM})\s*(?:days?|weeks?|months?|years?)$`, 'i'), example: ['90 days from today', 'Fri 18 Dec 2026'], miss: 'cannot read the offset',
     run(arg, ctx) {
       // `90 days from today`, `3 weeks from friday`, `2 months after 1 jan`, `date plus 45 days`, `45 days ago`
@@ -161,7 +161,7 @@ export const DATES: readonly Calculator[] = [
     run(arg, ctx) { const p = parseDateLoose(arg, ctx, true); if (!p) return null; const d = daysBetween(todayUtc(ctx), p.date); return `${fmt(Math.round(d / 7 * 10) / 10)} weeks (${plural(d, 'day')}, ${fmtDate(p.date)})`; } },
   { id: 'since', family: 'dates', keywords: ['days since', 'weeks since', 'how long since', 'since'], arg: 'segment', example: ['days since 1 jan 2026', '261 days (37.3 weeks)'], miss: 'cannot read the date',
     run(arg, ctx) { const p = parseDateLoose(arg, ctx); if (!p) return null; const d = daysBetween(p.date, todayUtc(ctx)); return `${plural(d, 'day')} (${fmt(Math.round(d / 7 * 10) / 10)} weeks)`; } },
-  { id: 'time-plus', family: 'dates', keywords: ['from now', 'ago'], arg: 'segment', keywordIsArg: true, phrase: new RegExp(String.raw`^(?:in\s+)?(?:${NUM})\s*(?:minutes?|mins?|hours?|hrs?|h|m|seconds?|secs?|s|days?|weeks?|months?|years?)(?:\s+(?:and\s+)?(?:${NUM})\s*(?:minutes?|mins?|m))?(?:\s+(?:from now|ago))?$`, 'i'), example: ['in 45 minutes', '13:15'], miss: 'cannot read the duration',
+  { id: 'time-plus', family: 'dates', keywords: ['from now', 'ago'], arg: 'segment', keywordIsArg: true, phrase: new RegExp(String.raw`^(?:time\s+)?(?:in\s+)?(?:${NUM})\s*(?:minutes?|mins?|hours?|hrs?|h|m|seconds?|secs?|s|days?|weeks?|months?|years?)(?:\s+(?:and\s+)?(?:${NUM})\s*(?:minutes?|mins?|m))?(?:\s+(?:from now|ago))?$`, 'i'), example: ['in 45 minutes', '13:15'], miss: 'cannot read the duration',
     run(arg, ctx) {
       // a day-or-longer offset is a calendar answer, not a clock one
       const dm = arg.toLowerCase().match(new RegExp(String.raw`(${NUM})\s*(days?|weeks?|months?|years?)`));

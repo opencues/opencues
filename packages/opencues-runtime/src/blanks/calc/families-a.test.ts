@@ -76,6 +76,7 @@ describe('dates', () => {
     expect(run('since', '1 jan 2026')).toBe('261 days (37.3 weeks)');
     expect(run('time-plus', '45 minutes')).toBe('13:15');
     expect(run('time-plus', '12 hours')).toBe('00:30 Sun 20 Sept');
+    expect(run('time-plus', 'time in 45 minutes')).toBe('13:15');
     expect(run('age', '14 march 1990')).toBe('36 years (since 14 Mar 1990)');
     expect(run('week-number', '19 september 2026')).toBe('week 38 of 2026');
     expect(run('day-of-year', '')).toBe('day 262 of 365');
@@ -123,6 +124,7 @@ describe('timezones', () => {
     expect(run('overlap', 'london and sydney')).toBe('no overlap of 9–5 (sydney is +9 h from london)');
     expect(run('overlap', 'london and new york')).toBe('14:00–17:00 london = 09:00–12:00 new york (3 h of 9–5)');
     expect(run('meeting-at', '3pm london for new york tokyo')).toBe('London 15:00 · New York 10:00 · Tokyo 23:00');
+    expect(run('convert-time', 'meeting in london 21:30 time in sf')).toBe('13:30 Sat 19 Sept in sf (GMT-7, UTC-07:00)');
     expect(run('time-in', 'zorbville')).toBeNull();
   });
 });

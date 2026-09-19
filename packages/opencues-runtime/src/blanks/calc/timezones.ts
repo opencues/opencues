@@ -73,6 +73,18 @@ export function splitZones(s: string): Array<{ name: string; tz: string }> | nul
   return out.length ? out : null;
 }
 
+/** The zone names found anywhere in a phrase, in order (other words skipped). */
+export function splitZonesLoose(s: string): Array<{ name: string; tz: string }> {
+  const words = s.toLowerCase().replace(/[,/]|\band\b|\bwith\b|\bin\b|\bat\b|\bto\b|\bfor\b|\btime\b|\bmeeting\b|\bcall\b/g, ' ').split(/\s+/).filter(Boolean);
+  const out: Array<{ name: string; tz: string }> = [];
+  for (let i = 0; i < words.length;) {
+    let took = 0;
+    for (let n = Math.min(3, words.length - i); n >= 1; n--) { const name = words.slice(i, i + n).join(' '); const tz = zoneFor(name); if (tz) { out.push({ name, tz }); took = n; break; } }
+    i += took || 1;
+  }
+  return out;
+}
+
 /** `3pm`, `15:00`, `9.30am`, `noon`, `midnight` → minutes since midnight */
 export function parseClock(s: string): number | null {
   const t = s.toLowerCase().replace(/\s+/g, '');
@@ -103,8 +115,15 @@ export const TIMEZONES: readonly Calculator[] = [
     run(arg, ctx) { const tz = zoneFor(arg); if (!tz) return null; const d = ctx.now(); const p = parts(d, tz); return `${p.clock} ${p.day} (${p.abbr}, ${fmtOffset(offsetMinutes(tz, d))})`; } },
   { id: 'convert-time', family: 'timezones', keywords: ['convert time', 'time convert'], arg: 'segment', phrase: /^(?:\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm)?|noon|midnight)\s+(?:in\s+|at\s+)?[a-z][a-z .]*?\s+(?:in|to|for)\s+[a-z].*$/i, example: ['convert time 3pm london in tokyo', '23:00 Sat 19 Sept in tokyo (GMT+9, UTC+09:00)'], miss: 'need <time> <zone> in <zone>',
     run(arg, ctx) {
-      const m = arg.toLowerCase().match(/^(?:convert time\s+)?(\S+(?:\s?[ap]m)?|noon|midnight)\s+(?:in\s+|at\s+)?(.+?)\s+(?:in|to|for)\s+(.+)$/);
-      if (!m) return null;
+      let m = arg.toLowerCase().match(/^(?:convert time\s+)?(\S+(?:\s?[ap]m)?|noon|midnight)\s+(?:in\s+|at\s+)?(.+?)\s+(?:in|to|for)\s+(.+)$/);
+      if (m && (parseClock(m[1]) === null || !zoneFor(m[2]))) m = null;
+      if (!m) {
+        // `meeting in london 21:30 time in sf`: a clock time anywhere and two zone names in order
+        const s = arg.toLowerCase(); const t = s.match(/\b(\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm)?|noon|midnight)\b/);
+        const zones = t ? splitZonesLoose(s.replace(t[0], ' ')) : null;
+        if (!t || !zones || zones.length !== 2) return null;
+        m = [s, t[1], zones[0].name, zones[1].name] as unknown as RegExpMatchArray;
+      }
       const clock = parseClock(m[1]); const from = zoneFor(m[2]); const to = splitZones(m[3]);
       if (clock === null || !from || !to) return null;
       const at = instantAt(clock, from, ctx);

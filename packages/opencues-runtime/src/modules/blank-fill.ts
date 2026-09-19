@@ -16,7 +16,7 @@ import { isBlankConfigCycleable, keywordInWindow, lineOfWords, matchBlankShape, 
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import { isSingleAnswerBlank } from '../blanks/single-answer-builtins';
-import { lookupTable, configureCalcEnv, calculatorForKeyword } from '../blanks/tables';
+import { lookupTable, configureCalcEnv, calculatorForDispatchKeyword } from '../blanks/tables';
 import { countryFactAvailable } from '../blanks/countries';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import type { DynDefs } from '../state/dyn-defs';
@@ -317,6 +317,21 @@ export class BlankFill {
     return slots;
   }
 
+  /**
+   * The `_` word indices a blank will actually FIRE on — `scan()` narrowed
+   * by the same gate the dispatch applies: a shaped blank claims only on a
+   * shape match. This is what the resolver's keyword-bound check must read;
+   * a raw `scan()` counts a keyword hit without a shape as a claim, and with
+   * the tables blank's hundreds of keywords that skipped the `_` router on
+   * any prose containing one (`what's 120 ex vat _` lost its route).
+   */
+  claimedSlotIndices(text: string): readonly number[] {
+    return this.scan(text).filter((s) => {
+      const cfg = this.configLoader.blanks.get(s.blankName) as { blankShapes?: unknown[] } | undefined;
+      return !(cfg?.blankShapes?.length) || s.shapeAction !== undefined;
+    }).map((s) => s.index);
+  }
+
   private onTextChange(e: TextChangeEvent): void {
     let keepArmed = false;
     try {
@@ -564,7 +579,7 @@ export class BlankFill {
       // (blanks/calc/types.ts `inlineArg`). Newlines are kept for the
       // line-based transforms; the prior text is everything before the
       // command segment.
-      const bufferCalc = slot.blankName === 'tables' ? calculatorForKeyword(slot.keyword) : null;
+      const bufferCalc = slot.blankName === 'tables' ? calculatorForDispatchKeyword(slot.keyword, slot.shapeValue ?? '') : null;
       if (bufferCalc?.arg === 'buffer') {
         const segChar = segmentStart(cleaned, cleaned.lastIndexOf('_'));
         contextWords.push(cleaned.slice(0, segChar), slot.shapeValue ?? '');
@@ -1142,7 +1157,7 @@ export class BlankFill {
     // no inline argument): the result REPLACES the text before the command
     // and the command itself — the same gesture as a rewrite request, with a
     // deterministic result; the undo journal reverts it like any fill.
-    const transformCalc = slot.blankName === 'tables' ? calculatorForKeyword(slot.keyword) : null;
+    const transformCalc = slot.blankName === 'tables' ? calculatorForDispatchKeyword(slot.keyword, slot.shapeValue ?? '') : null;
     const replacesBuffer = !isErrResult && transformCalc?.arg === 'buffer' && transformCalc.transform === true && !(transformCalc.inlineArg && shapeCapturedArg);
     const clearsCommandSpan = !isErrResult
       && (typedAction !== undefined || hasIntegration || shapeCapturedArg || slot.decision === true || replacesBuffer);

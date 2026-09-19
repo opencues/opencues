@@ -40,6 +40,8 @@ describe('a plain phrasing → policy capture → the calculator (no model)', ()
     ['date-plus', "what's 90 days from today _", 'Fri 18 Dec 2026'],
     ['until', 'how many weeks until christmas _', '13.9 weeks (97 days, Fri 25 Dec 2026)'],
     ['time-plus', 'in 45 minutes _', '13:15'],
+    ['time-plus', 'time in 45 minutes _', '13:15'],
+    ['convert-time', 'meeting in London 21:30 time in sf _', '13:30 Sat 19 Sept in sf (GMT-7, UTC-07:00)'],
     ['time-plus', 'what time is it 3 hours from now _', '15:30'],
     ['duration-sum', '3 hours 20 minutes plus 1 hour 55 _', '5 h 15 min'],
     ['age', 'how old is someone born 14 march 1990 _', '36 years (since 14 Mar 1990)'],
@@ -63,6 +65,8 @@ describe('a plain phrasing → policy capture → the calculator (no model)', ()
   ])('%s: "%s"', (table, draft, answer) => {
     const inv = resolveDataInvocation({ table, confidence: 0.9, top: '' }, draft);
     expect(inv, `no invocation for "${draft}"`).not.toBeNull();
+    // a phrase-routed calculator is named by id — the runtime runs THAT one, never a phrase-router guess
+    if (inv!.keyword.startsWith('table')) expect(inv!.keyword).toBe(`table:${table}`);
     const got = lookupTable(inv!.keyword, inv!.value);
     if (tzSensitive.has(table) && process.env.TZ !== 'Europe/London') { expect(got).not.toBeNull(); return; }
     expect(got, `${inv!.keyword} "${inv!.value}"`).toBe(answer);

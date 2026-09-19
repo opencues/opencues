@@ -294,7 +294,8 @@ export function captureDataArg(table: string, draft: string): string | null {
   arg = lead(arg.replace(/\s+/g, ' ').trim());
   // a phrase-routed calculator (`85 is what percent of 340`, `80000 a year per hour`) needs its phrase intact: only the leading scaffold goes
   if (entry.keyword !== 'table') arg = lead(arg.replace(entry.strip, ' ').replace(/\s+/g, ' ').trim());
-  if (entry.arg === 'buffer') arg = arg.replace(/^(?:for|of|on|this|the text)\s+/i, '');
+  // a buffer calculator: `make this lower case`, `turn it into a slug`, `this text as title case` are the command, not the input
+  if (entry.arg === 'buffer') arg = arg.replace(/^(?:(?:make|turn|put|convert|change|render|format)\s+(?:this|it|that|the text|the above|everything)\s*(?:into|to|in|as)?|(?:this|it|that|the text|the above)\s*(?:into|to|in|as)?)\s*/i, '').replace(/^(?:for|of|on|this|the text)\s+/i, '');
   if (!arg && entry.optional) return '';
   return dataArgWithinFloor(arg, entry.floor ?? entry.expr === true) ? arg : null;
 }
@@ -305,7 +306,9 @@ export function resolveDataInvocation(v: TableVerdict, draft: string): { blank: 
   if (!entry) return null;
   const arg = captureDataArg(v.table, draft);
   if (arg === null) return null;
-  return { blank: entry.blank, keyword: entry.keyword, action: 'get', value: arg };
+  // a phrase-routed calculator is named by id: the runtime runs it directly, no phrase grammar in between
+  const keyword = entry.keyword === 'table' ? `table:${v.table}` : entry.keyword;
+  return { blank: entry.blank, keyword, action: 'get', value: arg };
 }
 
 /** The canonical command the blank's own shapes accept for an invocation: `hex for tomato _`, `calc 17 * 23 _`, `capital of france _`. */

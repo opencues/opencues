@@ -17,9 +17,10 @@
  */
 import type { Blank } from './types';
 import { CSS_COLOURS, UNICODE_NAMES, HTTP_STATUS, HTTP_ALIASES, MIME_TYPES, DEFAULT_PORTS, ELEMENTS, SUBSTANCES, UNITS } from './tables-data';
-import { calculatorForKeyword, calculatorForPhrase, PHRASE_KEYWORD } from './calc/registry';
+import { calculatorForKeyword, calculatorForPhrase, calculatorById, PHRASE_KEYWORD } from './calc/registry';
 import { calcContext } from './calc/env';
 export { CALCULATORS, calculatorForKeyword, calculatorById, calculatorForPhrase, PHRASE_KEYWORD } from './calc/registry';
+import type { Calculator } from './calc/types';
 export { configureCalcEnv } from './calc/env';
 export type { Calculator, CalcContext, CalcArgFrom, CalcFamily } from './calc/types';
 
@@ -167,9 +168,23 @@ export function lookupChemistry(keyword: string, q: string): string | null {
   return null;
 }
 
+/** The calculator a dispatch keyword names: a keyword phrase, `table:<id>` from the decision layer, or the `table` sentinel over a phrase. */
+export function calculatorForDispatchKeyword(keyword: string, phrase = ''): Calculator | null {
+  const kw = keyword.toLowerCase();
+  if (kw.startsWith(`${PHRASE_KEYWORD}:`)) return calculatorById(kw.slice(PHRASE_KEYWORD.length + 1));
+  if (kw === PHRASE_KEYWORD) return calculatorForPhrase(phrase);
+  return calculatorForKeyword(kw);
+}
+
 /** The answer for a keyword + argument, or null when the table has none (also the decision-fill probe in blank-fill.ts). */
 export function lookupTable(keyword: string, arg: string, command = ''): string | null {
   const kw = keyword.toLowerCase();
+  // `table:<id>` — the decision layer named the calculator itself (a phrase-routed one); no phrase check
+  if (kw.startsWith(`${PHRASE_KEYWORD}:`)) {
+    const calc = calculatorById(kw.slice(PHRASE_KEYWORD.length + 1));
+    if (!calc) return null;
+    try { return calc.run(arg.trim(), calcContext(command)); } catch { return null; }
+  }
   if (kw === PHRASE_KEYWORD) {
     const calc = calculatorForPhrase(arg);
     if (!calc) return null;
@@ -177,7 +192,7 @@ export function lookupTable(keyword: string, arg: string, command = ''): string 
   }
   const calc = calculatorForKeyword(kw);
   if (calc) {
-    if (calc.arg !== 'none' && !arg && !calc.optionalArg) return null;
+    if (calc.arg !== 'none' && calc.arg !== 'buffer' && !arg && !calc.optionalArg) return null;
     const bare = arg.toLowerCase();
     const input = calc.keywordIsArg && !calc.keywords.some((k) => bare.includes(k)) && !(calc.phrase && calc.phrase.test(arg.trim())) ? `${kw} ${arg}`.trim() : arg;
     try { return calc.run(input, calcContext(command)); } catch { return null; }
@@ -204,7 +219,7 @@ export class TablesBlank implements Blank {
   readonly readOnly = true;
   async get(keyword?: string, context?: string[]): Promise<string> {
     const kw = keyword ?? '';
-    const calc = kw.toLowerCase() === PHRASE_KEYWORD ? calculatorForPhrase((context ?? []).join(' ')) : calculatorForKeyword(kw);
+    const calc = calculatorForDispatchKeyword(kw, (context ?? []).join(' '));
     // A buffer calculator is invoked as [priorTextRaw, capturedArg] (BlankFill
     // builds that pair): the captured argument is the INPUT for an inline-arg
     // calculator (`slug for X`), else a parameter (`count of the`).
