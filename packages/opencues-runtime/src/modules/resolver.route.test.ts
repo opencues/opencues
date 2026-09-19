@@ -168,3 +168,60 @@ describe('Resolver — the `_` router, latency budget', () => {
     expect(fake.passes).toEqual([ALL_IDS]);
   });
 });
+
+// ── a device the route named (security-audit row #32) ──────────────────────
+describe('Resolver — the `_` router hands a decided device to BlankFill', () => {
+  function setupDevice(opts: { text: string; sourceId: string | null; device: { blank: string; value: string } | null; fillReturns?: boolean }) {
+    const adapter = new MockAdapter({ cwd: '/proj', files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD } });
+    adapter.pushText(opts.text);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    const fills: Array<{ text: string; inv: { blank: string; keyword: string; action: string; value?: string }; commandStartWord: number }> = [];
+    const resolver = new Resolver(adapter, new HighlightState(), new DynDefs(), loader, {
+      endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 10, httpAdapter: {},
+      fillDevice: (text, inv, commandStartWord) => { fills.push({ text, inv, commandStartWord }); return opts.fillReturns ?? true; },
+    });
+    const fake = fakeResolver({});
+    const r = resolver as unknown as Record<string, unknown>;
+    r._resolver = fake;
+    r._decisions = {
+      id: 'fake',
+      async route() {
+        return { route: opts.sourceId ? 'x' : null, sourceId: opts.sourceId, choice: 'x', confidence: 0.9, agreement: 0.9, ms: 1, device: opts.device ? { ...opts.device, confidence: 0.9, valueConfidence: 0.9, top: '' } : null };
+      },
+    };
+    r._routeBreaker = { down: false, healthy() { return true; }, trip() { /* */ } };
+    r._core = { UNDERSCORE_CHAT_SOURCE_IDS: CHAT_IDS };
+    return { adapter, resolver, fake, fills };
+  }
+
+  it('a device verdict that resolves under the policy → BlankFill runs it over the phrase and the pass ends (no fan-out)', async () => {
+    const { resolver, fake, fills } = setupDevice({ text: 'zephyr. make it louder _', sourceId: null, device: { blank: 'volume', value: 'up' } });
+    await resolver.resolveAndApply('zephyr. make it louder _');
+    expect(fills).toEqual([{ text: 'zephyr. make it louder _', inv: { blank: 'volume', keyword: 'volume', action: 'step', value: 'up' }, commandStartWord: 1 }]);
+    expect(fake.passes).toHaveLength(0);
+  });
+
+  it('a chat route wins over a device named on the same request', async () => {
+    const { resolver, fake, fills } = setupDevice({ text: 'capital of zorbland _', sourceId: 'fluid-blank', device: { blank: 'volume', value: 'up' } });
+    await resolver.resolveAndApply('capital of zorbland _');
+    expect(fills).toEqual([]);
+    // the routed pass (fluid cedes with no answer here) then the fan-out over the rest — the router's normal shape
+    expect(fake.passes[0]).toEqual(['session-cue', 'sentence-cue', 'fluid-blank']);
+  });
+
+  it('a verdict the policy rejects (a user blank, a number out of range) falls through to the fan-out', async () => {
+    const a = setupDevice({ text: 'zorb it _', sourceId: null, device: { blank: 'zorb-script', value: 'up' } });
+    await a.resolver.resolveAndApply('zorb it _');
+    expect(a.fills).toEqual([]); expect(a.fake.passes).toHaveLength(1);
+    const b = setupDevice({ text: 'volume to 400 _', sourceId: null, device: { blank: 'volume', value: 'number' } });
+    await b.resolver.resolveAndApply('volume to 400 _');
+    expect(b.fills).toEqual([]); expect(b.fake.passes).toHaveLength(1);
+  });
+
+  it('BlankFill declining (nothing registered here) → the pass continues', async () => {
+    const { resolver, fake, fills } = setupDevice({ text: 'where am i _', sourceId: null, device: { blank: 'location', value: 'here' }, fillReturns: false });
+    await resolver.resolveAndApply('where am i _');
+    expect(fills).toHaveLength(1);
+    expect(fake.passes).toHaveLength(1);
+  });
+});

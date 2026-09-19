@@ -15,6 +15,8 @@
  * the breaker and the fall-through, exactly as it did for a provider.
  */
 import type { DecisionProvider } from './types';
+import type { DeviceVerdict } from './device-policy';
+export type { DeviceVerdict } from './device-policy';
 
 export interface DecisionLegContext {
   readonly signal?: AbortSignal;
@@ -87,6 +89,8 @@ export interface UnderscoreRouting {
   readonly agreement: number;
   readonly probabilities: Readonly<Record<string, number>>;
   readonly ms: number;
+  /** a device blank the same request named (stacked on the route; null when the package asks none, or none was named) */
+  readonly device?: DeviceVerdict | null;
 }
 export interface RouteContext extends DecisionLegContext {
   readonly threshold?: number;
@@ -137,6 +141,13 @@ export interface DecisionLegs {
    * package that has no settings leg leaves the chat classifier in place.
    */
   settings?(input: string, ctx?: DecisionLegContext): Promise<SettingsVerdict | null>;
+  /**
+   * The device blank a `_` asks for and which of its closed values (or
+   * `number` / `named` for an argument the runtime captures from the draft
+   * by grammar). The consumer resolves it under `device-policy.ts` (tier 2
+   * built-ins only) before anything is invoked. Optional.
+   */
+  device?(input: string, ctx?: DecisionLegContext): Promise<DeviceVerdict | null>;
 }
 
 /** What `loadDecisionLegs` hands the package's factory. */

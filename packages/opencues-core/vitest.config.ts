@@ -43,6 +43,7 @@ export default defineConfig({
       'src/decisions/bridge.test.ts',
       'src/decisions/typesafe.test.ts',
       'src/decisions/candidates.test.ts',
+      'src/decisions/device-policy.test.ts',
       'src/providers/harness-bridge.test.ts',
     ],
     // Never discover into git worktrees (`.claude/worktrees/`) — stale repo

@@ -31,7 +31,7 @@ import { threeWayMerge } from './word-diff';
 import { applyScalarAndPersist } from '../util/apply-scalar';
 import { diffSplice, fillSplice, type PendingTransaction, type UndoJournal } from '../state/undo-journal';
 import { UndoApplier } from './undo';
-import { matchDeterministicAction } from '@opencues/core';
+import { matchDeterministicAction, resolveDeviceInvocation, segmentStart } from '@opencues/core';
 
 
 /** Minimal interface MarkdownRender exposes for rich-text injection.
@@ -175,6 +175,13 @@ export interface ResolverOptions {
    */
   readonly keywordBoundSlotIndices?: (text: string) => readonly number[];
   /**
+   * Run a device fill the `_` route DECIDED (core's device-policy.ts, tier 2
+   * built-ins only): BlankFill synthesizes the slot for the canonical command
+   * and dispatches it over the writer's phrase. Returns true when it ran; the
+   * pass then ends (no chat fan-out for that `_`). Wired by every band.
+   */
+  readonly fillDevice?: (text: string, inv: { blank: string; keyword: string; action: 'get' | 'set' | 'step'; value?: string }, commandStartWord: number) => boolean;
+  /**
    * Modal-override gate. When this returns true for the incoming text,
    * the resolver skips the entire dispatch (no cue/blank/LLM work) for
    * that change â pending debounce is cancelled too. Wired by boots
@@ -209,6 +216,7 @@ interface UnderscoreRoutingLike {
   readonly confidence: number;
   readonly agreement: number;
   readonly ms: number;
+  readonly device?: { blank: string; value: string; confidence: number; valueConfidence: number; top: string } | null;
 }
 
 interface CueResultLike {
@@ -1668,6 +1676,28 @@ export class Resolver {
           identityContext,
         });
         this.adapter.emitEvent?.('resolver.route', { choice: usRouting.choice, confidence: usRouting.confidence, agreement: usRouting.agreement, sourceId: usRouting.sourceId, latencyMs: usRouting.ms, generation });
+        // A DEVICE the same request named (row #32): resolve it under the
+        // policy and hand it to BlankFill; a chat route wins over it (the
+        // router's own agreement already said this `_` is a settings /
+        // rewrite / lookup), and a verdict that resolves to nothing under
+        // the policy (a user blank, a number out of range, a bad argument)
+        // is ignored and the pass continues as it would have.
+        if (!usRouting.sourceId && usRouting.device && this.options.fillDevice) {
+          const inv = resolveDeviceInvocation(usRouting.device, text);
+          if (inv) {
+            const segChar = segmentStart(text, text.lastIndexOf('_'));
+            const commandStartWord = text.slice(0, segChar).split(/\s+/).filter(Boolean).length;
+            this.adapter.log('info', `Resolver: [decision][device] ${usRouting.device.blank} · ${usRouting.device.value} → ${inv.keyword} ${inv.action}${inv.value ? '=' + inv.value : ''} (${usRouting.device.top})`);
+            if (this.options.fillDevice(text, inv, commandStartWord)) {
+              this.adapter.emitEvent?.('resolver.device', { blank: inv.blank, action: inv.action, value: inv.value ?? null, confidence: usRouting.device.confidence, generation });
+              stopAllAnimations();
+              if (this._inFlightController === controller) this._inFlightController = null;
+              return;
+            }
+          } else {
+            this.adapter.log('debug', `Resolver: [decision][device] ${usRouting.device.blank} · ${usRouting.device.value} resolves to nothing under the policy — fan-out`);
+          }
+        }
         if (usRouting.sourceId) {
           const routed = usRouting.sourceId;
           only = (id: string) => !chatIds.has(id) || id === routed;

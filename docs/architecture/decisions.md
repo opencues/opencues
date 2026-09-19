@@ -68,6 +68,7 @@ thresholds inside the leg) is the package's. The interface:
 | `sentenceGate(gate, sentences)` | the cue's `gate:` line and every sentence of the pass | `[gate, prose]` probabilities per sentence | `SentenceCueSource`: a sentence under either threshold cedes with no rewrite call |
 | `route(text)` | the draft around the `_` | an `UnderscoreRouting`: the chat source to restrict to, or null for the fan-out | the runtime resolver's `only` filter |
 | `replace(input)` | the outbound transform input | a `ReplaceVerdict` `{target, command}` cut from the input, or null | `TransformBlankSource`: the value is read off the fused rewrite's diff (`deriveReplaceValue`) and the splice passes `verifyReplaceDetect` |
+| `device(input)` (optional; also stacked on `route` as `UnderscoreRouting.device`) | the outbound `_` text | a `DeviceVerdict` `{blank, value}` — a shipped blank and a closed value, or `number` / `named` meaning the runtime captures it from the draft | the resolver resolves it under `device-policy.ts` (tier 2 built-ins, grammars, arg floor) and `BlankFill.fillFromDecision` runs the shape path over the writer's phrase; a chat route wins; nothing invocable → the fan-out |
 | `settings(input)` (optional) | the outbound `_` text | a `SettingsVerdict` `{setting, value, confidence, valueConfidence}` over FEATURES / MENU_TUNABLES at listed values, or null | `ConfigIntentSource`: at ≥ 0.5 and registry-valid it applies with no chat call; a `none` with a settings keyword runs the classifier (provider buckets stay there), a `none` without one cedes |
 
 Every leg goes through `dispatchDecision` inside the package, so the
@@ -109,6 +110,7 @@ change at any leg.
 - **Router**: a routed source that cedes is followed by the fan-out over the
   rest, so routing costs a round trip at most, never an answer.
 - **Replace**: `metadata.pipelineMode: 'replace-splice-decision'`.
+- **Device**: `device-policy.ts` is the whole of what may be invoked (row #32); the fill is the shape path with a synthesized slot, so clearing, undo capture and the read-back render are the keyword command's.
 - **Settings**: the verdict goes through `validateAgainstRegistry` and `applyOpenCuesScalar` exactly as a chat verdict; the keyword pre-gate is bypassed when the leg exists; the summon-span call is deferred to after the verdict on keyword-less buffers.
 
 ## Loading a package
@@ -177,9 +179,9 @@ the way `dispatchChat`'s floor is for chat (`hydration-dehydration.md`
 row 11). On a browser host the same floor runs on the PAGE side of the
 bridge (`bridge.ts`), before the leg arguments leave the page; the native
 host holds the key and never forwards it. The router dehydrates the draft window before it ships in identity
-`safe` mode. Selection over registered BLANKS by a decision leg (a device or
-data tool named by the `_` request) is ruled in `security-audit.md` row #32
-and is not wired in this version.
+`safe` mode. Selection over registered BLANKS by a decision leg (a device named by the
+`_` request) is ruled in `security-audit.md` row #32 and wired for tier 2
+(`device-policy.ts`); tier 3 (user blanks by allow-list) is not.
 
 ## Related
 
