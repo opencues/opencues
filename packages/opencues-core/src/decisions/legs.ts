@@ -107,6 +107,7 @@ export interface RouteContext extends DecisionLegContext {
 
 /** A settings verdict: a registry scalar and one of its listed values, or null when the draft names no setting. */
 export interface SettingsVerdict {
+  readonly kind: 'setting';
   readonly setting: string;
   readonly value: string;
   /** confidence the draft asks for THIS setting */
@@ -121,6 +122,35 @@ export interface SettingsVerdict {
 export interface ClaimSentence { readonly id: string; readonly text: string }
 /** A claims verdict for one sentence: the type named (or `none`), the grammar-captured claim when it cleared the package's threshold. */
 export interface ClaimVerdict { readonly id: string; readonly type: Claim['type'] | 'none'; readonly confidence: number; readonly claim: Claim | null; readonly top: string }
+
+/** A posted community rule as the rules leg offers it. */
+export interface RuleForDecision { readonly index: number; readonly name: string; readonly description?: string }
+/** A rules verdict for one sentence: the rule number it breaks (a posted index the package named at or above its threshold) or null. */
+export interface RuleVerdict { readonly id: string; readonly rule: number | null; readonly confidence: number; readonly top: string }
+
+/** A provider-routing verdict: one LLM bucket onto a registered provider, optionally a model from its catalogue (the runtime's apply path probes the provider first). */
+export interface ProviderRouteVerdict {
+  readonly kind: 'provider';
+  readonly scope: 'cues' | 'auditors' | 'blanks';
+  readonly provider: string;
+  /** a model from the provider's known list, or null for its default */
+  readonly model: string | null;
+  readonly confidence: number;
+  readonly top: string;
+}
+/** An undo / redo verdict; the count is read from the draft by grammar (digits or number words), never by the model. */
+export interface UndoVerdict {
+  readonly kind: 'action';
+  readonly action: 'undo' | 'redo';
+  readonly count: number;
+  readonly confidence: number;
+  readonly top: string;
+}
+/** What the settings leg can return: the three things a settings `_` can ask for. */
+export type ControlVerdict = SettingsVerdict | ProviderRouteVerdict | UndoVerdict;
+
+/** A word cue as the word gate offers it: what the cue is for, in the author's words. */
+export interface WordCueForDecision { readonly name: string; readonly description?: string; readonly gate?: string }
 
 /** A replace decision: the exact target substring of the input and the command phrase, both cut from the input. */
 export interface ReplaceVerdict { readonly target: string; readonly command: string; readonly kind: 'replace'; readonly confidence: number; readonly summary: string }
@@ -152,7 +182,16 @@ export interface DecisionLegs {
    * verdict against the registry before it applies anything. Optional: a
    * package that has no settings leg leaves the chat classifier in place.
    */
-  settings?(input: string, ctx?: DecisionLegContext): Promise<SettingsVerdict | null>;
+  settings?(input: string, ctx?: DecisionLegContext): Promise<ControlVerdict | null>;
+  /**
+   * Where the settings command begins in a buffer that carries prior
+   * writing with no punctuation before the command (`hii world voice mode
+   * off _`): a Choice over the runtime-cut word starts, so the wipe span is a
+   * boundary the runtime supplied, never a model-echoed substring. The
+   * consumer's regex decides every punctuated case without a request.
+   * Optional: without it the summon chat call stays.
+   */
+  commandStart?(input: string, candidates: ReadonlyArray<{ readonly id: string; readonly start: number; readonly suffix: string }>, ctx?: DecisionLegContext): Promise<{ readonly id: string; readonly confidence: number } | null>;
   /**
    * The device blank a `_` asks for and which of its closed values (or
    * `number` / `named` for an argument the runtime captures from the draft
@@ -184,6 +223,25 @@ export interface DecisionLegs {
    * Optional: without it the calendar cue keeps its chat path.
    */
   availability?(sentences: ReadonlyArray<ClaimSentence>, ctx?: DecisionLegContext): Promise<ReadonlyArray<number>>;
+  /**
+   * Contradiction cues tier 5d: which of the community's posted rules a
+   * sentence clearly breaks — a Choice over the rule ids + none, per
+   * sentence, one request per pass. The rules are untrusted community
+   * text (sanitized and capped by the provider) and ride as data. The
+   * consumer builds the tip from its CACHED rule, never from the answer,
+   * and the flagged span is the runtime-cut sentence. Optional: without it
+   * the source keeps its dedicated judge call.
+   */
+  communityRules?(sentences: ReadonlyArray<ClaimSentence>, rules: ReadonlyArray<RuleForDecision>, ctx?: DecisionLegContext): Promise<ReadonlyArray<RuleVerdict>>;
+  /**
+   * The word-cues gate: per claimed word, the probability that the cue
+   * would offer an alternative for it as used in the draft. The consumer
+   * sends only the words at or above its threshold to the cue's chat
+   * call, and no call at all when none clear it. The words are the
+   * cue's own `match:` / `keywords:` claims; the cue's description is
+   * the criterion. Optional: without it every claimed word goes to the call.
+   */
+  wordGate?(cue: WordCueForDecision, draft: string, words: ReadonlyArray<{ readonly id: string; readonly word: string }>, ctx?: DecisionLegContext): Promise<ReadonlyArray<number>>;
 }
 
 /** What `loadDecisionLegs` hands the package's factory. */

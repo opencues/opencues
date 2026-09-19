@@ -22,11 +22,11 @@
  * classifies an auth failure on the host exactly as it would locally.
  */
 import { DecisionError, type DecisionErrorKind } from './types';
-import type { DecisionLegs, DecisionLegContext, PauseInput, PauseVerdict, TipsEntryForDecision, TipsVerdict, CommitmentForDecision, DecisionUnit, ContradictionVerdict, UnderscoreRouting, RouteContext, ReplaceVerdict, SettingsVerdict, DeviceVerdict, TableVerdict, ClaimSentence, ClaimVerdict } from './legs';
+import type { DecisionLegs, DecisionLegContext, PauseInput, PauseVerdict, TipsEntryForDecision, TipsVerdict, CommitmentForDecision, DecisionUnit, ContradictionVerdict, UnderscoreRouting, RouteContext, ReplaceVerdict, SettingsVerdict, DeviceVerdict, TableVerdict, ClaimSentence, ClaimVerdict, RuleForDecision, RuleVerdict, ControlVerdict, WordCueForDecision } from './legs';
 import { getOutboundDehydrationGuard } from '../llm-provider';
 
-export type DecisionLegName = 'pause' | 'askGate' | 'tipsMatch' | 'contradictionGate' | 'sentenceGate' | 'route' | 'replace' | 'settings' | 'device' | 'table' | 'claims' | 'availability';
-export const DECISION_LEG_NAMES: ReadonlyArray<DecisionLegName> = ['pause', 'askGate', 'tipsMatch', 'contradictionGate', 'sentenceGate', 'route', 'replace', 'settings', 'device', 'table', 'claims', 'availability'];
+export type DecisionLegName = 'pause' | 'askGate' | 'tipsMatch' | 'contradictionGate' | 'sentenceGate' | 'route' | 'replace' | 'settings' | 'device' | 'table' | 'claims' | 'availability' | 'communityRules' | 'commandStart' | 'wordGate';
+export const DECISION_LEG_NAMES: ReadonlyArray<DecisionLegName> = ['pause', 'askGate', 'tipsMatch', 'contradictionGate', 'sentenceGate', 'route', 'replace', 'settings', 'device', 'table', 'claims', 'availability', 'communityRules', 'commandStart', 'wordGate'];
 
 /** The wire shapes. `args` are the leg's positional arguments, made JSON-safe. */
 export interface DecisionBridgeRequest { readonly leg: DecisionLegName; readonly args: ReadonlyArray<unknown> }
@@ -110,11 +110,14 @@ export function createBridgedDecisionLegs(send: DecisionBridgeSend, init: { id?:
     sentenceGate: (gate: string, sentences: ReadonlyArray<string>, ctx?: DecisionLegContext) => call<ReadonlyArray<readonly [number, number]>>('sentenceGate', [gate, sentences], ctx),
     route: (text: string, ctx?: RouteContext) => call<UnderscoreRouting>('route', [text, ctx ? { threshold: ctx.threshold, identityContext: ctx.identityContext, tables: ctx.tables } : {}], ctx),
     replace: (input: string, ctx?: DecisionLegContext) => call<ReplaceVerdict | null>('replace', [input], ctx),
-    settings: (input: string, ctx?: DecisionLegContext) => call<SettingsVerdict | null>('settings', [input], ctx),
+    settings: (input: string, ctx?: DecisionLegContext) => call<ControlVerdict | null>('settings', [input], ctx),
+    commandStart: (input: string, candidates: ReadonlyArray<{ id: string; start: number; suffix: string }>, ctx?: DecisionLegContext) => call<{ id: string; confidence: number } | null>('commandStart', [input, candidates], ctx),
     device: (input: string, ctx?: DecisionLegContext) => call<DeviceVerdict | null>('device', [input], ctx),
     table: (input: string, ctx?: DecisionLegContext) => call<TableVerdict | null>('table', [input], ctx),
     claims: (sentences: ReadonlyArray<ClaimSentence>, ctx?: DecisionLegContext) => call<ReadonlyArray<ClaimVerdict>>('claims', [sentences], ctx),
     availability: (sentences: ReadonlyArray<ClaimSentence>, ctx?: DecisionLegContext) => call<ReadonlyArray<number>>('availability', [sentences], ctx),
+    communityRules: (sentences: ReadonlyArray<ClaimSentence>, rules: ReadonlyArray<RuleForDecision>, ctx?: DecisionLegContext) => call<ReadonlyArray<RuleVerdict>>('communityRules', [sentences, rules], ctx),
+    wordGate: (cue: WordCueForDecision, draft: string, words: ReadonlyArray<{ id: string; word: string }>, ctx?: DecisionLegContext) => call<ReadonlyArray<number>>('wordGate', [cue, draft, words], ctx),
   };
 }
 
@@ -155,6 +158,18 @@ export async function serveDecisionLeg(legs: DecisionLegs, req: DecisionBridgeRe
       case 'availability': {
         if (!legs.availability) return { ok: false, error: { kind: 'shape', message: 'the host package has no availability leg' } };
         verdict = await legs.availability(args[0] as ClaimSentence[], { log }); break;
+      }
+      case 'commandStart': {
+        if (!legs.commandStart) return { ok: false, error: { kind: 'shape', message: 'the host package has no commandStart leg' } };
+        verdict = await legs.commandStart(args[0] as string, args[1] as Array<{ id: string; start: number; suffix: string }>, { log }); break;
+      }
+      case 'wordGate': {
+        if (!legs.wordGate) return { ok: false, error: { kind: 'shape', message: 'the host package has no wordGate leg' } };
+        verdict = await legs.wordGate(args[0] as WordCueForDecision, args[1] as string, args[2] as Array<{ id: string; word: string }>, { log }); break;
+      }
+      case 'communityRules': {
+        if (!legs.communityRules) return { ok: false, error: { kind: 'shape', message: 'the host package has no communityRules leg' } };
+        verdict = await legs.communityRules(args[0] as ClaimSentence[], args[1] as RuleForDecision[], { log }); break;
       }
     }
     return { ok: true, verdict: serializeLegArgs([verdict])[0], id: legs.id, model: legs.model };

@@ -1320,7 +1320,7 @@ describe('ConfigIntentSource — the settings leg', () => {
     const a = { calls: 0, post: async () => { a.calls++; return JSON.stringify({ choices: [{ message: { content: 'VERDICT: NONE\nCONFIDENCE: 0.9' } }] }); } };
     return a;
   }
-  const verdict = (setting: string, value: string, confidence = 0.9) => ({ setting, value, confidence, valueConfidence: 0.9, top: `${setting} ${confidence}` });
+  const verdict = (setting: string, value: string, confidence = 0.9) => ({ kind: 'setting' as const, setting, value, confidence, valueConfidence: 0.9, top: `${setting} ${confidence}` });
   function mk(http: HttpAdapter, legs: ReturnType<typeof fakeLegs> | undefined, calls: Array<[string, string]>, extra: Record<string, unknown> = {}) {
     return new ConfigIntentSource({ ...baseConfig, httpAdapter: http, applyScalar: (s, v) => { calls.push([s, v]); }, decisions: legs, ...extra });
   }
@@ -1345,22 +1345,47 @@ describe('ConfigIntentSource — the settings leg', () => {
     assert.strictEqual(http.calls, 0);
   });
 
-  it('none + a settings keyword (a provider switch) → the chat classifier decides', async () => {
+  it('none + a settings keyword (a provider switch) → cedes too: the leg decides providers now, no chat call', async () => {
     const http = countingChat(); const calls: Array<[string, string]> = [];
     await mk(http, fakeLegs({ settings: null }), calls).getCues(ctxFromText('switch to cerebras _'));
-    assert.ok(http.calls >= 1);
+    assert.strictEqual(http.calls, 0);
     assert.deepStrictEqual(calls, []);
   });
 
-  it('a verdict under the threshold, one the registry rejects, or a failed leg → the chat classifier runs', async () => {
-    const plans = [fakeLegs({ settings: verdict('debug-mode', 'off', 0.3) }), fakeLegs({ settings: verdict('zorb-mode', 'on') }), fakeLegs({ throwFrom: ['settings'] })];
+  it('a provider verdict routes the bucket (provider + model scalars); an undo verdict emits the action with its count', async () => {
+    const http = countingChat(); const calls: Array<[string, string]> = [];
+    await mk(http, fakeLegs({ settings: { kind: 'provider', scope: 'cues', provider: 'anthropic', model: null, confidence: 0.9, top: '' } }), calls, { probeProvider: async () => ({ ok: true }) }).getCues(ctxFromText('use anthropic for cues _'));
+    assert.strictEqual(http.calls, 0);
+    assert.strictEqual(calls[0]?.[0], 'cues-llm-provider');
+    assert.strictEqual(calls[0]?.[1], 'anthropic');
+    const http2 = countingChat();
+    const r = await mk(http2, fakeLegs({ settings: { kind: 'action', action: 'undo', count: 2, confidence: 0.9, top: '' } }), [], { allowActionVerdicts: true }).getCues(ctxFromText('take back the last two things you did _'));
+    assert.strictEqual(http2.calls, 0);
+    assert.deepStrictEqual((r.results[0]?.metadata as { undoAction?: { action: string; count: number } })?.undoAction, { action: 'undo', count: 2, confidence: 0.9 });
+  });
+
+  it('a verdict under the threshold cedes; one the registry rejects or a failed leg → the chat classifier runs', async () => {
+    const http0 = countingChat(); const calls0: Array<[string, string]> = [];
+    await mk(http0, fakeLegs({ settings: verdict('debug-mode', 'off', 0.3) }), calls0).getCues(ctxFromText('enable debug logging, take 0 _'));
+    assert.strictEqual(http0.calls, 0); assert.deepStrictEqual(calls0, []);
+    const plans = [fakeLegs({ settings: verdict('zorb-mode', 'on') }), fakeLegs({ throwFrom: ['settings'] })];
     for (const [i, legs] of plans.entries()) {
       ConfigIntentSource.resetVariantPoolForTest();
       const http = countingChat(); const calls: Array<[string, string]> = [];
-      await mk(http, legs, calls).getCues(ctxFromText(`enable debug logging, take ${i} _`));
+      await mk(http, legs, calls).getCues(ctxFromText(`enable debug logging, take ${i + 1} _`));
       assert.ok(http.calls >= 1, 'classifier ran');
       assert.deepStrictEqual(calls, []);
     }
+  });
+
+  it('the command span comes from the command-start leg when the buffer has unpunctuated prior writing', async () => {
+    const http = countingChat();
+    const legs = fakeLegs({ settings: verdict('voice-mode', 'inactive'), commandStart: 'w3' });
+    const r = await mk(http, legs, []).getCues(ctxFromText('hii world voice mode off _'));
+    assert.strictEqual(http.calls, 0);
+    assert.strictEqual(r.results[0]?.spanStart, 'hii world '.length);
+    const cs = legs.calls.find((c) => c.leg === 'commandStart')!;
+    assert.deepStrictEqual((cs.args[1] as Array<{ id: string; suffix: string }>).map((c) => c.suffix), ['hii world voice mode off _', 'world voice mode off _', 'voice mode off _', 'mode off _', 'off _']);
   });
 
   it('fluid-config-mode off: the leg is never asked', async () => {
