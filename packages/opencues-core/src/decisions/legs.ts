@@ -19,6 +19,7 @@ import type { DeviceVerdict } from './device-policy';
 export type { DeviceVerdict } from './device-policy';
 import type { TableVerdict } from './data-policy';
 export type { TableVerdict } from './data-policy';
+import type { Claim } from '../contradiction/checks';
 
 export interface DecisionLegContext {
   readonly signal?: AbortSignal;
@@ -116,6 +117,11 @@ export interface SettingsVerdict {
   readonly top: string;
 }
 
+/** A sentence of the draft, cut by the runtime, for the claims and availability legs. */
+export interface ClaimSentence { readonly id: string; readonly text: string }
+/** A claims verdict for one sentence: the type named (or `none`), the grammar-captured claim when it cleared the package's threshold. */
+export interface ClaimVerdict { readonly id: string; readonly type: Claim['type'] | 'none'; readonly confidence: number; readonly claim: Claim | null; readonly top: string }
+
 /** A replace decision: the exact target substring of the input and the command phrase, both cut from the input. */
 export interface ReplaceVerdict { readonly target: string; readonly command: string; readonly kind: 'replace'; readonly confidence: number; readonly summary: string }
 
@@ -161,6 +167,23 @@ export interface DecisionLegs {
    * `data-policy.ts` and looks it up with no model at all. Optional.
    */
   table?(input: string, ctx?: DecisionLegContext): Promise<TableVerdict | null>;
+  /**
+   * The checkable claims a pass's sentences make (contradiction cues as
+   * select-then-compute): per sentence the claim TYPE the package named,
+   * with the operands the consumer's grammar cut from the writer's own
+   * words (`captureClaim`); `verifyClaim` computes the truth. The package
+   * never emits a value. A sentence the grammar cannot ground is not asked.
+   * Optional: without it the source keeps its chat parse.
+   */
+  claims?(sentences: ReadonlyArray<ClaimSentence>, ctx?: DecisionLegContext): Promise<ReadonlyArray<ClaimVerdict>>;
+  /**
+   * Per sentence, the probability it states the writer's availability or
+   * proposes a day / time — from the sentence alone. The consumer resolves
+   * the day and time (`captureAvailabilityRef`) and reads the calendar
+   * locally (`findClashes`); nothing calendar-shaped is in the request.
+   * Optional: without it the calendar cue keeps its chat path.
+   */
+  availability?(sentences: ReadonlyArray<ClaimSentence>, ctx?: DecisionLegContext): Promise<ReadonlyArray<number>>;
 }
 
 /** What `loadDecisionLegs` hands the package's factory. */

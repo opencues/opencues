@@ -622,3 +622,68 @@ describe('SentenceCueSource — calendar advisory', () => {
     assert.ok(lines.some((l) => /no heads-up/.test(l)));
   });
 });
+
+// ── the calendar cue on the availability leg: the model says "a claim", code does the rest ──
+describe('SentenceCueSource — calendar on the availability leg', () => {
+  const baseConfig = { provider: getProvider('groq')!, endpoint: 'https://example.test/v1/chat/completions', apiKey: 'test-key', model: 'test-model' };
+  const calendarCue = { name: 'zorb-calendar', scope: 'sentence' as const, priority: 90, promptText: 'Flag clashes.', usesCalendarContext: true };
+  const now = () => new Date('2026-07-17T09:00:00');   // a Friday
+  const calendarContext = {
+    events: [
+      { token: '[EVENT 1]', title: 'ALT-DENTIST', start: '2026-07-17T15:00', end: '2026-07-17T15:45' },
+      { token: '[EVENT 2]', title: 'ALT-STANDUP', start: '2026-07-17T16:00', end: '2026-07-17T16:30' },
+      { token: '[EVENT 3]', title: 'ALT-ALLDAY', start: '2026-07-22T00:00', end: '2026-07-22T23:59', allDay: true },
+    ],
+    catalog: new Map<string, string>(),
+    mode: 'on' as const,
+  };
+  function countingAdapter(): HttpAdapter & { calls: number } {
+    const a = { calls: 0, post: async () => { a.calls++; return JSON.stringify({ choices: [{ message: { content: 'ALT: zorb — heads up: [EVENT 1] today, 3:00–3:45pm' } }] }); } };
+    return a;
+  }
+  const ctx = (text: string): CueContext => ({ text, words: text.split(/\s+/), calendarContext });
+
+  it('a claim at a busy time → the heads-up with the real titles, no chat call, nothing calendar-shaped in the request', async () => {
+    const http = countingAdapter();
+    const legs = fakeLegs({ availability: { s1: 0.95 } });
+    const src = new SentenceCueSource({ ...baseConfig, httpAdapter: http, sourceConfig: calendarCue, decisions: legs, now });
+    const r = await src.getCues(ctx("I'm free this afternoon."));
+    assert.strictEqual(http.calls, 0);
+    assert.strictEqual(r.results.length, 1);
+    assert.deepStrictEqual(r.results[0].alternatives, ["I'm free this afternoon."]);
+    assert.strictEqual(r.results[0].cueTip, '⚠ heads up: ALT-DENTIST today, 3:00–3:45pm; ALT-STANDUP today, 4:00–4:30pm');
+    // the leg saw the sentence and nothing else
+    assert.strictEqual(legs.calls.length, 1);
+    assert.deepStrictEqual(legs.calls[0].args[0], [{ id: 's1', text: "I'm free this afternoon." }]);
+  });
+
+  it('a claim at a free time, a day with no event, or a sentence below the threshold → nothing, still no chat call', async () => {
+    const http = countingAdapter();
+    const src = new SentenceCueSource({ ...baseConfig, httpAdapter: http, sourceConfig: calendarCue, decisions: fakeLegs({ availability: { s1: 0.95, s2: 0.95, s3: 0.2 } }), now });
+    const r = await src.getCues(ctx("I'm free at 5pm today. Monday works too. The invoice is dated the 22nd."));
+    assert.strictEqual(http.calls, 0);
+    assert.deepStrictEqual(r.results, []);
+  });
+
+  it('a sentence that names no day or time is not asked at all', async () => {
+    const legs = fakeLegs({ availability: {} });
+    const src = new SentenceCueSource({ ...baseConfig, httpAdapter: countingAdapter(), sourceConfig: calendarCue, decisions: legs, now });
+    const r = await src.getCues(ctx('I love pizza. Thanks for the update.'));
+    assert.deepStrictEqual(r.results, []);
+    assert.strictEqual(legs.calls.length, 0);
+  });
+
+  it('an all-day event on the named day clashes whatever the time, and reads as the date', async () => {
+    const src = new SentenceCueSource({ ...baseConfig, httpAdapter: countingAdapter(), sourceConfig: calendarCue, decisions: fakeLegs({ availability: { s1: 0.9 } }), now });
+    const r = await src.getCues(ctx('Sure, the 22nd at 10 works.'));
+    assert.strictEqual(r.results[0]?.cueTip, '⚠ heads up: ALT-ALLDAY Wed Jul 22, all day');
+  });
+
+  it('a failed leg falls through to the chat path', async () => {
+    const http = countingAdapter();
+    const src = new SentenceCueSource({ ...baseConfig, httpAdapter: http, sourceConfig: calendarCue, decisions: fakeLegs({ throws: new Error('boom') }), now });
+    const r = await src.getCues(ctx("I'm free at 3 today."));
+    assert.strictEqual(http.calls, 1);
+    assert.strictEqual(r.results[0]?.cueTip, '⚠ [EVENT 1] today, 3:00–3:45pm');
+  });
+});
