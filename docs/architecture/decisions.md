@@ -43,6 +43,14 @@ reasoning (dates, arithmetic, letter-level facts, truth).
   `DecisionProvider` contract served by a chat model (strict JSON,
   temperature 0). Its probabilities are self-reported, not calibrated;
   it exists so the seam never depends on one vendor.
+- **`typesafe.ts`** — `TypeSafeDecisionProvider`: the vendor HTTP adapter (endpoint,
+  bearer key, body shape, error classification, one retry on overload, the
+  model pin). No template in it; a package supplies the legs over it.
+- **`candidates.ts`** — what a leg OFFERS the model, cut in code: the `_`
+  window (`underscoreRouteDraft`), a word's edit-1 neighbourhood (`edits1`,
+  `spellingEligible`), the replace targets and commands (`replaceCandidates`).
+  Product policy, not question wording.
+- **`bridge.ts`** — the legs over a message channel (browser hosts, below).
 - **`legs.ts`** — `DecisionLegs`: what a decision PACKAGE gives the sources.
 - **`load.ts`** — `loadDecisionLegs`: the package, loaded by name.
 
