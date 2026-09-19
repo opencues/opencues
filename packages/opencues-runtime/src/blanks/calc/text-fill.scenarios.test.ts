@@ -60,6 +60,10 @@ describe('buffer calculators through BlankFill', () => {
     const b = await setup('zorb\nflumph\nnumber the lines _');
     expect(last(b)).toBe('1. zorb\n2. flumph');
   });
+  it('a transform keeps paragraph breaks and indent (the card is the whole text, not its non-empty lines)', async () => {
+    const a = await setup('zorb flumph\n\n  blorp zorb\n\nflumph\nupper case _');
+    expect(last(a)).toBe('ZORB FLUMPH\n\n  BLORP ZORB\n\nFLUMPH');
+  });
   it('a wrap with its column parameter', async () => {
     const a = await setup('zorb flumph blorp zorb flumph blorp\nwrap at 12 _');
     expect(last(a)).toBe('zorb flumph\nblorp zorb\nflumph blorp');

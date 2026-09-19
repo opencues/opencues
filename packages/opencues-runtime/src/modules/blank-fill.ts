@@ -1069,6 +1069,12 @@ export class BlankFill {
     // dismissible (so the user can cycle back to `_`).
     const rawLines = fillValue.split(/\n/).map(s => s.trim()).filter(Boolean);
     if (rawLines.length === 0) return;
+    // A single-answer blank's card is the WHOLE text, blank lines and indent
+    // included: a tables transform over a draft (`title case _` on an email)
+    // returns the paragraphs it was given, and the trim-and-drop split above
+    // would fold every paragraph break into one line. Keep the raw text
+    // (minus a trailing newline) for those; the split stays for list blanks.
+    const singleAnswerText = fillValue.replace(/\n+$/, '');
     // A single-answer blank returns ONE answer whose lines together form a
     // card (location's `map`, claude-status, model, note) — join them into a
     // single fill instead of treating each line as a rival cycleable
@@ -1081,7 +1087,7 @@ export class BlankFill {
     // upgrading user's BLANK.md, so the flag would otherwise never reach them).
     // List blanks (hackernews) are neither and keep the split behaviour.
     const lines = isSingleAnswerBlank(slot.blankName, blank?.blankMultilineIsAnswer) && rawLines.length > 1
-      ? [rawLines.join('\n')]
+      ? [singleAnswerText]
       : rawLines;
     let primaryFill = lines[0];
     const isDismissible = blank?.blankDismissible === true;
