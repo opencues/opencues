@@ -265,3 +265,20 @@ test('self-heal migrates calendar-context legacy files + OPENCUES.md scalars (Ju
   assert.doesNotMatch(md, new RegExp(L_MODE));
   assert.doesNotMatch(md, new RegExp(L_POLL));
 });
+
+test('shipped-md refresh: the tables blank\'s routing grammar (blankKeywords / blankShapes) always follows defaults; another blank\'s stays user-owned', () => {
+  // The tables blank's shapes are generated from the runtime's calculator
+  // registry and drift-tested against it; a seeded copy that kept an older
+  // release's shapes would miss every calculator the installed runtime
+  // gained since (September 2026, family (b)). `blankKeywords` /
+  // `blankShapes` stay user-customisable on every other shipped blank.
+  const { mergeShippedMd } = seedConfigs._test;
+  const defaults = '---\nname: tables\ntype: blank\nblankKeywords: table, days between, plus vat\nblankShapes: [{"pattern":"^plus vat\\\\s+(.+?)\\\\s*_$","action":"get","valueGroup":1}]\n---\nbody\n';
+  const user = '---\nname: tables\ntype: blank\nblankKeywords: table, days between\nblankShapes: [{"pattern":"^days between\\\\s+(.+?)\\\\s*_$","action":"get","valueGroup":1}]\n---\nbody\n';
+  const merged = mergeShippedMd(defaults, user, { name: 'tables' });
+  assert.ok(merged.includes('blankKeywords: table, days between, plus vat'), 'tables keywords did not follow defaults');
+  assert.ok(merged.includes('^plus vat'), 'tables shapes did not follow defaults');
+  const other = mergeShippedMd(defaults.replace(/tables/g, 'zorb'), user.replace(/tables/g, 'zorb'), { name: 'zorb' });
+  assert.ok(other.includes('blankKeywords: table, days between\n'), 'another blank\'s keywords were overwritten');
+  assert.ok(other.includes('^days between'), 'another blank\'s shapes were overwritten');
+});
