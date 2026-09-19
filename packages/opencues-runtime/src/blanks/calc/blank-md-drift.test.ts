@@ -13,7 +13,8 @@ import { BlankFill } from '../../modules/blank-fill';
 import { ConfigLoader } from '../../modules/config-loader';
 import { MockAdapter } from '../../../testing/mock-adapter';
 import { CALCULATORS } from './registry';
-import { lookupTable, configureCalcEnv } from '../tables';
+import { lookupTable, configureCalcEnv, TablesBlank } from '../tables';
+import { SAMPLE } from './families-a.test';
 
 const TIPS = JSON.stringify({ concepts: [] });
 const REPO_ROOT = resolvePath(__dirname, '../../../../..');
@@ -46,8 +47,11 @@ describe('defaults/blanks/tables/BLANK.md routes every calculator example', () =
     const call = adapter.blankInvokeCalls[0];
     expect(call.blankName).toBe('tables');
     const [keyword, ...ctx] = call.args as string[];
-    const got = lookupTable(keyword, ctx.join(' '));
     const c = CALCULATORS.find((x) => x.id === id)!;
+    // a buffer calculator is invoked as [prior text, captured]; the harness typed no prior text, so supply the example's
+    const got = c.arg === 'buffer'
+      ? await new TablesBlank().get(keyword, [ctx[0] || (c.exampleBuffer ?? SAMPLE), ctx[1] ?? ''])
+      : lookupTable(keyword, ctx.join(' '));
     if (c.generator || id === 'unix-now' || id === 'iso-now') { expect(got).not.toBeNull(); return; }
     // clock-relative answers depend on the host zone the test runs in; pin shape only when TZ is not London
     if (['time-plus', 'time-in', 'convert-time', 'utc-offset', 'is-dst', 'overlap', 'meeting-at'].includes(id) && tz !== 'Europe/London') { expect(got).not.toBeNull(); return; }

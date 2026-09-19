@@ -33,9 +33,10 @@ blanks; anything opinion-shaped stays generative.
 
 ## The seven families
 
-Shipped families carry ✅; the rest are on the plan (`docs/architecture/decisions.md`
-§ Table, and the private package's roadmap) and follow the same three gates:
-a closed id, grammar-captured operands, the table or parser as the last gate.
+All seven families are shipped (188 calculators + the eight tables + six
+country facts); each follows the same three gates: a closed id, grammar-captured
+operands, the table or parser as the last gate. Reference tables (NATO
+alphabet, morse, country codes, cooking measures, sizes) are the next wave.
 
 ### 1. Reference tables ✅ (the original eight)
 
@@ -218,16 +219,62 @@ double at 5% _`, `45k a year hourly _`.
 Not claimed: `off the record _`, `split the difference _`, `tip of the iceberg
 _`, `at what cost _`.
 
-### 6. Text metrics & transforms (planned)
+### 6. Text metrics & transforms ✅ (33 calculators)
 
-Metrics over the text before the command (`word count _`, `character count _`,
-`reading time _` at the `reading-wpm` tunable, `sentence count _`, `longest
-word _`) and deterministic transforms that replace it (`title case _`, `slug
-_`, `snake case _`, `sort lines _`, `dedupe lines _`, `wrap at 80 _`,
-`initials of _`, `acronym for _`). A transform is the same gesture as a rewrite
-request, with a deterministic result; `undo _` reverts it.
+These work on **the text before the command** (put the command on its own
+line or after a sentence end), or on an inline argument when you write one
+(`slug for My Blog Post _`). A metric fills after the text and keeps its label;
+a transform **replaces** the text, the same gesture as a rewrite request but
+deterministic, and `undo _` reverts it. Inline arguments stop at a sentence
+end, so multi-sentence text uses the buffer form. Reading speed is the
+`reading-wpm` tunable (default 238, settings menu under Blanks).
 
-### 7. Geometry, physics, fitness & media ✅ (32 calculators) · encodings (planned)
+Over `The quick brown fox jumps over the lazy dog. The dog sleeps.`:
+
+| you type | you get |
+|---|---|
+| `word count _` | `word count 12 words · 60 chars · 2 sentences · ~3 s read` |
+| `character count _` | `60 chars (49 without spaces, 12 words)` |
+| `sentence count _` | `2 sentences (avg 6 words)` |
+| `line count _` | `1 line (1 non-empty)` |
+| `reading time _` | `~3 s (12 words at 238 wpm)` |
+| `speaking time _` | `~5 s (12 words at 150 wpm)` |
+| `longest word _` | `sleeps (6)` |
+| `most common word _` | `the ×3 · dog ×2 · brown ×1` |
+| `count of the _` | `the ×3` |
+| `title case _` | `The Quick Brown Fox Jumps Over the Lazy Dog. The Dog Sleeps.` |
+| `upper case _` / `lower case _` / `sentence case _` | the text recased |
+| `wrap at 20 _` | `The quick brown fox` / `jumps over the lazy` / `dog. The dog sleeps.` |
+| `truncate to 11 _` | `The quick b…` (`truncate to 5 words _` counts words) |
+| `reverse _` | `.speels god ehT .god yzal eht revo spmuj xof nworb kciuq ehT` |
+| `reverse words _` | `sleeps. dog The dog. lazy the over jumps fox brown quick The` |
+| `repeat 3 times _` | the text three times |
+
+Inline forms and identifiers:
+
+| you type | you get |
+|---|---|
+| `slug for My Blog Post Part 2 _` | `my-blog-post-part-2` |
+| `title case for the lord of the rings _` | `The Lord of the Rings` |
+| `snake case for userFirstName _` | `user_first_name` |
+| `camel case for user first name _` | `userFirstName` |
+| `pascal case for user first name _` | `UserFirstName` |
+| `kebab case for userFirstName _` | `user-first-name` |
+| `constant case for userFirstName _` | `USER_FIRST_NAME` |
+| `initials of Ada King Lovelace _` | `A.K.L.` |
+| `acronym for portable network graphics _` | `PNG` |
+| `repeat 3 times for ab _` | `ababab` |
+| `pad to 8 with 0 for 42 _` | `00000042` |
+| `lorem 5 words _` | `Lorem ipsum dolor sit amet.` |
+
+Line tools, over several lines: `sort lines _` (also `sort lines descending _`,
+`sort lines numerically _`), `dedupe lines _`, `number the lines _` → `1. …`,
+`bullet the lines _` → `- …`, `strip whitespace _`.
+
+Not claimed: `please reverse the decision _`, `sort of tired _`, `the slug
+crawled _`, `repeat after me _`, `title of the book _`, `lower the bar _`.
+
+### 7. Geometry, physics, fitness & media ✅ (32 calculators) · encodings ✅ (25)
 
 | you type | you get |
 |---|---|
@@ -281,10 +328,43 @@ earth _`, `distance to the moon _`, `how long to download 700mb at 20mbps _`,
 Not claimed: `the area of concern _`, `a slippery slope _`, `scale it back _`,
 `the speed of the rollout _`, `note to self _`.
 
-**Encodings (planned):** `base64 for hello`, `decode base64 aGVsbG8=`, `url
-encode a b&c`, `html escape`, `uuid`, `random 1 to 100`, `dice 2d6`, `json
-pretty`, `unix permissions 755`, `cidr 10.0.0.0/22`, `color contrast #fff
-#777`.
+**Encodings, identifiers, network, colour & generators ✅ (25 calculators)**,
+all local; no hashes, no password generators, no JWT decoding, by ruling:
+
+| you type | you get |
+|---|---|
+| `base64 for hello _` | `aGVsbG8=` |
+| `decode base64 aGVsbG8= _` | `hello` |
+| `url encode a b&c=d/e _` | `a%20b%26c%3Dd%2Fe` |
+| `url decode a%20b%26c _` | `a b&c` |
+| `html escape <a href="x">Tom & Jerry</a> _` | `&lt;a href=&quot;x&quot;&gt;Tom &amp; Jerry&lt;/a&gt;` |
+| `html unescape Tom &amp; Jerry &lt;3 _` | `Tom & Jerry <3` |
+| `hex encode hi _` | `68 69 (2 bytes)` |
+| `hex decode 68 65 6c 6c 6f _` | `hello` |
+| `binary of hi _` | `01101000 01101001` |
+| `ascii of A _` | `A = 65 (0x41, U+0041)` |
+| `chmod 755 _` | `rwxr-xr-x (owner rwx · group r-x · others r-x)` |
+| `ip to int 10.0.0.1 _` | `167772161 (0x0a000001)` |
+| `int to ip 167772161 _` | `10.0.0.1` |
+| `cidr 10.0.0.0/22 _` | `10.0.0.0 – 10.0.3.255 · 1,024 addresses (1,022 hosts) · mask 255.255.252.0` |
+| `is valid email a.b@example.com _` | `a.b@example.com: valid email format` |
+| `validate iban GB82 WEST 1234 5698 7654 32 _` | `…: valid iban checksum` |
+| `color contrast #fff #777 _` | `4.48:1 — AA normal text ✗, AA large ✓, AAA ✗` |
+| `hex to hsl #ff6347 _` | `hsl(9, 100%, 64%) · rgb(255, 99, 71)` |
+| `lighten #ff6347 by 20% _` | `#ffb9ad (hsl 9, 100%, 84%)` |
+| `json pretty {"a":1,"b":[1,2]} _` | the JSON indented |
+| `json minify { "a": 1 } _` | `{"a":1}` |
+| `json validate {"a":1} _` | `valid JSON · object with 1 key` |
+| `uuid _` / `uuid v7 _` | a fresh UUID |
+| `random 1 to 100 _` | a number |
+| `random pick red, green, blue _` | one of them |
+| `coin flip _` | `heads` or `tails` |
+| `roll 2d6 _` | `7 (4 + 3)` |
+
+Generators are never cached and `undo _` does not replay their value.
+
+Not claimed: `count me out _`, `a random thought _`, `roll with it _`, `in the
+long run _`.
 
 **Not shipped, by ruling (2026-09-19):** password / passphrase generators,
 hashes (md5, sha*), JWT decoding — attack surface, however convenient.
@@ -296,7 +376,7 @@ hashes (md5, sha*), JWT decoding — attack surface, however convenient.
 | | keyword form | plain phrasing |
 |---|---|---|
 | LLM calls | 0 | 0 on a hit (the `_` route request you already pay for names the calculator) |
-| tokens | 0 | the table question rides the route request: ≈ +6k prompt tokens at 122 ids when `table-lookups-mode` is on |
+| tokens | 0 | the table question rides the route request: ≈ +9k prompt tokens at 180 ids when `table-lookups-mode` is on |
 | latency | a shape match | the route request (~280 ms) |
 | off | the `tables` blank is not registered | the question is left off the request |
 

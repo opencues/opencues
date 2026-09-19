@@ -21,8 +21,8 @@ const uniform = (): number => {
   return Math.random();
 };
 
-export function calcContext(): CalcContext {
+export function calcContext(command = ''): CalcContext {
   let tz = 'UTC';
   try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { /* no ICU */ }
-  return { now: clock, timeZone: tz, setting: settingReader, random: uniform };
+  return { now: clock, timeZone: tz, setting: settingReader, random: uniform, command };
 }

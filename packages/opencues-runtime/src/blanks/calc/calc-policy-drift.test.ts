@@ -24,7 +24,8 @@ describe('DATA_POLICY ↔ calculator registry', () => {
       else expect(c.keywords[0]).toBe(e.keyword);
       expect(!!e.keepKeyword).toBe(!!(c.keywordIsArg || e.keyword === PHRASE_KEYWORD));
       expect(e.arg === 'none').toBe(c.arg === 'none');
-      expect(!!e.optional).toBe(!!c.optionalArg);
+      expect(e.arg === 'buffer').toBe(c.arg === 'buffer');
+      expect(!!e.optional).toBe(!!c.optionalArg || c.arg === 'buffer');
     }
   });
 });

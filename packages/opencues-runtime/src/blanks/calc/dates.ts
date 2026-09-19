@@ -180,7 +180,7 @@ export const DATES: readonly Calculator[] = [
     run(arg, ctx) { const p = parseDateLoose(arg || 'today', ctx); if (!p) return null; return `Q${Math.floor(p.date.getUTCMonth() / 3) + 1} ${p.date.getUTCFullYear()}`; } },
   { id: 'easter', family: 'dates', keywords: ['easter', 'easter sunday', 'when is easter'], arg: 'segment', optionalArg: true, example: ['easter 2027', 'Sun 28 Mar 2027'], miss: 'cannot read the year',
     run(arg, ctx) { const m = arg.match(/(\d{4})/); let y = m ? Number(m[1]) : ctx.now().getFullYear(); if (!m && easter(y).getTime() < todayUtc(ctx).getTime()) y++; return fmtDate(easter(y)); } },
-  { id: 'nth-weekday', family: 'dates', keywords: ['last', 'first', 'second', 'third', 'fourth'], arg: 'segment', keywordIsArg: true, example: ['last friday of october 2026', 'Fri 30 Oct 2026'], miss: 'cannot read which weekday of which month',
+  { id: 'nth-weekday', family: 'dates', keywords: ['nth weekday'], arg: 'segment', keywordIsArg: true, phrase: /^(?:the )?(?:first|1st|second|2nd|third|3rd|fourth|4th|last)\s+[a-z]+day\s+(?:of|in)\s+[a-z]+(?:\s+\d{4})?$/i, example: ['last friday of october 2026', 'Fri 30 Oct 2026'], miss: 'cannot read which weekday of which month',
     run(arg, ctx) {
       const m = (arg.toLowerCase().match(/^(?:the )?(first|1st|second|2nd|third|3rd|fourth|4th|last)\s+([a-z]+day)\s+(?:of|in)\s+([a-z]+)(?:\s+(\d{4}))?$/));
       if (!m || weekdayIndex(m[2]) < 0 || monthIndex(m[3]) < 0) return null;

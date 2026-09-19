@@ -168,7 +168,7 @@ export function lookupChemistry(keyword: string, q: string): string | null {
 }
 
 /** The answer for a keyword + argument, or null when the table has none (also the decision-fill probe in blank-fill.ts). */
-export function lookupTable(keyword: string, arg: string): string | null {
+export function lookupTable(keyword: string, arg: string, command = ''): string | null {
   const kw = keyword.toLowerCase();
   if (kw === PHRASE_KEYWORD) {
     const calc = calculatorForPhrase(arg);
@@ -180,7 +180,7 @@ export function lookupTable(keyword: string, arg: string): string | null {
     if (calc.arg !== 'none' && !arg && !calc.optionalArg) return null;
     const bare = arg.toLowerCase();
     const input = calc.keywordIsArg && !calc.keywords.some((k) => bare.includes(k)) && !(calc.phrase && calc.phrase.test(arg.trim())) ? `${kw} ${arg}`.trim() : arg;
-    try { return calc.run(input, calcContext()); } catch { return null; }
+    try { return calc.run(input, calcContext(command)); } catch { return null; }
   }
   const table = tableFor(kw);
   if (!table || !arg) return null;
@@ -205,8 +205,19 @@ export class TablesBlank implements Blank {
   async get(keyword?: string, context?: string[]): Promise<string> {
     const kw = keyword ?? '';
     const calc = kw.toLowerCase() === PHRASE_KEYWORD ? calculatorForPhrase((context ?? []).join(' ')) : calculatorForKeyword(kw);
-    // a buffer-argument calculator gets the prior text raw (newlines kept) as context[0]
-    const arg = calc?.arg === 'buffer' ? (context ?? [])[0] ?? '' : (context ?? []).join(' ').trim();
+    // A buffer calculator is invoked as [priorTextRaw, capturedArg] (BlankFill
+    // builds that pair): the captured argument is the INPUT for an inline-arg
+    // calculator (`slug for X`), else a parameter (`count of the`).
+    if (calc?.arg === 'buffer') {
+      const prior = (context ?? [])[0] ?? '';
+      const captured = ((context ?? [])[1] ?? '').trim();
+      const inline = calc.inlineArg && captured.length > 0;
+      const input = inline ? captured : prior;
+      const out = lookupTable(kw, input, inline ? '' : captured);
+      // a miss keeps the command in the buffer (`[err]` fills are feedback, never a consumption)
+      return out ?? `[err] ${inline ? `${captured.slice(0, 40)}: ` : ''}${calc.miss}`;
+    }
+    const arg = (context ?? []).join(' ').trim();
     if (calc) return lookupTable(kw, arg) ?? `${arg ? `${arg.slice(0, 40)}: ` : ''}${calc.miss}`;
     const table = tableFor(kw);
     if (!table) return '';

@@ -7,8 +7,10 @@ import { CALCULATORS, calculatorForKeyword, calculatorById } from './registry';
 
 // Saturday 19 September 2026, 12:30 in London (BST, UTC+1) → 11:30Z
 const NOW = new Date('2026-09-19T11:30:00.000Z');
-const ctx: CalcContext = { now: () => NOW, timeZone: 'Europe/London', setting: () => undefined, random: () => 0.5 };
+const ctx: CalcContext = { now: () => NOW, timeZone: 'Europe/London', setting: () => undefined, random: () => 0.5, command: '' };
 const run = (id: string, arg: string) => calculatorById(id)!.run(arg, ctx);
+/** the buffer a metric / transform example runs over */
+export const SAMPLE = 'The quick brown fox jumps over the lazy dog. The dog sleeps.';
 
 describe('registry', () => {
   it('ids are unique, every keyword resolves to its calculator, longest keyword wins', () => {
@@ -21,9 +23,13 @@ describe('registry', () => {
     for (const c of CALCULATORS) {
       const [input, want] = c.example;
       const kw = c.keywords.find((k) => input.toLowerCase().startsWith(k)) ?? '';
-      const rest = input.slice(kw.length).trim();
+      const rest = input.slice(kw.length).trim().replace(/^for\s+/, c.inlineArg ? '' : 'for ');
       const arg = c.keywordIsArg ? input : rest;
-      const got = c.run(c.arg === 'none' ? '' : arg, ctx);
+      let got: string | null;
+      if (c.arg === 'buffer') {
+        const inline = !!c.inlineArg && rest.length > 0;
+        got = c.run(inline ? rest : (c.exampleBuffer ?? SAMPLE), { ...ctx, command: inline ? '' : rest });
+      } else got = c.run(c.arg === 'none' ? '' : arg, ctx);
       if (c.generator || c.id === 'unix-now' || c.id === 'iso-now') { expect(got, c.id).not.toBeNull(); continue; }
       expect(got, `${c.id}: "${input}"`).toBe(want);
     }

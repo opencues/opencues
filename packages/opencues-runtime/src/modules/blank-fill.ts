@@ -16,7 +16,7 @@ import { isBlankConfigCycleable, keywordInWindow, lineOfWords, matchBlankShape, 
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import { isSingleAnswerBlank } from '../blanks/single-answer-builtins';
-import { lookupTable, configureCalcEnv } from '../blanks/tables';
+import { lookupTable, configureCalcEnv, calculatorForKeyword } from '../blanks/tables';
 import { countryFactAvailable } from '../blanks/countries';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import type { DynDefs } from '../state/dyn-defs';
@@ -558,7 +558,17 @@ export class BlankFill {
       // 495-char garbage fill. Bounding context to (keywordEnd, `_`) keeps it
       // to the actual argument; prior lines and any trailing text are excluded.
       const contextWords: string[] = [];
-      if (slot.shapeAction === 'get' && slot.shapeValue) {
+      // A `tables` BUFFER calculator (`word count _`, `title case _`, `slug for
+      // X _`) is invoked as [the text before the command, raw; the captured
+      // argument]: the blank decides which of the two is its input
+      // (blanks/calc/types.ts `inlineArg`). Newlines are kept for the
+      // line-based transforms; the prior text is everything before the
+      // command segment.
+      const bufferCalc = slot.blankName === 'tables' ? calculatorForKeyword(slot.keyword) : null;
+      if (bufferCalc?.arg === 'buffer') {
+        const segChar = segmentStart(cleaned, cleaned.lastIndexOf('_'));
+        contextWords.push(cleaned.slice(0, segChar), slot.shapeValue ?? '');
+      } else if (slot.shapeAction === 'get' && slot.shapeValue) {
         // Shaped get: the shape's valueGroup capture IS the arg. For
         // keyword-first shapes this equals the positional walk below; for
         // trailing-keyword shapes ("east finchley iceland location _") the
@@ -1128,13 +1138,19 @@ export class BlankFill {
     // keyword-clear path (blankClearKeywords); plain `_` in prose just
     // fills at the cursor.
     const shapeCapturedArg = slot.shapeValue !== undefined && slot.shapeValue.length > 0;
+    // A `tables` TRANSFORM over the buffer (`title case _`, `sort lines _`,
+    // no inline argument): the result REPLACES the text before the command
+    // and the command itself — the same gesture as a rewrite request, with a
+    // deterministic result; the undo journal reverts it like any fill.
+    const transformCalc = slot.blankName === 'tables' ? calculatorForKeyword(slot.keyword) : null;
+    const replacesBuffer = !isErrResult && transformCalc?.arg === 'buffer' && transformCalc.transform === true && !(transformCalc.inlineArg && shapeCapturedArg);
     const clearsCommandSpan = !isErrResult
-      && (typedAction !== undefined || hasIntegration || shapeCapturedArg || slot.decision === true);
+      && (typedAction !== undefined || hasIntegration || shapeCapturedArg || slot.decision === true || replacesBuffer);
     // Shaped slots clear from the start of the matched command SEGMENT
     // (commandStart) — for trailing-keyword shapes the captured arg precedes
     // the keyword, and clearing from keywordStart would strand the arg next
     // to an output that already embeds it.
-    const clearStart = clearsCommandSpan ? (slot.commandStart ?? slot.keywordStart) : slot.keywordStart;
+    const clearStart = replacesBuffer ? 0 : clearsCommandSpan ? (slot.commandStart ?? slot.keywordStart) : slot.keywordStart;
     const { clearEnd } = clearsCommandSpan
       ? { clearEnd: slot.index - 1 }
       : (isErrResult ? { clearEnd: undefined } : computeFillRange(blank ?? {}, slot));
