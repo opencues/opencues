@@ -66,3 +66,29 @@ describe('ContradictionLlmSource — the claims leg', () => {
     assert.strictEqual(http.calls, 1);
   });
 });
+
+describe('ContradictionLlmSource — tier 5d on the rules leg', () => {
+  const rules = { community: 'r/zorb', rules: [{ index: 1, name: 'ALT-RULE-ONE', description: 'zorb' }, { index: 2, name: 'ALT-RULE-TWO', description: 'zorb' }] };
+  const communityRules = { refresh: async () => {}, current: () => rules };
+  it('a named rule → the passive tip from the cached rule, the sentence as the span, no judge call', async () => {
+    const http = countingAdapter('[]');
+    const legs = fakeLegs({ claims: [], communityRules: { s2: 2 } });
+    const src = new ContradictionLlmSource({ ...base, httpAdapter: http, decisions: legs, communityRules });
+    const r = await src.getCues(ctx('Hello there. Buy my zorb course now.'));
+    assert.strictEqual(http.calls, 0);
+    assert.strictEqual(r.results.length, 1);
+    assert.deepStrictEqual(r.results[0].alternatives, ['Buy my zorb course now.']);
+    assert.strictEqual(r.results[0].cueTip, '⚠ may conflict with r/zorb rule 2: “ALT-RULE-TWO”');
+    const ruleCall = legs.calls.find((c) => c.leg === 'communityRules')!;
+    assert.deepStrictEqual(ruleCall.args[1], [{ index: 1, name: 'ALT-RULE-ONE', description: 'zorb' }, { index: 2, name: 'ALT-RULE-TWO', description: 'zorb' }]);
+  });
+  it('a rule number outside the posted rules is dropped; a failed leg takes the judge call', async () => {
+    const src = new ContradictionLlmSource({ ...base, httpAdapter: countingAdapter('[]'), decisions: fakeLegs({ claims: [], communityRules: { s1: 9 } }), communityRules });
+    assert.deepStrictEqual((await src.getCues(ctx('Buy my zorb course now.'))).results, []);
+    const http = countingAdapter('[{"type":"community_rule_conflict","rule":1,"quote":"zorb course"}]');
+    const src2 = new ContradictionLlmSource({ ...base, httpAdapter: http, decisions: fakeLegs({ throws: new Error('boom') }), communityRules });
+    const r = await src2.getCues(ctx('Buy my zorb course now.'));
+    assert.ok(http.calls >= 1);
+    assert.strictEqual(r.results[0]?.cueTip, '⚠ may conflict with r/zorb rule 1: “ALT-RULE-ONE”');
+  });
+});

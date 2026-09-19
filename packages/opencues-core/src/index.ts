@@ -27,6 +27,7 @@ export {
   ConfigSource,
   type ConfigSourceOptions,
 } from './sources/config-source';
+export { RoutedWordSourceGroup, WORD_GATE_THRESHOLD, WORD_GATE_MAX_WORDS, type RoutedWordSourceGroupConfig } from './sources/routed-word-source-group';
 
 export {
   BlankSource,
@@ -578,10 +579,16 @@ export {
   type SpellingVerdict,
   type ReplaceVerdict,
   type SettingsVerdict,
+  type ProviderRouteVerdict,
+  type UndoVerdict,
+  type ControlVerdict,
   type DeviceVerdict,
   type TableVerdict,
   type ClaimSentence,
   type ClaimVerdict,
+  type RuleForDecision,
+  type RuleVerdict,
+  type WordCueForDecision,
   type UnderscoreRoute,
   type UnderscoreRouting,
   type RouteContext,
