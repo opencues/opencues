@@ -1,6 +1,8 @@
 ---
 name: countries
 type: blank
+# On the machine (opencues/next) the catalogue's rows answer these keywords: the `tables` feature owns the job, and this file is the host registry's road.
+feature: tables
 blankKeywords: population of, capital of, currency of, region of, language of, languages of, area of, size of
 blankAutoPopulate: true
 blankFormat: string

@@ -5,6 +5,11 @@ tip: screen brightness
 icon: 🔆
 speak: true
 blankKeywords: brightness
+# The prose road (`make it louder _`, `weather in oslo _`): this blank's closed values, each the shape action it
+# takes, and whether a level (`number`) or a place / name (`named`) written in the draft may be captured.
+device: true
+values: up=step up; down=step down; current=get
+number: true
 blankStep: 10
 blankAutoPopulate: true
 blankSuffix: %
