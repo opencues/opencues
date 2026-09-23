@@ -366,10 +366,10 @@ function walkSource(dir, core, cb) {
   // chrome-compat filtering (include whole file if ANY section matches).
   // Every other pass-through file from chromeHostFileList() (AUDITORS.md,
   // IDENTITY.md, …) is copied verbatim — matches the live chrome-host
-  // push semantics in `integrations/chrome/host/host.cjs:passThroughList`.
+  // push semantics in `integrations/chrome/host/host-bundle.cjs:passThroughList`.
   // Adding a new feature-registry-pushed file requires zero edits here.
   // Mirror the chrome-host's two-pass file logic exactly (see
-  // `integrations/chrome/host/host.cjs:115-150`):
+  // `integrations/chrome/host/host-bundle.cjs:buildBundle`):
   //   - FILTERED files (CUES.md, legacy BLANKS.md) — parsed per-section,
   //     included when ANY source/blank is chrome-compatible.
   //   - PASS-THROUGH files (registry-pushed, minus filtered + skipped) —
@@ -446,6 +446,29 @@ function walkSource(dir, core, cb) {
           });
         }
       } catch { /* skip on parse error */ }
+    }
+  }
+
+  // 1.0 (mirrors `integrations/chrome/host/host-bundle.cjs`): identity.yaml
+  // verbatim (settings.yaml is runtime-owned, skipped as OPENCUES.md is),
+  // every row file under rows/ at any depth (a row scopes itself by
+  // `hosts:` in the loader; scripts and data stay on disk), and the
+  // tables / transforms a dir declares before 1.0.
+  const identity = path.join(dir, 'identity.yaml');
+  if (fs.existsSync(identity)) cb({ absPath: identity, relPath: 'identity.yaml', compat: { hosts: ['chrome'] } });
+  const rows = path.join(dir, 'rows');
+  if (fs.existsSync(rows) && fs.statSync(rows).isDirectory()) {
+    walkFolder(rows, (file) => {
+      if (!/\.(ya?ml|json)$/i.test(file)) return;
+      cb({ absPath: file, relPath: path.join('rows', path.relative(rows, file)), compat: { hosts: ['chrome'] } });
+    });
+  }
+  for (const [subdir, filename] of [['tables', 'TABLE.md'], ['transforms', 'TRANSFORM.md']]) {
+    const sub = path.join(dir, subdir);
+    if (!fs.existsSync(sub) || !fs.statSync(sub).isDirectory()) continue;
+    for (const entry of fs.readdirSync(sub, { withFileTypes: true })) {
+      const p = path.join(sub, entry.name, filename);
+      if (entry.isDirectory() && fs.existsSync(p)) cb({ absPath: p, relPath: path.join(subdir, entry.name, filename), compat: { hosts: ['chrome'] } });
     }
   }
 

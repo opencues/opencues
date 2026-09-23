@@ -142,3 +142,23 @@ test('allow-lists are tight (refuses everything outside)', () => {
     ['CUES.md', 'IDENTITY.md', 'OPENCUES.md'],
   );
 });
+
+// ── the 1.0 files: writable at the cues root only ─────────────────
+
+test('isWritableTarget: settings.yaml / identity.yaml accepted at the cues root', () => {
+  assert.strictEqual(isWritableTarget('/home/x/.cues/settings.yaml', '/home/x/.cues'), true);
+  assert.strictEqual(isWritableTarget('/home/x/.cues/identity.yaml', '/home/x/.cues/'), true);
+});
+
+test('isWritableTarget: settings.yaml refused below the root (a .yaml under rows/ is read as a row)', () => {
+  assert.strictEqual(isWritableTarget('/home/x/.cues/rows/settings.yaml', '/home/x/.cues'), false);
+  assert.strictEqual(isWritableTarget('/home/x/.cues/rows/zorb/identity.yaml', '/home/x/.cues'), false);
+});
+
+test('isWritableTarget: settings.yaml refused when the caller names no root', () => {
+  assert.strictEqual(isWritableTarget('/home/x/.cues/settings.yaml'), false);
+});
+
+test('isWritableTarget: a row file is never writable', () => {
+  assert.strictEqual(isWritableTarget('/home/x/.cues/rows/zorb.yaml', '/home/x/.cues'), false);
+});

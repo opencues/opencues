@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — the chrome host pushes the 1.0 configuration files (`@opencues/chrome` 0.2.206)
+- The native-messaging host's bundle now carries `settings.yaml`, `identity.yaml` and every row file under `rows/` (`.yaml` / `.yml` / `.json`, any depth), and the `tables/<name>/TABLE.md` and `transforms/<name>/TRANSFORM.md` files a dir declares; a command's script and its data stay on disk, run by the host's exec as before. The builder moved to `host/host-bundle.cjs` with a hermetic test.
+- `settings.yaml` and `identity.yaml` are writable through the host's `write-file` relay at the cues root ONLY: a `.yaml` under `rows/` is read as a row, so the basename alone would have let a page write a command into the dir.
+
 ### Added — calculator families (c): text metrics & transforms, encodings & generators; buffer-argument and transform fills; the `reading-wpm` tunable (`@opencues/core` 0.68.0, `@opencues/runtime` 0.44.0)
 - **Text metrics & transforms** (33): over the text before the command or an inline argument — `word count`, `character count`, `sentence count`, `line count`, `reading time` (the new **`reading-wpm`** MENU_TUNABLE, default 238), `speaking time`, `longest word`, `most common word`, `count of <word>`; `reverse`, `reverse words`, `slug`, title / sentence / upper / lower / snake / camel / pascal / kebab / constant case, `strip whitespace`, `dedupe lines`, `sort lines` (asc / desc / numeric), `number the lines`, `bullet the lines`, `wrap at N`, `truncate to N` (chars or words), `initials of`, `acronym for`, `repeat N times`, `pad to N with c`, `lorem N words`.
 - **Encodings, identifiers, network, colour & generators** (25): base64 / url / html / hex / binary both ways, `ascii of`, `chmod 755` ↔ rwx, ip ↔ int, `cidr`, `is valid email|ip|uuid|url|iban|isbn|mac` (format or checksum), WCAG `color contrast`, `hex to hsl`, `lighten` / `darken`, JSON pretty / minify / validate, `uuid` (v4 / v7), `random`, `random pick`, `coin flip`, `roll 2d6`. **Not shipped, by ruling:** hashes, password / passphrase generators, JWT decoding.
