@@ -7,8 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added — the chrome host pushes the 1.0 configuration files (`@opencues/chrome` 0.2.206)
-- The native-messaging host's bundle now carries `settings.yaml`, `identity.yaml` and every row file under `rows/` (`.yaml` / `.yml` / `.json`, any depth), and the `tables/<name>/TABLE.md` and `transforms/<name>/TRANSFORM.md` files a dir declares; a command's script and its data stay on disk, run by the host's exec as before. The builder moved to `host/host-bundle.cjs` with a hermetic test.
+### Added — the chrome host pushes the 1.0 configuration files (`@opencues/chrome` 0.2.206, `opencues` 0.7.19)
+- The native-messaging host's bundle now carries `settings.yaml`, `identity.yaml` and every row file under `rows/` (`.yaml` / `.yml` / `.json`, any depth), and the `tables/<name>/TABLE.md` and `transforms/<name>/TRANSFORM.md` files a dir declares; a command's script and its data stay on disk, run by the host's exec as before. The builder moved to `host/host-bundle.cjs` with a hermetic test. `opencues sync chrome` (the bake-time bundle) mirrors the same paths, `settings.yaml` skipped as `OPENCUES.md` is.
 - `settings.yaml` and `identity.yaml` are writable through the host's `write-file` relay at the cues root ONLY: a `.yaml` under `rows/` is read as a row, so the basename alone would have let a page write a command into the dir.
 
 ### Added — calculator families (c): text metrics & transforms, encodings & generators; buffer-argument and transform fills; the `reading-wpm` tunable (`@opencues/core` 0.68.0, `@opencues/runtime` 0.44.0)
