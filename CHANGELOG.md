@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — a page cannot press `_` for the person (`@opencues/chrome` 0.2.207)
+- The content script's key listener now acts only on trusted keydowns. A `_` on a note is consumed at keydown, before any input event the trust gate checks, so a page script dispatching a synthetic `_` with the selection on a note could run a waiting write, apply a note, or dismiss one for good. The extension's own synthetic keys (the Ctrl+A an editor fallback sends) are for the page's editor and were never meant for this listener.
+
 ### Added — the chrome host pushes the 1.0 configuration files (`@opencues/chrome` 0.2.206, `opencues` 0.7.19)
 - The native-messaging host's bundle now carries `settings.yaml`, `identity.yaml` and every row file under `rows/` (`.yaml` / `.yml` / `.json`, any depth), and the `tables/<name>/TABLE.md` and `transforms/<name>/TRANSFORM.md` files a dir declares; a command's script and its data stay on disk, run by the host's exec as before. The builder moved to `host/host-bundle.cjs` with a hermetic test. `opencues sync chrome` (the bake-time bundle) mirrors the same paths, `settings.yaml` skipped as `OPENCUES.md` is.
 - `settings.yaml` and `identity.yaml` are writable through the host's `write-file` relay at the cues root ONLY: a `.yaml` under `rows/` is read as a row, so the basename alone would have let a page write a command into the dir.
