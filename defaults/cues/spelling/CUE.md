@@ -1,6 +1,8 @@
 ---
 name: spelling
 scope: words
+# On the machine (opencues/next) the spelling passenger owns this job: this file is the host registry's road, not a word cue there.
+feature: spelling
 # Lowest priority among shipped sources so any other cue claims its
 # words first. RoutedWordSourceGroup walks priority-desc; spelling at
 # 10 only claims words no other source matched. `match: .*` is required

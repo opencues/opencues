@@ -429,7 +429,14 @@ export class BlankFill {
       // implicit arm: PR #52's cursor-split case doesn't add a new `_`
       // (count stays the same), so this is structurally distinct.
       // Mirror of the resolver-side fallback in resolver.ts:onTextChange.
-      const prevU = (this._lastInputText.match(/_/g) || []).length;
+      // Baseline = the adapter's `e.previousText` (the buffer just before
+      // THIS edit, whatever wrote it), NOT `_lastInputText` (the last USER
+      // text). A runtime write between two user edits (a fill, or a `_`
+      // revert that puts the request's `_` back) leaves `_lastInputText`
+      // stale, and the stale count read the restored `_` as freshly typed:
+      // the next keystroke re-fired the blank the revert had just undone.
+      // Same baseline the resolver's gate uses.
+      const prevU = (e.previousText.match(/_/g) || []).length;
       const newU = (e.text.match(/_/g) || []).length;
       const freshUnderscoreInserted = newU > prevU;
       if (filteredSlots.length > 0 && !this.explicitUnderscoreRecent() && !freshUnderscoreInserted) {
@@ -1223,11 +1230,41 @@ export class BlankFill {
       const startWord = newWords.find(w => w.start === fillStart);
       const kwStartChar = newWords[clearStart]?.start ?? fillStart;
       const wantsClearOnEdit = blank?.blankClearOnEdit === true;
+      // A LANDED static answer ("nato for zorb _" → the answer) is a two-stop
+      // toggle [answer, the request], the request LAST like a fluid/transform
+      // answer: the caret on it shows `was: <request>` and `_` puts the request
+      // back (Cycling's note path; a runtime write, so neither BlankFill nor the
+      // resolver fires on the restored `_`). Only a plain single-answer fill: a
+      // list, a dismissible confirmation, a live knob (blankStep / suffix /
+      // stepValues), a clear-on-edit pair, a typed SET/STEP (its side effect is
+      // not text a revert could take back) and `[err]` feedback keep their own
+      // behaviour.
+      const landedRequest = (() => {
+        if (isErrResult || isDismissible || lines.length !== 1 || typedAction !== undefined || wantsClearOnEdit) return null;
+        const b = blank as { blankStep?: number; blankSuffix?: string; stepValues?: unknown[] } | undefined;
+        if (b?.blankStep !== undefined || b?.blankSuffix || (b?.stepValues?.length ?? 0) > 0) return null;
+        if (!this.dynDefs || !startWord) return null;
+        // The request is exactly the text the fill replaced: the buffer minus
+        // the unchanged prefix and suffix around the answer.
+        const prefix = newText.slice(0, fillStart);
+        const suffix = newText.slice(newCursor);
+        if (prefix.length + suffix.length > cleaned.length) return null;
+        if (!cleaned.startsWith(prefix) || !cleaned.endsWith(suffix)) return null;
+        const request = cleaned.slice(prefix.length, cleaned.length - suffix.length);
+        if (!request.trim() || request === primaryFill) return null;
+        // A request that starts or ends in whitespace would not splice back on
+        // the word-derived range the toggle cycles on.
+        if (request !== request.trim()) return null;
+        return request;
+      })();
       if (this.spanFillState) {
         const fillWordCount = primaryFill.split(/\s+/).filter(Boolean).length;
         const altsForSpan = isDismissible ? [...lines, '_'] : lines;
         const wantsSpan = fillWordCount > 1 || altsForSpan.length > 1 || wantsClearOnEdit;
-        if (startWord && wantsSpan) {
+        // A landed answer is carried by its toggle def below (which dims it
+        // and owns the note); a spanFill over the same words would be a second,
+        // single-stop owner of the span.
+        if (startWord && wantsSpan && landedRequest === null) {
           this.spanFillState.set({
             index: startWord.index,
             alternatives: altsForSpan,
@@ -1252,6 +1289,17 @@ export class BlankFill {
           spanStart: startWord.start,
           spanEnd: startWord.end,
           blankName: slot.blankName,
+        });
+      }
+      if (this.dynDefs && startWord && landedRequest !== null) {
+        this.dynDefs.set(startWord.index, {
+          originalWord: landedRequest,
+          alternatives: [primaryFill, landedRequest],
+          currentIndex: 0,
+          spanStart: fillStart,
+          spanEnd: newCursor,
+          blankName: slot.blankName,
+          landed: true,
         });
       }
       this.commitText(newText, newCursor);

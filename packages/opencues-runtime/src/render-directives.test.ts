@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyDirectives, inlineNoteBoxColumn, truncateToCells, wrapToCellLines } from './render-directives';
+import { applyDirectives, inlineNoteBoxColumn, inlineNoteLine, inlineNoteParts, truncateToCells, wrapToCellLines } from './render-directives';
 
 const INV_ON = '\x1b[97m';
 const INV_OFF = '\x1b[39m';
@@ -340,5 +340,16 @@ describe('truncateToCells', () => {
   });
   it('degenerate budget → bare ellipsis', () => {
     expect(truncateToCells('abc', 1)).toBe('…');
+  });
+});
+
+describe('inlineNoteLine / inlineNoteParts: a host draws the whole note, hint included', () => {
+  it('the hint follows the note after three spaces; no hint, no trailing space', () => {
+    expect(inlineNoteLine({ text: 'was: zorb for quxa _', hint: '(underscore to revert)' })).toBe('↳ was: zorb for quxa _   (underscore to revert)');
+    expect(inlineNoteLine({ text: 'ALT-ONE' })).toBe('↳ ALT-ONE');
+  });
+  it('the parts split body and hint for a host that styles the hint', () => {
+    expect(inlineNoteParts({ text: 'ALT-ONE', hint: '(underscore to apply)' })).toEqual({ body: '↳ ALT-ONE', hint: '(underscore to apply)' });
+    expect(inlineNoteParts({ text: 'ALT-ONE' }).hint).toBe('');
   });
 });

@@ -21,7 +21,7 @@ import type { KeyEvent, LogLevel, RenderDirectives } from "@opencues/runtime/dis
 import { buildOpenTuiModifiers } from "@opencues/runtime/dist/src/modules/mac-keyboard"
 import { createSourceReclassifier } from "@opencues/runtime/dist/src/boot-common"
 import { codeUnitsToCells } from "@opencues/runtime/dist/src/util/cell-width"
-import { inlineNoteDisplayText, inlineNoteBoxColumn } from "@opencues/runtime/dist/src/render-directives"
+import { inlineNoteLine, inlineNoteBoxColumn } from "@opencues/runtime/dist/src/render-directives"
 import { createBlankInvoke, createDefaultBlanksRegistry, type Blank } from "@opencues/runtime/dist/src/blanks"
 import { validateScriptPath, appendAuditLog } from "@opencues/runtime/dist/src/security/spawn-sandbox"
 import { wrapWithBwrap } from "@opencues/runtime/dist/src/security/sandbox-runner"
@@ -69,7 +69,7 @@ export { opencuesKata }
 // render, so the patched prompt floats a box at { row, col } over the input.
 // Cursor-gated by the runtime (only emitted while the caret is in the span);
 // row = the caret's viewport-relative visual row + 1, col = the span column
-// (shared inlineNoteBoxColumn). Text via inlineNoteDisplayText — the same
+// (shared inlineNoteBoxColumn). Text via inlineNoteLine — the same
 // `↳ <note>` every host paints. null when no note-bearing span is active.
 const [opencuesInlineNote, setOpencuesInlineNote] = createSignal<{
   text: string
@@ -866,7 +866,7 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
       const vc: any = (textarea as any).visualCursor
       const visualRow = vc && typeof vc.visualRow === "number" ? vc.visualRow : 0
       noteAnchor = {
-        text: inlineNoteDisplayText(directives.inlineNote.text),
+        text: inlineNoteLine(directives.inlineNote),
         row: visualRow + 1,
         col: inlineNoteBoxColumn(text, directives.inlineNote.spanStart),
       }

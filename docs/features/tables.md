@@ -33,12 +33,11 @@ blanks; anything opinion-shaped stays generative.
 
 ## The seven families
 
-All seven families are shipped (188 calculators + the eight tables + six
+All seven families are shipped (181 calculators + the eight tables + six
 country facts); each follows the same three gates: a closed id, grammar-captured
-operands, the table or parser as the last gate. Reference tables (NATO
-alphabet, morse, country codes, cooking measures, sizes) are the next wave.
+operands, the table or parser as the last gate.
 
-### 1. Reference tables ✅ (the original eight)
+### 1. Reference tables ✅ (the original eight + 19 more)
 
 | you type | you get |
 |---|---|
@@ -71,6 +70,54 @@ acidic is vinegar _`.
 
 `convert` and `calc` only claim the `_` when a number follows, so `convert this
 to markdown _` and `calculate the risk _` stay rewrite requests.
+
+**The second wave** (19 pure lookups, same gates): alphabets, country facts you
+look up before travelling, the keys and signals you look up while debugging,
+kitchen and size conversions, and the calendar signs.
+
+| you type | you get |
+|---|---|
+| `nato for wilfred _` | `Whiskey India Lima Foxtrot Romeo Echo Delta` |
+| `nato for a1 b2 _` | `Alfa One · Bravo Two` |
+| `morse for sos _` | `... --- ...` |
+| `morse for .... .. / - .... . .-. . _` | `HI THERE` (dots and dashes decode) |
+| `greek letter sigma _` | `σ Σ (sigma, 18th of 24; latin s)` |
+| `greek alphabet _` | `αΑ βΒ γΓ …` (all 24) |
+| `country code for germany _` | `DE · DEU · +49 · .de (EUR)` |
+| `dialling code for brazil _` | `+55 (Brazil, BR)` |
+| `driving side in japan _` | `Japan drives on the left` |
+| `plug type in australia _` | `Australia: type I (230 V, 50 Hz)` |
+| `tld for germany _` | `.de (Germany)` |
+| `keycode for enter _` | `Enter: keyCode 13 · key "Enter" · code "Enter"` |
+| `keycode for f5 _` | `F5: keyCode 116 · key "F5" · code "F5"` |
+| `cron for every monday at 9 _` | `0 9 * * 1 (at 09:00 on Monday)` |
+| `cron for weekdays at 8am _` | `0 8 * * 1-5 (at 08:00 on Monday–Friday)` |
+| `cron 0 9 * * 1-5 _` | `0 9 * * 1-5: at 09:00 on Monday–Friday` (an expression explains itself) |
+| `exit code 137 _` | `137: killed (SIGKILL, 128+9) — often the OOM killer or \`kill -9\`` |
+| `signal 15 _` | `signal 15: SIGTERM terminate, the polite kill (exit code 143)` |
+| `1 cup of flour in grams _` | `120 g (US cup, 240 ml)` |
+| `half a cup of butter in oz _` | `114 g (4 oz) (US cup, 120 ml)` |
+| `350f fan oven _` | `350 °F = 180 °C conventional, 160 °C fan, 350 °F, gas mark 4` |
+| `gas mark 6 _` | `gas mark 6 = 200 °C conventional, 180 °C fan, 400 °F, gas mark 6` |
+| `a4 in inches _` | `A4: 210 × 297 mm = 8.27 × 11.69 in (2480 × 3508 px at 300 dpi)` |
+| `uk shoe size 9 in eu _` | `UK 9 (men) = US 10 = EU 43` |
+| `us women shoe size 8 _` | `US 8 (women) = UK 6 = EU 39` |
+| `king size bed in cm _` | `UK king 150 × 200 cm (5′ × 6′6″) · US king 193 × 203 cm (76 × 80 in) · EU king 160 × 200 cm` |
+| `zodiac for 3 march _` | `Pisces ♓ (19 Feb – 20 Mar)` |
+| `chinese zodiac for 1990 _` | `1990: Metal Horse (by the lunar new year; …)` |
+| `dog years for 7 _` | `7 dog years ≈ 49 human years (AVMA: 15 for the first, 9 for the second, 5 each after)` |
+| `cat years for 3 _` | `3 cat years ≈ 28 human years …` |
+
+Plain phrasings that reach the same rows (decision route): `how do i say my
+name over the radio _`, `which side of the road do they drive on in japan _`,
+`what adapter do i need for australia _`, `what does exit code 137 mean _`,
+`what does sigsegv mean _`, `crontab for every 5 minutes _`, `how hot is gas
+mark 6 in a fan oven _`, `what's my star sign if i was born on 25 december _`.
+
+Country rows cover ~75 countries by name or common alias (`the uk`, `usa`,
+`holland`); a country outside the table is a miss, never a guess. Cup
+conversions use the US cup (240 ml) and per-ingredient densities (flour, sugar,
+butter, rice, oats, …); a dot-and-dash morse argument decodes, letters encode.
 
 ### 2. Dates & durations ✅ (20 calculators)
 
@@ -376,7 +423,7 @@ hashes (md5, sha*), JWT decoding — attack surface, however convenient.
 | | keyword form | plain phrasing |
 |---|---|---|
 | LLM calls | 0 | 0 on a hit (the `_` route request you already pay for names the calculator) |
-| tokens | 0 | the table question rides the route request: ≈ +9k prompt tokens at 180 ids when `table-lookups-mode` is on |
+| tokens | 0 | the table question rides the route request: the decision package shortlists the ids that overlap the words you typed, ≈ +4k prompt tokens when `table-lookups-mode` is on (a draft with no English overlap gets the full list, so a pick in another language still lands) |
 | latency | a shape match | the route request (~280 ms) |
 | off | the `tables` blank is not registered | the question is left off the request |
 
@@ -388,7 +435,7 @@ permissions, nothing leaves the machine.
 ## Where the pieces live
 
 - `packages/opencues-runtime/src/blanks/tables.ts` — the blank + the eight tables (`tables-data.ts`, generated by `scripts/gen-tables-data.mjs`).
-- `packages/opencues-runtime/src/blanks/calc/` — the calculator registry (`registry.ts`), the injected context (`env.ts`: clock, zone, settings, randomness), one file per family. Every calculator carries one worked example; the registry test runs all of them on a fixed clock.
-- `defaults/blanks/tables/BLANK.md` — the shapes (84) and keywords (210, longest-first). `blank-md-drift.test.ts` types every example through BlankFill against this file.
+- `packages/opencues-runtime/src/blanks/calc/` — the calculator registry (`registry.ts`), the injected context (`env.ts`: clock, zone, settings, randomness), one file per family (`reference.ts` + `reference-data.ts` hold the second-wave lookup tables). Every calculator carries one worked example; the registry test runs all of them on a fixed clock.
+- `defaults/blanks/tables/BLANK.md` — the shapes (195) and keywords (~740, longest-first). `blank-md-drift.test.ts` types every example through BlankFill against this file.
 - `packages/opencues-core/src/decisions/data-policy.ts` — what the decision leg may name and the grammar that captures each argument (security-audit row #32). `calc-policy-drift.test.ts` pins it to the registry id for id.
 - `docs/architecture/decisions.md` § Table — the leg, the probe, and why a wrong argument is structurally a miss.
