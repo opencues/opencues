@@ -89,6 +89,18 @@ Key invariants:
   kept, after-state overwritten — so a volume burst reverts to its
   origin with one undo. Any record (coalesced or not) clears the redo
   stack.
+- **Only real changes.** `record()` drops an entry that changed
+  nothing (`isNoopEntry`: a scalar or OS value written over itself, a
+  splice whose before equals its after) and drops a whole transaction
+  whose side effects were all no-ops (`isNoopTransaction`), buffer
+  confirmation included: `voice mode on _` while voice-mode is already
+  active changes no setting, so it is not an undo step. A coalesced
+  burst that nets back to its origin is popped the same way. Without
+  this, `undo _` "reverted" active to active, reported it as applied,
+  and never reached the previous real change (live OpenCode,
+  2026-09-26). A no-op record also leaves the redo stack alone. A
+  scalar ABSENT before the write is never treated as a no-op: its
+  effective value is not assumed.
 - **Reentrancy.** The applier runs inside `journal.runApply()`;
   `record()` no-ops for the duration, so an undo's own writes are never
   journaled (redo is served by the two stacks).
@@ -165,7 +177,8 @@ host history entry). Nothing-applied → an inline
 
 | Surface | Test |
 |---|---|
-| Journal semantics (coalescing, epochs, two-phase, reentrancy, cap) | `src/state/undo-journal.test.ts` |
+| Journal semantics (coalescing, epochs, two-phase, reentrancy, cap, no-op drop) | `src/state/undo-journal.test.ts` |
+| Settings journey: routes, a no-op write, undo x1 / x2, redo, empty-journal note | `src/modules/settings-undo.scenarios.test.ts` |
 | Classifier parse/validate/gating + CJK gate fix | `packages/opencues-core/src/sources/config-intent-source.test.ts` |
 | Source construction under flag combinations | `packages/opencues-core/src/sources/build-sources.test.ts` |
 | Runtime journeys (relocation, refusal honesty, burst revert, drift skips, race bail, redo) | `src/modules/undo.scenarios.test.ts` |

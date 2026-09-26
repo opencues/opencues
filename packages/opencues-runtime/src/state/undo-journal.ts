@@ -200,7 +200,15 @@ export class UndoJournal {
 
   record(tx: { label: string; coalesceKey?: string; entries: UndoEntry[] }): void {
     if (this._applying) return;
-    if (tx.entries.length === 0) return;
+    // Only REAL changes are journaled. A scalar/OS write whose value did
+    // not change (`voice mode on _` while voice-mode is already active)
+    // is dropped; a transaction whose side effects were ALL no-ops is
+    // dropped whole, buffer confirmation included, because the splice
+    // only confirms a change that never happened. Journaling it made
+    // `undo _` "revert" active -> active, count it as applied, and never
+    // reach the previous real change (live OpenCode, 2026-09-26).
+    if (isNoopTransaction(tx.entries)) return;
+    tx = { ...tx, entries: tx.entries.filter(e => !isNoopEntry(e)) };
 
     // Any fresh change invalidates the redo stack (standard editor
     // semantics — a new timeline branch).
@@ -224,6 +232,10 @@ export class UndoJournal {
           top.entries.push(entry);
         }
       }
+      // A burst that came back to its origin (inactive -> active ->
+      // inactive) changed nothing: drop it rather than leave a no-op
+      // transaction that `undo _` would count as a real change.
+      if (isNoopTransaction(top.entries)) this._undo.pop();
       return;
     }
 
@@ -415,6 +427,43 @@ export function fillSplice(before: string, after: string, epoch: number): UndoEn
     afterSlice: after.slice(aStart, aEnd),           // redo re-applies the value
     bufferEpoch: epoch,
   };
+}
+
+/**
+ * A transaction that changed nothing real: empty, every entry a no-op,
+ * or side effects that were ALL no-ops (its buffer entries then only
+ * confirm a change that never happened). Never journaled; the applier
+ * also passes over one without counting it toward N.
+ */
+export function isNoopTransaction(entries: readonly UndoEntry[]): boolean {
+  const live = entries.filter(e => !isNoopEntry(e));
+  if (live.length === 0) return true;
+  return entries.some(isSideEffect) && !live.some(isSideEffect);
+}
+
+/** Entries that change state outside the buffer. */
+function isSideEffect(e: UndoEntry): boolean {
+  return e.kind === 'scalar-write' || e.kind === 'os-set' || e.kind === 'file-write';
+}
+
+/**
+ * An entry that changed nothing. Strict: a scalar that was ABSENT
+ * before the write is never a no-op, because the effective value of an
+ * absent line is not always the registry's first value, and dropping a
+ * real change is worse than keeping a redundant one.
+ */
+export function isNoopEntry(e: UndoEntry): boolean {
+  switch (e.kind) {
+    case 'scalar-write':
+      return e.prevValue !== undefined && e.prevValue === e.newValue;
+    case 'os-set':
+      return e.prevValue === e.newValue
+        || (e.prevValue.trim() !== '' && Number(e.prevValue) === Number(e.newValue));
+    case 'buffer-splice':
+      return e.beforeSlice === e.afterSlice;
+    default:
+      return false;
+  }
 }
 
 /** Two entries describe the same underlying target (for coalescing). */

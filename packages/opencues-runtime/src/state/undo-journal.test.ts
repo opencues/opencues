@@ -25,6 +25,49 @@ function osEntry(blank: string, prev: string, next: string): UndoEntry {
   return { kind: 'os-set', blankName: blank, prevValue: prev, newValue: next };
 }
 
+describe('UndoJournal: only REAL changes are journaled', () => {
+  it('drops a scalar write whose value did not change, buffer confirmation included', () => {
+    const j = new UndoJournal();
+    j.record({ label: 'settings change', entries: [scalarEntry('voice-mode', 'active', 'active'), bufferEntry('voice mode on _', 'voice-mode active')] });
+    expect(j.undoDepth).toBe(0);
+  });
+
+  it('a write over an ABSENT scalar is kept (its effective default is not assumed)', () => {
+    const j = new UndoJournal();
+    j.record({ label: 'settings change', entries: [scalarEntry('voice-mode', undefined, 'inactive')] });
+    expect(j.undoDepth).toBe(1);
+  });
+
+  it('an OS set to the value it already had is a no-op', () => {
+    const j = new UndoJournal();
+    j.record({ label: 'volume step', entries: [osEntry('volume', '40', '40'), bufferEntry('40%', '40%')] });
+    expect(j.undoDepth).toBe(0);
+  });
+
+  it('keeps the real half of a mixed transaction and drops the no-op entry', () => {
+    const j = new UndoJournal();
+    j.record({ label: 'settings change', entries: [scalarEntry('cues-llm-provider', 'zephyr', 'zephyr'), scalarEntry('cues-llm-model', 'ALT-ONE', 'ALT-TWO')] });
+    expect(j.undoDepth).toBe(1);
+    expect(j.peekUndo(1)[0]!.entries).toEqual([scalarEntry('cues-llm-model', 'ALT-ONE', 'ALT-TWO')]);
+  });
+
+  it('a no-op record does not clear the redo stack', () => {
+    const j = new UndoJournal();
+    j.record({ label: 'a', entries: [scalarEntry('voice-mode', 'inactive', 'active')] });
+    j.confirmUndo(j.peekUndo(1)[0]!);
+    expect(j.redoDepth).toBe(1);
+    j.record({ label: 'b', entries: [scalarEntry('voice-mode', 'inactive', 'inactive')] });
+    expect(j.redoDepth).toBe(1);
+  });
+
+  it('a coalesced burst that returns to its origin is dropped', () => {
+    const j = new UndoJournal();
+    j.record({ label: 'settings menu', coalesceKey: 'k', entries: [scalarEntry('voice-mode', 'inactive', 'active')] });
+    j.record({ label: 'settings menu', coalesceKey: 'k', entries: [scalarEntry('voice-mode', 'active', 'inactive')] });
+    expect(j.undoDepth).toBe(0);
+  });
+});
+
 describe('UndoJournal — recording basics', () => {
   it('records transactions and reports depth', () => {
     const j = new UndoJournal();
@@ -164,12 +207,13 @@ describe('UndoJournal — coalescing', () => {
 
   it('scalar entries coalesce per-key within the transaction (satellite value cycling)', () => {
     const j = new UndoJournal();
-    j.record({ label: 'cycle', coalesceKey: 'sel-sat:value:3:voice-mode', entries: [scalarEntry('voice-mode', 'inactive', 'active')] });
-    j.record({ label: 'cycle', coalesceKey: 'sel-sat:value:3:voice-mode', entries: [scalarEntry('voice-mode', 'active', 'inactive')] });
+    const key = 'sel-sat:value:3:cues-llm-provider';
+    j.record({ label: 'cycle', coalesceKey: key, entries: [scalarEntry('cues-llm-provider', 'zephyr', 'ALT-ONE')] });
+    j.record({ label: 'cycle', coalesceKey: key, entries: [scalarEntry('cues-llm-provider', 'ALT-ONE', 'ALT-TWO')] });
     const [tx] = j.peekUndo(1);
     expect(j.undoDepth).toBe(1);
     expect(tx!.entries).toHaveLength(1);
-    expect(tx!.entries[0]).toMatchObject({ key: 'voice-mode', prevValue: 'inactive', newValue: 'inactive' });
+    expect(tx!.entries[0]).toMatchObject({ key: 'cues-llm-provider', prevValue: 'zephyr', newValue: 'ALT-TWO' });
   });
 });
 
