@@ -480,6 +480,41 @@ describe('Resolver — source-build + resolve failure resilience', () => {
   });
 });
 
+describe('Resolver — a runtime write cancels the pause scheduled for the draft before it', () => {
+  // Regression (Sep 2026, OpenCode): `zorb for quxa _` got its answer from a blank, then the pause
+  // already scheduled for `zorb for quxa _` fired 500ms later on text that was gone. It painted over the
+  // answer (no selection, no revert note) and ran an ask about the old draft.
+
+  it('type, a blank answers, the old pause never fires; typing on resolves the new draft', async () => {
+    const { adapter, resolver } = setupResolver([]);
+    const spy = vi.spyOn(resolver, 'resolveAndApply');
+    resolver.subscribe();
+
+    adapter.pushText('zorb for quxa');     // the person pauses: a resolve is scheduled for this draft
+    adapter.setText('ZORB-ANSWER');        // the runtime writes the answer before the pause fires
+    await new Promise(r => setTimeout(r, 50));
+    expect(spy).not.toHaveBeenCalled();
+    expect(adapter.logs.some(l => l.msg.includes('pending pause dropped'))).toBe(true);
+
+    adapter.pushText('ZORB-ANSWER and more');  // typing on schedules as usual
+    await new Promise(r => setTimeout(r, 50));
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]![0]).toBe('ZORB-ANSWER and more');
+  });
+
+  it('a runtime write that leaves the draft as it was keeps the pause', async () => {
+    const { adapter, resolver } = setupResolver([]);
+    const spy = vi.spyOn(resolver, 'resolveAndApply');
+    resolver.subscribe();
+
+    adapter.pushText('zorb for quxa');
+    adapter.setText('zorb for quxa');      // an echo of the same text
+    await new Promise(r => setTimeout(r, 50));
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]![0]).toBe('zorb for quxa');
+  });
+});
+
 describe('Resolver — same-text dedupe (regression: double LLM call on `_` trigger)', () => {
   // Regression for the May 2026 bug where OpenCode's Solid prompt
   // re-emitted onContentChange for the same buffer content multiple
