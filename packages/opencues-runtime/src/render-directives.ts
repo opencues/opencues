@@ -102,8 +102,18 @@ function padTerminalWideEmoji(text: string): string {
  * instead of re-deriving it and drifting. Terminal-side ANSI/indent is layered
  * on separately in applyDirectives; this is the plain text only.
  */
-export function inlineNoteDisplayText(cueTip: string): string {
-  return INLINE_NOTE_CONNECTOR + ' ' + formatInlineNoteText(cueTip);
+/**
+ * A note as a host draws it: the connector and the note, then its hint (what the next `_` does). A host
+ * passes the WHOLE note, never its text alone, so the hint the runtime derived cannot be left off: that
+ * is how OpenCode, the shell and Gemini CLI once drew every note without one.
+ */
+export function inlineNoteParts(note: { text: string; hint?: string }): { body: string; hint: string } {
+  return { body: INLINE_NOTE_CONNECTOR + ' ' + formatInlineNoteText(note.text), hint: note.hint ?? '' };
+}
+/** The note as one line, for a host that draws it in one style. */
+export function inlineNoteLine(note: { text: string; hint?: string }): string {
+  const { body, hint } = inlineNoteParts(note);
+  return hint ? `${body}   ${hint}` : body;
 }
 
 /**

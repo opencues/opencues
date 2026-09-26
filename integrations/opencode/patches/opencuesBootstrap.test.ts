@@ -27,7 +27,7 @@ vi.mock('@opencues/runtime/dist/src/boot-common', () => ({
 }));
 vi.mock('@opencues/runtime/dist/src/util/cell-width', () => ({ codeUnitsToCells: (_t: string, o: number) => o }));
 vi.mock('@opencues/runtime/dist/src/render-directives', () => ({
-  inlineNoteDisplayText: (t: string) => t,
+  inlineNoteLine: (n: { text: string; hint?: string }) => (n.hint ? `${n.text}   ${n.hint}` : n.text),
   inlineNoteBoxColumn: vi.fn(() => 0),
 }));
 vi.mock('@opencues/runtime/dist/src/blanks', () => ({

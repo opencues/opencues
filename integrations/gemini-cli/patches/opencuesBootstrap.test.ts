@@ -30,7 +30,7 @@ vi.mock('@opencues/runtime/dist/adapters/gemini/v0.41/boot.js', () => ({
   boot: vi.fn(),
 }));
 vi.mock('@opencues/runtime/dist/src/render-directives.js', () => ({
-  inlineNoteDisplayText: (t: string) => t,
+  inlineNoteLine: (n: { text: string; hint?: string }) => (n.hint ? `${n.text}   ${n.hint}` : n.text),
   inlineNoteBoxColumn: () => 0,
 }));
 vi.mock('@opencues/runtime/dist/src/boot-common.js', () => ({

@@ -19,7 +19,7 @@ import { useEffect, useState } from 'react';
 // as .js, so the extension here is correct AND mandatory under
 // nodenext module resolution.
 import { boot, type BootResult } from '@opencues/runtime/dist/adapters/gemini/v0.41/boot.js';
-import { inlineNoteDisplayText, inlineNoteBoxColumn } from '@opencues/runtime/dist/src/render-directives.js';
+import { inlineNoteLine, inlineNoteBoxColumn } from '@opencues/runtime/dist/src/render-directives.js';
 import type { KeyEvent, LogLevel } from '@opencues/runtime/dist/src/adapter.js';
 import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common.js';
 import {
@@ -699,7 +699,7 @@ export function getOpencuesInlineNote(
   const note = bootResult.getInlineNote(fullText, cuCursor);
   if (!note) return null;
   return {
-    text: inlineNoteDisplayText(note.text),
+    text: inlineNoteLine(note),
     col: inlineNoteBoxColumn(fullText, note.spanStart),
   };
 }
