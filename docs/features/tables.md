@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-19
+last_updated: 2026-09-26
 ---
 
 # Tables & calculators
@@ -23,7 +23,9 @@ Two ways in:
 
 Every answer replaces the command and stands alone (`hex for tomato _` →
 `tomato: #ff6347`); prior prose survives (`ok done. hex for tomato _` → `ok
-done. tomato: #ff6347`). `undo _` reverts a fill like any other.
+done. tomato: #ff6347`). A bare command, with nothing typed after its keyword,
+keeps the keyword as its label (`easter _` → `easter Sun 28 Mar 2027`). `undo
+_` reverts a fill like any other.
 
 The demo-friendly rule of thumb: **if the answer is the same in ten years, it
 belongs here.** Anything live (prices, weather, rates) stays on the network
@@ -51,7 +53,6 @@ operands, the table or parser as the last gate.
 | `default port for postgres _` | `postgres: 5432` |
 | `convert 5 miles to km _` | `5 miles = 8.04672 km` |
 | `convert 100 celsius to fahrenheit _` | `100 celsius = 212 fahrenheit` |
-| `how many feet in a mile _` | `1 mile = 5280 feet` |
 | `calc 17 * 23 _` | `17 * 23 = 391` |
 | `calc 15% of 240 _` | `15% of 240 = 36` |
 | `calc pi to 5 decimals _` | `pi to 5 decimals = 3.14159` |
@@ -63,7 +64,7 @@ Country facts live on the sibling `countries` blank and are named by the same
 route: `capital of france _`, `what money do they use in brazil _`, `how many
 people live in japan _`, `what do they speak in switzerland _`.
 
-Plain phrasings that reach the same rows: `what port does redis use _`, `which
+Plain phrasings that reach the same rows: `how many feet in a mile _`, `what port does redis use _`, `which
 http code for too many requests _`, `how do i type a degree symbol _`, `what's
 the content type for json _`, `at what temperature does water boil _`, `how
 acidic is vinegar _`.
@@ -82,7 +83,7 @@ kitchen and size conversions, and the calendar signs.
 | `morse for sos _` | `... --- ...` |
 | `morse for .... .. / - .... . .-. . _` | `HI THERE` (dots and dashes decode) |
 | `greek letter sigma _` | `σ Σ (sigma, 18th of 24; latin s)` |
-| `greek alphabet _` | `αΑ βΒ γΓ …` (all 24) |
+| `greek alphabet _` | `greek alphabet αΑ βΒ γΓ …` (all 24) |
 | `country code for germany _` | `DE · DEU · +49 · .de (EUR)` |
 | `dialling code for brazil _` | `+55 (Brazil, BR)` |
 | `driving side in japan _` | `Japan drives on the left` |
@@ -143,15 +144,15 @@ long); the clock is the host's. Dates read the way people write them:
 | `duration 3 hours 20 minutes plus 1 hour 55 _` | `5 h 15 min` |
 | `age if born 14 march 1990 _` | `36 years (since 14 Mar 1990)` |
 | `iso week of 19 september _` | `week 38 of 2026` |
-| `day of year _` | `day 262 of 365` |
+| `day of year _` | `day of year day 262 of 365` |
 | `leap year 2100 _` | `2100 is not a leap year` |
-| `quarter _` | `Q3 2026` |
-| `easter _` | `Sun 28 Mar 2027` (the next one) |
+| `quarter _` | `quarter Q3 2026` |
+| `easter _` | `easter Sun 28 Mar 2027` (the next one) |
 | `last friday of october _` | `Fri 30 Oct 2026` |
 | `second tuesday of november 2026 _` | `Tue 10 Nov 2026` |
-| `unix time _` | `1789817400` |
+| `unix time _` | `unix time 1789817400` |
 | `unix 1700000000 _` | `Tue 14 Nov 2023 22:13:20 UTC` |
-| `iso now _` | `2026-09-19T11:30:00.000Z` |
+| `iso now _` | `iso now 2026-09-19T11:30:00.000Z` |
 | `seconds in 3 days _` | `259200 seconds (4320 minutes, 72 hours)` |
 
 Plain phrasings: `how many days between 3 march and 19 september _`, `what day
@@ -207,8 +208,8 @@ Plain phrasings: `what time is it in sydney _`, `timezone of lisbon _`,
 | `2500000 in millions _` | `2.5 million` |
 | `2500000 in lakhs _` | `25 lakh` |
 | `factorial of 10 _` | `3,628,800` |
-| `is 97 prime _` | `97 is prime` |
-| `is 91 prime _` | `91 is not prime (7 × 13)` |
+| `is prime 97 _` | `97 is prime` |
+| `is prime 91 _` | `91 is not prime (7 × 13)` |
 | `prime factors of 360 _` | `2 × 2 × 2 × 3 × 3 × 5 (2³ · 3² · 5)` |
 | `gcd of 48 and 180 _` | `12` |
 | `lcm of 4 and 6 _` | `12` |
@@ -222,7 +223,7 @@ Plain phrasings: `what time is it in sydney _`, `timezone of lisbon _`,
 | `5 choose 2 _` | `10 combinations (20 permutations)` |
 | `probability of 3 heads in 5 flips _` | `31.25% (10/32) exactly · 50% at least 3` |
 
-Plain phrasings: `what's 255 in hex _`, `spell out 1e9 _`, `average of 3, 5, 8
+Plain phrasings: `is 97 prime _`, `what's 255 in hex _`, `spell out 1e9 _`, `average of 3, 5, 8
 and 13 _`, `what are the odds of 3 heads in 5 flips _`, `permutations of 3
 from 10 _`.
 
@@ -281,13 +282,13 @@ Over `The quick brown fox jumps over the lazy dog. The dog sleeps.`:
 | you type | you get |
 |---|---|
 | `word count _` | `word count 12 words · 60 chars · 2 sentences · ~3 s read` |
-| `character count _` | `60 chars (49 without spaces, 12 words)` |
-| `sentence count _` | `2 sentences (avg 6 words)` |
-| `line count _` | `1 line (1 non-empty)` |
-| `reading time _` | `~3 s (12 words at 238 wpm)` |
-| `speaking time _` | `~5 s (12 words at 150 wpm)` |
-| `longest word _` | `sleeps (6)` |
-| `most common word _` | `the ×3 · dog ×2 · brown ×1` |
+| `character count _` | `character count 60 chars (49 without spaces, 12 words)` |
+| `sentence count _` | `sentence count 2 sentences (avg 6 words)` |
+| `line count _` | `line count 1 line (1 non-empty)` |
+| `reading time _` | `reading time ~3 s (12 words at 238 wpm)` |
+| `speaking time _` | `speaking time ~5 s (12 words at 150 wpm)` |
+| `longest word _` | `longest word sleeps (6)` |
+| `most common word _` | `most common word the ×3 · dog ×2 · brown ×1` |
 | `count of the _` | `the ×3` |
 | `title case _` | `The Quick Brown Fox Jumps Over the Lazy Dog. The Dog Sleeps.` |
 | `upper case _` / `lower case _` / `sentence case _` | the text recased |
@@ -402,10 +403,10 @@ all local; no hashes, no password generators, no JWT decoding, by ruling:
 | `json pretty {"a":1,"b":[1,2]} _` | the JSON indented |
 | `json minify { "a": 1 } _` | `{"a":1}` |
 | `json validate {"a":1} _` | `valid JSON · object with 1 key` |
-| `uuid _` / `uuid v7 _` | a fresh UUID |
+| `uuid _` / `uuid v7 _` | the command's words, then a fresh UUID |
 | `random 1 to 100 _` | a number |
 | `random pick red, green, blue _` | one of them |
-| `coin flip _` | `heads` or `tails` |
+| `coin flip _` | `coin flip heads` or `coin flip tails` |
 | `roll 2d6 _` | `7 (4 + 3)` |
 
 Generators are never cached and `undo _` does not replay their value.

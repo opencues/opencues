@@ -38,7 +38,28 @@ export function segmentStart(text: string, pos: number = text.length): number {
   const re = new RegExp(SEGMENT_BOUNDARY.source, 'g');
   let start = 0;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(upto)) !== null) start = m.index + m[0].length;
+  while ((m = re.exec(upto)) !== null) {
+    if (m[0] === '.' && inMorseRun(upto, m.index)) continue;
+    start = m.index + m[0].length;
+  }
   while (start < text.length && /\s/.test(text.charAt(start))) start += 1;
   return start;
+}
+
+const MORSE_TOKEN = /^[.\-]+$/;
+const MORSE_OR_GAP = /^[.\-/]+$/;
+/**
+ * A `.` inside dots-and-dashes is morse, not a full stop: `morse for .... ..
+ * / - .... . .-. . _` is one command. The dot's whitespace-delimited token
+ * must be only dots and dashes AND sit next to another such token (or a `/`
+ * word gap), so a lone ellipsis (`wait ... volume _`, `... volume _`) still
+ * ends a sentence.
+ */
+function inMorseRun(text: string, dot: number): boolean {
+  let a = dot; while (a > 0 && !/\s/.test(text.charAt(a - 1))) a -= 1;
+  let b = dot + 1; while (b < text.length && !/\s/.test(text.charAt(b))) b += 1;
+  if (!MORSE_TOKEN.test(text.slice(a, b))) return false;
+  const before = text.slice(0, a).trimEnd().split(/\s+/).pop() ?? '';
+  const after = text.slice(b).trimStart().split(/\s+/)[0] ?? '';
+  return MORSE_OR_GAP.test(before) || MORSE_OR_GAP.test(after);
 }

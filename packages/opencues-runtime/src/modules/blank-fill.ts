@@ -298,15 +298,29 @@ export class BlankFill {
         // + whitespace, or newline), so the word count before it is exact.
         const segChar = segmentStart(cleanText, cleanText.lastIndexOf('_'));
         const commandStart = cleanText.slice(0, segChar).split(/\s+/).filter(Boolean).length;
+        // The keyword that LEADS the shaped segment names the command. The
+        // backward keyword scan takes the keyword nearest the `_`, which for a
+        // shape is often a word inside the captured argument ("tip 15% on
+        // 64.20 split 4 ways _" found `split`, and the split calculator
+        // divided the rate). The longest of this blank's keywords at the
+        // segment start wins; no leading keyword (a trailing-keyword or
+        // keyword-less shape) keeps the scan's pick, and so does a leading
+        // keyword inside an already-substituted span (a prior fill's output,
+        // "Nvidia NVDA: $200.42 + apple _", is not a command).
+        const leadHit = leadingKeyword(words, commandStart, usIdx, kws);
+        const lead = leadHit && !this._wordsInSubstitutedSpan(leadHit.start, leadHit.end) ? leadHit : null;
+        if (lead) { kwStart = lead.start; kwEnd = lead.end; }
         const existing = slots.find(s => s.index === usIdx && s.blankName === shape.blankName);
         if (existing) {
-          // Keyword scan already made the slot — just attach the shape verdict.
-          slots[slots.indexOf(existing)] = { ...existing, shapeAction: shape.action, shapeValue: shape.value, commandStart };
+          // Keyword scan already made the slot: attach the shape verdict (and
+          // the leading keyword, when the segment starts with one).
+          const kw = lead ? { keyword: lead.keyword, keywordStart: lead.start, keywordEnd: lead.end, proximity: Math.max(0, usIdx - lead.end - 1) } : {};
+          slots[slots.indexOf(existing)] = { ...existing, ...kw, shapeAction: shape.action, shapeValue: shape.value, commandStart };
         } else {
           // Proximity missed it — create the slot (the bypass that fixes
           // `volume 30 _` / `brightness 50 _`).
           slots.push({
-            index: usIdx, keyword: kws[0] ?? shape.blankName, blankName: shape.blankName,
+            index: usIdx, keyword: lead?.keyword ?? kws[0] ?? shape.blankName, blankName: shape.blankName,
             keywordStart: kwStart, keywordEnd: kwEnd, proximity: Math.max(0, usIdx - kwEnd - 1),
             shapeAction: shape.action, shapeValue: shape.value, commandStart,
           });
@@ -1796,6 +1810,13 @@ export class BlankFill {
     return true;
   }
 
+  /** True when any word in [start, end] sits inside a substituted multi-word DynDef span. */
+  private _wordsInSubstitutedSpan(start: number, end: number): boolean {
+    if (!this.dynDefs) return false;
+    for (let i = start; i <= end; i += 1) if (this.dynDefs.findSpanContaining(i) !== null) return true;
+    return false;
+  }
+
   /** Walk backward from blankIdx looking for a blank's blankKeywords match. */
   private matchKeyword(words: readonly string[], blankIdx: number, lineOf?: readonly number[]): BlankSlot | null {
     // Universal-Integration filter: when the host has no cycling
@@ -1879,6 +1900,24 @@ export class BlankFill {
   }
 }
 
+
+/**
+ * The longest of `keywords` that starts at word `start` and ends before the
+ * `_` at `usIdx`, or null. Word-exact, case-insensitive (the same match the
+ * keyword scan uses).
+ */
+export function leadingKeyword(words: readonly string[], start: number, usIdx: number, keywords: readonly string[]): { keyword: string; start: number; end: number } | null {
+  let best: { keyword: string; start: number; end: number } | null = null;
+  for (const kw of keywords) {
+    const parts = kw.toLowerCase().split(/\s+/).filter(Boolean);
+    if (parts.length === 0 || start + parts.length > usIdx) continue;
+    if (!parts.every((p, j) => words[start + j]?.toLowerCase() === p)) continue;
+    if (!best || parts.length > best.end - best.start + 1 || (parts.length === best.end - best.start + 1 && kw.length > best.keyword.length)) {
+      best = { keyword: kw.toLowerCase(), start, end: start + parts.length - 1 };
+    }
+  }
+  return best;
+}
 
 /**
  * Derive the `clearEnd` the splice will use, given a blank's flags.

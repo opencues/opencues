@@ -107,12 +107,45 @@ export function fmtDuration(mins: number): string {
   return sign + parts.join(' ');
 }
 
+/** The same month-day in year `y`; a 29 Feb moves to the nearest leap year in `step` direction. */
+const inYear = (d: Date, y: number, step: 1 | -1 = 1): Date => {
+  let yy = y;
+  while (!validYmd(yy, d.getUTCMonth(), d.getUTCDate())) yy += step;
+  return utcDay(yy, d.getUTCMonth(), d.getUTCDate());
+};
+
+/**
+ * Two dates read as ONE range, never each on its own against today. A date
+ * written without a year takes its year from the pair: from the other date
+ * when that one has a year (or is relative, `today`, `friday`), else both
+ * sit in the year a lone date would get (this year). The second date is
+ * then the first occurrence on or after the first, so `3 march and 19
+ * september` is 200 days whatever today is, and `1 dec to 10 jan` crosses
+ * the new year. Resolving each bare date independently rolled a past one to
+ * next year and made the range a year too long.
+ */
+export function datePair(rawA: string, rawB: string, ctx: CalcContext): [Date, Date] | null {
+  const a = parseDate(rawA, ctx), b = parseDate(rawB, ctx);
+  if (!a || !b) return null;
+  if (a.hadYear && b.hadYear) return [a.date, b.date];
+  if (a.hadYear) {
+    let d = inYear(b.date, a.date.getUTCFullYear());
+    if (d.getTime() < a.date.getTime()) d = inYear(b.date, a.date.getUTCFullYear() + 1);
+    return [a.date, d];
+  }
+  if (b.hadYear) {
+    let d = inYear(a.date, b.date.getUTCFullYear());
+    if (d.getTime() > b.date.getTime()) d = inYear(a.date, b.date.getUTCFullYear() - 1, -1);
+    return [d, b.date];
+  }
+  let d = inYear(b.date, a.date.getUTCFullYear());
+  if (d.getTime() < a.date.getTime()) d = inYear(b.date, a.date.getUTCFullYear() + 1);
+  return [a.date, d];
+}
+
 const twoDates = (arg: string, ctx: CalcContext): [Date, Date] | null => {
   const m = arg.toLowerCase().match(/^(?:from )?(.+?)\s+(?:and|to|until|till|-|–)\s+(.+)$/);
-  if (!m) return null;
-  const a = parseDate(m[1], ctx), b = parseDate(m[2], ctx, true);
-  if (!a || !b) return null;
-  return [a.date, b.date];
+  return m ? datePair(m[1], m[2], ctx) : null;
 };
 
 /** Anonymous Gregorian algorithm for Easter Sunday. */
@@ -160,7 +193,7 @@ export const DATES: readonly Calculator[] = [
   { id: 'until', family: 'dates', keywords: ['days until', 'weeks until', 'how long until', 'until', 'days to', 'countdown to'], arg: 'segment', example: ['weeks until christmas', '13.9 weeks (97 days, Fri 25 Dec 2026)'], miss: 'cannot read the date',
     run(arg, ctx) { const p = parseDateLoose(arg, ctx, true); if (!p) return null; const d = daysBetween(todayUtc(ctx), p.date); return `${fmt(Math.round(d / 7 * 10) / 10)} weeks (${plural(d, 'day')}, ${fmtDate(p.date)})`; } },
   { id: 'since', family: 'dates', keywords: ['days since', 'weeks since', 'how long since', 'since'], arg: 'segment', example: ['days since 1 jan 2026', '261 days (37.3 weeks)'], miss: 'cannot read the date',
-    run(arg, ctx) { const p = parseDateLoose(arg, ctx); if (!p) return null; const d = daysBetween(p.date, todayUtc(ctx)); return `${plural(d, 'day')} (${fmt(Math.round(d / 7 * 10) / 10)} weeks)`; } },
+    run(arg, ctx) { const p = parseDateLoose(arg, ctx); if (!p) return null; const today = todayUtc(ctx); const since = !p.hadYear && p.date.getTime() > today.getTime() ? inYear(p.date, p.date.getUTCFullYear() - 1, -1) : p.date; const d = daysBetween(since, today); return `${plural(d, 'day')} (${fmt(Math.round(d / 7 * 10) / 10)} weeks)`; } },
   { id: 'time-plus', family: 'dates', keywords: ['from now', 'ago'], arg: 'segment', keywordIsArg: true, phrase: new RegExp(String.raw`^(?:time\s+)?(?:in\s+)?(?:${NUM})\s*(?:minutes?|mins?|hours?|hrs?|h|m|seconds?|secs?|s|days?|weeks?|months?|years?)(?:\s+(?:and\s+)?(?:${NUM})\s*(?:minutes?|mins?|m))?(?:\s+(?:from now|ago))?$`, 'i'), example: ['in 45 minutes', '13:15'], miss: 'cannot read the duration',
     run(arg, ctx) {
       // a day-or-longer offset is a calendar answer, not a clock one
