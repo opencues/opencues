@@ -3609,6 +3609,12 @@ export function noteDeferralOnce(): void {
 function installKeyListener(): void {
   document.addEventListener('keydown', (e) => {
     if (!bootResult) return;
+    // Only the person's own keys. A page script can dispatch a keydown, and a
+    // `_` on a note is consumed here, before any input event (which the trust
+    // gate already checks): a synthetic `_` would run a waiting write, apply a
+    // note, or dismiss one for good. The extension's own synthetic keys (the
+    // Ctrl+A an editor fallback sends) are for the page's editor, not for us.
+    if (!e.isTrusted) return;
     // Leave Ctrl+Alt+arrow to the page's own OpenCues host. Without this
     // both hosts consume the same cycle keystroke and the buffer advances
     // twice per press. Same live-read reasoning as the text-change guard.
