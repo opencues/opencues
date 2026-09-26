@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — a static blank's answer reverts with `_`, like a fluid or transform answer (`@opencues/runtime` 0.47.0)
+- A static fill that lands one plain answer (`nato for zorb _` → `Zulu Oscar Romeo Bravo` on the `tables` blank, a definition, a lookup) is now a two-stop toggle: with the caret on the answer the note reads `was: nato for zorb _` with `(underscore to revert)`, `_` puts the request back, `_` again re-applies the answer. The blank does not fire again on the restored `_`. Before, the multi-word answer was dimmed with no note, and `_` only typed.
+- Mechanism: `BlankFill` registers a DynDef `[answer, request]` flagged **`landed: true`** instead of a single-stop `spanFillState`; `originalIndexOf` honours the flag, so the note and hint come from the existing toggle machinery (fluid and transform unchanged). List fills, dismissible fills, `blankStep` / `blankSuffix` / `stepValues` knobs, clear-on-edit pairs, typed SET/STEP and `[err]` results keep their current behaviour.
+- Fix on the way: `BlankFill`'s diff-based explicit-`_` fallback counted underscores against the last USER text, so after a runtime write that put a `_` back (this revert), the next keystroke read it as freshly typed and re-fired the blank. It now uses the event's `previousText`, the baseline the resolver's gate already used.
+- Scenarios: `blank-fill-revert.scenarios.test.ts`.
+
 ### Added — `OPENCUES_RESOLVER_FACTORY`: a host or a developer may supply the resolver's source factory by path (`@opencues/runtime` 0.46.0)
 - The resolver's `resolverFactory` option existed for tests; it now also loads from `OPENCUES_RESOLVER_FACTORY` (a module exporting `resolverFactory(cuesConfig, blanksConfig, buildOpts, buildSourcesFromConfig)`), Node-only like `OPENCUES_DECISIONS_PATH`, logged once. The factory receives core's own `buildSourcesFromConfig` so it can keep any built-in source. This is the seam a rebuilt client uses to run inside this runtime unchanged (render, phase 0, undo, the bands) while its own sources replace the built-in ones.
 

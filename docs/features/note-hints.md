@@ -44,6 +44,14 @@ count:
 | a command tip | `💡 Starting over? /clear wipes the conversation, CLAUDE.md stays` | `💡 was: ok this is a mess, lets start over on…` |
 | a prose tip | `💡 Paste the error… → fix the login bug: [paste…` | `💡 was: fix the login bug` |
 | a landed lookup or rewrite | `was: capital of france _` | `Paris` |
+| a static blank's answer | `was: nato for zorb _` | `Zulu Oscar Romeo Bravo` |
+
+A landed answer starts on the answer, so its first press is the revert: the
+fluid and transform answers, and every static blank fill that is one plain
+answer (a `tables` lookup, a dictionary definition). A list fill, a
+dismissible confirmation, a live knob like `volume` and an `[err]` result keep
+their own behaviour. The restored `_` is the runtime's write, not a new
+request, so the blank does not fire on it.
 
 Three or more stops keep the count and the rotating list, because the list
 already says where the presses go.

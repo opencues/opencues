@@ -70,6 +70,14 @@ export interface WordDef {
    * when the caret lands on the span, or on the press that asks for it.
    */
   readonly deferredRewrite?: { readonly commitmentId: string; readonly statement: string; readonly quote: string };
+  /**
+   * A LANDED answer: the buffer holds the answer at stop 0 and the user's own
+   * request is the LAST stop, so the wrap IS the revert (the shape transform /
+   * fluid have always had, keyed on their blankName). Set by BlankFill on a
+   * static single-answer fill (`nato for zorb _` → the answer, `_` puts the
+   * request back). Read only by `originalIndexOf`.
+   */
+  readonly landed?: boolean;
 }
 
 /**
@@ -218,10 +226,11 @@ export function snippetLine(text: string): string {
 
 export function isToggleDef(def: WordDef): boolean { return def.alternatives.length === 2; }
 /** Where the ORIGINAL text sits: index 0 for cues (the buffer starts on it),
- *  the LAST stop for landed LLM blanks (transform / fluid keep the landed text
- *  at 0 and the original ask last — "the wrap IS the revert"). */
+ *  the LAST stop for landed answers (transform / fluid, and any def flagged
+ *  `landed`, keep the landed text at 0 and the original ask last — "the wrap
+ *  IS the revert"). */
 export function originalIndexOf(def: WordDef): number {
-  return (def.blankName === 'transform-blank' || def.blankName === 'fluid-blank') ? def.alternatives.length - 1 : 0;
+  return (def.landed === true || def.blankName === 'transform-blank' || def.blankName === 'fluid-blank') ? def.alternatives.length - 1 : 0;
 }
 export function nextStopIsOriginal(def: WordDef): boolean {
   return def.alternatives.length > 1 && (def.currentIndex + 1) % def.alternatives.length === originalIndexOf(def);
