@@ -4,11 +4,17 @@ name: location
 # cycleable alternatives - join the lines into the buffer (opencues #339).
 blankMultilineIsAnswer: true
 type: blank
+icon: 📍
 tip: Location lookup
 # location / address → terse one-line address; map → the rich "location
 # card" (name, hours, phone, website + a Google Maps link). Same blank,
 # same fetch; the trigger keyword picks the output mode.
 blankKeywords: location, address, map
+# The prose road (`make it louder _`, `weather in oslo _`): this blank's closed values, each the shape action it
+# takes, and whether a level (`number`) or a place / name (`named`) written in the draft may be captured.
+device: true
+values: here=get
+named: true
 # Explicit shapes REPLACE the keyword-synthesized grammar (authored shapes
 # win). The extra grammar over plain keywords is the TRAILING-keyword form —
 # "east finchley iceland location _" — where the query precedes the trigger.
