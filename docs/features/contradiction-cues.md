@@ -89,6 +89,12 @@ no cue.
   `docs/architecture/security-audit.md` rows #28.
 - Tier 0 does **no** network and **no** LLM verification — it's local
   arithmetic on text you already typed.
+- **With a decision package** (`decisions-provider` on), the parse is not a
+  chat call either: a small decision names only *which kind* of claim a
+  sentence makes; the numbers, dates, line names and places are cut from
+  your own words by a grammar, and the same verifiers judge them. A sentence
+  with nothing checkable in it (no date, no sum, no named line, no two
+  places) is never sent anywhere.
 
 ## Notes & limits
 

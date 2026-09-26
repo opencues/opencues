@@ -68,6 +68,7 @@ import { describeLLMCall, dispatchChat, type ProviderAdapter } from '../llm-prov
 import { getDehydrator } from '../dehydrate';
 import { postProcessContext } from '../identity-context';
 import { renderCalendarContextForCue, type CalendarContextSnapshot } from '../calendar-context';
+import { captureAvailabilityRef, findClashes, renderHeadsUp } from '../calendar-availability';
 
 /** Local wall-clock ISO `YYYY-MM-DDTHH:MM` — for the calendar cue's live
  *  now-anchor (mirrors fluid-blank-source's helper). */
@@ -316,6 +317,8 @@ export interface SentenceCueSourceConfig {
   /** spend the rewrite call at gate ≥ this. 0.6 on the shipped more-formal line
    *  (sentence-gate-bench.mts: see RESULTS.md for the sweep). */
   gateThreshold?: number;
+  /** the clock the availability leg resolves "today" / "Monday" against (tests pin it) */
+  now?: () => Date;
 }
 
 export const SENTENCE_GATE_THRESHOLD_DEFAULT = 0.5;
@@ -325,6 +328,8 @@ export const SENTENCE_GATE_THRESHOLD_DEFAULT = 0.5;
  *  are exactly the sentences a formality cue exists for; a URL scores 0.06.
  *  The calendar cue has no gate so it never sees this. */
 export const SENTENCE_PROSE_THRESHOLD = 0.3;
+/** The availability leg's probability at or above which a sentence's day / time is checked against the calendar. */
+export const AVAILABILITY_THRESHOLD = 0.6;
 export class SentenceCueSource implements CueSource {
   readonly id: string;
   readonly priority: number;
@@ -343,9 +348,11 @@ export class SentenceCueSource implements CueSource {
   private emit: (event: SentenceCueEvent) => void;
   private decisions?: DecisionLegs;
   private gateThreshold: number;
+  private readonly nowFn: () => Date;
 
   constructor(config: SentenceCueSourceConfig) {
     this.decisions = config.decisions;
+    this.nowFn = config.now ?? (() => new Date());
     this.gateThreshold = config.gateThreshold ?? SENTENCE_GATE_THRESHOLD_DEFAULT;
     this.httpAdapter = config.httpAdapter;
     this.provider = config.provider;
@@ -406,6 +413,17 @@ export class SentenceCueSource implements CueSource {
       this.log(`SentenceCue[${this.sourceConfig.name}]: skipping — no promptText`);
       this.emit({ type: 'bailed', reason: 'no-prompt-text', latencyMs: Date.now() - t0 });
       return { results: [], timing: Date.now() - t0, model: this.model };
+    }
+
+    // SELECT-THEN-COMPUTE for the calendar cue (reimagined plan item 2): with
+    // an `availability` leg, the model only says whether a sentence claims
+    // the writer's availability — from the sentence alone. The day and time
+    // are resolved here, the clash is read off the local calendar, the note
+    // carries the real titles: nothing calendar-shaped is in the request, and
+    // no rewrite call is made. A failed leg falls through to the chat path.
+    if (this.sourceConfig.usesCalendarContext && context.calendarContext && this.decisions?.availability && !context.signal?.aborted) {
+      const r = await this.availabilityCues(context, spans, t0);
+      if (r) return r;
     }
 
     // ONE LLM CALL PER SENTENCE — never batch N sentences into one call.
@@ -584,6 +602,51 @@ export class SentenceCueSource implements CueSource {
     const cs = this._calls.takeStats();
     this.log(`SentenceCue[${this.sourceConfig.name}]: completed (${Date.now() - t0}ms, emitted=${results.length}, ceded=${cededCount}, sentences=${spans.length}, calls=${cs.dispatched}, cached=${cs.hits}, joined=${cs.joined})`);
     this.emit({ type: 'completed', emitted: results.length, ceded: cededCount, latencyMs: Date.now() - t0 });
+    return { results, timing: Date.now() - t0, model: this.model };
+  }
+
+  /** The calendar cue on the availability leg; null = the leg failed, take the chat path. */
+  private async availabilityCues(context: CueContext, spans: ReturnType<typeof segmentSentences>, t0: number): Promise<CueSourceResult | null> {
+    const now = this.nowFn();
+    const events = context.calendarContext!.events;
+    // only a sentence that names a day or a time can clash; the rest cost nothing
+    const named = spans.map((sp, i) => ({ sp, i, ref: captureAvailabilityRef(sp.text, now) })).filter((x) => x.ref !== null);
+    if (named.length === 0) {
+      this.log(`SentenceCue[${this.sourceConfig.name}]: no sentence names a day or time — no request`);
+      this.emit({ type: 'completed', emitted: 0, ceded: spans.length, latencyMs: Date.now() - t0 });
+      return { results: [], timing: Date.now() - t0, model: this.model };
+    }
+    let probs: ReadonlyArray<number>;
+    try {
+      probs = await this.decisions!.availability!(named.map((x, k) => ({ id: `s${k + 1}`, text: x.sp.text })), { signal: context.signal, log: (m) => this.log(m) });
+    } catch (e) {
+      const err = e as Error;
+      if (err?.name === 'AbortError' || /abort/i.test(err?.message ?? '')) return { results: [], timing: Date.now() - t0, model: this.model };
+      this.log(`SentenceCue[${this.sourceConfig.name}]: availability leg failed (${err?.message}) — chat path`);
+      return null;
+    }
+    const results: CueResult[] = [];
+    named.forEach((x, k) => {
+      const p = probs[k] ?? 0;
+      if (p < AVAILABILITY_THRESHOLD) return;
+      const clashes = findClashes(x.ref!, events);
+      if (clashes.length === 0) return;
+      const tip = `⚠ ${renderHeadsUp(clashes, now)}`;
+      this.log(`SentenceCue[${this.sourceConfig.name}]: availability ${p.toFixed(2)} — "${x.sp.text.slice(0, 32)}…" → ${tip}`);
+      results.push({
+        wordIndex: x.sp.firstWordIndex,
+        word: context.words[x.sp.firstWordIndex] ?? x.sp.text.split(/\s+/)[0],
+        alternatives: [x.sp.text],   // a pure advisory, never cycled into the buffer
+        source: this.id,
+        priority: this.priority,
+        spanStart: x.sp.start,
+        spanEnd: x.sp.end,
+        cueTip: tip,
+        metadata: { sentenceCue: { cueName: this.sourceConfig.name, altCount: 0 } },
+      });
+    });
+    this.log(`SentenceCue[${this.sourceConfig.name}]: completed on the availability leg (${Date.now() - t0}ms, emitted=${results.length}, asked=${named.length}, sentences=${spans.length}, calls=0)`);
+    this.emit({ type: 'completed', emitted: results.length, ceded: spans.length - results.length, latencyMs: Date.now() - t0 });
     return { results, timing: Date.now() - t0, model: this.model };
   }
 

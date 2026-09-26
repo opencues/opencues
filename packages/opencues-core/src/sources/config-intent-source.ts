@@ -1369,6 +1369,22 @@ export function summonPhraseStart(text: string): number {
   return segmentStart(text, u >= 0 ? u : text.length);
 }
 
+/** The word starts of the text before the command's `_`, newest last, as the
+ *  command-start leg is offered them: id, char offset, and the suffix from
+ *  there (what the command would be if it began at that word). Capped to the
+ *  last `COMMAND_START_MAX` words — a settings command is short. */
+export const COMMAND_START_MAX = 24;
+export function commandStartCandidates(text: string): Array<{ id: string; start: number; suffix: string }> {
+  const u = text.lastIndexOf('_');
+  const head = u >= 0 ? text.slice(0, u) : text;
+  const starts: number[] = [];
+  const re = /\S+/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(head))) starts.push(m.index);
+  const kept = starts.slice(-COMMAND_START_MAX);
+  return kept.map((start, i) => ({ id: `w${i + 1}`, start, suffix: text.slice(start) }));
+}
+
 /** apply a settings verdict at ≥ this (settings bench: 100% precision from 0.5 on every suite) */
 export const SETTINGS_DECISION_THRESHOLD = 0.5;
 
@@ -1597,27 +1613,33 @@ export class ConfigIntentSource implements CueSource {
     // are never decided here (their apply path probes the provider first).
     let raw = '';
     let verdict: ConfigIntentVerdict | null = null;
-    if (this.decisions?.settings && this.allowConfigVerdicts && !context.signal?.aborted) {
+    if (this.decisions?.settings && (this.allowConfigVerdicts || this.allowActionVerdicts) && !context.signal?.aborted) {
       try {
         const v = await this.decisions.settings(outboundText, { signal: context.signal, log: (m) => this.log(`ConfigIntent ${m}`) });
         if (v && v.confidence >= this.settingsThreshold) {
-          const candidate: ConfigIntentVerdict = { kind: 'setting', setting: v.setting, value: v.value, confidence: v.confidence };
+          // the three things a settings `_` can ask for, each validated as a
+          // chat verdict would be: a scalar against the registry, a provider
+          // against the catalogue (its apply path probes the provider), an
+          // undo / redo with its count read by grammar
+          const candidate: ConfigIntentVerdict = v.kind === 'provider'
+            ? { kind: 'provider', scope: v.scope, provider: v.provider, model: v.model, confidence: v.confidence }
+            : v.kind === 'action'
+              ? { kind: 'action', action: v.action, count: v.count, confidence: v.confidence }
+              : { kind: 'setting', setting: v.setting, value: v.value, confidence: v.confidence };
           const check = validateAgainstRegistry(candidate, this.hostName);
-          if (check.ok) { verdict = candidate; this.log(`ConfigIntent[decision]: ${v.setting} → ${v.value} (setting ${v.confidence.toFixed(2)}, value ${v.valueConfidence.toFixed(2)}) — no chat call`); }
-          else this.log(`ConfigIntent[decision]: ${v.setting} → ${v.value} rejected by the registry (${check.reason}) — running the classifier`);
-        } else if (!hasLikelyIntent(context.text)) {
-          // The leg answered `none` and the buffer carries no provider / model
-          // / settings keyword: cede here. The classifier recovers nothing the
-          // leg misses on such phrasings (settings-source-bench: both miss
-          // the same two), and running it serially after the leg cost 300 ms
-          // and $0.0012 on every prose `_` in a fan-out pass.
-          this.log(`ConfigIntent[decision]: ${v ? `${v.setting} at ${v.confidence.toFixed(2)} under ${this.settingsThreshold}` : 'none'}, no likely-intent keyword — ceding, no chat call`);
+          const what = v.kind === 'provider' ? `${v.scope} → ${v.provider}${v.model ? `:${v.model}` : ''}` : v.kind === 'action' ? `${v.action} ×${v.count}` : `${v.setting} → ${v.value}`;
+          if (check.ok) { verdict = candidate; this.log(`ConfigIntent[decision]: ${what} (${v.top}) — no chat call`); }
+          else this.log(`ConfigIntent[decision]: ${what} rejected by the registry (${check.reason}) — running the classifier`);
+        } else {
+          // The leg answered `none` (or under the threshold): cede here. The leg
+          // decides every kind a settings `_` can ask for — a scalar, a provider
+          // route, an undo — so the classifier recovers nothing it misses
+          // (settings-source-bench, control-source-bench), and running it
+          // serially after the leg cost 300 ms and $0.0012 per `_`. The
+          // classifier is the fall-through for a FAILED leg only.
+          this.log(`ConfigIntent[decision]: ${v ? `${v.kind} at ${v.confidence.toFixed(2)} under ${this.settingsThreshold}` : 'none'} — ceding, no chat call`);
           this.emit({ type: 'completed', verdict: { kind: 'none', confidence: v ? 1 - v.confidence : 1 }, applied: false, latencyMs: Date.now() - t0 });
           return { results: [], timing: Date.now() - t0, model: this.model };
-        } else {
-          // a keyword is present (a provider name, "model", …): the classifier
-          // decides — provider buckets are never decided by the leg
-          this.log(`ConfigIntent[decision]: ${v ? `${v.setting} at ${v.confidence.toFixed(2)} under ${this.settingsThreshold}` : 'none'} — a settings keyword is present, running the classifier`);
         }
       } catch (e) {
         const err = e as Error;
@@ -1947,6 +1969,25 @@ export class ConfigIntentSource implements CueSource {
       // Regex found a real boundary — authoritative, no LLM call needed.
       start = regexStart;
       this.log(`ConfigIntent: summon-span via regex-confident (start=${start}, no LLM call)`);
+    } else if (this.decisions?.commandStart) {
+      // Ambiguous (start === 0): the decision layer picks the boundary from
+      // the runtime's own word starts (`commandStartCandidates`), so the wipe
+      // span is a position the runtime supplied, never an echoed substring.
+      // A failed request → the regex floor (the whole buffer is the command).
+      const candidates = commandStartCandidates(text);
+      if (candidates.length <= 1) start = 0;
+      else {
+        try {
+          const dOut = dehydrator?.dehydrate(text);
+          const pick = await this.decisions.commandStart(dOut?.changed ? dOut.text : text, candidates.map((c) => ({ ...c, suffix: dOut?.changed ? (dehydrator?.dehydrate(c.suffix)?.text ?? c.suffix) : c.suffix })), { signal, log: (m) => this.log(`ConfigIntent ${m}`) });
+          const chosen = pick ? candidates.find((c) => c.id === pick.id) : undefined;
+          start = chosen ? chosen.start : 0;
+          this.log(`ConfigIntent: summon-span via decision (start=${start}${pick ? `, ${pick.id} ${pick.confidence.toFixed(2)}` : ', none'}, no chat call)`);
+        } catch (e) {
+          start = 0;
+          this.log(`ConfigIntent: command-start leg failed (${(e as Error).message}) — regex floor (start=0)`);
+        }
+      }
     } else {
       // Ambiguous (start === 0): the model disambiguates bare-command vs
       // non-punctuated prior content.

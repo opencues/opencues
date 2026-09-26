@@ -69,8 +69,13 @@ thresholds inside the leg) is the package's. The interface:
 | `route(text)` | the draft around the `_` | an `UnderscoreRouting`: the chat source to restrict to, or null for the fan-out | the runtime resolver's `only` filter |
 | `replace(input)` | the outbound transform input | a `ReplaceVerdict` `{target, command}` cut from the input, or null | `TransformBlankSource`: the value is read off the fused rewrite's diff (`deriveReplaceValue`) and the splice passes `verifyReplaceDetect` |
 | `device(input)` (optional; also stacked on `route` as `UnderscoreRouting.device`) | the outbound `_` text | a `DeviceVerdict` `{blank, value}` — a shipped blank and a closed value, or `number` / `named` meaning the runtime captures it from the draft | the resolver resolves it under `device-policy.ts` (tier 2 built-ins, grammars, arg floor) and `BlankFill.fillFromDecision` runs the shape path over the writer's phrase; a chat route wins; nothing invocable → the fan-out |
+| `claims(sentences)` (optional) | the pass's sentences by id | per sentence a `ClaimVerdict`: the claim TYPE named (a Choice over the types `contradiction/capture.ts` can ground in that sentence, + `none`) with the grammar-captured claim | `ContradictionLlmSource` verifies each claim exactly as it verifies the chat parse (`verifyClaim`); a sentence with nothing groundable is never asked; `weekday_date` is grammar-only; a failed leg → the chat parse |
+| `availability(sentences)` (optional) | the sentences that name a day or a time (`captureAvailabilityRef`), by id | per sentence the probability it states the writer's availability or proposes a day / time — from the sentence alone | the calendar cue in `SentenceCueSource` resolves the day and time, reads the calendar locally (`findClashes`) and writes the `⚠ heads up:` note; nothing calendar-shaped is in the request; a failed leg → the chat cue |
 | `table(input)` (optional; stacked on `route` as `UnderscoreRouting.table` only when `RouteContext.tables` is true, i.e. `table-lookups-mode: on`; off by default and then the question is not sent) | the outbound `_` text | a `TableVerdict` `{table}` — one of `DATA_POLICY`'s ids (unicode, hex, rgb, http, mime, port, convert, calc, the chemistry constants, the country facts); never an argument | the resolver captures the argument under `data-policy.ts` (scaffold stripped from the segment holding the `_`, floored), `BlankFill.fillFromDecision` PROBES the runtime's table (`lookupTable` / `countryFactAvailable`) and fills through the shape path, or declines on a miss → the fan-out; stands over a `lookup` route, never a settings / rewrite one; no LLM anywhere on a hit |
-| `settings(input)` (optional) | the outbound `_` text | a `SettingsVerdict` `{setting, value, confidence, valueConfidence}` over FEATURES / MENU_TUNABLES at listed values, or null | `ConfigIntentSource`: at ≥ 0.5 and registry-valid it applies with no chat call; a `none` with a settings keyword runs the classifier (provider buckets stay there), a `none` without one cedes |
+| `settings(input)` (optional) | the outbound `_` text | a `ControlVerdict`: a `SettingsVerdict` `{kind:'setting', setting, value, confidence, valueConfidence}` over FEATURES / MENU_TUNABLES at listed values, a `ProviderRouteVerdict` `{kind:'provider', scope, provider, model}` over the registered providers and their listed models, or an `UndoVerdict` `{kind:'action', action, count}` (the count read from the draft by grammar); null for none | `ConfigIntentSource` validates every kind against the registry / catalogue exactly as a chat verdict and applies through the same paths (`applyOpenCuesScalar`, the provider probe, `metadata.undoAction`); a `none` cedes with no chat call; the chat classifier is the fall-through for a FAILED leg only |
+| `commandStart(input, candidates)` (optional) | the draft and its last 24 word starts as `{id, start, suffix}` (`commandStartCandidates`), only when the regex cannot cut the command (no terminator before it) | the candidate id where the command begins, or null | the wipe span is a boundary the runtime supplied, never an echoed substring; replaces the summon chat call; a failed leg → the whole buffer is the command (the regex floor) |
+| `communityRules(sentences, rules)` (optional) | the pass's sentences by id and the page's cached rules `{index, name, description}` | per sentence a `RuleVerdict` `{rule \| null}` — a posted index or none | `ContradictionLlmSource` tier 5d: the tip from the CACHED rule, the span the runtime-cut sentence; replaces the per-sentence judge call; a failed leg → the judge call |
+| `wordGate(cue, draft, words)` (optional) | a word cue `{name, description, gate}` and its claimed words by id | per word the probability the cue would offer an alternative for it as used | `RoutedWordSourceGroup`: none over the threshold → no chat call; otherwise the call runs over the FULL bucket (phrases stay readable) and only the passed words' answers are kept; buckets over 60 words go ungated; a failed leg → every word as before |
 
 Every leg goes through `dispatchDecision` inside the package, so the
 chokepoint is the same whoever asks. A leg THROWS on a failed request; the
@@ -113,7 +118,46 @@ change at any leg.
 - **Replace**: `metadata.pipelineMode: 'replace-splice-decision'`.
 - **Device**: `device-policy.ts` is the whole of what may be invoked (row #32); the fill is the shape path with a synthesized slot, so clearing, undo capture and the read-back render are the keyword command's.
 - **Table**: gated by `table-lookups-mode` (default off: the `tables` blank is not registered and the route carries no table question). The ids are the eight tables, the six country facts, and the calculator registry (`packages/opencues-runtime/src/blanks/calc/registry.ts`; `calc-policy-drift.test.ts` pins that core's `DATA_POLICY` and the registry agree id for id, keyword for keyword). A keyword-less phrasing (`3pm london in tokyo`) dispatches under the `table` sentinel keyword and the registry's phrase router picks the calculator. `data-policy.ts` is the whole of what may be invoked (row #32 again: two shipped offline built-ins, `tables` and `countries`); the argument is captured by grammar and the TABLE is the last gate, so a wrong argument is structurally a miss, never a wrong answer. The keyword forms (`hex for tomato _`, `calc 17 * 23 _`, `capital of france _`) are plain shape matches and need no package at all.
-- **Settings**: the verdict goes through `validateAgainstRegistry` and `applyOpenCuesScalar` exactly as a chat verdict; the keyword pre-gate is bypassed when the leg exists; the summon-span call is deferred to after the verdict on keyword-less buffers.
+- **Settings**: every kind of verdict goes through `validateAgainstRegistry` and the apply path a chat verdict took (`applyOpenCuesScalar`; the provider probe + the sibling model reset for a route; `metadata.undoAction` for an undo); the keyword pre-gate is bypassed when the leg exists; `none` cedes outright (the classifier runs only when the leg FAILS); the command span comes from `commandStart` over `commandStartCandidates` when the regex finds no terminator, deferred to after the verdict on keyword-less buffers.
+- **Community rules**: the rule number must resolve against the cached snapshot (`verifyCommunityRuleClaim`) and the quote is the runtime-cut sentence, so the tip is built from data the page supplied, never from the answer.
+- **Word gate**: the gate decides whether the cue's call is made and which answers are kept; it never thins the call's input (the first shape did, and lost every two-word phrase — `circle back`, `going forward`).
+
+## What still makes a chat call
+
+The inventory, kept so the next optimisation starts from a list and not a
+grep. Two kinds. The first cannot move: a decision model does not generate
+text, so anything whose output IS text stays on a chat model for as long as
+the feature exists. The second is selection that has not been moved, with
+the shape it would take.
+
+**Generation — stays on chat by construction**
+
+| call | where | what it writes |
+|---|---|---|
+| fluid-blank answer | `fluid-blank-source.ts` | the `_` answer (routed to by the `_` leg; a table or device answers first when it can) |
+| transform-blank rewrite | `transform-blank-source.ts` (`FUSED_SYSTEM`) | the rewritten buffer (the replace detector is a decision) |
+| sentence-cue rewrite | `sentence-cue-source.ts` | the alternative sentences (the gate is a decision; the calendar cue is entirely decided) |
+| session-contradiction reconciled rewrite | `session-contradiction-source.ts` (`reconcile`) | the reconciled sentence, fetched only when the caret lands on the cue |
+| word-cue alternatives | `config-source.ts` | the alternatives (the gate is a decision) |
+| AgentRewrite / auditors | `agent-rewrite.ts` | the rewritten document |
+| kata COACH line | `kata.ts` | prose to the learner |
+| session-commitments Stage A | `extract-commitments.cjs` | the watchlist statements (background, not per pause) |
+| calendar blank lookups (`am i free thursday _`) | `fluid-blank-source.ts` with the calendar catalog | the answer text |
+
+**Selection — movable, not yet moved**
+
+| call | today | the decision shape | why it waits |
+|---|---|---|---|
+| kata `STEP` / `STATUS` | one chat call per tick, a large stable prompt | two Choices ("which step is the person on", "is it complete"); COACH stays generative | prototype feature, no scalar |
+| session-commitments supersession | a small chat call per distillation | Choice over the watchlist ids + none ("does the new decision replace one, which") | background producer, no cost pressure |
+| auditor / AgentRewrite cadence | a rewrite tick on the debounce | a noul in front of the tick ("has the document changed in a way that needs a pass") | auditors off by default |
+| chat-fallback decision provider | `chat-fallback.ts` answers decision questions with a chat model when no package is installed | n/a — it IS the fallback | by design |
+
+Everything else per pause and per `_` is decided: tips, session
+contradiction (detection + unit), the ask gate, spelling, the sentence
+gate, the `_` router, replace-detect, settings / providers / undo, the
+command span, devices, tables, contradiction claims, calendar availability,
+community rules, the word gate.
 
 ## Loading a package
 

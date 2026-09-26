@@ -337,6 +337,8 @@ function App(props: AppOpts) {
   }
 
   // Legacy popup / standalone mode: full layout with inline statusline.
+  // The inline-cue note and the glimmer frame float over the textarea exactly
+  // as in keep-alive mode — the bootstrap frees the row under the span in both.
   return (
     <box style={{ flexDirection: 'column', width: '100%', height: '100%', paddingLeft: 1, paddingRight: 1 }}>
       <box style={{ flexGrow: 1, width: '100%' }}>
@@ -345,6 +347,16 @@ function App(props: AppOpts) {
           style={{ width: '100%', height: '100%' }}
           wrapMode="word"
         />
+        {note() != null && (
+          <box style={{ position: 'absolute', top: note()!.row, left: note()!.col, zIndex: 10 }}>
+            <text attributes={TextAttributes.DIM}>{note()!.text}</text>
+          </box>
+        )}
+        {glimmerSeg() != null && (
+          <box style={{ position: 'absolute', top: glimmerSeg()!.row, left: glimmerSeg()!.col, zIndex: 11 }}>
+            <text>{glimmerSeg()!.text}</text>
+          </box>
+        )}
       </box>
       <box
         style={{

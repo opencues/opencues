@@ -48,24 +48,24 @@ const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 
 const MONTH_ABBR: Record<string, number> = { jan: 0, feb: 1, mar: 2, apr: 3, jun: 5, jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11 };
 
 /** Strip surrounding punctuation and lowercase, for token matching. */
-function norm(w: string): string { return w.toLowerCase().replace(/^[^a-z0-9$]+|[^a-z0-9]+$/g, ''); }
+export function norm(w: string): string { return w.toLowerCase().replace(/^[^a-z0-9$]+|[^a-z0-9]+$/g, ''); }
 
 /** Parse an ordinal/cardinal day-of-month token ("24th", "3rd", "24"). 1–31 or null. */
-function parseDay(w: string): number | null {
+export function parseDay(w: string): number | null {
   const m = norm(w).match(/^(\d{1,2})(st|nd|rd|th)?$/);
   if (!m) return null;
   const d = parseInt(m[1], 10);
   return d >= 1 && d <= 31 ? d : null;
 }
 
-function weekdayIndex(w: string): number | null {
+export function weekdayIndex(w: string): number | null {
   const n = norm(w);
   const full = WEEKDAYS.indexOf(n);
   if (full >= 0) return full;
   return n in WEEKDAY_ABBR ? WEEKDAY_ABBR[n] : null;
 }
 
-function monthIndex(w: string): number | null {
+export function monthIndex(w: string): number | null {
   const n = norm(w);
   const full = MONTHS.indexOf(n);
   if (full >= 0) return full;

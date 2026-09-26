@@ -5,7 +5,7 @@
  */
 import type {
   DecisionLegs, DecisionLegContext, PauseInput, PauseVerdict, TipsVerdict, TipsEntryForDecision,
-  ContradictionVerdict, CommitmentForDecision, DecisionUnit, UnderscoreRouting, RouteContext, ReplaceVerdict, SpellingVerdict, SettingsVerdict, DeviceVerdict, TableVerdict,
+  ContradictionVerdict, CommitmentForDecision, DecisionUnit, UnderscoreRouting, RouteContext, ReplaceVerdict, SpellingVerdict, SettingsVerdict, DeviceVerdict, TableVerdict, ClaimSentence, ClaimVerdict, RuleForDecision, RuleVerdict, ControlVerdict, WordCueForDecision,
 } from './legs';
 import type { DecisionProvider } from './types';
 
@@ -20,9 +20,19 @@ export interface FakeLegsPlan {
   sentenceGate?: ReadonlyArray<readonly [number, number]> | ((sentences: ReadonlyArray<string>) => ReadonlyArray<readonly [number, number]>);
   route?: Partial<UnderscoreRouting>;
   replace?: ReplaceVerdict | null;
-  settings?: SettingsVerdict | null;
+  settings?: ControlVerdict | null;
+  /** the command-start candidate id to pick, or null */
+  commandStart?: string | null;
   device?: DeviceVerdict | null;
   table?: TableVerdict | null;
+  /** the claims verdicts, or a function of the sentences asked */
+  claims?: ReadonlyArray<ClaimVerdict> | ((sentences: ReadonlyArray<ClaimSentence>) => ReadonlyArray<ClaimVerdict>);
+  /** availability per sentence asked (by id), default 0 */
+  availability?: Readonly<Record<string, number>> | ((sentences: ReadonlyArray<ClaimSentence>) => ReadonlyArray<number>);
+  /** rule verdicts by sentence id (rule number), or a function of the sentences and rules */
+  communityRules?: Readonly<Record<string, number | null>> | ((sentences: ReadonlyArray<ClaimSentence>, rules: ReadonlyArray<RuleForDecision>) => ReadonlyArray<RuleVerdict>);
+  /** word-gate probability by word (lowercased), default 0 */
+  wordGate?: Readonly<Record<string, number>> | ((words: ReadonlyArray<{ id: string; word: string }>) => ReadonlyArray<number>);
   /** throw from every leg */
   throws?: Error;
   /** throw from these legs only */
@@ -93,8 +103,25 @@ export function fakeLegs(plan: FakeLegsPlan = {}): FakeLegs {
       return { route, sourceId: r.sourceId ?? (route === 'settings' ? 'config-intent' : route === 'transform' ? 'transform-blank' : route === 'lookup' ? 'fluid-blank' : null), choice: r.choice ?? (route ?? 'other'), confidence: r.confidence ?? 0.9, agreement: r.agreement ?? 0.9, probabilities: r.probabilities ?? {}, ms: r.ms ?? 1 };
     },
     async replace(input: string): Promise<ReplaceVerdict | null> { calls.push({ leg: 'replace', args: [input] }); await wait(); fail('replace'); return plan.replace ?? null; },
-    async settings(input: string): Promise<SettingsVerdict | null> { calls.push({ leg: 'settings', args: [input] }); await wait(); fail('settings'); return plan.settings ?? null; },
+    async settings(input: string): Promise<ControlVerdict | null> { calls.push({ leg: 'settings', args: [input] }); await wait(); fail('settings'); return plan.settings ?? null; },
+    async commandStart(input: string, candidates: ReadonlyArray<{ id: string; start: number; suffix: string }>): Promise<{ id: string; confidence: number } | null> { calls.push({ leg: 'commandStart', args: [input, candidates] }); await wait(); fail('commandStart'); return plan.commandStart ? { id: plan.commandStart, confidence: 0.9 } : null; },
     async device(input: string): Promise<DeviceVerdict | null> { calls.push({ leg: 'device', args: [input] }); await wait(); fail('device'); return plan.device ?? null; },
     async table(input: string): Promise<TableVerdict | null> { calls.push({ leg: 'table', args: [input] }); await wait(); fail('table'); return plan.table ?? null; },
+    async claims(sentences: ReadonlyArray<ClaimSentence>): Promise<ReadonlyArray<ClaimVerdict>> {
+      calls.push({ leg: 'claims', args: [sentences] }); await wait(); fail('claims');
+      const c = plan.claims; return typeof c === 'function' ? c(sentences) : (c ?? []);
+    },
+    async availability(sentences: ReadonlyArray<ClaimSentence>): Promise<ReadonlyArray<number>> {
+      calls.push({ leg: 'availability', args: [sentences] }); await wait(); fail('availability');
+      const a = plan.availability; return typeof a === 'function' ? a(sentences) : sentences.map((s) => a?.[s.id] ?? 0);
+    },
+    async wordGate(cue: WordCueForDecision, draft: string, words: ReadonlyArray<{ id: string; word: string }>): Promise<ReadonlyArray<number>> {
+      calls.push({ leg: 'wordGate', args: [cue, draft, words] }); await wait(); fail('wordGate');
+      const g = plan.wordGate; return typeof g === 'function' ? g(words) : words.map((w) => g?.[w.word.toLowerCase()] ?? 0);
+    },
+    async communityRules(sentences: ReadonlyArray<ClaimSentence>, rules: ReadonlyArray<RuleForDecision>): Promise<ReadonlyArray<RuleVerdict>> {
+      calls.push({ leg: 'communityRules', args: [sentences, rules] }); await wait(); fail('communityRules');
+      const r = plan.communityRules; return typeof r === 'function' ? r(sentences, rules) : sentences.map((s) => ({ id: s.id, rule: r?.[s.id] ?? null, confidence: 0.9, top: '' }));
+    },
   };
 }
