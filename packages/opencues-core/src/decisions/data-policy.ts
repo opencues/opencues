@@ -178,7 +178,7 @@ export const DATA_POLICY: Readonly<Record<string, DataPolicyEntry>> = {
   'kwh-cost': { blank: 'tables', keyword: 'kwh cost', keywords: ['kwh cost', 'electricity cost', 'cost to run', 'energy cost'], strip: CALC_Q, floor: 'calc' },
   'constant': { blank: 'tables', keyword: 'speed of light', keywords: ['speed of light', 'speed of sound', 'gravitational constant', 'planck constant', 'avogadro constant', 'avogadro', 'boltzmann constant', 'electron charge', 'absolute zero', 'golden ratio', 'astronomical unit', 'light year', 'parsec', 'distance to the moon', 'distance to the sun', 'radius of the earth', 'circumference of the earth', 'value of pi', 'eulers number'], strip: CALC_Q, floor: 'calc', keepKeyword: true, optional: true },
   'gravity-on': { blank: 'tables', keyword: 'gravity on', keywords: ['gravity on', 'escape velocity of', 'day length on', 'year on', 'weight on'], strip: CALC_Q, floor: 'calc', keepKeyword: true },
-  'half-life': { blank: 'tables', keyword: 'half-life', keywords: ['half-life', 'half life', 'remaining after'], strip: CALC_Q, floor: 'calc' },
+  'half-life': { blank: 'tables', keyword: 'half-life', keywords: ['half-life', 'half life', 'remaining after'], strip: CALC_Q, floor: 'calc', keepKeyword: true },
   'decibels': { blank: 'tables', keyword: 'decibels', keywords: ['decibels', 'db plus', 'add decibels', 'db add'], strip: CALC_Q, floor: 'calc', keepKeyword: true },
   'wavelength': { blank: 'tables', keyword: 'wavelength of', keywords: ['wavelength of', 'wavelength'], strip: CALC_Q, floor: 'calc' },
   'note-for': { blank: 'tables', keyword: 'note for', keywords: ['note for', 'note at', 'frequency of', 'pitch of'], strip: CALC_Q, floor: 'calc', keepKeyword: true },

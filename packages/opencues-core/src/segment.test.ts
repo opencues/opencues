@@ -174,3 +174,18 @@ describe('segmentStart — invalid input', () => {
     expect(result).toBe(text.lastIndexOf('. ') + 2);
   });
 });
+
+describe('segmentStart: dots inside morse are not full stops', () => {
+  it('a run of dot-and-dash tokens stays one command', () => {
+    const text = 'morse for .... .. / - .... . .-. . _';
+    expect(segmentStart(text, text.lastIndexOf('_'))).toBe(0);
+  });
+  it('a sentence before the morse command still ends at its full stop', () => {
+    const text = 'ok done. morse for .- -... _';
+    expect(segmentStart(text, text.lastIndexOf('_'))).toBe(text.indexOf('morse'));
+  });
+  it('a lone ellipsis is still a sentence end', () => {
+    expect(segmentStart('wait ... volume up')).toBe('wait ... '.length);
+    expect(segmentStart('... volume up')).toBe(4);
+  });
+});
