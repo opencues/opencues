@@ -754,7 +754,7 @@ done
 | `packages/opencues-cli/` | `opencues` (real CLI) | 0.7.19 | **PUBLISHED on npm** (0.7.15) |
 | `integrations/claude-code/` | `@opencues/claude-code` | 0.2.13 | private |
 | `integrations/opencode/` | `@opencues/opencode` | 0.2.18 | private |
-| `integrations/chrome/` | `@opencues/chrome` | 0.2.208 | private |
+| `integrations/chrome/` | `@opencues/chrome` | 0.2.209 | private |
 | `integrations/gemini-cli/` | `@opencues/gemini-cli` | 0.2.11 | private |
 | `integrations/shell/` | `@opencues/shell` | 0.2.24 | private |
 | `integrations/windows/` | `@opencues/windows` | 0.2.4 | private |

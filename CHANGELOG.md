@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Chrome no longer warns that `decisions-provider` is an unknown provider (`@opencues/chrome` 0.2.209)
+- The boot-time provider audit read every `*-provider:` line as a chat provider, so `decisions-provider: typesafe` (the decision model) was flagged on every load. The matcher (`llmProviderDirectives`, now its own module with a test) leaves it out.
+
 ### Fixed — a page cannot press `_` for the person (`@opencues/chrome` 0.2.208)
 - The content script's key listener now acts only on trusted keydowns. A `_` on a note is consumed at keydown, before any input event the trust gate checks, so a page script dispatching a synthetic `_` with the selection on a note could run a waiting write, apply a note, or dismiss one for good. The extension's own synthetic keys (the Ctrl+A an editor fallback sends) are for the page's editor and were never meant for this listener.
 

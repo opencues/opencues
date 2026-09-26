@@ -38,6 +38,7 @@ import { setCoreWarn } from '@opencues/core';
 import { createBlanks, type BrowserBlank } from './blanks';
 import { walkPlainText, plainOffsetOfPosition, domPositionOfPlainOffset } from './dom-walk';
 import { createHighlightGlimmer, supportsHighlightGlimmer, type HighlightGlimmer } from './highlight-glimmer';
+import { llmProviderDirectives } from './provider-audit';
 
 const STORAGE_PREFIX = 'opencues_runtime:';
 
@@ -2550,16 +2551,7 @@ async function auditProvidersAgainstKeys(keys: Record<string, string>): Promise<
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
   const fm = fmMatch ? fmMatch[1] : content;
 
-  // Match `<word>-?provider: <id>` lines. Captures both the feature
-  // name (or empty for global `provider:`) and the provider id.
-  const directives: { feature: string; provider: string }[] = [];
-  const re = /^(?:([\w-]+)-)?provider:\s*([a-z]+)\s*$/gim;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(fm)) !== null) {
-    const feature = m[1] ?? 'global';
-    const provider = m[2].toLowerCase();
-    directives.push({ feature, provider });
-  }
+  const directives = llmProviderDirectives(fm);
   if (directives.length === 0) return;
 
   const problems: string[] = [];
