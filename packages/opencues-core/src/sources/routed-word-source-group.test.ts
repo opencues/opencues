@@ -503,3 +503,56 @@ describe('RoutedWordSourceGroup: in-progress trailing word gate', () => {
     assert.deepStrictEqual(spelling.received[0]?.words, ['make', 'formal'], 'trigger + in-progress both excluded; "make formal" dispatched');
   });
 });
+
+// ── the word gate (decision layer) ────────────────────────────────────────
+import { fakeLegs } from '../decisions/fake-legs.test-helper';
+
+describe('RoutedWordSourceGroup — the word gate', () => {
+  /** a counting adapter that answers with alternatives for every index it is sent */
+  function countingAdapter(): HttpAdapter & { calls: number; inputs: string[] } {
+    const a = {
+      calls: 0, inputs: [] as string[],
+      post: async (_url: string, body: string) => {
+        a.calls++;
+        const content = String(JSON.parse(body).messages[0].content);
+        a.inputs.push(content);
+        const idx = [...content.matchAll(/(\d+)=\S+/g)].map((m) => m[1]);
+        return JSON.stringify({ choices: [{ message: { content: idx.map((i) => `${i}:ALT-ONE,ALT-TWO,ALT-THREE`).join('\n') } }] });
+      },
+    };
+    return a;
+  }
+  function mkGated(http: HttpAdapter, legs: ReturnType<typeof fakeLegs> | undefined) {
+    const cfg: SourceConfig = { name: 'zorb', description: 'zorb words', promptText: 'prompt', priority: 50, parser: 'alternatives', scope: 'words', match: '.*' };
+    const source = new ConfigSource({ sourceConfig: cfg, httpAdapter: http, provider: getProvider('groq')!, endpoint: 'https://example.test', apiKey: 'k', model: 'm' });
+    return new RoutedWordSourceGroup({ sources: [source], decisions: legs });
+  }
+
+  it('no word clears the gate → no chat call; the leg saw the cue, the draft and the claimed words', async () => {
+    const http = countingAdapter();
+    const legs = fakeLegs({ wordGate: {} });
+    const r = await mkGated(http, legs).getCues(mkContext(['plain', 'prose', 'here']));
+    assert.strictEqual(http.calls, 0);
+    assert.deepStrictEqual(r.results, []);
+    assert.deepStrictEqual(legs.calls[0].args[0], { name: 'zorb', description: 'zorb words', gate: undefined });
+    assert.deepStrictEqual(legs.calls[0].args[2], [{ id: 'w1', word: 'plain' }, { id: 'w2', word: 'prose' }, { id: 'w3', word: 'here' }]);
+  });
+
+  it('some words clear it → ONE call over the full bucket (phrases stay readable), answers kept for the passed words only', async () => {
+    const http = countingAdapter();
+    const r = await mkGated(http, fakeLegs({ wordGate: { circle: 0.9, back: 0.7 } })).getCues(mkContext(['we', 'circle', 'back', 'friday']));
+    assert.strictEqual(http.calls, 1);
+    assert.ok(/0=we 1=circle 2=back 3=friday/.test(http.inputs[0]), 'the whole bucket went to the call');
+    assert.deepStrictEqual(r.results.map((x) => x.word).sort(), ['back', 'circle']);
+  });
+
+  it('a failed gate sends everything as before; without a package the gate is never asked', async () => {
+    const http = countingAdapter();
+    const r = await mkGated(http, fakeLegs({ throws: new Error('boom') })).getCues(mkContext(['we', 'circle', 'back']));
+    assert.strictEqual(http.calls, 1);
+    assert.strictEqual(r.results.length, 3);
+    const http2 = countingAdapter();
+    await mkGated(http2, undefined).getCues(mkContext(['we', 'circle', 'back']));
+    assert.strictEqual(http2.calls, 1);
+  });
+});

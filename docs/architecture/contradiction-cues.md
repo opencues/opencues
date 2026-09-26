@@ -50,9 +50,15 @@ consequences:
 
 Bench (private, `claims-bench.mts`): 56/56 on the main corpus and 30/32 on
 a holdout at **0 false claims**, against the chat parse's 50/56 and 27/32
-(also 0 false); ~30× cheaper per sentence, p90 a quarter of chat's. Tier 5d's
-community-rules judge stays a chat call (chrome-only; same Choice-over-ids
-shape as the session-contradiction gate, movable when chrome gets a run).
+(also 0 false); ~30× cheaper per sentence, p90 a quarter of chat's.
+
+Tier 5d moved the same day on a **`communityRules` leg**: one request per
+pass, per sentence a Choice over the page's cached rule ids + none; the tip
+is built from the cached rule (`verifyCommunityRuleClaim`, a number outside
+the posted rules is dropped) and the span is the runtime-cut sentence, so
+nothing in the note comes from the answer. The judge call is the
+fall-through. Bench (`rules-bench.mts`, an authored rulebook): 25/25 + 14/15
+holdout at 0 false flags vs the judge's 25/25 + 13/15 with one; ~7× cheaper.
 
 > **Date resolution is year-aware** (July 2026). `resolveDate` future-rolls a
 > bare day/month to its NEXT occurrence ("see you Friday the 24th" means the

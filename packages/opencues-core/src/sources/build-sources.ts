@@ -808,7 +808,7 @@ export function buildSourcesFromConfig(
     }
 
     if (wordCueSources.length > 0) {
-      sources.push(new RoutedWordSourceGroup({ sources: wordCueSources, log: options.log }));
+      sources.push(new RoutedWordSourceGroup({ sources: wordCueSources, log: options.log, decisions }));
     }
   }
 

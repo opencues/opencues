@@ -206,6 +206,26 @@ export class ContradictionLlmSource implements CueSource {
         decided = null;
       }
     }
+    // Tier 5d on the decision layer: one request per pass names the rule each
+    // sentence breaks (or none); the tip is built from the CACHED rule and the
+    // span is the runtime-cut sentence. A failed request → the judge call.
+    let ruled: Map<number, number> | null = null;
+    if (communityRules && rulesBlock && this.cfg.decisions?.communityRules && !context.signal?.aborted) {
+      try {
+        const verdicts = await this.cfg.decisions.communityRules(
+          sentences.map((sent, i) => ({ id: `s${i + 1}`, text: sent.text })),
+          communityRules.rules.map((r) => ({ index: r.index, name: r.name, description: r.description })),
+          { signal: context.signal, log: (m) => this.log(m) },
+        );
+        ruled = new Map();
+        for (const v of verdicts) { const i = Number(v.id.replace(/^s/, '')) - 1; if (v.rule !== null && i >= 0) ruled.set(i, v.rule); }
+      } catch (e) {
+        const err = e as Error;
+        if (err?.name === 'AbortError' || /abort/i.test(err?.message ?? '')) return { results: [] };
+        this.log(`ContradictionLlm: rules leg failed (${err?.message}) — judge call`);
+        ruled = null;
+      }
+    }
     const perSentence = await mapWithConcurrency(
       sentences,
       this.cfg.maxConcurrent ?? 4,
@@ -228,7 +248,10 @@ export class ContradictionLlmSource implements CueSource {
         // Tier 5d — the dedicated community-rules judge (its own call, never
         // folded into extract). Failure is logged and non-fatal: the extract
         // path's contradictions still emit.
-        if (communityRules && rulesBlock) {
+        if (communityRules && rulesBlock && ruled) {
+          const rule = ruled.get(si);
+          if (rule !== undefined) { const v = verifyCommunityRuleClaim({ type: 'community_rule_conflict', rule, quote: sent.text }, sent.text, communityRules); if (v) verified.push(v); }
+        } else if (communityRules && rulesBlock) {
           try {
             for (const claim of await this._judgeCalls.get(`${rulesBlock}\u0000${sent.text}`, context.signal, (signal) => this.judgeCommunityRules(sent.text, rulesBlock, signal))) {
               const v = verifyCommunityRuleClaim(claim, sent.text, communityRules);
