@@ -1224,7 +1224,19 @@ export class Resolver {
   // âââ Internals âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
   private onTextChange(e: TextChangeEvent): void {
-    if (e.source !== 'user') return; // ignore our own setText echoes
+    if (e.source !== 'user') {
+      // Our own write (a blank's answer landing, a swap) is never resolved, but a pause still pending for
+      // the draft BEFORE it must not fire: it would resolve text that is gone and paint over the write
+      // (the answer's selection and revert note never showed, and an ask ran on the old draft).
+      const pending = this._pendingResolve;
+      if (this._debounceTimer && pending && pending.text !== e.text) {
+        clearTimeout(this._debounceTimer);
+        this._debounceTimer = null;
+        this._pendingResolve = null;
+        this.adapter.log('debug', 'Resolver: pending pause dropped (the runtime rewrote the draft under it)');
+      }
+      return;
+    }
     if (!this._resolver) return;
 
     // Modal-override gate (tutorial mode). Suppress the whole dispatch
