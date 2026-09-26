@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.20] - 2026-09-26
+
 ### Fixed: the tables blank's date pairs, its routing, and every example on its docs page (`@opencues/runtime` 0.47.2, `@opencues/core` 0.71.1)
 - **Two dates are one range.** `days between 3 march and 19 september _` answered `565 days` once 19 September had passed: each date without a year was resolved on its own against today, the first to this year and the second to its next occurrence. Both dates of a pair now take their year together (from the one that has a year or is relative, `today`, `friday`, else this year), and the second is the first occurrence on or after the first, so the range is `200 days` whatever today is and `1 dec to 10 jan` crosses the new year. One helper (`datePair` in `blanks/calc/dates.ts`) serves `days between`, `weeks between` and `working days between`, including `from ... to` forms. `days since 25 december _` no longer answers a negative count: a date with no year is its most recent occurrence.
 - **The leading keyword names the command.** `tip 15% on 64.20 split 4 ways _` answered `3.75 each (4 ways)`: BlankFill's keyword scan takes the keyword nearest the `_`, which for a shaped command can be a word inside the argument, so `split` ran and divided the tip rate. When a shape claims the `_`, the longest of the blank's keywords at the start of the shaped segment now wins (not one inside a substituted span); a trailing-keyword or keyword-less shape keeps the scan's pick. The same class also routed `split 143 four ways with 15% tip _` to `tip`. It now answers `tip 9.63 · total 73.83 · 18.46 each (4 ways)` and `41.11 each (4 ways, total 164.45 with 15% tip)`.
