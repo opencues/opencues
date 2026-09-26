@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.19] - 2026-09-26
+
 ### Fixed: `undo _` after a repeated settings command did nothing (`@opencues/runtime` 0.47.1)
 - Typing a settings command that was already in effect (`voice mode on _` with voice-mode active) journaled a settings transaction whose scalar write was active to active. The next `undo _` "reverted" that write, counted it as applied, skipped its confirmation text as not-found, and changed nothing, so the provider route before it was never undone. The undo journal now records only real changes: a scalar or OS write over its own value is dropped, a transaction whose side effects were all no-ops is dropped whole, and a coalesced cycling burst that returns to its origin is dropped. An undo of N now reverts the last N real changes; with none left, the existing `nothing to undo` note says so. Pinned by `settings-undo.scenarios.test.ts`.
 
