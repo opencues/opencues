@@ -24,6 +24,7 @@ import type { HostAdapter } from '../adapter';
 import type { ConfigLoader } from './config-loader';
 import {
   UndoJournal,
+  isNoopEntry,
   type UndoApplyReport,
   type UndoEntry,
   type UndoSkipReason,
@@ -64,6 +65,9 @@ export class UndoApplier {
         const entries = action === 'undo' ? [...tx.entries].reverse() : [...tx.entries];
         let anyApplied = false;
         for (const entry of entries) {
+          // Defensive: a no-op entry changes nothing, so it is neither
+          // applied nor a skip (the journal never records one).
+          if (isNoopEntry(entry)) continue;
           const outcome = await this.applyEntry(action, entry, text);
           if (outcome.applied) {
             text = outcome.text;

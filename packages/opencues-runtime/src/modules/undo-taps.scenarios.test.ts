@@ -330,17 +330,20 @@ describe('undo taps — satellite cycle records scalar prevs; undo restores sett
     expect(s.loader.opencuesState.settings.get('voice-mode')).toBe('inactive');
   });
 
-  it('satellite cycled ×2 coalesces; undo returns to the ORIGIN value, not the middle one', async () => {
+  it('satellite cycled ×2 on a two-value setting is back at its ORIGIN: the burst changed nothing, nothing is journaled', async () => {
+    // voice-mode has two values, so two cycles return to where the burst
+    // started. A coalesced burst that nets to no change is dropped, so a
+    // later `undo _` reaches the previous REAL change instead of
+    // "reverting" inactive -> inactive (live OpenCode, 2026-09-26).
     const s = await setupSatellite('voice-mode inactive', 'voice-mode', 'inactive');
     s.loader.applyOpenCuesScalar('voice-mode', 'inactive');
     s.hlState.activate(1, 'voice-mode inactive');
     s.adapter.fireKey('up', { ctrl: true, alt: true });
-    s.adapter.fireKey('up', { ctrl: true, alt: true });
     expect(s.journal.undoDepth).toBe(1);
-
-    await applyUndo(s, 'undo');
+    s.adapter.fireKey('up', { ctrl: true, alt: true });
     expect(s.loader.opencuesState.settings.get('voice-mode')).toBe('inactive');
     expect(s.adapter.getText()).toBe('voice-mode inactive');
+    expect(s.journal.undoDepth).toBe(0);
   });
 });
 
