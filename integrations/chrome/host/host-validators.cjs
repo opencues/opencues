@@ -39,13 +39,21 @@ const WRITABLE_BASENAMES = new Set([
   'NOTES.md',
 ]);
 
+/** The 1.0 settings and identity files. Writable at the cues root ONLY:
+ *  a `.yaml` anywhere under `rows/` is read as a row, so the basename
+ *  alone would let a page write a row (a command) into the dir. */
+const ROOT_ONLY_BASENAMES = new Set(['settings.yaml', 'identity.yaml']);
+
 /**
  * Returns true iff the (path-sandboxed) target is a permitted basename.
- * Caller is responsible for ensuring the path resolves under CUE_ROOT.
+ * Caller is responsible for ensuring the path resolves under CUE_ROOT,
+ * and passes that root so a root-only name is checked for its place.
  */
-function isWritableTarget(safePath) {
+function isWritableTarget(safePath, root) {
   if (typeof safePath !== 'string' || !safePath) return false;
-  return WRITABLE_BASENAMES.has(path.basename(safePath));
+  const base = path.basename(safePath);
+  if (ROOT_ONLY_BASENAMES.has(base)) return typeof root === 'string' && path.dirname(safePath) === path.resolve(root);
+  return WRITABLE_BASENAMES.has(base);
 }
 
 /**
@@ -95,6 +103,7 @@ module.exports = {
   INTERPRETER_ALLOWLIST,
   INLINE_CODE_FLAG_PATTERN,
   WRITABLE_BASENAMES,
+  ROOT_ONLY_BASENAMES,
   isWritableTarget,
   validateExec,
 };

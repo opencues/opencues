@@ -161,6 +161,27 @@ describe('opencues sync chrome', () => {
     }
   });
 
+  it('happy: the 1.0 files are synced — identity.yaml, row files at any depth, tables and transforms; not settings.yaml, not a row\'s script', () => {
+    const srcRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-sync-src-'));
+    try {
+      const put = (rel, text) => { fs.mkdirSync(path.dirname(path.join(srcRoot, rel)), { recursive: true }); fs.writeFileSync(path.join(srcRoot, rel), text); };
+      put('settings.yaml', 'spec: opencues/1.0\n');
+      put('identity.yaml', 'spec: opencues/1.0\nfirstName: Zorb\n');
+      put('rows/zorbpay.yaml', 'kind: command\n');
+      put('rows/deep/zorbmark.json', '{}');
+      put('rows/zorbpay/pay.sh', 'echo zorb\n');
+      put('tables/zorbmeter/TABLE.md', '---\nkeywords: zorb of\n---\n');
+      put('transforms/zorbwrap/TRANSFORM.md', '---\nop: wrap\n---\n');
+      sync(['chrome', '--source', srcRoot], ctx());
+      const has = (rel) => fs.existsSync(path.join(distConfigs(), rel));
+      for (const rel of ['identity.yaml', 'rows/zorbpay.yaml', 'rows/deep/zorbmark.json', 'tables/zorbmeter/TABLE.md', 'transforms/zorbwrap/TRANSFORM.md']) assert.strictEqual(has(rel), true, rel);
+      assert.strictEqual(has('settings.yaml'), false);
+      assert.strictEqual(has('rows/zorbpay/pay.sh'), false);
+    } finally {
+      fs.rmSync(srcRoot, { recursive: true, force: true });
+    }
+  });
+
   it('happy: default (no flags) source is ~/.cues/ when it exists', () => {
     const userCues = path.join(tmpHome, '.cues');
     writeFixtureCueDir(userCues);
