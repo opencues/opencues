@@ -48,7 +48,11 @@ close pages, clear `chrome.storage` after each test).
   a POST proxied through the service worker, so we intercept with
   `context.route()` on the provider host (never `page.route()`). Groq +
   gpt-oss uses strict-JSON, so fluid-blank replies are JSON
-  (`fluidBlankReply`).
+  (`fluidBlankReply`). `callCount` counts chat POSTs only: the bootstrap's
+  boot-time key probe (`verifyLlmKeyAtBoot`, a GET to the provider's
+  model list on every page boot) is answered but tallied separately as
+  `probeCount`, so it can neither satisfy a `callCount > 0` for an inert
+  feature nor race a `callCount === 0`.
 - `seed-config.ts` — fixture config builders (OPENCUES.md pinned to the
   mockable `groq` provider, plus per-test cue/blank fixtures).
 - `pages/` — minimal `textarea.html` (normal-input + sensitive fields)

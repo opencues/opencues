@@ -26,6 +26,13 @@
 // chrome's own protection layer — real value, different claim: it
 // guards against a future change to `diffWriteText`'s own capture/
 // restore, not against a regression in `blank-loading.ts`.
+//
+// Mutation check (re-done when the sampling was rewritten): removing
+// only ONE of the two restores (diffWriteText's normal-input
+// setSelectionRange, or the animator's setCursorOffset after its frame
+// write) stays green, because the other still holds the caret. Removing
+// BOTH turns it red ("cursor read 0 during the resolve wait"), so the
+// sampling below does observe a dragged caret.
 
 import { test, expect } from './extension.fixture';
 import { opencuesMd, cuesMd } from './seed-config';
@@ -67,33 +74,47 @@ test.describe('M1 — blank-loading spinner cursor preservation', () => {
     // Typing the whole phrase leaves the caret right after the trailing
     // `_` — a nonzero position (PHRASE.length), the exact spot the bug
     // dragged back to 0.
+    //
+    // No `toHaveValue(PHRASE)` gate here: the `_` keystroke starts the
+    // loading animation straight away, so the first spinner frame replaces
+    // the `_` within a tick of the last key and the bare PHRASE is on screen
+    // for too short a time to be observed reliably. A gate on it failed
+    // every run (it saw only spinner frames, then the answer): it asserted
+    // a buffer state the product never holds long enough to poll.
     await page.keyboard.type(PHRASE);
     const expectedCursor = PHRASE.length;
-    await expect(t).toHaveValue(PHRASE);
+    const PREFIX = 'the current population of iceland is ';
+    const FRAMES = ['◐', '◓', '◑', '◒'];
+    const waiting = new Set([PHRASE, ...FRAMES.map((f) => PREFIX + f)]);
+    const landedLength = PREFIX.length + ANSWER.length;
 
-    // Sample selectionStart repeatedly across the resolve window. If any
-    // sample reads 0 (or anything other than expectedCursor) while the
-    // field still shows the unresolved/animating buffer, the spinner
-    // dragged the cursor — the exact regression this pins.
+    // Sample selectionStart repeatedly across the resolve window, from the
+    // first instant after the last keystroke until the answer lands. While
+    // the buffer is in its WAITING state (the `_`, or a spinner glyph in its
+    // place) the caret must sit at expectedCursor on every sample: a 0 (or
+    // anything else) means the spinner dragged the cursor, the exact
+    // regression this pins. Once the answer lands (the answer, or a glimmer
+    // frame of it: same length, same prefix) the waiting window is over.
     const samples: number[] = [];
-    let sawAnimationFrame = false;
-    const deadline = Date.now() + 400;
+    let sawSpinnerFrame = false;
+    const deadline = Date.now() + 5_000;
     while (Date.now() < deadline) {
       const [cursor, value] = await t.evaluate((el: HTMLTextAreaElement) => [
         el.selectionStart ?? -1,
         el.value,
       ]) as [number, string];
+      if (value.startsWith(PREFIX) && value.length === landedLength) break; // answer landed
+      expect(waiting.has(value), `unexpected buffer during the resolve wait: ${JSON.stringify(value)}`).toBe(true);
       samples.push(cursor);
-      if (value !== PHRASE) sawAnimationFrame = true; // a spinner glyph frame or the landed answer
-      if (value === `the current population of iceland is ${ANSWER}`) break;
-      await new Promise((r) => setTimeout(r, 20));
+      if (value !== PHRASE) sawSpinnerFrame = true;
+      await new Promise((r) => setTimeout(r, 15));
     }
 
-    // Give the fill time to fully land if the loop above exited early.
-    await expect(t).toHaveValue(`the current population of iceland is ${ANSWER}`, { timeout: 15_000 });
+    // The fill (and any glimmer on it) settles to the real answer.
+    await expect(t).toHaveValue(`${PREFIX}${ANSWER}`, { timeout: 15_000 });
 
     expect(llm.callCount, 'LLM was never hit — blank never fired').toBeGreaterThan(0);
-    expect(sawAnimationFrame, 'never observed an animating/landed frame — the wait was too short to be a real test').toBe(true);
+    expect(sawSpinnerFrame, 'never observed a spinner frame in the field: the animation never wrote, so this proved nothing').toBe(true);
     expect(samples.length, 'no cursor samples captured during the resolve window').toBeGreaterThan(0);
     for (const s of samples) {
       expect(s, `cursor read ${s} during the resolve wait, expected ${expectedCursor} throughout`).toBe(expectedCursor);

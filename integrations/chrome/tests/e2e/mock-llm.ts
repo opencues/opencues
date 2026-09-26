@@ -50,6 +50,7 @@ export class MockLlm {
   private rules: Array<{ match: RegExp; reply: MockReply }> = [];
   private fallback: MockReply = 'MOCKED';
   private calls: OpenAiRequest[] = [];
+  private probes: string[] = [];
 
   reply(match: RegExp, reply: MockReply): this {
     this.rules.push({ match, reply });
@@ -61,9 +62,20 @@ export class MockLlm {
     return this;
   }
 
-  /** Every request the mock served, for asserting the LLM was actually hit. */
+  /** Every CHAT request (a POST) the mock served, for asserting the LLM
+   *  was actually hit. Deliberately excludes the boot-time key probes
+   *  (see `probeCount`): those fire on every page boot whatever the
+   *  feature does, so counting them made `callCount > 0` true for an
+   *  inert feature and `callCount === 0` race the probe. */
   get callCount(): number {
     return this.calls.length;
+  }
+
+  /** Non-POST requests to a provider host: the chrome bootstrap's
+   *  `verifyLlmKeyAtBoot` GETs each keyed provider's model list
+   *  (llm-provider.ts `keyProbe`) once per page boot. */
+  get probeCount(): number {
+    return this.probes.length;
   }
 
   /** True if any served request's message content matched — e.g. a
@@ -75,6 +87,18 @@ export class MockLlm {
 
   async install(context: BrowserContext, opts: { delayMs?: number } = {}): Promise<void> {
     await context.route(PROVIDER_HOST_RE, async (route) => {
+      // The boot-time key probe (GET <provider>/models) is not an LLM call.
+      // Answer it like the real endpoint (200, empty model list, so the
+      // key reads as valid) and keep it out of `calls`.
+      if (route.request().method() !== 'POST') {
+        this.probes.push(route.request().url());
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ object: 'list', data: [] }),
+        });
+        return;
+      }
       let body: OpenAiRequest = {};
       try {
         body = JSON.parse(route.request().postData() ?? '{}');
