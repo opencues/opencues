@@ -19,6 +19,7 @@ import { geocodePlace } from './journey';
 import { cityFromTimeZone } from './weather';
 import type { CommunityRulesSnapshot } from './reddit-rules';
 import { SentenceCallCache } from '../sources/sentence-call-cache';
+import type { DecisionLegs } from '../decisions/legs';
 
 export const CONTRADICTION_EXTRACT_SYSTEM = `You extract EXPLICITLY-STATED, checkable factual claims from ONE sentence so a separate program can verify them. You do NOT judge correctness and you do NOT compute anything. Output ONLY a JSON array (no prose, no markdown). Output [] when there is no explicit, fully-stated claim.
 
@@ -107,6 +108,11 @@ export interface ContradictionLlmSourceConfig {
    *  DEDICATED judge call runs per sentence (COMMUNITY_RULE_JUDGE_SYSTEM).
    *  Absent / off-reddit → the tier stays silent. */
   readonly communityRules?: { refresh(): Promise<void>; current(): CommunityRulesSnapshot | null };
+  /** A decision package with a `claims` leg: the per-sentence parse becomes
+   *  one request per pass naming each sentence's claim TYPE, the operands cut
+   *  by grammar (`capture.ts`) and the same verifiers judging. The extract
+   *  chat call is kept as the fall-through for a failed or absent leg. */
+  readonly decisions?: DecisionLegs;
   readonly log?: (msg: string) => void;
 }
 
@@ -177,14 +183,40 @@ export class ContradictionLlmSource implements CueSource {
     const rulesBlock = communityRules && communityRules.rules.length > 0
       ? communityRules.rules.map((r) => `${r.index}. ${r.name}${r.description ? ` — ${r.description}` : ''}`).join('\n')
       : null;
+    // SELECT-THEN-COMPUTE (reimagined plan item 2): with a `claims` leg, ONE
+    // request per pass names each sentence's claim type; a sentence whose
+    // operands the grammar cannot ground is never asked. The model emits no
+    // value — every claim field is a substring of the sentence by
+    // construction — and the verifiers below judge exactly as they judge the
+    // chat parse. A failed request falls through to the chat parse.
+    let decided: Map<number, Claim[]> | null = null;
+    if (this.cfg.decisions?.claims && !context.signal?.aborted) {
+      try {
+        const verdicts = await this.cfg.decisions.claims(sentences.map((sent, i) => ({ id: `s${i + 1}`, text: sent.text })), { signal: context.signal, log: (m) => this.log(m) });
+        decided = new Map();
+        for (const v of verdicts) {
+          const i = Number(v.id.replace(/^s/, '')) - 1;
+          if (!v.claim || !(i >= 0)) continue;
+          decided.set(i, [...(decided.get(i) ?? []), v.claim]);
+        }
+      } catch (e) {
+        const err = e as Error;
+        if (err?.name === 'AbortError' || /abort/i.test(err?.message ?? '')) return { results: [] };
+        this.log(`ContradictionLlm: claims leg failed (${err?.message}) — chat parse`);
+        decided = null;
+      }
+    }
     const perSentence = await mapWithConcurrency(
       sentences,
       this.cfg.maxConcurrent ?? 4,
-      async (sent): Promise<CueResult[]> => {
+      async (sent, si): Promise<CueResult[]> => {
         const verified: VerifiedContradiction[] = [];
         let claims: Claim[] = [];
-        try { claims = await this._extractCalls.get(sent.text, context.signal, (signal) => this.extract(sent.text, signal)); }
-        catch (e) { this.log(`ContradictionLlm: extract failed for "${sent.text.slice(0, 30)}…" — ${(e as Error).message}`); }
+        if (decided) claims = decided.get(si) ?? [];
+        else {
+          try { claims = await this._extractCalls.get(sent.text, context.signal, (signal) => this.extract(sent.text, signal)); }
+          catch (e) { this.log(`ContradictionLlm: extract failed for "${sent.text.slice(0, 30)}…" — ${(e as Error).message}`); }
+        }
         for (const claim of claims) {
           // Journey claims are per-query → verified async (geocode + distance);
           // all other claim types use the sync cached-data judge.

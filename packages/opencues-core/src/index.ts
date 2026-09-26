@@ -113,6 +113,7 @@ export {
   type ContradictionCheck,
   type ContradictionEnv,
 } from './contradiction/checks';
+export { captureClaim, captureDateRef, candidateClaimTypes, CLAIM_TYPES, type ClaimType, type DateRef } from './contradiction/capture';
 
 export {
   buildSourcesFromConfig,
@@ -343,6 +344,7 @@ export {
   renderCalendarContextCatalog,
   renderCalendarContextForCue,
 } from './calendar-context';
+export { captureAvailabilityRef, findClashes, renderHeadsUp, type AvailabilityRef } from './calendar-availability';
 export type {
   CalendarContextMode,
   CalendarContextEvent,
@@ -578,6 +580,8 @@ export {
   type SettingsVerdict,
   type DeviceVerdict,
   type TableVerdict,
+  type ClaimSentence,
+  type ClaimVerdict,
   type UnderscoreRoute,
   type UnderscoreRouting,
   type RouteContext,
