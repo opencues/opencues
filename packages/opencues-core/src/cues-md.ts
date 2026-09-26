@@ -97,6 +97,8 @@ export interface SourceConfig {
    * provider. Only meaningful with `scope: sentence`.
    */
   gate?: string;
+  /** The cue's `description:` line — what it is for, in the author's words; the word gate's criterion. */
+  description?: string;
 
   /** Model override for this source */
   model?: string;
@@ -1443,6 +1445,7 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.scope) source.scope = frontmatter.scope;
       if (frontmatter.usesCalendarContext) source.usesCalendarContext = true;
       if (frontmatter.gate) source.gate = frontmatter.gate;
+      if (frontmatter.description) source.description = frontmatter.description;
       if (frontmatter.maxTokens !== undefined) source.maxTokens = frontmatter.maxTokens;
       if (frontmatter.temperature !== undefined) source.temperature = frontmatter.temperature;
       if (frontmatter.onField) source.onField = frontmatter.onField;

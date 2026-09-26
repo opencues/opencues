@@ -1247,6 +1247,44 @@ function App(props) {
       height: "100%"
     });
     _$setProp(_el$22, "wrapMode", "word");
+    _$insert(_el$21, (() => {
+      var _c$5 = _$memo(() => note() != null);
+      return () => _c$5() && (() => {
+        var _el$24 = _$createElement("box"), _el$25 = _$createElement("text");
+        _$insertNode(_el$24, _el$25);
+        _$insert(_el$25, () => note().text);
+        _$effect((_p$) => {
+          var _v$3 = {
+            position: "absolute",
+            top: note().row,
+            left: note().col,
+            zIndex: 10
+          }, _v$4 = TextAttributes.DIM;
+          _v$3 !== _p$.e && (_p$.e = _$setProp(_el$24, "style", _v$3, _p$.e));
+          _v$4 !== _p$.t && (_p$.t = _$setProp(_el$25, "attributes", _v$4, _p$.t));
+          return _p$;
+        }, {
+          e: undefined,
+          t: undefined
+        });
+        return _el$24;
+      })();
+    })(), null);
+    _$insert(_el$21, (() => {
+      var _c$6 = _$memo(() => glimmerSeg() != null);
+      return () => _c$6() && (() => {
+        var _el$26 = _$createElement("box"), _el$27 = _$createElement("text");
+        _$insertNode(_el$26, _el$27);
+        _$insert(_el$27, () => glimmerSeg().text);
+        _$effect((_$p) => _$setProp(_el$26, "style", {
+          position: "absolute",
+          top: glimmerSeg().row,
+          left: glimmerSeg().col,
+          zIndex: 11
+        }, _$p));
+        return _el$26;
+      })();
+    })(), null);
     _$setProp(_el$23, "style", {
       height: 1,
       width: "100%",
@@ -1256,25 +1294,25 @@ function App(props) {
       paddingRight: 1
     });
     _$insert(_el$23, (() => {
-      var _c$5 = _$memo(() => tip() != null);
-      return () => _c$5() ? (() => {
-        var _el$24 = _$createElement("text");
-        _$setProp(_el$24, "fg", "#ffffff");
-        _$insert(_el$24, tip);
-        return _el$24;
+      var _c$7 = _$memo(() => tip() != null);
+      return () => _c$7() ? (() => {
+        var _el$28 = _$createElement("text");
+        _$setProp(_el$28, "fg", "#ffffff");
+        _$insert(_el$28, tip);
+        return _el$28;
       })() : (() => {
-        var _el$25 = _$createElement("box"), _el$26 = _$createElement("text"), _el$28 = _$createElement("text");
-        _$insertNode(_el$25, _el$26);
-        _$insertNode(_el$25, _el$28);
-        _$setProp(_el$25, "style", {
+        var _el$29 = _$createElement("box"), _el$30 = _$createElement("text"), _el$32 = _$createElement("text");
+        _$insertNode(_el$29, _el$30);
+        _$insertNode(_el$29, _el$32);
+        _$setProp(_el$29, "style", {
           flexDirection: "row"
         });
-        _$insertNode(_el$26, _$createTextNode(`C_`));
-        _$setProp(_el$26, "fg", "#ffffff");
-        _$insertNode(_el$28, _$createTextNode(` OpenCues_ \xB7 Submit: Ctrl+Alt+S \xB7 Cancel: Ctrl+Alt+Q`));
-        _$setProp(_el$28, "fg", "#ffffff");
-        _$effect((_$p) => _$setProp(_el$26, "attributes", TextAttributes.INVERSE, _$p));
-        return _el$25;
+        _$insertNode(_el$30, _$createTextNode(`C_`));
+        _$setProp(_el$30, "fg", "#ffffff");
+        _$insertNode(_el$32, _$createTextNode(` OpenCues_ \xB7 Submit: Ctrl+Alt+S \xB7 Cancel: Ctrl+Alt+Q`));
+        _$setProp(_el$32, "fg", "#ffffff");
+        _$effect((_$p) => _$setProp(_el$30, "attributes", TextAttributes.INVERSE, _$p));
+        return _el$29;
       })();
     })());
     return _el$20;

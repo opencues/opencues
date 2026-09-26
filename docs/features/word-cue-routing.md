@@ -177,3 +177,15 @@ Surfaces that enforce + surface this:
 Glossary entry: `docs/glossary.md § RoutedWordSourceGroup`.
 
 > **Don't** introduce code paths that concatenate multiple `### alternatives` bodies into one `ConfigSource`. Per-word dispatch is the structural property that gives us isolation; merging prompts defeats it.
+
+## The word gate (decision layer)
+
+With `decisions-provider` set, each word-cue source's call is preceded by one
+decision request that asks, per claimed word, whether the cue would offer an
+alternative for it *as used in the draft* (the cue's `description:` line is
+the criterion; a `gate:` line overrides it). No word clears it → no chat
+call. Otherwise the call runs over the full claimed set exactly as before
+(so a cue that reads phrases — `circle back` — still sees them) and only the
+passed words' alternatives are kept. Buckets over 60 words go ungated; a
+failed request sends everything as before. A `match: .*` cue on plain prose
+costs the gate alone instead of a chat call per pause.
