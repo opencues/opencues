@@ -10,7 +10,7 @@
  * blanks registry; only the blank itself is synthetic.
  */
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { BlankFill } from './blank-fill';
 import { Cycling } from './cycling';
 import { ConfigLoader } from './config-loader';
@@ -18,7 +18,7 @@ import { DimRender } from './dim-render';
 import { UndoApplier } from './undo';
 import { MockAdapter, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
 import { SpanFillState } from '../state/span-fill';
-import { DynDefs, originalIndexOf, inlineNoteText, type WordDef } from '../state/dyn-defs';
+import { DynDefs, originalIndexOf, inlineNoteText, _resetCycledEverForTests, type WordDef } from '../state/dyn-defs';
 import { HighlightState } from '../state/highlight-state';
 import { UndoJournal } from '../state/undo-journal';
 import { createBlankInvoke, type Blank } from '../blanks';
@@ -111,6 +111,9 @@ async function setup(answer = 'ZORB-ANSWER ONE TWO') {
   };
   return { adapter, dynDefs, spanFillState, calls, note, undo, journal };
 }
+
+// the hint retirement is module state: a test that adjusted a knob must not retire the next test's hint
+beforeEach(() => _resetCycledEverForTests());
 
 describe('static blank fill — `_` reverts the landed answer (the tables journey)', () => {
   it('lands, shows the was: note, `_` restores the request without re-firing, `_` re-applies', async () => {
