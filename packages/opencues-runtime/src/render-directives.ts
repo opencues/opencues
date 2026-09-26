@@ -102,8 +102,9 @@ function padTerminalWideEmoji(text: string): string {
  * instead of re-deriving it and drifting. Terminal-side ANSI/indent is layered
  * on separately in applyDirectives; this is the plain text only.
  */
-export function inlineNoteDisplayText(cueTip: string): string {
-  return INLINE_NOTE_CONNECTOR + ' ' + formatInlineNoteText(cueTip);
+export function inlineNoteDisplayText(cueTip: string, hint?: string): string {
+  // the hint (what the next `_` does) rides after the note, as the terminal painter lays it out
+  return INLINE_NOTE_CONNECTOR + ' ' + formatInlineNoteText(cueTip) + (hint ? `   ${hint}` : '');
 }
 
 /**

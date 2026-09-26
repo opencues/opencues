@@ -781,7 +781,7 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
       const vc: any = (textarea as any).visualCursor;
       const visualRow = vc && typeof vc.visualRow === 'number' ? vc.visualRow : 0;
       noteAnchor = {
-        text: inlineNoteDisplayText(directives.inlineNote.text),
+        text: inlineNoteDisplayText(directives.inlineNote.text, directives.inlineNote.hint),
         row: visualRow + 1,
         col: inlineNoteBoxColumn(text, directives.inlineNote.spanStart),
       };

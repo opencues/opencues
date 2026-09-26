@@ -699,7 +699,7 @@ export function getOpencuesInlineNote(
   const note = bootResult.getInlineNote(fullText, cuCursor);
   if (!note) return null;
   return {
-    text: inlineNoteDisplayText(note.text),
+    text: inlineNoteDisplayText(note.text, note.hint),
     col: inlineNoteBoxColumn(fullText, note.spanStart),
   };
 }

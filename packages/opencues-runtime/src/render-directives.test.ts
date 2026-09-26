@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyDirectives, inlineNoteBoxColumn, truncateToCells, wrapToCellLines } from './render-directives';
+import { applyDirectives, inlineNoteBoxColumn, inlineNoteDisplayText, truncateToCells, wrapToCellLines } from './render-directives';
 
 const INV_ON = '\x1b[97m';
 const INV_OFF = '\x1b[39m';
@@ -340,5 +340,12 @@ describe('truncateToCells', () => {
   });
   it('degenerate budget → bare ellipsis', () => {
     expect(truncateToCells('abc', 1)).toBe('…');
+  });
+});
+
+describe('inlineNoteDisplayText: the OpenTUI hosts draw the hint as the terminal painter does', () => {
+  it('the hint follows the note after three spaces; no hint, no trailing space', () => {
+    expect(inlineNoteDisplayText('was: zorb for quxa _', '(underscore to revert)')).toBe('↳ was: zorb for quxa _   (underscore to revert)');
+    expect(inlineNoteDisplayText('ALT-ONE')).toBe('↳ ALT-ONE');
   });
 });
