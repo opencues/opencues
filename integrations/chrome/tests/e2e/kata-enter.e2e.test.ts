@@ -7,6 +7,13 @@
 // causes ANOTHER coach tick (a fresh LLM call) — i.e. the keypress
 // reached the runtime's observeKey. If the call count doesn't move after
 // Enter, the key never reached the coach (the bug).
+//
+// The start of each test used to wait for `callCount > 0` right after
+// `start kata email _`, as proof the coach ran. Starting a kata never ticks
+// the coach, though; that wait was satisfied only by the bootstrap's key
+// probe (a GET the mock counted as an LLM call until it learned not to). It
+// now waits for the phrase to be consumed, then for the tick that typing
+// produces.
 
 import { test, expect } from './extension.fixture';
 import { opencuesMd, cuesMd } from './seed-config';
@@ -36,16 +43,21 @@ test.describe('M1 — kata coach observes keys', () => {
     const ce = page.locator('#ce');
     await ce.focus();
 
-    // Start the kata (bundled email kata). The coach ticks at least once.
+    // Start the kata (bundled email kata). Starting does NOT tick the coach
+    // (kata.ts handleControl 'start' only arms the idle timer); the observable
+    // is the control phrase being consumed from the buffer.
     await page.keyboard.type('start kata email _');
-    await expect
-      .poll(() => llm.callCount, { timeout: 15_000, message: 'kata coach never ran — kata did not start in chrome' })
-      .toBeGreaterThan(0);
+    await expect(ce, 'kata did not start in chrome (control phrase not consumed)').toHaveText('', { timeout: 15_000 });
 
     // Type a little so the buffer is non-empty (Enter = newline here, not a
-    // submit), then settle so no debounced tick is in flight.
+    // submit). Typed activity is what ticks the coach; wait for that tick,
+    // then settle so no debounced tick is in flight.
     await ce.focus();
     await page.keyboard.type('Hi Sarah');
+    await expect
+      .poll(() => llm.callCount, { timeout: 15_000, message: 'kata coach never ran on typed activity in chrome' })
+      .toBeGreaterThan(0);
+    expect(llm.sawContent(/KATA COACH/), 'the call that fired is not a kata coach tick').toBe(true);
     await page.waitForTimeout(1500);
     const before = llm.callCount;
 
@@ -70,10 +82,14 @@ test.describe('M1 — kata coach observes keys', () => {
     await ta.focus();
 
     await page.keyboard.type('start kata email _');
-    await expect.poll(() => llm.callCount, { timeout: 15_000, message: 'kata did not start in the textarea' }).toBeGreaterThan(0);
+    await expect(ta, 'kata did not start in the textarea (control phrase not consumed)').toHaveValue('', { timeout: 15_000 });
 
     await ta.focus();
     await page.keyboard.type('Hi Sarah');
+    await expect
+      .poll(() => llm.callCount, { timeout: 15_000, message: 'kata coach never ran on typed activity in the textarea' })
+      .toBeGreaterThan(0);
+    expect(llm.sawContent(/KATA COACH/), 'the call that fired is not a kata coach tick').toBe(true);
     await page.waitForTimeout(1500);
     const before = llm.callCount;
 

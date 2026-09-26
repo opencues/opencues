@@ -12,26 +12,17 @@
 // it flat, a reset re-resolves.
 
 import { test, expect } from './extension.fixture';
-import { onSiteCueSeed, opencuesMd, cuesMd } from './seed-config';
+import { onSiteCueSeed, SITE_PROBE_MARKER } from './seed-config';
 import { MockLlm } from './mock-llm';
 
-// A folder cue that declares a STATIC tip word ("meeting") with alternatives.
-// A tip word is navigable → DimRender dims it every render, with NO LLM call —
-// a deterministic, paintable span to observe the reapply-on-refocus contract.
-const TIP_CUE = [
-  '---',
-  'name: e2e-tips',
-  '---',
-  '',
-  '```json',
-  JSON.stringify(
-    [{ id: 't', words: { meeting: { tip: 'a scheduled sync', alts: ['sync', 'standup'] } } }],
-    null,
-    2,
-  ),
-  '```',
-  '',
-].join('\n');
+// A word-cue reply (strict-JSON shape: groq + gpt-oss, see config-source.ts
+// parseJsonResponse) that gives word 1 ("meeting" in "the meeting is today")
+// one alternative. The resolver registers it as a DynDef, and DimRender dims
+// every registered DynDef: the paintable span the reapply-on-refocus contract
+// is observed on. The alternative is deliberately synthetic (not a plausible
+// suggestion) per the fixture rule in the root CLAUDE.md.
+const wordAltReply = (): string =>
+  JSON.stringify({ alternatives: [{ index: 1, alts: ['ALT-ONE'] }] });
 
 // Valid classify reply (INDEX:TOKEN per word) so the resolve completes and
 // doesn't retry — the CALL is what we count, but a clean reply avoids inflating
@@ -86,15 +77,16 @@ test.describe('M1 — refocus reuses cue state (suspend/reuse)', () => {
   test('the visible dim paint reappears on same-field refocus', async ({ context, seed }) => {
     // The user-visible contract: after refocus the cue SPANS are painted again,
     // not just the state present. Observe the CSS Custom Highlight range count.
-    // Deterministic static-tip cue — the dim doesn't depend on an LLM.
-    await seed({
-      bundleFiles: {
-        'OPENCUES.md': opencuesMd({ debug: true }),
-        'CUES.md': cuesMd(),
-        'cues/e2e-tips/CUE.md': TIP_CUE,
-      },
-      hostKeys: { GROQ_API_KEY: 'test-key-not-validated-locally' },
-    });
+    //
+    // The span comes from an LLM word-cue (the localhost-scoped probe cue,
+    // answered by the mock). It used to come from a STATIC tip word declared in
+    // a folder cue's JSON block, but the static tips layer was removed in spec
+    // 0.12 (core 0.60.0): a typed pack word no longer grays, so that fixture
+    // could never paint and this test timed out waiting for the first dim.
+    // Only registered DynDefs dim now; a word-cue is one.
+    const llm = new MockLlm().setFallback(wordAltReply);
+    await llm.install(context);
+    await seed(onSiteCueSeed(/* debug */ true));
 
     const page = await context.newPage();
     await page.goto('/tests/e2e/pages/refocus.html');
@@ -139,12 +131,17 @@ test.describe('M1 — refocus reuses cue state (suspend/reuse)', () => {
       const el = document.getElementById('ce')!;
       el.textContent = 'the quarterly report is late';
     });
-    expect(llm.callCount).toBe(0); // nothing resolved yet — never focused
+    // Nothing resolved yet: never focused. This used to flake (about 1 in 3):
+    // the mock counted the bootstrap's key-verification GET (verifyLlmKeyAtBoot,
+    // fired on every page boot) as an LLM call, so whether it had landed yet
+    // decided the count. The mock now counts chat POSTs only.
+    expect(llm.callCount).toBe(0);
 
     // Focus it → the buffer is re-fed to the resolver → a resolve fires.
     await page.locator('#ce').focus();
     await expect
       .poll(() => llm.callCount, { timeout: 15_000 })
       .toBeGreaterThan(0);
+    expect(llm.sawContent(new RegExp(SITE_PROBE_MARKER)), 'the call that fired is not the word-cue resolve').toBe(true);
   });
 });
