@@ -5,6 +5,11 @@ tip: system volume
 icon: 🔊
 speak: true
 blankKeywords: volume
+# The prose road (`make it louder _`, `weather in oslo _`): this blank's closed values, each the shape action it
+# takes, and whether a level (`number`) or a place / name (`named`) written in the draft may be captured.
+device: true
+values: up=step up; down=step down; mute=set 0; current=get
+number: true
 blankStep: 6
 blankAutoPopulate: true
 blankSuffix: %

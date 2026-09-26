@@ -143,7 +143,7 @@ export interface ResolverOptions {
    */
   readonly decisionLegs?: unknown;
   /** Same â inject the resolver build directly (mostly for testing). */
-  readonly resolverFactory?: (cuesConfig: unknown, blanksConfig: unknown, opts: unknown) => unknown;
+  readonly resolverFactory?: (cuesConfig: unknown, blanksConfig: unknown, opts: unknown, buildSourcesFromConfig?: (c: unknown, b: unknown, o: unknown) => unknown[]) => unknown;
   /**
    * Host-specific in-buffer message shown when no LLM source could be
    * wired (no working API keys). Chrome passes "open the extension
@@ -191,6 +191,25 @@ export interface ResolverOptions {
    * fluid-blank's `_` fast-path. Omit for normal behaviour.
    */
   readonly externallySuppressed?: (text: string) => boolean;
+}
+
+type ResolverFactory = (cuesConfig: unknown, blanksConfig: unknown, opts: unknown, buildSourcesFromConfig?: (c: unknown, b: unknown, o: unknown) => unknown[]) => unknown;
+let envFactory: ResolverFactory | null | undefined;
+/** OPENCUES_RESOLVER_FACTORY: a module exporting `resolverFactory`; loaded once, logged once, never on a browser host. */
+function loadEnvResolverFactory(adapter: HostAdapter): ResolverFactory | null {
+  if (envFactory !== undefined) return envFactory;
+  envFactory = null;
+  // BROWSER-SAFE-ALLOW: guarded process read; a Node-only developer seam
+  const p = typeof process !== 'undefined' ? process.env?.OPENCUES_RESOLVER_FACTORY : undefined;
+  if (!p) return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require(p) as { resolverFactory?: ResolverFactory };
+    if (typeof mod.resolverFactory !== 'function') { adapter.log('warn', `Resolver: OPENCUES_RESOLVER_FACTORY ${p} exports no resolverFactory — built-in sources`); return null; }
+    envFactory = mod.resolverFactory;
+    adapter.log('info', `Resolver: sources from OPENCUES_RESOLVER_FACTORY ${p}`);
+  } catch (e) { adapter.log('warn', `Resolver: OPENCUES_RESOLVER_FACTORY ${p} failed to load (${(e as Error).message}) — built-in sources`); }
+  return envFactory;
 }
 
 interface CuesCoreLike {
@@ -1087,9 +1106,14 @@ export class Resolver {
     };
     let sources: unknown[];
     try {
-      sources = (this.options.resolverFactory ?? cuesCore.buildSourcesFromConfig)(
-        cuesConfig, blanksConfig, buildOpts,
-      ) as unknown[];
+      // A host may supply the source factory (`resolverFactory`); a developer may
+      // point at one by path with OPENCUES_RESOLVER_FACTORY (a module exporting
+      // `resolverFactory(cuesConfig, blanksConfig, buildOpts) → sources`, given
+      // core's own `buildSourcesFromConfig` as a fourth argument so it can keep
+      // any of the built-in sources). Node-only, like OPENCUES_DECISIONS_PATH;
+      // the seam a rebuilt client uses to run inside this runtime unchanged.
+      const factory = this.options.resolverFactory ?? loadEnvResolverFactory(this.adapter) ?? cuesCore.buildSourcesFromConfig;
+      sources = factory(cuesConfig, blanksConfig, buildOpts, cuesCore.buildSourcesFromConfig) as unknown[];
     } catch (err) {
       this.adapter.log('error', 'Resolver: buildSourcesFromConfig failed', err);
       return;
@@ -1200,7 +1224,19 @@ export class Resolver {
   // âââ Internals âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
   private onTextChange(e: TextChangeEvent): void {
-    if (e.source !== 'user') return; // ignore our own setText echoes
+    if (e.source !== 'user') {
+      // Our own write (a blank's answer landing, a swap) is never resolved, but a pause still pending for
+      // the draft BEFORE it must not fire: it would resolve text that is gone and paint over the write
+      // (the answer's selection and revert note never showed, and an ask ran on the old draft).
+      const pending = this._pendingResolve;
+      if (this._debounceTimer && pending && pending.text !== e.text) {
+        clearTimeout(this._debounceTimer);
+        this._debounceTimer = null;
+        this._pendingResolve = null;
+        this.adapter.log('debug', 'Resolver: pending pause dropped (the runtime rewrote the draft under it)');
+      }
+      return;
+    }
     if (!this._resolver) return;
 
     // Modal-override gate (tutorial mode). Suppress the whole dispatch

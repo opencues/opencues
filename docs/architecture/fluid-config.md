@@ -20,6 +20,18 @@ Read this before touching:
 
 ---
 
+> **On the decision layer (September 2026).** With a package that has the
+> `settings` leg, ConfigIntentSource makes no chat call at all in the normal
+> case: the leg decides the scalar + value, a provider route (bucket,
+> provider, and a listed model — a model written verbatim is taken by
+> grammar, an alias resolves into the provider's own list), or an undo /
+> redo (the count by grammar); the command span, when the regex finds no
+> terminator, is a `commandStart` Choice over the runtime's own word starts
+> instead of the summon call; and a `none` cedes outright. The classifier
+> and the summon prompt below remain as the path without a package and as
+> the fall-through for a FAILED leg. `docs/architecture/decisions.md` has
+> the legs.
+
 ## Threat model — why the scope is registry-only (FEATURES + MENU_TUNABLES)
 
 The classifier's job is to take a `_` that no keyword matched and decide

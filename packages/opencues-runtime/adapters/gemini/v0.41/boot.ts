@@ -111,7 +111,7 @@ export interface BootResult {
    * `fixedItemHeight`, so a line can't grow to 2 rows. Side-effect-free (does
    * not touch lastSeen), safe to call during render.
    */
-  getInlineNote(fullText: string, cursor: number): { text: string; spanStart: number } | null;
+  getInlineNote(fullText: string, cursor: number): { text: string; spanStart: number; hint?: string } | null;
   /**
    * Pull-model render gate, mirrors CC's pattern. Runtime modules call
    * adapter.setText / setCursorOffset / forceRender which only SET
@@ -701,7 +701,7 @@ export function boot(host: HostInfo): BootResult {
       const directiveSets = renderEvents.collect(ctx, err => log('error', 'render handler threw', err));
       for (const d of directiveSets) {
         if (d.inlineNote && d.inlineNote.text) {
-          return { text: d.inlineNote.text, spanStart: d.inlineNote.spanStart };
+          return { text: d.inlineNote.text, spanStart: d.inlineNote.spanStart, ...(d.inlineNote.hint ? { hint: d.inlineNote.hint } : {}) };
         }
       }
       return null;

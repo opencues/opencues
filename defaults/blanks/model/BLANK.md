@@ -4,11 +4,16 @@ name: model
 # cycleable alternatives - join the lines into the buffer (opencues #339).
 blankMultilineIsAnswer: true
 type: blank
+icon: 🤖
 tip: Which LLM you're routed to
 # `model` → the effective provider · model (what dispatch actually
 # uses); `models` → the provider/model catalog. One blank, the trigger
 # keyword picks the output mode (same pattern as location's map).
 blankKeywords: model, models
+# The prose road (`make it louder _`, `weather in oslo _`): this blank's closed values, each the shape action it
+# takes, and whether a level (`number`) or a place / name (`named`) written in the draft may be captured.
+device: true
+values: current=get model; list=get models; cues=get cues; auditors=get auditors; blanks=get blanks
 # Explicit shapes REPLACE the keyword-synthesized grammar (authored
 # shapes win) — deliberately, because "model" is a common English word
 # and this blank must ONLY claim question-shaped commands, never prose

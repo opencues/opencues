@@ -27,6 +27,7 @@ export {
   ConfigSource,
   type ConfigSourceOptions,
 } from './sources/config-source';
+export { RoutedWordSourceGroup, WORD_GATE_THRESHOLD, WORD_GATE_MAX_WORDS, type RoutedWordSourceGroupConfig } from './sources/routed-word-source-group';
 
 export {
   BlankSource,
@@ -113,6 +114,7 @@ export {
   type ContradictionCheck,
   type ContradictionEnv,
 } from './contradiction/checks';
+export { captureClaim, captureDateRef, candidateClaimTypes, CLAIM_TYPES, type ClaimType, type DateRef } from './contradiction/capture';
 
 export {
   buildSourcesFromConfig,
@@ -343,6 +345,7 @@ export {
   renderCalendarContextCatalog,
   renderCalendarContextForCue,
 } from './calendar-context';
+export { captureAvailabilityRef, findClashes, renderHeadsUp, type AvailabilityRef } from './calendar-availability';
 export type {
   CalendarContextMode,
   CalendarContextEvent,
@@ -576,8 +579,16 @@ export {
   type SpellingVerdict,
   type ReplaceVerdict,
   type SettingsVerdict,
+  type ProviderRouteVerdict,
+  type UndoVerdict,
+  type ControlVerdict,
   type DeviceVerdict,
   type TableVerdict,
+  type ClaimSentence,
+  type ClaimVerdict,
+  type RuleForDecision,
+  type RuleVerdict,
+  type WordCueForDecision,
   type UnderscoreRoute,
   type UnderscoreRouting,
   type RouteContext,

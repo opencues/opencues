@@ -28,6 +28,38 @@ a sentence to a verifier; the verifier's math is what fires (or doesn't).
 This is the same "model classifies, runtime computes" discipline the rest
 of the system uses.
 
+### On the decision layer: select-then-compute (September 2026)
+
+With a decision package that has a **`claims` leg** (`DecisionLegs.claims`,
+`decisions/legs.ts`), the parse is no longer a chat call. Per pass, ONE decision
+request names the claim TYPE of every sentence — a Choice over the types the
+grammar in `contradiction/capture.ts` could actually ground in that sentence
+(`candidateClaimTypes`), plus `none`. The operands are then cut from the
+writer's own words by `captureClaim`, and the same `verifyClaim` judges. The
+model never emits a value: every claim field is a substring of the sentence
+by construction, the grounding the chat path enforces after the fact. Three
+consequences:
+
+- **A sentence with nothing groundable is never sent** — no date, no sum, no
+  line name, no two places → no question. In the private bench ~25% of
+  sentences cost nothing.
+- **`weekday_date` is grammar-only**: a weekday attached to a day-of-month IS
+  the claim (there is no judgement in it), so it fires without a question.
+- **The chat parse stays as the fall-through** for a failed or absent leg;
+  the verifiers, the tiers and the render are unchanged either way.
+
+Bench (private, `claims-bench.mts`): 56/56 on the main corpus and 30/32 on
+a holdout at **0 false claims**, against the chat parse's 50/56 and 27/32
+(also 0 false); ~30× cheaper per sentence, p90 a quarter of chat's.
+
+Tier 5d moved the same day on a **`communityRules` leg**: one request per
+pass, per sentence a Choice over the page's cached rule ids + none; the tip
+is built from the cached rule (`verifyCommunityRuleClaim`, a number outside
+the posted rules is dropped) and the span is the runtime-cut sentence, so
+nothing in the note comes from the answer. The judge call is the
+fall-through. Bench (`rules-bench.mts`, an authored rulebook): 25/25 + 14/15
+holdout at 0 false flags vs the judge's 25/25 + 13/15 with one; ~7× cheaper.
+
 > **Date resolution is year-aware** (July 2026). `resolveDate` future-rolls a
 > bare day/month to its NEXT occurrence ("see you Friday the 24th" means the
 > coming 24th) — but a stated 4-digit year **pins the date verbatim**. Without
@@ -175,8 +207,11 @@ request, so it's guarded (security-audit.md rows #28–#29):
 - `contradiction/checks.ts` — the deterministic verifiers + the claim
   types. Adding a Tier-0-class check is a new `verify*` function + a
   claim type in the parse prompt.
+- `contradiction/capture.ts` — the claim grammar (`captureClaim`,
+  `candidateClaimTypes`, `captureDateRef`). A new claim type needs its
+  capture here as well as its verifier and its line in the parse prompt.
 - `contradiction/contradiction-llm-source.ts` — the parse prompt +
-  cache plumbing. Adding a networked tier is a new cache field on
+  cache plumbing, and the `claims` leg branch. Adding a networked tier is a new cache field on
   `ContradictionLlmSourceConfig` + its verifier + the host wiring.
 - `contradiction/journey.ts` (geocode/distance), `tfl.ts`, `weather.ts`,
   `reddit-rules.ts` — per-provider fetch + parse. Fixed URLs or
@@ -188,6 +223,9 @@ request, so it's guarded (security-audit.md rows #28–#29):
 
 - `contradiction/checks.test.ts` — verifier units incl. the two
   `SECURITY:` journey-grounding cases.
+- `contradiction/capture.test.ts` — the grammar; `contradiction-llm-source.test.ts`
+  — the claims leg (a named claim → the cue with no chat call; a failed leg →
+  the chat parse).
 - Agentic suite 112–117 (private harness) — the tiers end-to-end via
   `run-contradiction-suite` (seeds a fake calendar + pins the cues bucket
   to a validation model; 117 is the negative control — a *correct* claim

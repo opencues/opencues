@@ -13,7 +13,7 @@
 // back to DOM Range objects via a TreeWalker.
 
 import type { RenderDirectives } from '@opencues/runtime/dist/src/adapter';
-import { inlineNoteDisplayText } from '@opencues/runtime/dist/src/render-directives';
+import { inlineNoteParts } from '@opencues/runtime/dist/src/render-directives';
 import { walkPlainText } from './dom-walk';
 
 const hasHighlightAPI = typeof CSS !== 'undefined' && 'highlights' in CSS;
@@ -132,7 +132,7 @@ export function applyDirectives(target: HTMLElement, directives: RenderDirective
   // Inline cue note — the terminal splices a gray line under the span; CSS
   // Highlight can't inject text, so chrome paints the SAME note text as a
   // span-anchored overlay pinned just below the flagged span. Reuses the
-  // runtime's inlineNote directive + inlineNoteDisplayText so the text +
+  // runtime's inlineNote directive + inlineNoteParts so the text +
   // cursor-gating are identical to the terminal.
   let note: RenderDirectives['inlineNote'] | undefined;
   for (const d of directives) { if (d.inlineNote) { note = d.inlineNote; break; } }
@@ -482,10 +482,11 @@ function renderInlineNote(
   // right. The hint is present only until the user's first cycle this session
   // (dim-render drops it via hasCycledEver()).
   el.textContent = '';
-  el.appendChild(document.createTextNode(inlineNoteDisplayText(note.text)));
-  if (note.hint) {
+  const parts = inlineNoteParts(note);
+  el.appendChild(document.createTextNode(parts.body));
+  if (parts.hint) {
     const h = document.createElement('span');
-    h.textContent = `   ${note.hint}`;
+    h.textContent = `   ${parts.hint}`;
     h.style.cssText = 'opacity:0.62;font-style:italic';
     el.appendChild(h);
   }

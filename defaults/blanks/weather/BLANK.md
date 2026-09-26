@@ -1,7 +1,13 @@
 ---
 name: weather
 type: blank
+icon: 🌦
 blankKeywords: weather, forecast, temp, temperature
+# The prose road (`make it louder _`, `weather in oslo _`): this blank's closed values, each the shape action it
+# takes, and whether a level (`number`) or a place / name (`named`) written in the draft may be captured.
+device: true
+values: here=get; today=get
+named: true
 blankAutoPopulate: true
 blankFormat: string
 tip: Weather

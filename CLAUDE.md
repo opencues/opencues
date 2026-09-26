@@ -749,12 +749,12 @@ done
 |---|---|---|---|
 | `SPEC.md` (open-standard) | `cues-spec` | 0.12 (draft) | exported as `SPEC_VERSION` from `@opencues/core` |
 | `package.json` (monorepo root) | `opencues` | 0.1.0 | private |
-| `packages/opencues-core/` | `@opencues/core` | 0.68.0 | private |
-| `packages/opencues-runtime/` | `@opencues/runtime` | 0.44.0 | private |
+| `packages/opencues-core/` | `@opencues/core` | 0.71.0 | private |
+| `packages/opencues-runtime/` | `@opencues/runtime` | 0.47.0 | private |
 | `packages/opencues-cli/` | `opencues` (real CLI) | 0.7.19 | **PUBLISHED on npm** (0.7.15) |
 | `integrations/claude-code/` | `@opencues/claude-code` | 0.2.13 | private |
 | `integrations/opencode/` | `@opencues/opencode` | 0.2.18 | private |
-| `integrations/chrome/` | `@opencues/chrome` | 0.2.207 | private |
+| `integrations/chrome/` | `@opencues/chrome` | 0.2.208 | private |
 | `integrations/gemini-cli/` | `@opencues/gemini-cli` | 0.2.11 | private |
 | `integrations/shell/` | `@opencues/shell` | 0.2.24 | private |
 | `integrations/windows/` | `@opencues/windows` | 0.2.4 | private |

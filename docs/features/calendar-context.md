@@ -39,6 +39,14 @@ to disable even with a feed configured.
 
 Same safe-mode boundary as [identity-context](identity-context.md).
 
+- **With a decision package** (`decisions-provider` on), the proactive cue
+  sends **nothing about your calendar at all** — not a time, not a token. The
+  only question that leaves the machine is whether your sentence states when
+  you're free or proposes a day or time; OpenCues resolves the day and time
+  from your own words and checks them against the calendar locally, and the
+  heads-up names the real event. (`am i free thursday _` lookups still use
+  the LLM path above.)
+
 ---
 
 ## Turn it on

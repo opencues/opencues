@@ -24,7 +24,7 @@ export interface CalcContext {
   readonly command: string;
 }
 
-export type CalcFamily = 'dates' | 'timezones' | 'numbers' | 'money' | 'text' | 'encodings' | 'physics' | 'tables';
+export type CalcFamily = 'dates' | 'timezones' | 'numbers' | 'money' | 'text' | 'encodings' | 'physics' | 'tables' | 'reference';
 
 /** Where the argument comes from. */
 export type CalcArgFrom =

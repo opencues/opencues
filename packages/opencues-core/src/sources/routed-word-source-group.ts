@@ -31,11 +31,18 @@ import {
   CueResult,
 } from '../types';
 import { ConfigSource } from './config-source';
+import type { DecisionLegs } from '../decisions/legs';
 import { getDehydrator } from '../dehydrate';
 
 export interface RoutedWordSourceGroupConfig {
   /** Group identifier (default: 'word-cues'). */
   id?: string;
+  /** A decision package with a `wordGate` leg: per child source, one request
+   *  asks which of its claimed words deserve an alternative; only those go to
+   *  the chat call, and none → no call. Absent → every claimed word goes. */
+  decisions?: DecisionLegs;
+  /** send a word to the cue's call at gate ≥ this */
+  wordGateThreshold?: number;
   /** Child sources — one per ### alternatives section, scope: words. */
   sources: ConfigSource[];
   /** Debug-log sink (wire to the host's debug log). Child dispatch
@@ -99,6 +106,11 @@ function findInProgressTrailingWord(context: CueContext): number | null {
   return context.words.length - 1;
 }
 
+/** send a claimed word to its cue's call at gate ≥ this */
+export const WORD_GATE_THRESHOLD = 0.5;
+/** above this many claimed words the gate is skipped and the call runs as before */
+export const WORD_GATE_MAX_WORDS = 60;
+
 export class RoutedWordSourceGroup implements CueSource {
   readonly id: string;
   readonly priority: number;
@@ -145,9 +157,14 @@ export class RoutedWordSourceGroup implements CueSource {
 
   private readonly log?: (msg: string) => void;
 
+  private readonly decisions?: DecisionLegs;
+  private readonly wordGateThreshold: number;
+
   constructor(config: RoutedWordSourceGroupConfig) {
     this.id = config.id ?? 'word-cues';
     this.log = config.log;
+    this.decisions = config.decisions;
+    this.wordGateThreshold = config.wordGateThreshold ?? WORD_GATE_THRESHOLD;
     this.priority = config.sources.reduce((m, s) => Math.max(m, s.priority), 0);
 
     const entries: RouteEntry[] = [];
@@ -239,7 +256,32 @@ export class RoutedWordSourceGroup implements CueSource {
     // One LLM call per source, parallel. Each call gets a sub-context
     // containing only THAT source's words, renumbered 0..k. We remember
     // the original indices to remap the response.
-    const dispatches = Array.from(groups.entries()).map(async ([source, bucket]) => {
+    const dispatches = Array.from(groups.entries()).map(async ([source, fullBucket]) => {
+      // THE WORD GATE (decision layer): with a package that has the leg,
+      // one request per source asks which of its claimed words deserve an
+      // alternative under the cue. None → no chat call. Otherwise the call
+      // runs over the FULL bucket exactly as before (the cue reads phrases
+      // off the word sequence — `circle back` — so the input is never
+      // thinned) and the answers are kept only for the words the gate
+      // passed. The gate can spare a call or a false alternative, never
+      // lose a call: a failed request sends everything as before. Buckets
+      // over the cap go ungated (a `match: .*` cue on a long buffer).
+      const bucket = fullBucket;
+      let kept: Set<number> | null = null;
+      if (this.decisions?.wordGate && fullBucket.length > 0 && fullBucket.length <= WORD_GATE_MAX_WORDS && !context.signal?.aborted) {
+        try {
+          const cfg = source.sourceConfig;
+          const probs = await this.decisions.wordGate({ name: cfg.name, description: cfg.description, gate: cfg.gate }, context.text, fullBucket.map((b, i) => ({ id: `w${i + 1}`, word: b.word })), { signal: context.signal, log: (m: string) => this.log?.(m) });
+          kept = new Set(fullBucket.map((_, i) => i).filter((i) => (probs[i] ?? 1) >= this.wordGateThreshold));
+          this.log?.(`word-cues: gate kept ${kept.size}/${fullBucket.length} word(s) for '${source.id}'${kept.size === 0 ? ' — no call' : ''}`);
+          if (kept.size === 0) return [];
+        } catch (e) {
+          const err = e as Error;
+          if (err?.name === 'AbortError' || /abort/i.test(err?.message ?? '')) return [];
+          this.log?.(`word-cues: gate failed for '${source.id}' (${err?.message}) — every claimed word sent`);
+        }
+      }
+      const gateKeeps = (res: CueResult): boolean => kept === null || kept.has(res.wordIndex);
       const subContextText = bucket.map((b, i) => `${i}=${b.word}`).join(' ');
 
       // Cache lookup — keyed on the exact LLM input. Avoids the LLM
@@ -252,7 +294,7 @@ export class RoutedWordSourceGroup implements CueSource {
         // Reinsert for LRU recency.
         sourceCache.delete(subContextText);
         sourceCache.set(subContextText, cached);
-        return cached.map<CueResult>(res => ({
+        return cached.filter(gateKeeps).map<CueResult>(res => ({
           ...res,
           wordIndex: bucket[res.wordIndex]?.idx ?? res.wordIndex,
         }));
@@ -277,7 +319,7 @@ export class RoutedWordSourceGroup implements CueSource {
       // log line below is the only failure signal — keep it.
       if (result.error) {
         this.log?.(`word-cues: source '${source.id}' dispatch failed (not cached): ${result.error}`);
-        return result.results.map<CueResult>(res => ({
+        return result.results.filter(gateKeeps).map<CueResult>(res => ({
           ...res,
           wordIndex: bucket[res.wordIndex]?.idx ?? res.wordIndex,
         }));
@@ -294,7 +336,7 @@ export class RoutedWordSourceGroup implements CueSource {
       }
 
       // Map sub-context indices back to original context indices.
-      return result.results.map<CueResult>(res => ({
+      return result.results.filter(gateKeeps).map<CueResult>(res => ({
         ...res,
         wordIndex: bucket[res.wordIndex]?.idx ?? res.wordIndex,
       }));
