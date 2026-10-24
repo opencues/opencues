@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security: dependency advisories cleared (`@opencues/chrome` 0.2.210, `@opencues/shell` 0.2.26)
+- **Chrome:** `prosemirror-view` 1.41.8 → 1.42.8 (GHSA-c8x8-7fp4-3x9w, XSS in paste handling). Used only by the Playwright ProseMirror test harness, not the shipped extension.
+- **Shell:** `seroval` → 1.7.2 (GHSA-p6vx-979v-rg4c critical, GHSA-jp82-f5mq-hwhp), via solid-js; `zod` 3.25.76 → 4.6.7 (GHSA-mrhx-c7xc-m3w5), via `@opentui/core`'s jimp. No 3.x zod is patched, so jimp now runs on zod 4.
+- **Dev and test tooling only:** `follow-redirects` 1.16.1, `source-map-js` 1.2.2, `vite` 6.4.5, `vitest` 4.1.12, `undici` 7.30.1, `brace-expansion` 5.0.12.
+- The root `package.json` `pnpm.overrides` and `pnpm-workspace.yaml` `overrides:` are both applied (the YAML wins on a conflict), but only a change to the `package.json` list makes pnpm re-resolve the lockfile. Change a pin in both.
+
 ## [0.7.20] - 2026-09-26
 
 ### Fixed: the tables blank's date pairs, its routing, and every example on its docs page (`@opencues/runtime` 0.47.2, `@opencues/core` 0.71.1)

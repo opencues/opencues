@@ -1,6 +1,6 @@
 {
   "name": "@opencues/shell",
-  "version": "0.2.25",
+  "version": "0.2.26",
   "license": "Apache-2.0",
   "private": true,
   "description": "OpenCues for the shell — native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",
@@ -38,7 +38,7 @@
     "@types/bun": "1.3.11",
     "@types/node": "^22.0.0",
     "typescript": "5.8.2",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "files": [
     "bin/",
