@@ -31,15 +31,21 @@ onlyBuiltDependencies:
   - esbuild
   - isolated-vm
 
-# INFOSEC dep CVE pins (DA1-DA7 — June 2026, NF3 — July 2026). pnpm 10's
-# `overrides` location is pnpm-workspace.yaml; the `pnpm.overrides` field
-# in package.json is silently ignored. Each entry pins the lowest
-# patched version per the relevant advisory.
+# INFOSEC dep CVE pins (DA1-DA7 — June 2026, NF3 — July 2026, Oct 2026).
+# pnpm applies BOTH this block and the root package.json `pnpm.overrides`
+# (this one wins on a conflict), but only a change to the package.json list
+# makes pnpm re-resolve the lockfile. Keep the two lists identical: change a
+# pin in both places. Each entry pins the lowest patched version.
 overrides:
-  seroval: ">=1.4.1"     # DA2 — GHSA-66fc-rw6m-c2q6 etc.
-  immutable: ">=3.8.3"   # DA3 — GHSA-wf6x-7x77-mvgw
+  seroval: ">=1.6.3"     # DA2 + GHSA-p6vx-979v-rg4c / GHSA-jp82-f5mq-hwhp — GHSA-66fc-rw6m-c2q6 etc.
+  immutable: ">=5.1.8"   # DA3 — GHSA-wf6x-7x77-mvgw
   file-type: ">=21.3.1"  # DA6 — GHSA-5v7r-6r5c-r473
   diff: ">=8.0.3"        # DA7 — GHSA-73rr-hh4g-fpgx
-  vite: "6.4.3"          # DA5 — GHSA-4w7w-66w2-5vf9 (also: vitest 4 needs vite 6)
-  undici: "^7.28.0"         # NF3 — jsdom's transitive undici (7 CVEs incl. GHSA-vmh5-mc38-953g); test-path only, no prod exposure
-  "@babel/core": ">=7.29.6"  # NF3 — GHSA-4x5r-pxfx-6jf8, transitive via integrations/shell's @opentui/solid
+  vite: "6.4.5"          # DA5 — GHSA-4w7w-66w2-5vf9 + launch-editor/fs.allow advisories (6.4.4+) (also: vitest 4 needs vite 6)
+  undici: "^7.30.1"         # NF3 + Oct 2026 advisories — jsdom's transitive undici (7 CVEs incl. GHSA-vmh5-mc38-953g); test-path only, no prod exposure
+  "@babel/core": ">=7.29.6 <8.0.0"  # NF3 — GHSA-4x5r-pxfx-6jf8, transitive via integrations/shell's @opentui/solid
+  brace-expansion: ">=5.0.12"   # GHSA-6j4f-fj2g-mc7p / -qhr7-859c-m2p7 / -q2hr-2g5m-vwhr; dev-only
+  follow-redirects: ">=1.16.1"  # Dependabot #30/#31; dev-only via chrome's http-server
+  source-map-js: ">=1.2.2"      # Dependabot #29; dev-only via vitest/jsdom/postcss
+  zod: ">=4.6.6"                # GHSA-mrhx-c7xc-m3w5; via shell's @opentui/core > jimp (no patched 3.x)
+  rollup: "~4.61.1"             # matches package.json pnpm.overrides
