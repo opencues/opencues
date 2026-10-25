@@ -39,7 +39,7 @@ onlyBuiltDependencies:
 overrides:
   seroval: ">=1.6.3"     # DA2 + GHSA-p6vx-979v-rg4c / GHSA-jp82-f5mq-hwhp — GHSA-66fc-rw6m-c2q6 etc.
   immutable: ">=5.1.8"   # DA3 — GHSA-wf6x-7x77-mvgw
-  file-type: ">=21.3.1"  # DA6 — GHSA-5v7r-6r5c-r473
+  file-type: "^21.3.3"   # DA6 — GHSA-5v7r-6r5c-r473 + GHSA-j47w-4g3g-c36v; ^21 is what jimp 1.6.1 asks for
   diff: ">=8.0.3"        # DA7 — GHSA-73rr-hh4g-fpgx
   vite: "6.4.5"          # DA5 — GHSA-4w7w-66w2-5vf9 + launch-editor/fs.allow advisories (6.4.4+) (also: vitest 4 needs vite 6)
   undici: "^7.30.1"         # NF3 + Oct 2026 advisories — jsdom's transitive undici (7 CVEs incl. GHSA-vmh5-mc38-953g); test-path only, no prod exposure
@@ -49,3 +49,4 @@ overrides:
   source-map-js: ">=1.2.2"      # Dependabot #29; dev-only via vitest/jsdom/postcss
   zod: ">=4.6.6"                # GHSA-mrhx-c7xc-m3w5; via shell's @opentui/core > jimp (no patched 3.x)
   rollup: "~4.61.1"             # matches package.json pnpm.overrides
+  jimp: ">=1.6.1"               # 1.6.0 imports file-type/core.js, gone in the file-type 21 the DA6 pin forces; 1.6.1 uses file-type 21

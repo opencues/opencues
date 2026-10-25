@@ -1,6 +1,6 @@
 {
   "name": "@opencues/shell",
-  "version": "0.2.26",
+  "version": "0.2.27",
   "license": "Apache-2.0",
   "private": true,
   "description": "OpenCues for the shell — native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",
@@ -29,8 +29,11 @@
   "dependencies": {
     "@opentui/core": "0.1.99",
     "@opentui/solid": "0.1.99",
-    "solid-js": "1.9.10"
+    "solid-js": "1.9.11",
+    "acorn": "^8.12.1",
+    "acorn-walk": "^8.3.3"
   },
+  "//comment-on-runtime-deps": "acorn + acorn-walk are @opencues/runtime dependencies. The runtime is copied into node_modules/@opencues/runtime/ (see above), so its own deps must be declared here or Bun cannot resolve them: the user-blank subprocess loader (esm-rewrite.js) needs both, and without them every JS user blank fails to load on the shell. Keep the ranges equal to packages/opencues-runtime/package.json (pinned by src/runtime-deps.test.ts).",
   "//comment-on-opencues-deps": "@opencues/{core,runtime} are NOT npm-resolved deps here. setup.sh cp -r's the built dist into node_modules/@opencues/{core,runtime}/, mirroring the way integrations/opencode/patches/setup.sh wires the same packages into its fork. This keeps the install path identical across hosts and avoids workspace-resolution drift between pnpm (top-level) and bun (this integration).",
   "//comment-on-test-infra": "Test/typecheck run under Node+vitest, NOT Bun (Bun isn't assumed to be on PATH in CI/dev). src/daemon.ts, src/daemon-client.ts don't import any Bun-only API so they run fine under vitest/Node. src/bootstrap.ts and src/app.tsx pull in @opentui/* + @opencues/* — those are mocked in tests rather than resolved for real, since @opencues/{core,runtime} aren't npm-linked here (see comment above).",
   "devDependencies": {
@@ -45,5 +48,21 @@
     "conf/",
     "dist/",
     "README.md"
-  ]
+  ],
+  "//comment-on-overrides": "Bun ignores the root pnpm overrides: the installer runs `bun install` here, which resolves from bun.lock. This block mirrors the root package.json pnpm.overrides exactly so the security pins reach the shell users actually run (pinned by src/runtime-deps.test.ts).",
+  "overrides": {
+    "brace-expansion": ">=5.0.12",
+    "immutable": ">=5.1.8",
+    "@babel/core": ">=7.29.6 <8.0.0",
+    "diff": ">=8.0.3",
+    "file-type": "^21.3.3",
+    "seroval": ">=1.6.3",
+    "rollup": "~4.61.1",
+    "undici": "^7.30.1",
+    "follow-redirects": ">=1.16.1",
+    "source-map-js": ">=1.2.2",
+    "vite": "6.4.5",
+    "zod": ">=4.6.6",
+    "jimp": ">=1.6.1"
+  }
 }
