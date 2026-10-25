@@ -787,7 +787,10 @@ module.exports = async function doctor(argv, ctx) {
       // 2026 with SENTINELS.md.
       const hostScript = resolveHostScript(manifestPaths[0], shimPath);
       if (hostScript && fs.existsSync(hostScript)) {
-        const text = fs.readFileSync(hostScript, 'utf8');
+        // The host's push logic lives in local modules it requires
+        // (host-bundle.cjs since chrome 0.2.206), so read those too.
+        // Reading host.cjs alone false-positived on AUDITORS.md + NOTES.md.
+        const text = readHostScriptWithLocalModules(hostScript);
         const required = registry.chromeHostFileList();
         // A host script that derives its push list from the FEATURES
         // registry (chromeHostFileList) structurally cannot drift — new
@@ -1681,4 +1684,19 @@ function printHelp() {
 }
 
 // Internal helpers exposed for testing. Not part of the public surface.
-module.exports._internal = { scanScriptedBlanks, loadShippedManifest, isShippedIntact };
+// The chrome-host script plus every local module it requires
+// (`require('./x.cjs')`), one level deep. Doctor's push-parity check reads
+// this, because the host's push list is built in host-bundle.cjs, not host.cjs.
+function readHostScriptWithLocalModules(hostScript) {
+  const main = fs.readFileSync(hostScript, 'utf8');
+  const dir = path.dirname(hostScript);
+  const parts = [main];
+  for (const m of main.matchAll(/require\(\s*['"](\.\.?\/[^'"]+)['"]\s*\)/g)) {
+    const candidates = [m[1], `${m[1]}.cjs`, `${m[1]}.js`].map(r => path.resolve(dir, r));
+    const hit = candidates.find(c => fs.existsSync(c) && fs.statSync(c).isFile());
+    if (hit) parts.push(fs.readFileSync(hit, 'utf8'));
+  }
+  return parts.join('\n');
+}
+
+module.exports._internal = { scanScriptedBlanks, loadShippedManifest, isShippedIntact, readHostScriptWithLocalModules };

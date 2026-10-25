@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed: the dsh freshness gate could never fail, so the committed dsh bundle went stale (`@opencues/dsh` bundle rebuilt)
+- `scripts/check-dsh-bundle-fresh.sh` hashed the working-tree `client.js`, but CI runs `pnpm build` (which includes dsh's own `build.mjs`) first, so the gate compared a fresh build with a fresh build and always passed. The committed bundle had been stale since 2026-09-26: dsh marketplace installs (which clone the repo) were missing that day's `defaults/` changes. The gate now hashes the committed copy (`git show HEAD:`), and the bundle is rebuilt.
+
+### Fixed: `opencues doctor` said the chrome-host "doesn't push AUDITORS.md, NOTES.md"
+- Since chrome 0.2.206 the host builds its push list in `host-bundle.cjs`, but doctor's parity check read only `host.cjs`. Doctor now also reads the local modules the host requires. Pinned by `doctor.hostscript.test.cjs`.
+
 ### Fixed: the shell's security pins, JS user blanks, and jimp's broken import (`@opencues/shell` 0.2.27)
 - **User blanks on the shell.** The shell copies the runtime's built files instead of installing the package, so the runtime's own dependencies were never installed. Every JS user blank (the shipped `gh-issues` example included) failed with `Cannot find package 'acorn'`. `acorn` and `acorn-walk` are now shell dependencies, and `src/runtime-deps.test.ts` fails if the runtime gains a dependency the shell doesn't declare.
 - **jimp.** The `file-type >=21.3.1` security pin (DA6) removed the `file-type/core.js` that jimp 1.6.0 imports, so jimp's entry point failed to load. jimp is now 1.6.1, which uses file-type 21, and the pin is `^21.3.3` (also clears GHSA-j47w-4g3g-c36v).

@@ -66,8 +66,24 @@ for f in "$BUNDLE" "$DEFAULTS"; do
   fi
 done
 
-before_bundle="$(sha256sum "$BUNDLE" | cut -d' ' -f1)"
-before_defaults="$(sha256sum "$DEFAULTS" | cut -d' ' -f1)"
+# Hash the COMMITTED copies (git HEAD), never the working tree. CI runs
+# `pnpm build` (turbo, which includes dsh's own build.mjs) before this gate,
+# so the working-tree file is already a fresh build by the time we get here:
+# hashing it compared a rebuild with a rebuild, and the gate could never fail.
+# That let the committed bundle sit stale from 2026-09-26 until October.
+committed_hash() {
+  if ! git cat-file -e "HEAD:$1" 2>/dev/null; then
+    {
+      echo "✗ $1 is not committed — it must be in git, not just on disk."
+      echo "  A clone-based marketplace install would ship a plugin with no browser half."
+      echo "  Fix: pnpm build --filter @opencues/dsh && git add $1"
+    } >&2
+    exit 1
+  fi
+  git show "HEAD:$1" | sha256sum | cut -d' ' -f1
+}
+before_bundle="$(committed_hash "$BUNDLE")"
+before_defaults="$(committed_hash "$DEFAULTS")"
 
 # The bundle inlines @opencues/{core,runtime} DIST, so a stale dist would make
 # this check compare against the wrong thing and pass a genuinely stale bundle.
