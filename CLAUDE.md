@@ -756,7 +756,7 @@ done
 | `integrations/opencode/` | `@opencues/opencode` | 0.2.19 | private |
 | `integrations/chrome/` | `@opencues/chrome` | 0.2.210 | private |
 | `integrations/gemini-cli/` | `@opencues/gemini-cli` | 0.2.12 | private |
-| `integrations/shell/` | `@opencues/shell` | 0.2.26 | private |
+| `integrations/shell/` | `@opencues/shell` | 0.2.27 | private |
 | `integrations/windows/` | `@opencues/windows` | 0.2.4 | private |
 | `integrations/dsh/` | `@opencues/dsh` | 0.2.21 | **PUBLISHABLE** — dsh installs plugins from npm |
 

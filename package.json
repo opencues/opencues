@@ -31,14 +31,15 @@
       "immutable": ">=5.1.8",
       "@babel/core": ">=7.29.6 <8.0.0",
       "diff": ">=8.0.3",
-      "file-type": ">=21.3.1",
+      "file-type": "^21.3.3",
       "seroval": ">=1.6.3",
       "rollup": "~4.61.1",
       "undici": "^7.30.1",
       "follow-redirects": ">=1.16.1",
       "source-map-js": ">=1.2.2",
       "vite": "6.4.5",
-      "zod": ">=4.6.6"
+      "zod": ">=4.6.6",
+      "jimp": ">=1.6.1"
     }
   }
 }
