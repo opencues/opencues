@@ -7,10 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed: JS user blanks failed to load on the shell, and jimp's broken import (`@opencues/shell` 0.2.27)
+### Fixed: the shell's security pins, JS user blanks, and jimp's broken import (`@opencues/shell` 0.2.27)
 - **User blanks on the shell.** The shell copies the runtime's built files instead of installing the package, so the runtime's own dependencies were never installed. Every JS user blank (the shipped `gh-issues` example included) failed with `Cannot find package 'acorn'`. `acorn` and `acorn-walk` are now shell dependencies, and `src/runtime-deps.test.ts` fails if the runtime gains a dependency the shell doesn't declare.
 - **jimp.** The `file-type >=21.3.1` security pin (DA6) removed the `file-type/core.js` that jimp 1.6.0 imports, so jimp's entry point failed to load. jimp is now 1.6.1, which uses file-type 21, and the pin is `^21.3.3` (also clears GHSA-j47w-4g3g-c36v).
 - `solid-js` 1.9.10 → 1.9.11, the exact version `@opentui/solid` 0.1.99 asks for (clears the unmet-peer warning on every install).
+- **The security pins never reached the shell.** The installer runs `bun install` in `integrations/shell/`, which resolves from `bun.lock` and ignores the root pnpm overrides, so the shell users actually run was still on `seroval` 1.5.6 (critical), `zod` 3, `jimp` 1.6.0 and `file-type` 16. The shell's `package.json` now carries an `overrides` block that mirrors the root list (Bun reads it), `bun.lock` is regenerated, and `bun audit` is clean. `src/runtime-deps.test.ts` fails if the two lists drift.
+- The committed `dist/app.js` imported `inlineNoteDisplayText`, which the runtime no longer exports, so launching `oc-edit` from a fresh clone without the installer crashed. Rebuilt from the current source.
 
 ### Security: dependency advisories cleared (`@opencues/chrome` 0.2.210, `@opencues/shell` 0.2.26)
 - **Chrome:** `prosemirror-view` 1.41.8 → 1.42.8 (GHSA-c8x8-7fp4-3x9w, XSS in paste handling). Used only by the Playwright ProseMirror test harness, not the shipped extension.

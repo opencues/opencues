@@ -21,7 +21,7 @@ import { boot } from "@opencues/runtime/dist/adapters/shell/v1/boot";
 import { buildOpenTuiModifiers } from "@opencues/runtime/dist/src/modules/mac-keyboard";
 import { createSourceReclassifier } from "@opencues/runtime/dist/src/boot-common";
 import { codeUnitsToCells } from "@opencues/runtime/dist/src/util/cell-width";
-import { inlineNoteDisplayText, inlineNoteBoxColumn } from "@opencues/runtime/dist/src/render-directives";
+import { inlineNoteLine, inlineNoteBoxColumn } from "@opencues/runtime/dist/src/render-directives";
 import {
   createBlankInvoke,
   createDefaultBlanksRegistry
@@ -784,7 +784,7 @@ function triggerOpenCuesRender(text, cursor) {
       const vc = textarea.visualCursor;
       const visualRow = vc && typeof vc.visualRow === "number" ? vc.visualRow : 0;
       noteAnchor = {
-        text: inlineNoteDisplayText(directives.inlineNote.text),
+        text: inlineNoteLine(directives.inlineNote),
         row: visualRow + 1,
         col: inlineNoteBoxColumn(text, directives.inlineNote.spanStart)
       };

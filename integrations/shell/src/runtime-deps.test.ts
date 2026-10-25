@@ -31,3 +31,15 @@ describe('shell declares the copied runtime\'s dependencies', () => {
     expect(shell.dependencies[name]).toBe(range);
   });
 });
+
+// The installer runs `bun install` in this package, which resolves from bun.lock
+// and never sees the root pnpm overrides. Without a mirror, every security pin
+// in the root (seroval, zod, jimp, file-type, ...) silently missed the shell
+// users actually run.
+describe('shell mirrors the root security overrides for Bun', () => {
+  const root = readJson(join(__dirname, '..', '..', '..', 'package.json'));
+
+  it('overrides equal the root package.json pnpm.overrides', () => {
+    expect(shell.overrides).toEqual(root.pnpm.overrides);
+  });
+});

@@ -48,5 +48,21 @@
     "conf/",
     "dist/",
     "README.md"
-  ]
+  ],
+  "//comment-on-overrides": "Bun ignores the root pnpm overrides: the installer runs `bun install` here, which resolves from bun.lock. This block mirrors the root package.json pnpm.overrides exactly so the security pins reach the shell users actually run (pinned by src/runtime-deps.test.ts).",
+  "overrides": {
+    "brace-expansion": ">=5.0.12",
+    "immutable": ">=5.1.8",
+    "@babel/core": ">=7.29.6 <8.0.0",
+    "diff": ">=8.0.3",
+    "file-type": "^21.3.3",
+    "seroval": ">=1.6.3",
+    "rollup": "~4.61.1",
+    "undici": "^7.30.1",
+    "follow-redirects": ">=1.16.1",
+    "source-map-js": ">=1.2.2",
+    "vite": "6.4.5",
+    "zod": ">=4.6.6",
+    "jimp": ">=1.6.1"
+  }
 }
